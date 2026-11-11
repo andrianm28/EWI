@@ -46,7 +46,7 @@ function createApp({ config, stores, ai, catalog }) {
   app.use(express.json({ limit: '1mb' }));
 
   app.get('/api/health', (_req, res) => res.json({ status: 'ok', service: 'ewi-api' }));
-  app.use('/api/auth', authRoutes({ users: stores.users, tokens, requireAuth: auth }));
+  app.use('/api/auth', authRoutes({ users: stores.users, tokens, requireAuth: auth, tenantPicker: config.loginTenantPicker }));
 
   const api = express.Router();
   api.use(auth, tenantContext());

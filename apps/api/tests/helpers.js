@@ -22,7 +22,9 @@ function makeStores({ entitlements = {}, flags = {} } = {}) {
   ];
   const projects = [];
   return {
-    users: { findByEmail: async (slug, email) => users.find((u) => u.tenantSlug === slug && u.email === email) || null },
+    users: {
+      listActiveTenants: async () => [{ slug: 'elgos', name: 'ELGOS' }, { slug: 'other', name: 'Lain' }],
+      findByEmail: async (slug, email) => users.find((u) => u.tenantSlug === slug && u.email === email) || null },
     flags: { getTenantFlags: async (tid) => flags[tid] || {} },
     entitlements: { getActiveEntitlements: async (tid) => (entitlements[tid] || []).map((product) => ({ product })) },
     projects: {
@@ -32,8 +34,8 @@ function makeStores({ entitlements = {}, flags = {} } = {}) {
   };
 }
 
-function makeApp(opts) {
-  return createApp({ config: makeConfig(), stores: makeStores(opts) });
+function makeApp(opts, env = {}) {
+  return createApp({ config: makeConfig(env), stores: makeStores(opts) });
 }
 
 module.exports = { SECRET, TEST_PASSWORD, makeConfig, makeStores, makeApp };

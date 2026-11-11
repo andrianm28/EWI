@@ -9,6 +9,9 @@ function createStores(sequelize) {
   return {
     ...createLnaStores(sequelize),
     users: {
+      async listActiveTenants() {
+        return q(`SELECT slug, name FROM tenants WHERE status = 'active' ORDER BY name`);
+      },
       async findByEmail(tenantSlug, email) {
         const [row] = await q(
           `SELECT u.id, u.tenant_id AS "tenantId", u.email, u.name, u.role, u.password_hash AS "passwordHash"

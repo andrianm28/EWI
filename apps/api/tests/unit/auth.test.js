@@ -31,3 +31,19 @@ describe('auth', () => {
     expect((await request(app).get('/api/me/access').set('Authorization', `Bearer ${t}`)).status).toBe(401);
   });
 });
+
+describe('GET /api/auth/tenants (pilihan organisasi di login)', () => {
+  const request = require('supertest');
+  const { makeApp } = require('../helpers');
+
+  it('mati secara default (daftar klien tidak terbuka publik)', async () => {
+    const res = await request(makeApp()).get('/api/auth/tenants');
+    expect(res.status).toBe(404);
+  });
+
+  it('menyala dengan LOGIN_TENANT_PICKER=true, hanya slug dan nama', async () => {
+    const res = await request(makeApp({}, { LOGIN_TENANT_PICKER: 'true' })).get('/api/auth/tenants');
+    expect(res.status).toBe(200);
+    expect(res.body.data).toEqual([{ slug: 'elgos', name: 'ELGOS' }, { slug: 'other', name: 'Lain' }]);
+  });
+});

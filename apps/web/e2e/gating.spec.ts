@@ -45,3 +45,21 @@ test('login gagal menampilkan pesan', async ({ page }) => {
   await login(page)
   await expect(page.getByRole('alert')).toHaveText('Email atau password salah')
 })
+
+test('organisasi berupa dropdown bila API menyediakan daftar', async ({ page }) => {
+  let sent: { tenant?: string } | null = null
+  await page.route('**/api/auth/tenants', (route) =>
+    route.fulfill({ json: { data: [{ slug: 'demo', name: 'Demo Organisasi' }, { slug: 'elgos', name: 'ELGOS' }] } }),
+  )
+  await page.route('**/api/auth/login', async (route) => {
+    sent = route.request().postDataJSON()
+    await route.fulfill({ status: 401, json: { error: { code: 'UNAUTHORIZED', message: 'Email atau password salah' } } })
+  })
+  await page.goto('/login')
+  await page.getByLabel('Organisasi').selectOption({ label: 'Demo Organisasi' })
+  await page.getByLabel('Email').fill('hr@demo.test')
+  await page.getByLabel('Password').fill(`pw-${Date.now()}`)
+  await page.getByRole('button', { name: 'Masuk' }).click()
+  await expect(page.getByRole('alert')).toBeVisible()
+  expect(sent).toMatchObject({ tenant: 'demo' })
+})
