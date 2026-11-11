@@ -9,9 +9,9 @@ services:
   db:
     image: pgvector/pgvector:pg16
     restart: unless-stopped
+    env_file: .env          # POSTGRES_PASSWORD
     environment:
       POSTGRES_USER: ewi
-      POSTGRES_PASSWORD: ${DB_PASSWORD:?isi DB_PASSWORD di .env}
       POSTGRES_DB: ewi_dev
     volumes:
       - db-data:/var/lib/postgresql/data
@@ -28,23 +28,23 @@ services:
     restart: unless-stopped
     depends_on:
       db: { condition: service_healthy }
+    # Secret (POSTGRES_PASSWORD, EWI_JWT_SECRET, ELITEMENTOR_*, DEV_SEED_PASSWORD) dibaca dari .env;
+    # API gagal start bila EWI_JWT_SECRET kosong/pendek (B22).
+    env_file: .env
     environment:
       NODE_ENV: development
       EWI_ENV: dev
       PORT: 4100
-      DATABASE_URL: postgres://ewi:${DB_PASSWORD}@db:5432/ewi_dev
+      DB_HOST: db
+      DB_PORT: 5432
+      DB_NAME: ewi_dev
+      DB_USER: ewi
+      DB_SSL: "false"         # Postgres lokal di jaringan compose, tanpa TLS
       DB_SCHEMA: ewi
       RUN_MIGRATIONS: "true"
-      EWI_JWT_SECRET: ${EWI_JWT_SECRET:?isi EWI_JWT_SECRET di .env (min 32 karakter)}
       EWI_JWT_AUDIENCE: ewi
       EWI_JWT_ISSUER: ewi-api-dev
       CORS_ORIGIN: ${PUBLIC_URL:-}
-      ELITEMENTOR_API_URL: ${ELITEMENTOR_API_URL:-}
-      ELITEMENTOR_TOKEN_URL: ${ELITEMENTOR_TOKEN_URL:-}
-      ELITEMENTOR_CLIENT_ID: ${ELITEMENTOR_CLIENT_ID:-}
-      ELITEMENTOR_CLIENT_SECRET: ${ELITEMENTOR_CLIENT_SECRET:-}
-      ELITEMENTOR_WEBHOOK_SECRET: ${ELITEMENTOR_WEBHOOK_SECRET:-}
-      DEV_SEED_PASSWORD: ${DEV_SEED_PASSWORD:-}
 
   web:
     build:

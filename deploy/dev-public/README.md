@@ -12,10 +12,10 @@ Internet ──HTTPS──> Cloudflare Tunnel ──> web (nginx: Vue statis, /a
 ```bash
 git clone https://github.com/andrianm28/EWI.git && cd EWI/deploy/dev-public
 cp .env.example .env
-# isi DB_PASSWORD dan EWI_JWT_SECRET:  openssl rand -base64 48 | tr -d '/+='
+# isi POSTGRES_PASSWORD dan EWI_JWT_SECRET:  openssl rand -base64 48 | tr -d '/+='
 docker compose up -d --build
 docker compose logs tunnel | grep -o 'https://[a-z0-9-]*\.trycloudflare\.com'   # URL publik
-docker compose exec api sh -c 'cd /app/apps/api && npm run seed:dev'          # tenant demo + user HR/learner
+docker compose exec api docker-entrypoint.sh npm run seed:dev          # tenant demo + user HR/learner
 ```
 
 Update ke commit terbaru: `git pull && docker compose up -d --build` (migrasi jalan otomatis saat API start).
