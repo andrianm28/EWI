@@ -1,0 +1,78 @@
+# Lingkungan dev EWI yang bisa diakses publik, di luar AWS (keputusan user 11 Nov 2026: etavm1 + tunnel).
+#   cd deploy/dev-public && cp .env.example .env   # isi EWI_JWT_SECRET
+#   docker compose up -d --build
+#   docker compose logs tunnel | grep trycloudflare  # URL publik
+# Data di sini data dev/dummy saja. Data karyawan nyata hanya di prod.
+name: ewi-dev
+
+services:
+  db:
+    image: pgvector/pgvector:pg16
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ewi
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?isi DB_PASSWORD di .env}
+      POSTGRES_DB: ewi_dev
+    volumes:
+      - db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ewi -d ewi_dev"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  api:
+    build:
+      context: ../..
+      dockerfile: apps/api/Dockerfile
+    restart: unless-stopped
+    depends_on:
+      db: { condition: service_healthy }
+    environment:
+      NODE_ENV: development
+      EWI_ENV: dev
+      PORT: 4100
+      DATABASE_URL: postgres://ewi:${DB_PASSWORD}@db:5432/ewi_dev
+      DB_SCHEMA: ewi
+      RUN_MIGRATIONS: "true"
+      EWI_JWT_SECRET: ${EWI_JWT_SECRET:?isi EWI_JWT_SECRET di .env (min 32 karakter)}
+      EWI_JWT_AUDIENCE: ewi
+      EWI_JWT_ISSUER: ewi-api-dev
+      CORS_ORIGIN: ${PUBLIC_URL:-}
+      ELITEMENTOR_API_URL: ${ELITEMENTOR_API_URL:-}
+      ELITEMENTOR_TOKEN_URL: ${ELITEMENTOR_TOKEN_URL:-}
+      ELITEMENTOR_CLIENT_ID: ${ELITEMENTOR_CLIENT_ID:-}
+      ELITEMENTOR_CLIENT_SECRET: ${ELITEMENTOR_CLIENT_SECRET:-}
+      ELITEMENTOR_WEBHOOK_SECRET: ${ELITEMENTOR_WEBHOOK_SECRET:-}
+      DEV_SEED_PASSWORD: ${DEV_SEED_PASSWORD:-}
+
+  web:
+    build:
+      context: ../..
+      dockerfile: apps/web/Dockerfile
+    restart: unless-stopped
+    depends_on: [api]
+    ports:
+      - "127.0.0.1:${WEB_PORT:-8080}:80"   # hanya lokal; akses publik lewat tunnel
+
+  # Profil "quick" (default di .env.example): URL *.trycloudflare.com acak, berubah saat restart.
+  tunnel:
+    image: cloudflare/cloudflared:2025.10.0
+    profiles: [quick]
+    restart: unless-stopped
+    depends_on: [web]
+    command: ["tunnel", "--no-autoupdate", "--url", "http://web:80"]
+
+  # Profil "named": named tunnel dari dashboard Cloudflare, URL tetap di domain sendiri.
+  # Set COMPOSE_PROFILES=named dan CLOUDFLARE_TUNNEL_TOKEN; arahkan public hostname ke http://web:80.
+  tunnel-named:
+    image: cloudflare/cloudflared:2025.10.0
+    profiles: [named]
+    restart: unless-stopped
+    depends_on: [web]
+    environment:
+      TUNNEL_TOKEN: ${CLOUDFLARE_TUNNEL_TOKEN:-}
+    command: ["tunnel", "--no-autoupdate", "run"]
+
+volumes:
+  db-data:

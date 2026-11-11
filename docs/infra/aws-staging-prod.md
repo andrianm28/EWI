@@ -93,7 +93,7 @@ Calculator. Belum termasuk AI (Bedrock/Transcribe), SES, transfer data besar, da
 
 | Item | Menunggu |
 |---|---|
-| Lingkungan dev publik di luar AWS | pilihan host dev (thread ini) |
+| (selesai) Dev publik di luar AWS | etavm1 + Cloudflare Tunnel, lihat `deploy/dev-public/` |
 | Domain + HTTPS ke ALB, alamat pengirim email SES | R2-5 |
 | EventBridge Scheduler untuk job (rekonsiliasi T6, pengingat, retensi) | job belum ada di kode; L3 |
 | Alarm CloudWatch + notifikasi, WAF | R2-10 (RPO/RTO, dukungan) |

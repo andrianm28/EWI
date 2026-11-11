@@ -1,7 +1,7 @@
 node_modules
 **/node_modules
 .git
-apps/web
+apps/web/node_modules
 infra
 docs
 **/.env
