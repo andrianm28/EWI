@@ -1,0 +1,111 @@
+name: Deploy
+
+# dev: otomatis setiap push ke main (setelah PR di-merge).
+# staging: manual (Actions > Deploy > Run workflow), sebaiknya dengan image_tag = SHA yang sudah
+#          jalan di dev, sehingga image yang sama dipromosikan. Pasang reviewer wajib di
+#          Settings > Environments > staging.
+# Workflow ini diam (skip) sampai variabel repo AWS_ACCOUNT_ID diisi; lihat docs/infra/aws-dev-staging.md.
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: Lingkungan tujuan
+        type: choice
+        options: [dev, staging]
+        default: dev
+      image_tag:
+        description: SHA commit yang image-nya sudah ada di ECR (kosong = build dari commit terpilih)
+        required: false
+        default: ''
+
+permissions:
+  id-token: write
+  contents: read
+
+concurrency:
+  group: deploy-${{ inputs.environment || 'dev' }}
+  cancel-in-progress: false
+
+env:
+  AWS_REGION: ap-southeast-1
+  ECR_REPO: ewi-api
+
+jobs:
+  deploy:
+    if: vars.AWS_ACCOUNT_ID != ''
+    runs-on: ubuntu-latest
+    environment:
+      name: ${{ inputs.environment || 'dev' }}
+      url: ${{ steps.web.outputs.url }}
+    env:
+      TARGET: ${{ inputs.environment || 'dev' }}
+      IMAGE_TAG: ${{ inputs.image_tag || github.sha }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.image_tag || github.sha }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            infra/package-lock.json
+
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::${{ vars.AWS_ACCOUNT_ID }}:role/ewi-github-deploy
+          aws-region: ${{ env.AWS_REGION }}
+
+      - id: ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Build dan push image API (lewati bila tag sudah ada)
+        env:
+          REGISTRY: ${{ steps.ecr.outputs.registry }}
+          PROMOTE: ${{ inputs.image_tag }}
+        run: |
+          if aws ecr describe-images --repository-name "$ECR_REPO" --image-ids imageTag="$IMAGE_TAG" >/dev/null 2>&1; then
+            echo "Image $ECR_REPO:$IMAGE_TAG sudah ada, dipakai ulang."
+          elif [ -n "$PROMOTE" ]; then
+            echo "::error::Image $ECR_REPO:$IMAGE_TAG belum ada di ECR. Deploy SHA itu ke dev dulu."
+            exit 1
+          else
+            docker build -f apps/api/Dockerfile -t "$REGISTRY/$ECR_REPO:$IMAGE_TAG" .
+            docker push "$REGISTRY/$ECR_REPO:$IMAGE_TAG"
+          fi
+
+      - name: cdk deploy (infra + API, migrasi jalan saat container start)
+        working-directory: infra
+        run: |
+          npm ci
+          npx cdk deploy "Ewi-$TARGET" -c imageTag="$IMAGE_TAG" \
+            --require-approval never --outputs-file outputs.json
+          node -e '
+            const o = require("./outputs.json")["Ewi-" + process.env.TARGET];
+            for (const k of ["WebUrl","WebBucketName","DistributionId"]) console.log(`${k}=${o[k]}`);
+          ' >> "$GITHUB_ENV"
+
+      - name: Build dan unggah web
+        id: web
+        run: |
+          npm ci
+          VITE_API_BASE_URL=/api npm run build -w apps/web
+          aws s3 sync apps/web/dist "s3://$WebBucketName" --delete \
+            --exclude index.html --cache-control "public,max-age=31536000,immutable"
+          aws s3 cp apps/web/dist/index.html "s3://$WebBucketName/index.html" \
+            --cache-control "no-cache"
+          aws cloudfront create-invalidation --distribution-id "$DistributionId" --paths "/index.html" "/"
+          echo "url=$WebUrl" >> "$GITHUB_OUTPUT"
+
+      - name: Smoke test
+        run: |
+          for i in 1 2 3 4 5 6; do
+            curl -fsS "$WebUrl/api/health" && exit 0
+            sleep 10
+          done
+          echo "::error::$WebUrl/api/health tidak sehat"
+          exit 1
