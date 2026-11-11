@@ -8,7 +8,7 @@ Integrasi ke EliteMentor hanya lewat API OAuth2 dan webhook bertanda tangan
 ## Struktur
 
 ```
-apps/api   Node 22 + Express + Sequelize + Postgres (schema `ewi`)
+apps/api   Node 24 + Express + Sequelize + Postgres (schema `ewi`)
 apps/web   Vue 3 + Vite + TypeScript + Pinia + Tailwind, e2e Playwright
 docs/      ADR, arsitektur, spec tiket (docs/ewi/tickets/ELITMEN-xxx.md)
 ```
