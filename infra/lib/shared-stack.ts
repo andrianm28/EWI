@@ -13,8 +13,8 @@ export interface SharedStackProps extends StackProps {
 }
 
 /**
- * Sumber daya bersama dev + staging: repo image API (satu image dipromosikan dari dev ke
- * staging lewat tag commit) dan role deploy GitHub Actions lewat OIDC (tanpa access key).
+ * Sumber daya bersama staging + prod: repo image API (satu image dipromosikan dari staging ke
+ * prod lewat tag commit) dan role deploy GitHub Actions lewat OIDC (tanpa access key).
  */
 export class EwiSharedStack extends Stack {
   readonly repository: ecr.Repository;
@@ -40,8 +40,8 @@ export class EwiSharedStack extends Stack {
           clientIds: ['sts.amazonaws.com'],
         });
 
-    // Hanya job GitHub Actions di repo EWI yang memakai environment dev/staging yang boleh deploy.
-    // Aturan proteksi (reviewer wajib untuk staging) diatur di Settings > Environments GitHub.
+    // Hanya job GitHub Actions di repo EWI yang memakai environment staging/prod yang boleh deploy.
+    // Aturan proteksi (reviewer wajib untuk prod) diatur di Settings > Environments GitHub.
     const role = new iam.Role(this, 'GithubDeployRole', {
       roleName: DEPLOY_ROLE_NAME,
       maxSessionDuration: Duration.hours(1),
@@ -49,8 +49,8 @@ export class EwiSharedStack extends Stack {
         StringEquals: { 'token.actions.githubusercontent.com:aud': 'sts.amazonaws.com' },
         StringLike: {
           'token.actions.githubusercontent.com:sub': [
-            `repo:${GITHUB_REPO}:environment:dev`,
             `repo:${GITHUB_REPO}:environment:staging`,
+            `repo:${GITHUB_REPO}:environment:prod`,
           ],
         },
       }),

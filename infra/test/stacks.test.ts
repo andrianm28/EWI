@@ -8,19 +8,19 @@ import { EwiSharedStack } from '../lib/shared-stack';
 
 const awsEnv = { account: '111111111111', region: 'ap-southeast-1' };
 
-function synthEnv(name: 'dev' | 'staging') {
+function synthEnv(name: 'staging' | 'prod') {
   const app = new App();
   const stack = new EwiEnvStack(app, `Ewi-${name}`, { env: awsEnv, config: ENVIRONMENTS[name], imageTag: 'abc123' });
   return Template.fromStack(stack);
 }
 
 test('RDS Postgres 16 terenkripsi, tidak publik, Single-AZ (T8)', () => {
-  for (const name of ['dev', 'staging'] as const) {
+  for (const name of ['staging', 'prod'] as const) {
     const t = synthEnv(name);
     t.hasResourceProperties('AWS::RDS::DBInstance', {
       Engine: 'postgres',
       EngineVersion: Match.stringLikeRegexp('^16'),
-      DBInstanceClass: 'db.t4g.micro',
+      DBInstanceClass: `db.${ENVIRONMENTS[name].db.instanceClass}`,
       StorageEncrypted: true,
       PubliclyAccessible: false,
       MultiAZ: false,
@@ -29,17 +29,21 @@ test('RDS Postgres 16 terenkripsi, tidak publik, Single-AZ (T8)', () => {
   }
 });
 
-test('staging menyimpan snapshot DB saat stack dihapus, dev tidak', () => {
-  synthEnv('staging').hasResource('AWS::RDS::DBInstance', { DeletionPolicy: 'Snapshot' });
-  synthEnv('dev').hasResource('AWS::RDS::DBInstance', { DeletionPolicy: 'Delete' });
+test('staging dan prod menyimpan snapshot DB saat stack dihapus, dengan deletion protection', () => {
+  for (const name of ['staging', 'prod'] as const) {
+    synthEnv(name).hasResource('AWS::RDS::DBInstance', {
+      DeletionPolicy: 'Snapshot',
+      Properties: Match.objectLike({ DeletionProtection: true }),
+    });
+  }
 });
 
 test('tidak ada NAT Gateway (biaya)', () => {
-  synthEnv('dev').resourceCountIs('AWS::EC2::NatGateway', 0);
+  synthEnv('staging').resourceCountIs('AWS::EC2::NatGateway', 0);
 });
 
 test('API Fargate memakai image ECR sesuai tag dan secret tanpa nilai plaintext', () => {
-  const t = synthEnv('dev');
+  const t = synthEnv('staging');
   const td = t.findResources('AWS::ECS::TaskDefinition');
   const container = Object.values(td)[0].Properties.ContainerDefinitions[0];
   assert.match(JSON.stringify(container.Image), /ewi-api:abc123/);
@@ -54,7 +58,7 @@ test('API Fargate memakai image ECR sesuai tag dan secret tanpa nilai plaintext'
 });
 
 test('ECS service dengan circuit breaker rollback', () => {
-  synthEnv('dev').hasResourceProperties('AWS::ECS::Service', {
+  synthEnv('staging').hasResourceProperties('AWS::ECS::Service', {
     DeploymentConfiguration: Match.objectLike({
       DeploymentCircuitBreaker: { Enable: true, Rollback: true },
     }),
@@ -62,7 +66,7 @@ test('ECS service dengan circuit breaker rollback', () => {
 });
 
 test('CloudFront: /api/* ke ALB tanpa cache, sisanya ke S3', () => {
-  synthEnv('dev').hasResourceProperties('AWS::CloudFront::Distribution', {
+  synthEnv('staging').hasResourceProperties('AWS::CloudFront::Distribution', {
     DistributionConfig: Match.objectLike({
       CacheBehaviors: [Match.objectLike({ PathPattern: '/api/*', ViewerProtocolPolicy: 'https-only' })],
       DefaultCacheBehavior: Match.objectLike({ ViewerProtocolPolicy: 'redirect-to-https' }),
@@ -70,7 +74,7 @@ test('CloudFront: /api/* ke ALB tanpa cache, sisanya ke S3', () => {
   });
 });
 
-test('role deploy GitHub hanya untuk repo EWI environment dev/staging', () => {
+test('role deploy GitHub hanya untuk repo EWI environment staging/prod', () => {
   const app = new App();
   const t = Template.fromStack(new EwiSharedStack(app, 'Ewi-shared', { env: awsEnv }));
   t.hasResourceProperties('AWS::IAM::Role', {
@@ -80,8 +84,8 @@ test('role deploy GitHub hanya untuk repo EWI environment dev/staging', () => {
         Condition: Match.objectLike({
           StringLike: {
             'token.actions.githubusercontent.com:sub': [
-              'repo:andrianm28/EWI:environment:dev',
               'repo:andrianm28/EWI:environment:staging',
+              'repo:andrianm28/EWI:environment:prod',
             ],
           },
         }),

@@ -26,6 +26,6 @@ for (const name of Object.keys(ENVIRONMENTS) as EnvName[]) {
     elitementorApiUrl: app.node.tryGetContext(`${name}:elitementorApiUrl`),
     elitementorTokenUrl: app.node.tryGetContext(`${name}:elitementorTokenUrl`),
     description: `EWI ${name}: CloudFront + S3 (web), ALB + ECS Fargate (api), RDS Postgres`,
-    terminationProtection: name === 'staging',
+    terminationProtection: true,
   });
 }

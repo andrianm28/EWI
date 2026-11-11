@@ -1,10 +1,11 @@
 name: Deploy
 
-# dev: otomatis setiap push ke main (setelah PR di-merge).
-# staging: manual (Actions > Deploy > Run workflow), sebaiknya dengan image_tag = SHA yang sudah
-#          jalan di dev, sehingga image yang sama dipromosikan. Pasang reviewer wajib di
-#          Settings > Environments > staging.
-# Workflow ini diam (skip) sampai variabel repo AWS_ACCOUNT_ID diisi; lihat docs/infra/aws-dev-staging.md.
+# staging: otomatis setiap push ke main (setelah PR di-merge).
+# prod:    manual (Actions > Deploy > Run workflow) dengan image_tag = SHA yang sudah jalan di
+#          staging, sehingga image yang sama dipromosikan. Pasang reviewer wajib di
+#          Settings > Environments > prod.
+# dev tidak di AWS (keputusan user 11 Nov 2026).
+# Workflow ini diam (skip) sampai variabel repo AWS_ACCOUNT_ID diisi; lihat docs/infra/aws-staging-prod.md.
 on:
   push:
     branches: [main]
@@ -13,8 +14,8 @@ on:
       environment:
         description: Lingkungan tujuan
         type: choice
-        options: [dev, staging]
-        default: dev
+        options: [staging, prod]
+        default: staging
       image_tag:
         description: SHA commit yang image-nya sudah ada di ECR (kosong = build dari commit terpilih)
         required: false
@@ -25,7 +26,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: deploy-${{ inputs.environment || 'dev' }}
+  group: deploy-${{ inputs.environment || 'staging' }}
   cancel-in-progress: false
 
 env:
@@ -37,10 +38,10 @@ jobs:
     if: vars.AWS_ACCOUNT_ID != ''
     runs-on: ubuntu-latest
     environment:
-      name: ${{ inputs.environment || 'dev' }}
+      name: ${{ inputs.environment || 'staging' }}
       url: ${{ steps.web.outputs.url }}
     env:
-      TARGET: ${{ inputs.environment || 'dev' }}
+      TARGET: ${{ inputs.environment || 'staging' }}
       IMAGE_TAG: ${{ inputs.image_tag || github.sha }}
     steps:
       - uses: actions/checkout@v4
@@ -71,7 +72,7 @@ jobs:
           if aws ecr describe-images --repository-name "$ECR_REPO" --image-ids imageTag="$IMAGE_TAG" >/dev/null 2>&1; then
             echo "Image $ECR_REPO:$IMAGE_TAG sudah ada, dipakai ulang."
           elif [ -n "$PROMOTE" ]; then
-            echo "::error::Image $ECR_REPO:$IMAGE_TAG belum ada di ECR. Deploy SHA itu ke dev dulu."
+            echo "::error::Image $ECR_REPO:$IMAGE_TAG belum ada di ECR. Deploy SHA itu ke staging dulu."
             exit 1
           else
             docker build -f apps/api/Dockerfile -t "$REGISTRY/$ECR_REPO:$IMAGE_TAG" .

@@ -1,8 +1,8 @@
 // Konfigurasi per lingkungan EWI. Satu tempat untuk ukuran, retensi, dan proteksi.
 // Keputusan acuan (ewi-grilling/teknis.md): T7 ECS Fargate + ALB, T8 RDS Postgres sendiri
-// ap-southeast-1 Single-AZ untuk pilot, R2-9 dev + staging (permintaan user 11 Nov 2026).
+// ap-southeast-1 Single-AZ untuk pilot, R2-9 staging + prod di AWS; dev di luar AWS (ralat user 11 Nov 2026 07:19 UTC).
 
-export type EnvName = 'dev' | 'staging';
+export type EnvName = 'staging' | 'prod';
 
 export interface EnvConfig {
   name: EnvName;
@@ -22,26 +22,11 @@ export interface EnvConfig {
     multiAz: boolean;
   };
   logRetentionDays: number;
-  /** true: data dihapus saat stack dihapus (hanya dev). staging menyimpan snapshot/bucket. */
+  /** true: data ikut terhapus saat stack dihapus (hanya untuk lingkungan sekali pakai). */
   destroyOnRemoval: boolean;
 }
 
 export const ENVIRONMENTS: Record<EnvName, EnvConfig> = {
-  dev: {
-    name: 'dev',
-    vpcCidr: '10.40.0.0/16',
-    api: { cpu: 256, memoryMiB: 512, desiredCount: 1 },
-    db: {
-      instanceClass: 't4g.micro',
-      allocatedStorageGiB: 20,
-      maxAllocatedStorageGiB: 50,
-      backupRetentionDays: 1,
-      deletionProtection: false,
-      multiAz: false,
-    },
-    logRetentionDays: 14,
-    destroyOnRemoval: true,
-  },
   staging: {
     name: 'staging',
     vpcCidr: '10.41.0.0/16',
@@ -55,6 +40,22 @@ export const ENVIRONMENTS: Record<EnvName, EnvConfig> = {
       multiAz: false,
     },
     logRetentionDays: 30,
+    destroyOnRemoval: false,
+  },
+  prod: {
+    name: 'prod',
+    vpcCidr: '10.42.0.0/16',
+    // Pilot ELGOS (R2-4 rekomendasi: data nyata hanya di prod). Naikkan saat komersial.
+    api: { cpu: 512, memoryMiB: 1024, desiredCount: 1 },
+    db: {
+      instanceClass: 't4g.small',
+      allocatedStorageGiB: 20,
+      maxAllocatedStorageGiB: 200,
+      backupRetentionDays: 7, // PITR 7 hari (R2-10 rekomendasi)
+      deletionProtection: true,
+      multiAz: false, // T8: Single-AZ saat pilot, Multi-AZ sebelum komersial
+    },
+    logRetentionDays: 90,
     destroyOnRemoval: false,
   },
 };

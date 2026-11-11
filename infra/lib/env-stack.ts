@@ -33,8 +33,8 @@ const API_PORT = 4100;
  *   `/api` relatif sehingga tidak ada CORS lintas origin.
  * - Tanpa NAT Gateway (hemat ±US$37/bulan per lingkungan): task Fargate di subnet publik dengan
  *   IP publik, tetapi hanya menerima trafik dari ALB; ALB hanya menerima dari CloudFront.
- *   RDS di subnet terisolasi tanpa akses internet. Untuk production, pindahkan task ke subnet
- *   privat + NAT.
+ *   RDS di subnet terisolasi tanpa akses internet. Saat komersial, pertimbangkan subnet privat
+ *   + NAT untuk prod.
  * - Migrasi DB dijalankan container saat start (RUN_MIGRATIONS=true); gagal migrasi = task
  *   tidak sehat = ECS circuit breaker rollback ke versi sebelumnya.
  */
