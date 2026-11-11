@@ -1,0 +1,10 @@
+# Postgres lokal untuk development. EWI punya database sendiri (ADR 0001).
+services:
+  db:
+    image: pgvector/pgvector:pg16
+    environment:
+      POSTGRES_USER: ewi
+      POSTGRES_PASSWORD: ewi
+      POSTGRES_DB: ewi_dev
+    ports:
+      - "5433:5432"

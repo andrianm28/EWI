@@ -1,0 +1,62 @@
+name: CI
+
+# Gate merge (keputusan P2, 4 Nov): unit + lint + type-check + e2e Playwright di setiap PR.
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  api:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: ewi
+          POSTGRES_PASSWORD: ewi
+          POSTGRES_DB: ewi_test
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U ewi" --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      NODE_ENV: test
+      DATABASE_URL: postgres://ewi:ewi@localhost:5432/ewi_test
+      DB_SCHEMA: ewi
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: npm }
+      - run: npm ci
+      - run: npm run lint -w apps/api
+      - name: Migrasi naik, turun, naik lagi
+        run: |
+          npm run migrate -w apps/api
+          (cd apps/api && npx sequelize-cli db:migrate:undo:all)
+          npm run migrate -w apps/api
+      - run: npm test -w apps/api
+
+  web:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: npm }
+      - run: npm ci
+      - run: npm run lint -w apps/web
+      - run: npm run build -w apps/web
+
+  e2e:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: npm }
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+        working-directory: apps/web
+      - run: npm run e2e -w apps/web
