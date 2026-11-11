@@ -5,6 +5,7 @@ async function mockApi(page: Page, access: { submodules: string[]; flags: Record
     route.fulfill({ json: { token: 't', user: { id: 'u', tenantId: 't-1', email: 'hr@demo.test', role: 'hr_admin' } } }),
   )
   await page.route('**/api/me/access', (route) => route.fulfill({ json: access }))
+  await page.route(/\/api\/(dna|tna)\//, (route) => route.fulfill({ json: { data: [] } }))
 }
 
 async function login(page: Page) {
@@ -31,7 +32,7 @@ test('POC Desember: DNA dan TNA terbuka, INA belum aktif', async ({ page }) => {
   await expect(page.getByTestId('card-ina')).toContainText('Belum aktif')
 
   await page.getByTestId('card-tna').getByRole('link', { name: 'Buka' }).click()
-  await expect(page.getByRole('heading', { name: /TNA/ })).toBeVisible()
+  await expect(page.getByRole('heading', { level: 1, name: /TNA/ })).toBeVisible()
 
   await page.goto('/m/ina')
   await expect(page).toHaveURL(/\/$/)

@@ -46,7 +46,13 @@ export const useSessionStore = defineStore('session', () => {
 
   async function loadAccess() {
     access.value = await api<Access>('/me/access', {}, token.value)
+    if (!user.value) {
+      // Setelah muat ulang halaman: ambil identitas dari token (peran menentukan tampilan dashboard)
+      try { user.value = (await api<{ user: SessionUser }>('/auth/me', {}, token.value)).user } catch { /* tetap tanpa profil */ }
+    }
   }
+
+  const role = computed(() => user.value?.role ?? '')
 
   function logout() {
     token.value = null
@@ -55,5 +61,5 @@ export const useSessionStore = defineStore('session', () => {
     try { sessionStorage.removeItem(STORAGE_KEY) } catch { /* abaikan */ }
   }
 
-  return { token, user, access, isAuthenticated, canOpen, login, loadAccess, logout }
+  return { token, user, role, access, isAuthenticated, canOpen, login, loadAccess, logout }
 })

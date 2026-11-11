@@ -7,7 +7,10 @@ const router = createRouter({
   routes: [
     { path: '/login', name: 'login', component: () => import('@/views/LoginView.vue'), meta: { public: true } },
     { path: '/', name: 'home', component: () => import('@/views/HomeView.vue') },
-    { path: '/m/:key(cca|dna|tna|ina)', name: 'submodule', component: () => import('@/views/SubmoduleView.vue') },
+    { path: '/m/dna', name: 'dna', component: () => import('@/views/DnaView.vue'), meta: { submodule: 'dna' } },
+    { path: '/m/tna', name: 'tna', component: () => import('@/views/TnaView.vue'), meta: { submodule: 'tna' } },
+    { path: '/m/:key(dna|tna)/sessions/:id', name: 'interview', component: () => import('@/views/InterviewView.vue') },
+    { path: '/m/:key(cca|ina)', name: 'submodule', component: () => import('@/views/SubmoduleView.vue') },
   ],
 })
 
@@ -18,7 +21,8 @@ router.beforeEach(async (to) => {
   if (!session.access) {
     try { await session.loadAccess() } catch { session.logout(); return { name: 'login' } }
   }
-  if (to.name === 'submodule' && !session.canOpen(to.params.key as SubmoduleKey)) return { name: 'home' }
+  const key = (to.meta.submodule ?? to.params.key) as SubmoduleKey | undefined
+  if (key && !session.canOpen(key)) return { name: 'home' }
   return true
 })
 
