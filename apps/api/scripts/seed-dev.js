@@ -24,6 +24,42 @@ const bcrypt = require('bcryptjs');
   await c.query(
     `INSERT INTO users (tenant_id, email, name, role, password_hash, status, supervisor_id) VALUES ($1, 'learner@demo.test', 'Learner Demo', 'learner', $2, 'active', $3)
      ON CONFLICT (tenant_id, email) DO NOTHING`, [t.id, hash, hr.id]);
+  // Data contoh POC DNA + TNA: jenjang 4 level, kamus kompetensi kecil, atasan + 3 anggota tim, data kinerja.
+  const { rows: [spv] } = await c.query(
+    `INSERT INTO users (tenant_id, email, name, role, password_hash, status, employee_id) VALUES ($1, 'spv@demo.test', 'Atasan Demo', 'supervisor', $2, 'active', 'D-SPV')
+     ON CONFLICT (tenant_id, email) DO UPDATE SET password_hash = EXCLUDED.password_hash RETURNING id`, [t.id, hash]);
+  const { rows: [role] } = await c.query(
+    `INSERT INTO lna_job_roles (tenant_id, name, division) VALUES ($1, 'Service Delivery L1', 'Service Delivery')
+     ON CONFLICT (tenant_id, name) DO UPDATE SET division = EXCLUDED.division RETURNING id`, [t.id]);
+  const levelIds = [];
+  for (const [i, [name, tier]] of [['Probation', 'basic'], ['Junior', 'basic'], ['Senior', 'intermediate'], ['Leader', 'advanced']].entries()) {
+    const { rows: [l] } = await c.query(
+      `INSERT INTO lna_career_levels (tenant_id, job_role_id, name, level_order, required_program_tier) VALUES ($1, $2, $3, $4, $5)
+       ON CONFLICT (job_role_id, level_order) DO UPDATE SET name = EXCLUDED.name RETURNING id`, [t.id, role.id, name, i, tier]);
+    levelIds.push(l.id);
+  }
+  const { rows: [{ n }] } = await c.query('SELECT count(*)::int AS n FROM lna_competencies WHERE tenant_id = $1', [t.id]);
+  if (n === 0) {
+    for (const [name, kind, roleId, importance] of [
+      ['Memahami kontrak proyek', 'job', role.id, 4], ['Menjalankan SOP L1', 'job', role.id, 3],
+      ['Troubleshooting jaringan dasar', 'job', role.id, 3], ['Komunikasi pelanggan', 'core', null, 3],
+    ]) {
+      await c.query(`INSERT INTO lna_competencies (tenant_id, job_role_id, kind, name, source, importance) VALUES ($1, $2, $3, $4, 'hr_rule', $5)`,
+        [t.id, roleId, kind, name, importance]);
+    }
+  }
+  const members = [];
+  for (const [key, name, lvl] of [['dimas', 'Dimas', 1], ['rina', 'Rina', 1], ['budi', 'Budi', 0]]) {
+    const { rows: [m] } = await c.query(
+      `INSERT INTO users (tenant_id, email, name, role, password_hash, status, supervisor_id, employee_id, job_role_id, career_level_id)
+       VALUES ($1, $2, $3, 'learner', $4, 'active', $5, $6, $7, $8)
+       ON CONFLICT (tenant_id, email) DO UPDATE SET password_hash = EXCLUDED.password_hash RETURNING id`,
+      [t.id, `${key}@demo.test`, name, hash, spv.id, `D-${key.toUpperCase()}`, role.id, levelIds[lvl]]);
+    members.push(m.id);
+  }
+  await c.query(`INSERT INTO lna_program_completions (tenant_id, user_id, program_tier, status, passed_at) VALUES
+                 ($1, $2, 'basic', 'passed', now()), ($1, $3, 'basic', 'passed', now()), ($1, $3, 'intermediate', 'passed', now())
+                 ON CONFLICT DO NOTHING`, [t.id, members[0], members[1]]);
   await c.query(`DELETE FROM entitlements WHERE tenant_id = $1`, [t.id]);
   await c.query(`INSERT INTO entitlements (tenant_id, product, source) VALUES ($1, 'full_suite', 'seed')`, [t.id]);
   for (const key of ['module.dna', 'module.tna']) {
@@ -31,5 +67,5 @@ const bcrypt = require('bcryptjs');
                    ON CONFLICT (tenant_id, key) DO UPDATE SET enabled = true`, [t.id, key]);
   }
   await c.end();
-  console.log(`seed selesai: tenant demo, hr@demo.test / learner@demo.test, password ${password}`);
+  console.log(`seed selesai: tenant demo, hr@demo.test, spv@demo.test, dimas|rina|budi@demo.test, password ${password}`);
 })().catch((e) => { console.error(e.message); process.exit(1); });

@@ -21,6 +21,8 @@ function loadConfig(env = process.env) {
     port: Number(env.PORT || 4100),
     databaseUrl: env.DATABASE_URL,
     dbSchema: env.DB_SCHEMA || 'ewi',
+    // T3 belum diputuskan: hanya 'stub' yang tersedia
+    aiProvider: env.AI_PROVIDER || 'stub',
     corsOrigin: (env.CORS_ORIGIN || '').split(',').filter(Boolean),
     elitementor: Object.freeze({
       baseUrl: env.ELITEMENTOR_API_URL || '',
