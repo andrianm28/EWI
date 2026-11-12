@@ -24,6 +24,9 @@ const mySessions = computed(() => sessions.value.filter((s) => s.intervieweeId =
 const period = ref('')
 const csv = ref('')
 const projectId = ref('')
+const scope = ref<'red_only' | 'all_members'>('red_only')
+const jobRoleId = ref('')
+const jobRoles = ref<{ id: string; name: string }[]>([])
 
 async function load() {
   error.value = ''
@@ -35,7 +38,10 @@ async function load() {
       lna.sessions('tna').then((r) => (sessions.value = r.data)),
     ]
     if (!isLearner.value) tasks.push(lna.pareto().then((r) => (pareto.value = r.data)))
-    if (isHr.value) tasks.push(lna.projects().then((r) => (projects.value = r.data)))
+    if (isHr.value) {
+      tasks.push(lna.projects().then((r) => (projects.value = r.data)))
+      tasks.push(lna.tnaJobRoles().then((r) => (jobRoles.value = r.data)))
+    }
     await Promise.all(tasks)
   } catch (e) { error.value = (e as Error).message }
 }
@@ -54,7 +60,8 @@ const importCsv = () => act(async () => {
   return `${r.imported} baris diimpor (${r.red} target merah)${r.rejected.length ? `, ${r.rejected.length} ditolak: ${r.rejected.map((x) => `baris ${x.index + 2} ${x.reason}`).join('; ')}` : ''}.`
 })
 const schedule = () => act(async () => {
-  const r = (await lna.scheduleTna(projectId.value, period.value.trim())).data
+  if (scope.value === 'all_members' && !jobRoleId.value) throw new Error('Pilih job role yang semua karyawannya akan diwawancarai.')
+  const r = (await lna.scheduleTna(projectId.value, { scope: scope.value, period: period.value.trim(), jobRoleId: jobRoleId.value || undefined })).data
   return `${r.scheduled} wawancara dijadwalkan${r.skipped ? `, ${r.skipped} sudah terjadwal sebelumnya` : ''}.`
 })
 const planFinding = (id: string) => act(async () => {
@@ -110,7 +117,18 @@ const target = (f: Finding) => (f.metricName ? `${f.metricName}: target ${f.targ
             <option v-for="p in projects" :key="p.id" :value="p.id">{{ p.name }}</option>
           </select>
         </label>
-        <p class="text-xs text-slate-500" data-testid="tna-scope-note">Hanya karyawan dengan target merah pada periode di atas yang diwawancarai. TNA tidak memerlukan hasil DACUM.</p>
+        <fieldset class="space-y-1">
+          <legend>Siapa yang diwawancarai?</legend>
+          <label class="flex gap-2"><input v-model="scope" type="radio" value="red_only" /> Hanya karyawan dengan target merah</label>
+          <label class="flex gap-2"><input v-model="scope" type="radio" value="all_members" /> Semua karyawan di job role tertentu</label>
+        </fieldset>
+        <label class="block">Job role{{ scope === 'all_members' ? '' : ' (opsional)' }}
+          <select v-model="jobRoleId" class="mt-1 w-full rounded border px-2 py-1">
+            <option value="">{{ scope === 'all_members' ? 'Pilih job role' : 'Semua job role' }}</option>
+            <option v-for="j in jobRoles" :key="j.id" :value="j.id">{{ j.name }}</option>
+          </select>
+        </label>
+        <p class="text-xs text-slate-500" data-testid="tna-scope-note">Target merah pada periode di atas menjadi bahan pembahasan. TNA tidak memerlukan hasil DACUM.</p>
         <button type="submit" class="rounded bg-slate-900 px-3 py-1.5 text-white">Jadwalkan</button>
       </form>
     </section>

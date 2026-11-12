@@ -6,7 +6,9 @@ arahan cadence 11 Nov (Ahmad Gilang) yang ditetapkan berlaku penuh pada 12 Nov:
 - **C1** jadwal: mockup final 18 Nov, uji internal 25 Nov, POC live 2 Des.
 - **C2** DNA di POC hanya menampilkan hasil wawancara DNA manual yang sudah dilakukan; wawancara AI DNA
   ditahan di balik flag `dna.ai_interview` (default mati).
-- **C3** TNA reaktif: hanya karyawan dengan target OKR/KPI/SLA merah yang diwawancarai (default `red_only`).
+- **C3** TNA reaktif: default hanya karyawan dengan target OKR/KPI/SLA merah yang diwawancarai (`red_only`).
+  Klarifikasi user 12 Nov: cakupan mengikuti kebutuhan perusahaan, jadi HR juga bisa memilih semua karyawan
+  di job role tertentu (`all_members` + `jobRoleId`). BT-29 difinalkan di grilling bisnis.
 - **C4** TNA bisa berjalan tanpa DACUM/DNA: karyawan tanpa job role atau kamus kompetensi tetap bisa
   diwawancarai; temuannya tidak tertaut kompetensi dan training plan-nya menjadi `needs_module`.
 
@@ -22,7 +24,7 @@ INA tidak ikut POC (RG-4): temuan non-training tetap direkam, disembunyikan sela
 | Gap & karier | `GET /api/dna/employees`, `GET /api/dna/employees/:id`, `GET /api/dna/promotion-candidates` | Gap = skor terbaru vs skor minimal (0–4). Kandidat promosi = sudah lulus program jenjang berikutnya. |
 | Wawancara AI (teks) | `/api/{dna,tna}/sessions` (+ `/:id/consent`, `/:id/turns`, `/:id/complete`) | Persetujuan wajib sebelum pertanyaan pertama. Analisis lewat port AI. Sesi DNA butuh flag `dna.ai_interview` (403 `FEATURE_DISABLED` bila mati). |
 | Data kinerja | `POST /api/tna/performance/import`, `GET /api/tna/performance` | OKR/KPI/SLA, arah target higher/lower, baris tak dikenal ditolak per baris. |
-| Jadwal TNA | `POST /api/tna/projects/:id/interviews` | Default hanya karyawan dengan target merah (C3); target merah jadi pemicu yang dibahas. Klien lain bisa mengatur `all_members` lewat settings atau body. |
+| Jadwal TNA | `POST /api/tna/projects/:id/interviews`, `GET /api/tna/job-roles` | Cakupan: `red_only` (default, dari `settings.tna.interviewScope`) atau `all_members` dengan `jobRoleId` wajib. Target merah jadi pemicu yang dibahas. Daftar job role tersedia tanpa modul DNA. |
 | Temuan & prioritas | `GET /api/tna/findings`, `GET /api/tna/pareto`, `GET /api/tna/dashboard` | Pareto untuk HR dan atasan, bukan learner. |
 | Training plan | `POST /api/tna/findings/:id/plan`, `POST /api/tna/training-requests`, `GET/PATCH /api/tna/plan-items` | Modul tak ada di katalog -> `needs_module`. Learner bisa request. |
 
@@ -48,7 +50,7 @@ Visibilitas (RG-3) berlaku di semua endpoint data karyawan: learner dirinya, ata
 | Keputusan | Perilaku | Tempat |
 |---|---|---|
 | C2 DNA di POC = tampilan hasil manual | Impor hasil + flag `dna.ai_interview` default mati; web tidak memuat sesi DNA bila flag mati | `src/modules/dna`, `src/core/flags` |
-| C3 / BT-29 siapa diwawancarai TNA | Default `red_only`; UI tidak lagi menampilkan pilihan | `settings.tna.interviewScope` |
+| C3 / BT-29 siapa diwawancarai TNA | Default `red_only`; HR bisa memilih semua karyawan di job role tertentu per penjadwalan; default organisasi diatur di settings | `settings.tna.interviewScope`, `src/modules/tna` |
 | C4 TNA tanpa DACUM | Tidak ada syarat job role/kamus kompetensi untuk sesi TNA | `src/modules/tna`, `src/modules/interviews` |
 
 ## Belum termasuk

@@ -53,9 +53,12 @@ export const lna = {
   setPlanStatus: (id: string, status: string) => call<{ data: PlanItem }>(`/tna/plan-items/${id}`, { method: 'PATCH', body: JSON.stringify({ status }) }),
   importPerformance: (period: string, rows: Record<string, string>[]) =>
     post<{ data: { imported: number; red: number; rejected: { index: number; reason: string }[] } }>('/tna/performance/import', { period, rows }),
-  // Scope mengikuti konfigurasi organisasi (default: hanya target merah, cadence 11 Nov)
-  scheduleTna: (projectId: string, period: string) =>
-    post<{ data: { scope: string; scheduled: number; skipped: number } }>(`/tna/projects/${projectId}/interviews`, period ? { period } : {}),
+  // Cakupan sesuai kebutuhan perusahaan: hanya target merah (default) atau semua karyawan di job role tertentu
+  tnaJobRoles: () => call<{ data: { id: string; name: string; division: string | null }[] }>('/tna/job-roles'),
+  scheduleTna: (projectId: string, opts: { scope: 'red_only' | 'all_members'; period: string; jobRoleId?: string }) =>
+    post<{ data: { scope: string; scheduled: number; skipped: number } }>(`/tna/projects/${projectId}/interviews`, {
+      scope: opts.scope, ...(opts.period ? { period: opts.period } : {}), ...(opts.jobRoleId ? { jobRoleId: opts.jobRoleId } : {}),
+    }),
   importDnaResults: (rows: Record<string, string>[], assessor: string, assessedAt: string) =>
     post<{ data: { imported: number; rejected: { index: number; reason: string }[] } }>('/dna/assessments/import', {
       rows, ...(assessor ? { assessor } : {}), ...(assessedAt ? { assessedAt } : {}),

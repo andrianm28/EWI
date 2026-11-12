@@ -192,13 +192,18 @@ run('POC DNA + TNA (Postgres)', () => {
     expect(res.body.data.rejected.map((r) => r.index).sort()).toEqual([3, 4]);
   });
 
-  it('cadence 11 Nov (C3): TNA hanya mewawancarai karyawan yang targetnya merah (default)', async () => {
+  it('cakupan TNA: default hanya target merah, opsi semua karyawan di role tertentu', async () => {
     const redOnly = await request(app).post(`/api/tna/projects/${projectId}/interviews`).set(as('hr')).send({ period: '2026-11' });
     expect(redOnly.status).toBe(201);
     expect(redOnly.body.data.scope).toBe('red_only');
     expect(redOnly.body.data.scheduled).toBe(2);
-    // Klien lain boleh memilih semua anggota secara eksplisit (konfigurasi produk, bukan default POC)
-    const all = await request(app).post(`/api/tna/projects/${projectId}/interviews`).set(as('hr')).send({ scope: 'all_members', period: '2026-11' });
+    // Perusahaan lain bisa memilih semua karyawan di role tertentu; job role wajib disebut
+    const noRole = await request(app).post(`/api/tna/projects/${projectId}/interviews`).set(as('hr')).send({ scope: 'all_members', period: '2026-11' });
+    expect(noRole.status).toBe(400);
+    const roles = await request(app).get('/api/tna/job-roles').set(as('hr'));
+    expect(roles.body.data.map((x) => x.name)).toEqual(['Service Delivery L1']);
+    expect((await request(app).get('/api/tna/job-roles').set(as('dimas'))).status).toBe(403);
+    const all = await request(app).post(`/api/tna/projects/${projectId}/interviews`).set(as('hr')).send({ scope: 'all_members', jobRoleId: role.id, period: '2026-11' });
     expect(all.body.data).toMatchObject({ scheduled: 1, skipped: 2 }); // budi ditambahkan, yang lain sudah terjadwal
     expect((await request(app).post(`/api/tna/projects/${projectId}/interviews`).set(as('hr')).send({ scope: 'semua' })).status).toBe(400);
     tnaSessionDimas = redOnly.body.data.sessions.find((s) => s.intervieweeId === u.dimas);

@@ -2,7 +2,8 @@
 // Training Needs Analysis (TNA). RG-2: dipicu target OKR/KPI/SLA yang tidak tercapai; hasil training-related
 // menjadi training plan. RG-3: learner dirinya, atasan timnya, HR semua. RG-4: temuan non-training (INA)
 // tetap direkam tetapi tidak ditampilkan selama flag INA mati.
-// Cadence 11 Nov: TNA bisa berjalan tanpa DACUM/DNA (C4) dan default hanya mewawancarai yang targetnya merah (C3).
+// Cadence 11 Nov: TNA bisa berjalan tanpa DACUM/DNA (C4). Cakupan wawancara per kebutuhan perusahaan:
+// hanya target merah (default, C3) atau semua karyawan di job role tertentu.
 // Terbuka: BT-30 (rumus Pareto), BT-31 (alur request training), K-1 (LMS), K-3 (status).
 const crypto = require('crypto');
 const express = require('express');
@@ -55,6 +56,12 @@ module.exports = {
       res.status(201).json({ data: { batchId, imported: accepted.length, red: accepted.filter((a) => a.isMet === false).length, rejected } });
     }));
 
+    // Job role untuk pilihan cakupan wawancara; tersedia tanpa modul DNA (TNA bisa dijual sendiri, C4)
+    r.get('/job-roles', hr, wrap(async (req, res) => {
+      const rows = await stores.dna.listJobRoles(req.tenantId);
+      res.json({ data: rows.map((jr) => ({ id: jr.id, name: jr.name, division: jr.division ?? null })) });
+    }));
+
     r.get('/performance', wrap(async (req, res) => {
       const scope = await scopeFor(req, stores.people);
       res.json({ data: await stores.tna.listPerformance(req.tenantId, scope, { period: req.query.period, projectId: req.query.projectId }) });
@@ -71,6 +78,10 @@ module.exports = {
       }
       if (!INTERVIEW_SCOPES.includes(scope)) throw badRequest(`scope harus ${INTERVIEW_SCOPES.join(' atau ')}`);
       const { jobRoleId, period } = req.body || {};
+      // Klarifikasi user 12 Nov: cakupan mengikuti kebutuhan perusahaan, yaitu hanya target merah atau semua
+      // karyawan di role tertentu. 'all_members' wajib menyebut job role agar tidak mewawancarai seluruh organisasi.
+      if (scope === 'all_members' && !jobRoleId) throw badRequest('Pilih job role untuk mewawancarai semua karyawannya');
+      if (jobRoleId && !(await stores.dna.listJobRoles(req.tenantId)).some((jr) => jr.id === jobRoleId)) throw notFound('Job role tidak ditemukan');
       const members = await stores.people.list(req.tenantId, { all: true }, { roles: ['learner'], jobRoleId });
       const records = await stores.tna.listPerformance(req.tenantId, { all: true }, { period, projectId, userIds: members.map((m) => m.id) });
       const picks = selectInterviewees({ members, records, scope });

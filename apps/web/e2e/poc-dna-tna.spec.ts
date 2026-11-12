@@ -76,13 +76,14 @@ test('atasan: tidak melihat kartu kandidat promosi', async ({ page }) => {
   await expect(page.getByTestId('dna-candidates')).toHaveCount(0)
 })
 
-test('HR: penjadwalan TNA hanya untuk target merah, tanpa pilihan scope', async ({ page }) => {
+test('HR: cakupan TNA default target merah, atau semua karyawan di role tertentu', async ({ page }) => {
   let scheduledWith: unknown = null
   await page.route('**/api/tna/dashboard', (r) => r.fulfill({ json: { data: { role: 'hr_admin', people: null, redTargets: 2, sessions: { completed: 1 }, trainingFindings: 1, planItems: {} } } }))
   await page.route('**/api/tna/findings', (r) => r.fulfill({ json: { data: [{ id: 'f1', userId: 'd', userName: 'Dimas', title: 'Kesulitan mencapai target SLA', status: 'open', competencyName: 'Memahami kontrak proyek', metricName: 'SLA respons', target: 15, actual: 30 }] } }))
   await page.route('**/api/tna/plan-items', (r) => r.fulfill({ json: { data: [] } }))
   await page.route('**/api/tna/sessions', (r) => r.fulfill({ json: { data: [] } }))
   await page.route('**/api/tna/pareto', (r) => r.fulfill({ json: { data: [{ key: 'c1', label: 'Memahami kontrak proyek', people: 3, avgMiss: 0.5, score: 4.5, share: 0.8, cumulativeShare: 0.8 }] } }))
+  await page.route('**/api/tna/job-roles', (r) => r.fulfill({ json: { data: [{ id: 'jr1', name: 'Service Delivery L1', division: null }] } }))
   await page.route('**/api/projects', (r) => r.fulfill({ json: { data: [{ id: 'p1', name: 'POC Des', status: 'active' }] } }))
   await page.route('**/api/tna/projects/p1/interviews', async (r) => {
     scheduledWith = r.request().postDataJSON()
@@ -95,11 +96,20 @@ test('HR: penjadwalan TNA hanya untuk target merah, tanpa pilihan scope', async 
 
   await page.getByLabel('Periode').fill('2026-11')
   await page.getByLabel('Proyek').selectOption('p1')
-  await expect(page.getByTestId('tna-scope-note')).toContainText('target merah')
-  await expect(page.getByRole('radio')).toHaveCount(0)
+  await expect(page.getByLabel('Hanya karyawan dengan target merah')).toBeChecked()
   await page.getByRole('button', { name: 'Jadwalkan' }).click()
   await expect(page.getByRole('status')).toHaveText('3 wawancara dijadwalkan.')
-  expect(scheduledWith).toEqual({ period: '2026-11' })
+  expect(scheduledWith).toEqual({ scope: 'red_only', period: '2026-11' })
+
+  scheduledWith = null
+  await page.getByLabel('Semua karyawan di job role tertentu').check()
+  await page.getByRole('button', { name: 'Jadwalkan' }).click()
+  await expect(page.getByRole('alert')).toHaveText('Pilih job role yang semua karyawannya akan diwawancarai.')
+  expect(scheduledWith).toBeNull()
+  await page.getByLabel(/^Job role/).selectOption('jr1')
+  await page.getByRole('button', { name: 'Jadwalkan' }).click()
+  await expect(page.getByRole('status')).toHaveText('3 wawancara dijadwalkan.')
+  expect(scheduledWith).toEqual({ scope: 'all_members', period: '2026-11', jobRoleId: 'jr1' })
 })
 
 test('learner: wawancara TNA lalu meminta training', async ({ page }) => {
