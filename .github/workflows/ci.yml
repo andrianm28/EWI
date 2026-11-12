@@ -1,13 +1,15 @@
 name: CI
 
 # Gate merge (keputusan P2, 4 Nov): unit + lint + type-check + e2e Playwright di setiap PR.
+# Juga dipanggil oleh deploy-dev.yml (workflow_call) sebagai gate sebelum deploy ke dev.
 on:
   pull_request:
   push:
     branches: [main]
+  workflow_call:
 
 concurrency:
-  group: ci-${{ github.ref }}
+  group: ci-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:

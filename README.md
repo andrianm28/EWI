@@ -12,7 +12,16 @@ apps/api   Node 24 + Express + Sequelize + Postgres (schema `ewi`)
 apps/web   Vue 3 + Vite + TypeScript + Pinia + Tailwind, e2e Playwright
 docs/      ADR, arsitektur, spec tiket (docs/ewi/tickets/ELITMEN-xxx.md)
 infra/     AWS CDK: lingkungan staging + prod (docs/infra/aws-staging-prod.md)
+deploy/dev-public/  dev publik di etavm1 + pipeline deploy (README di folder itu)
 ```
+
+## Branch dan lingkungan
+
+| Branch | Lingkungan | Workflow |
+|---|---|---|
+| PR ke mana pun | – | `ci.yml`: lint, migrasi naik-turun-naik, jest, build, e2e, cdk synth |
+| `dev` | dev https://dev-ewi.eliteacademy.id (etavm1) | `deploy-dev.yml`: CI → image GHCR → deploy + health check + rollback |
+| `main` | staging AWS (prod: promosi manual) | `deploy.yml` |
 
 Di dalam API:
 

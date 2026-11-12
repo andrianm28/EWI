@@ -1,7 +1,9 @@
-# Lingkungan dev EWI yang bisa diakses publik, di luar AWS (keputusan user 11 Nov 2026: etavm1 + tunnel).
+# Lingkungan dev EWI yang bisa diakses publik, di luar AWS (keputusan user 11 Nov 2026: etavm1).
+# Normalnya dideploy oleh pipeline (.github/workflows/deploy-dev.yml -> deploy.sh) dengan image dari GHCR:
+#   EWI_API_IMAGE / EWI_WEB_IMAGE = ghcr.io/andrianm28/ewi-{api,web}:<sha>, EWI_ENV_FILE = /srv/ewi-dev/.env
+# Jalan manual tanpa pipeline (build lokal):
 #   cd deploy/dev-public && cp .env.example .env   # isi EWI_JWT_SECRET
 #   docker compose up -d --build
-#   docker compose logs tunnel | grep trycloudflare  # URL publik
 # Data di sini data dev/dummy saja. Data karyawan nyata hanya di prod.
 name: ewi-dev
 
@@ -9,7 +11,7 @@ services:
   db:
     image: pgvector/pgvector:pg16
     restart: unless-stopped
-    env_file: .env          # POSTGRES_PASSWORD
+    env_file: ${EWI_ENV_FILE:-.env}   # POSTGRES_PASSWORD
     environment:
       POSTGRES_USER: ewi
       POSTGRES_DB: ewi_dev
@@ -22,6 +24,7 @@ services:
       retries: 20
 
   api:
+    image: ${EWI_API_IMAGE:-ewi-dev-api:latest}
     build:
       context: ../..
       dockerfile: apps/api/Dockerfile
@@ -30,7 +33,7 @@ services:
       db: { condition: service_healthy }
     # Secret (POSTGRES_PASSWORD, EWI_JWT_SECRET, ELITEMENTOR_*, DEV_SEED_PASSWORD) dibaca dari .env;
     # API gagal start bila EWI_JWT_SECRET kosong/pendek (B22).
-    env_file: .env
+    env_file: ${EWI_ENV_FILE:-.env}
     environment:
       NODE_ENV: development
       EWI_ENV: dev
@@ -45,34 +48,23 @@ services:
       EWI_JWT_AUDIENCE: ewi
       EWI_JWT_ISSUER: ewi-api-dev
       CORS_ORIGIN: ${PUBLIC_URL:-}
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:4100/api/health | grep -q '\"ok\"'"]
+      interval: 5s
+      timeout: 3s
+      retries: 24
+      start_period: 10s
 
   web:
+    image: ${EWI_WEB_IMAGE:-ewi-dev-web:latest}
     build:
       context: ../..
       dockerfile: apps/web/Dockerfile
     restart: unless-stopped
-    depends_on: [api]
+    depends_on:
+      api: { condition: service_healthy }
     ports:
-      - "127.0.0.1:${WEB_PORT:-8080}:80"   # hanya lokal; akses publik lewat tunnel
-
-  # Profil "quick" (default di .env.example): URL *.trycloudflare.com acak, berubah saat restart.
-  tunnel:
-    image: cloudflare/cloudflared:2025.10.0
-    profiles: [quick]
-    restart: unless-stopped
-    depends_on: [web]
-    command: ["tunnel", "--no-autoupdate", "--url", "http://web:80"]
-
-  # Profil "named": named tunnel dari dashboard Cloudflare, URL tetap di domain sendiri.
-  # Set COMPOSE_PROFILES=named dan CLOUDFLARE_TUNNEL_TOKEN; arahkan public hostname ke http://web:80.
-  tunnel-named:
-    image: cloudflare/cloudflared:2025.10.0
-    profiles: [named]
-    restart: unless-stopped
-    depends_on: [web]
-    environment:
-      TUNNEL_TOKEN: ${CLOUDFLARE_TUNNEL_TOKEN:-}
-    command: ["tunnel", "--no-autoupdate", "run"]
+      - "127.0.0.1:${WEB_PORT:-8080}:80"   # hanya lokal; publik lewat nginx host (TLS) di etavm1
 
 volumes:
   db-data:
