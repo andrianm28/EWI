@@ -1,8 +1,8 @@
 # Dev EWI publik (di luar AWS)
 
 Keputusan user 11 Nov 2026: AWS hanya untuk staging + prod; dev jalan di **etavm1** lewat docker compose,
-publik di **https://dev-ewi.eliteacademy.id** (Cloudflare DNS proxied → nginx host + Let's Encrypt →
-`127.0.0.1:8080`). Tanpa Cloudflare Tunnel.
+publik di **https://dev-elgos.eliteacademy.id** (`dev-ewi.eliteacademy.id` redirect ke sini; Cloudflare DNS
+proxied → nginx host + Let's Encrypt → `127.0.0.1:8080`). Tanpa Cloudflare Tunnel.
 
 ```
 Internet ─HTTPS─> Cloudflare ─> nginx host etavm1 ─┬─ /mockup/ → /var/www/ewi-mockup (statis)
@@ -28,6 +28,7 @@ Alur branch:
    2. backup schema `ewi` dengan `pg_dump` ke `/srv/ewi-dev/backups` (10 terakhir disimpan)
    3. migrasi dengan image baru (`npm run migrate`) sebelum container lama diganti
    4. ganti container api + web, tunggu healthcheck compose, cek `/api/health` lokal dan publik
+      (URL publik = `PUBLIC_URL` di `/srv/ewi-dev/.env`; ganti domain cukup ubah nilai itu)
    5. seed data demo hanya bila tenant `demo` belum ada (atau input `seed` saat run manual)
    6. sinkron `mockups/poc-elgos/` ke `/var/www/ewi-mockup` bila commit membawa folder itu
    7. catat versi di `/srv/ewi-dev/current.env` (versi sebelumnya di `previous.env`)

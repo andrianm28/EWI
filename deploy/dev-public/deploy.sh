@@ -22,7 +22,7 @@ SEED="${SEED:-auto}"                       # auto = hanya bila tenant demo belum
 MOCKUP_SRC="${MOCKUP_SRC:-mockups/poc-elgos}"
 MOCKUP_DST="${MOCKUP_DST:-/var/www/ewi-mockup}"
 LOCAL_URL="${LOCAL_URL:-http://127.0.0.1:8080}"
-PUBLIC_URL_CHECK="${PUBLIC_URL_CHECK-https://dev-ewi.eliteacademy.id}"
+PUBLIC_URL_CHECK="${PUBLIC_URL_CHECK-__env__}"   # default: PUBLIC_URL di .env; kosong = lewati
 KEEP_BACKUPS="${KEEP_BACKUPS:-10}"
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
@@ -35,6 +35,10 @@ psql_db() { dc exec -T db psql -U ewi -d ewi_dev -v ON_ERROR_STOP=1 -tAc "$1"; }
 
 [ -f "$EWI_ENV_FILE" ] || { echo "::error::$EWI_ENV_FILE tidak ada (lihat deploy/dev-public/README.md)"; exit 1; }
 mkdir -p "$DIR/backups"
+if [ "$PUBLIC_URL_CHECK" = __env__ ]; then
+  PUBLIC_URL_CHECK="$(sed -n 's/^PUBLIC_URL=//p' "$EWI_ENV_FILE" | tail -1 | tr -d '"'"'"'\r')"
+  PUBLIC_URL_CHECK="${PUBLIC_URL_CHECK%/}"
+fi
 
 NEW_API="$PREFIX-api:$TAG"
 NEW_WEB="$PREFIX-web:$TAG"

@@ -1,6 +1,6 @@
 name: Deploy dev
 
-# Lingkungan dev publik https://dev-ewi.eliteacademy.id di etavm1 (di luar AWS, keputusan user 11 Nov 2026).
+# Lingkungan dev publik https://dev-elgos.eliteacademy.id (dev-ewi redirect ke sini) di etavm1 (di luar AWS, keputusan user 11 Nov 2026).
 #
 # Alur: PR fitur -> merge ke branch `dev` -> workflow ini:
 #   1. gate CI penuh (ci.yml: lint, migrasi naik-turun-naik, jest, build, e2e, cdk synth)
@@ -80,7 +80,7 @@ jobs:
     timeout-minutes: 20
     environment:
       name: dev
-      url: https://dev-ewi.eliteacademy.id
+      url: ${{ vars.DEV_PUBLIC_URL || 'https://dev-elgos.eliteacademy.id' }}
     permissions:
       contents: read
       packages: read

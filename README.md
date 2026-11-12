@@ -20,7 +20,7 @@ deploy/dev-public/  dev publik di etavm1 + pipeline deploy (README di folder itu
 | Branch | Lingkungan | Workflow |
 |---|---|---|
 | PR ke mana pun | – | `ci.yml`: lint, migrasi naik-turun-naik, jest, build, e2e, cdk synth |
-| `dev` | dev https://dev-ewi.eliteacademy.id (etavm1) | `deploy-dev.yml`: CI → image GHCR → deploy + health check + rollback |
+| `dev` | dev https://dev-elgos.eliteacademy.id (etavm1) | `deploy-dev.yml`: CI → image GHCR → deploy + health check + rollback |
 | `main` | staging AWS (prod: promosi manual) | `deploy.yml` |
 
 Di dalam API:
