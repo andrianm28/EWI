@@ -15,7 +15,7 @@ export interface EmployeeProfile {
   id: string; name: string | null; email: string; role: string; jobRoleName: string | null
   gap: GapSummary; career: Career
 }
-export interface GapItem { competencyId: string; name: string; kind: string; required: number; score: number | null; gap: number | null; status: 'met' | 'gap' | 'not_assessed' }
+export interface GapItem { competencyId: string; name: string; kind: string; required: number; score: number | null; gap: number | null; status: 'met' | 'gap' | 'not_assessed'; source?: 'ai_interview' | 'manual_interview' | 'eta_review' | null }
 export interface EmployeeDetail {
   person: { id: string; name: string | null; email: string }
   gap: { items: GapItem[]; summary: GapSummary }
@@ -53,8 +53,13 @@ export const lna = {
   setPlanStatus: (id: string, status: string) => call<{ data: PlanItem }>(`/tna/plan-items/${id}`, { method: 'PATCH', body: JSON.stringify({ status }) }),
   importPerformance: (period: string, rows: Record<string, string>[]) =>
     post<{ data: { imported: number; red: number; rejected: { index: number; reason: string }[] } }>('/tna/performance/import', { period, rows }),
-  scheduleTna: (projectId: string, scope: 'all_members' | 'red_only', period: string) =>
-    post<{ data: { scheduled: number; skipped: number } }>(`/tna/projects/${projectId}/interviews`, { scope, period }),
+  // Scope mengikuti konfigurasi organisasi (default: hanya target merah, cadence 11 Nov)
+  scheduleTna: (projectId: string, period: string) =>
+    post<{ data: { scope: string; scheduled: number; skipped: number } }>(`/tna/projects/${projectId}/interviews`, period ? { period } : {}),
+  importDnaResults: (rows: Record<string, string>[], assessor: string, assessedAt: string) =>
+    post<{ data: { imported: number; rejected: { index: number; reason: string }[] } }>('/dna/assessments/import', {
+      rows, ...(assessor ? { assessor } : {}), ...(assessedAt ? { assessedAt } : {}),
+    }),
 }
 
 /** CSV sederhana (header di baris pertama, pemisah koma atau titik koma). */
@@ -74,5 +79,8 @@ export const ROLE_LABEL: Record<string, string> = {
 }
 export const PLAN_STATUS_LABEL: Record<string, string> = {
   proposed: 'Diusulkan', needs_module: 'Perlu modul baru', assigned: 'Ditugaskan', in_progress: 'Berjalan', completed: 'Selesai', cancelled: 'Dibatalkan',
+}
+export const ASSESSMENT_SOURCE_LABEL: Record<string, string> = {
+  manual_interview: 'wawancara manual', ai_interview: 'wawancara AI', eta_review: 'penilaian ulang ETA',
 }
 export const TIER_LABEL: Record<string, string> = { basic: 'Basic', intermediate: 'Intermediate', advanced: 'Advanced' }

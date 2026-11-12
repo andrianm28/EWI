@@ -60,6 +60,24 @@ const bcrypt = require('bcryptjs');
   await c.query(`INSERT INTO lna_program_completions (tenant_id, user_id, program_tier, status, passed_at) VALUES
                  ($1, $2, 'basic', 'passed', now()), ($1, $3, 'basic', 'passed', now()), ($1, $3, 'intermediate', 'passed', now())
                  ON CONFLICT DO NOTHING`, [t.id, members[0], members[1]]);
+  // Contoh hasil wawancara DNA manual (cadence 11 Nov, C2): diisi sekali saja agar seed tetap idempoten
+  const { rows: [{ m }] } = await c.query(`SELECT count(*)::int AS m FROM lna_assessments WHERE tenant_id = $1 AND source = 'manual_interview'`, [t.id]);
+  if (m === 0) {
+    const { rows: comps } = await c.query('SELECT id, name FROM lna_competencies WHERE tenant_id = $1', [t.id]);
+    const scores = {
+      'Memahami kontrak proyek': [2, 4, 1], 'Menjalankan SOP L1': [3, 3, 2],
+      'Troubleshooting jaringan dasar': [3, 4, 2], 'Komunikasi pelanggan': [4, 3, 3],
+    };
+    for (const comp of comps) {
+      const row = scores[comp.name];
+      if (!row) continue;
+      for (const [i, userId] of members.entries()) {
+        await c.query(`INSERT INTO lna_assessments (tenant_id, user_id, competency_id, score, confidence, evidence, source, assessor, assessed_at)
+                       VALUES ($1, $2, $3, $4, 1, 'Contoh hasil wawancara manual (seed)', 'manual_interview', 'Tim ETA', '2026-10-20')`,
+        [t.id, userId, comp.id, row[i]]);
+      }
+    }
+  }
   await c.query(`DELETE FROM entitlements WHERE tenant_id = $1`, [t.id]);
   await c.query(`INSERT INTO entitlements (tenant_id, product, source) VALUES ($1, 'full_suite', 'seed')`, [t.id]);
   for (const key of ['module.dna', 'module.tna']) {

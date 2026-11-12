@@ -98,9 +98,40 @@ run('POC DNA + TNA (Postgres)', () => {
     await request(app).post('/api/dna/program-completions').set(as('hr')).send({ userId: u.dimas, programTier: 'basic', status: 'passed' }).expect(201);
   });
 
+  it('POC: HR mengimpor hasil wawancara DNA manual ELGOS, gap tampil per karyawan', async () => {
+    const res = await request(app).post('/api/dna/assessments/import').set(as('hr')).send({
+      assessor: 'Tim ETA', assessedAt: '2026-10-20',
+      rows: [
+        { employeeId: 'E-rina', competency: 'memahami kontrak proyek', score: 4, evidence: 'Wawancara 20 Okt' },
+        { email: 'rina@elgos.test', competency: 'Komunikasi pelanggan', score: 2 },
+        { employeeId: 'E-budi', competencyId: compCore.id, score: '3' },
+        { employeeId: 'E-tidak-ada', competency: 'Komunikasi pelanggan', score: 3 },
+        { employeeId: 'E-rina', competency: 'Kompetensi asing', score: 3 },
+        { employeeId: 'E-rina', competency: 'Komunikasi pelanggan', score: 7 },
+        { employeeId: 'E-luar', competency: 'Komunikasi pelanggan', score: 3 },
+      ],
+    });
+    expect(res.status).toBe(201);
+    expect(res.body.data.imported).toBe(3);
+    expect(res.body.data.rejected.map((r) => r.index).sort()).toEqual([3, 4, 5, 6]);
+    expect((await request(app).post('/api/dna/assessments/import').set(as('dimas')).send({ rows: [] })).status).toBe(403);
+
+    const rina = await request(app).get(`/api/dna/employees/${u.rina}`).set(as('spv'));
+    expect(rina.status).toBe(200);
+    const kontrak = rina.body.data.gap.items.find((g) => g.name === 'Memahami kontrak proyek');
+    expect(kontrak).toMatchObject({ score: 4, status: 'met', source: 'manual_interview' });
+    expect(rina.body.data.gap.items.find((g) => g.name === 'Komunikasi pelanggan')).toMatchObject({ score: 2, status: 'gap' });
+    expect(rina.body.data.gap.summary.assessed).toBe(2);
+  });
+
   it('wawancara DNA menghasilkan skor gap (penyedia AI stub)', async () => {
     const [[p]] = await db.query(`INSERT INTO lna_projects (tenant_id, name) VALUES (:t, 'POC Des') RETURNING id`, { replacements: { t: tenant.id } });
     projectId = p.id;
+    // Cadence 11 Nov (C2): wawancara AI DNA tidak dipakai di POC, di balik flag dna.ai_interview (default mati)
+    const off = await request(app).post('/api/dna/sessions').set(as('hr')).send({ projectId, intervieweeIds: [u.dimas] });
+    expect(off.status).toBe(403);
+    expect(off.body.error.code).toBe('FEATURE_DISABLED');
+    await db.query(`INSERT INTO feature_flags (tenant_id, key, enabled) VALUES (:t, 'dna.ai_interview', true)`, { replacements: { t: tenant.id } });
     const created = await request(app).post('/api/dna/sessions').set(as('hr')).send({ projectId, intervieweeIds: [u.dimas] });
     expect(created.status).toBe(201);
     const sid = created.body.data[0].id;
@@ -161,16 +192,15 @@ run('POC DNA + TNA (Postgres)', () => {
     expect(res.body.data.rejected.map((r) => r.index).sort()).toEqual([3, 4]);
   });
 
-  it('BT-29 terbuka: penjadwalan TNA meminta pilihan scope eksplisit', async () => {
-    const missing = await request(app).post(`/api/tna/projects/${projectId}/interviews`).set(as('hr')).send({ period: '2026-11' });
-    expect(missing.status).toBe(400);
-    expect(missing.body.error.code).toBe('DECISION_PENDING');
-
-    const redOnly = await request(app).post(`/api/tna/projects/${projectId}/interviews`).set(as('hr')).send({ scope: 'red_only', period: '2026-11' });
+  it('cadence 11 Nov (C3): TNA hanya mewawancarai karyawan yang targetnya merah (default)', async () => {
+    const redOnly = await request(app).post(`/api/tna/projects/${projectId}/interviews`).set(as('hr')).send({ period: '2026-11' });
     expect(redOnly.status).toBe(201);
+    expect(redOnly.body.data.scope).toBe('red_only');
     expect(redOnly.body.data.scheduled).toBe(2);
+    // Klien lain boleh memilih semua anggota secara eksplisit (konfigurasi produk, bukan default POC)
     const all = await request(app).post(`/api/tna/projects/${projectId}/interviews`).set(as('hr')).send({ scope: 'all_members', period: '2026-11' });
     expect(all.body.data).toMatchObject({ scheduled: 1, skipped: 2 }); // budi ditambahkan, yang lain sudah terjadwal
+    expect((await request(app).post(`/api/tna/projects/${projectId}/interviews`).set(as('hr')).send({ scope: 'semua' })).status).toBe(400);
     tnaSessionDimas = redOnly.body.data.sessions.find((s) => s.intervieweeId === u.dimas);
     expect(tnaSessionDimas.triggerRecordIds).toHaveLength(1);
   });
@@ -237,5 +267,28 @@ run('POC DNA + TNA (Postgres)', () => {
     expect(hr.body.data.sessions).toMatchObject({ completed: 1, scheduled: 2 });
     const budi = await request(app).get('/api/tna/dashboard').set(as('budi'));
     expect(budi.body.data).toMatchObject({ redTargets: 0, trainingFindings: 0, people: 1 });
+  });
+
+  it('C4: TNA berjalan tanpa DACUM/kamus kompetensi (karyawan tanpa job role)', async () => {
+    const [[row]] = await db.query(
+      `INSERT INTO users (tenant_id, email, name, employee_id, role, status) VALUES (:t, 'sari@elgos.test', 'sari', 'E-sari', 'learner', 'active') RETURNING id`,
+      { replacements: { t: tenant.id } },
+    );
+    const sari = { Authorization: `Bearer ${tokens.sign({ id: row.id, tenantId: tenant.id, role: 'learner', email: 'sari@elgos.test' })}` };
+    const [[p]] = await db.query(`INSERT INTO lna_projects (tenant_id, name) VALUES (:t, 'Sales tanpa DNA') RETURNING id`, { replacements: { t: tenant.id } });
+    await request(app).post('/api/tna/performance/import').set(as('hr')).send({
+      period: '2026-11', projectId: p.id, rows: [{ employeeId: 'E-sari', metricType: 'kpi', name: 'Closing deal', target: 10, actual: 4 }],
+    }).expect(201);
+    const sched = await request(app).post(`/api/tna/projects/${p.id}/interviews`).set(as('hr')).send({ period: '2026-11' });
+    const s = sched.body.data.sessions.find((x) => x.intervieweeId === row.id);
+    expect(s).toBeTruthy();
+    expect((await request(app).post(`/api/tna/sessions/${s.id}/consent`).set(sari)).body.data.question.text).toMatch(/Closing deal/);
+    await request(app).post(`/api/tna/sessions/${s.id}/turns`).set(sari).send({ text: 'Saya belum menguasai teknik negosiasi.' }).expect(200);
+    const done = await request(app).post(`/api/tna/sessions/${s.id}/complete`).set(sari);
+    expect(done.status).toBe(200);
+    const [finding] = (await request(app).get(`/api/tna/findings?projectId=${p.id}`).set(as('hr'))).body.data;
+    expect(finding).toMatchObject({ category: 'training', competencyId: null });
+    const plan = await request(app).post(`/api/tna/findings/${finding.id}/plan`).set(as('hr')).send({});
+    expect(plan.body.data.status).toBe('needs_module');
   });
 });

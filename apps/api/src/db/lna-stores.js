@@ -138,19 +138,20 @@ function createLnaStores(sequelize) {
                       WHERE tenant_id = :tenantId AND id = :id RETURNING id, approved_at AS "approvedAt"`, { tenantId, id, userId });
     },
     async assessments(tenantId, userId) {
-      return select(`SELECT competency_id AS "competencyId", score, confidence, evidence, session_id AS "sessionId", created_at AS "createdAt"
+      return select(`SELECT competency_id AS "competencyId", score, confidence, evidence, session_id AS "sessionId", source, assessor,
+                            assessed_at AS "assessedAt", created_at AS "createdAt"
                        FROM lna_assessments WHERE tenant_id = :tenantId AND user_id = :userId ORDER BY created_at`, { tenantId, userId });
     },
     async assessmentsFor(tenantId, userIds) {
       if (!userIds.length) return [];
-      return select(`SELECT user_id AS "userId", competency_id AS "competencyId", score, created_at AS "createdAt"
+      return select(`SELECT user_id AS "userId", competency_id AS "competencyId", score, source, assessed_at AS "assessedAt", created_at AS "createdAt"
                        FROM lna_assessments WHERE tenant_id = :tenantId AND user_id IN (:userIds)`, { tenantId, userIds });
     },
     async addAssessment(tenantId, a) {
-      return insert(`INSERT INTO lna_assessments (tenant_id, user_id, competency_id, session_id, score, confidence, evidence)
-                     VALUES (:tenantId, :userId, :competencyId, :sessionId, :score, :confidence, :evidence)
-                     RETURNING id, competency_id AS "competencyId", score, created_at AS "createdAt"`,
-      withNulls({ tenantId, ...a }, ['sessionId', 'confidence', 'evidence']));
+      return insert(`INSERT INTO lna_assessments (tenant_id, user_id, competency_id, session_id, score, confidence, evidence, source, assessor, assessed_at, import_batch_id)
+                     VALUES (:tenantId, :userId, :competencyId, :sessionId, :score, :confidence, :evidence, COALESCE(:source, 'ai_interview'), :assessor, :assessedAt, :importBatchId)
+                     RETURNING id, competency_id AS "competencyId", score, source, assessed_at AS "assessedAt", created_at AS "createdAt"`,
+      withNulls({ tenantId, ...a }, ['sessionId', 'confidence', 'evidence', 'source', 'assessor', 'assessedAt', 'importBatchId']));
     },
     async completions(tenantId, userIds) {
       if (!userIds.length) return [];

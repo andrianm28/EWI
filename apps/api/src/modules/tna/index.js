@@ -2,7 +2,8 @@
 // Training Needs Analysis (TNA). RG-2: dipicu target OKR/KPI/SLA yang tidak tercapai; hasil training-related
 // menjadi training plan. RG-3: learner dirinya, atasan timnya, HR semua. RG-4: temuan non-training (INA)
 // tetap direkam tetapi tidak ditampilkan selama flag INA mati.
-// Terbuka: BT-29 (siapa diwawancarai), BT-30 (rumus Pareto), BT-31 (alur request training), K-1 (LMS), K-3 (status).
+// Cadence 11 Nov: TNA bisa berjalan tanpa DACUM/DNA (C4) dan default hanya mewawancarai yang targetnya merah (C3).
+// Terbuka: BT-30 (rumus Pareto), BT-31 (alur request training), K-1 (LMS), K-3 (status).
 const crypto = require('crypto');
 const express = require('express');
 const { requireRole, ROLES } = require('../../core/rbac');
@@ -59,14 +60,14 @@ module.exports = {
       res.json({ data: await stores.tna.listPerformance(req.tenantId, scope, { period: req.query.period, projectId: req.query.projectId }) });
     }));
 
-    // --- Jadwalkan wawancara TNA untuk tim. BT-29 terbuka: scope dari body atau settings, tidak ada default diam-diam ---
+    // --- Jadwalkan wawancara TNA untuk tim. Scope dari body, lalu settings tenant (default red_only) ---
     r.post('/projects/:projectId/interviews', hr, wrap(async (req, res) => {
       const { projectId } = req.params;
       if (!(await stores.projectsExtra.exists(req.tenantId, projectId))) throw notFound('Proyek tidak ditemukan');
       const conf = await settings.get(req.tenantId);
       const scope = (req.body || {}).scope || conf.tna.interviewScope;
       if (!scope) {
-        throw new HttpError(400, 'DECISION_PENDING', `Pilih siapa yang diwawancarai: ${INTERVIEW_SCOPES.join(' atau ')} (BT-29 belum diputuskan)`);
+        throw new HttpError(400, 'DECISION_PENDING', `Pilih siapa yang diwawancarai: ${INTERVIEW_SCOPES.join(' atau ')}`);
       }
       if (!INTERVIEW_SCOPES.includes(scope)) throw badRequest(`scope harus ${INTERVIEW_SCOPES.join(' atau ')}`);
       const { jobRoleId, period } = req.body || {};

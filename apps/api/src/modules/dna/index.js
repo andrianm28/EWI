@@ -2,7 +2,9 @@
 // Development Need Analysis (DNA). RG-1: gap individu terhadap kompetensi jabatan + jenjang karier.
 // Terbuka (jangan dikunci di sini): RG-1a sumber kamus kompetensi, RG-1b sumber status lulus program,
 // RG-1c alur wawancara SME/DACUM, RG-1e siapa melihat kandidat promosi.
+const crypto = require('crypto');
 const express = require('express');
+const { FLAGS, requireFlag } = require('../../core/flags');
 const { requireRole, ROLES } = require('../../core/rbac');
 const { scopeFor, inScope } = require('../../core/rbac/scope');
 const { badRequest, notFound, HttpError } = require('../../core/errors');
@@ -58,7 +60,7 @@ async function profiles(stores, tenantId, people) {
 module.exports = {
   key: 'dna',
   title: 'Development Need Analysis',
-  router({ stores, ai, settings } = {}) {
+  router({ stores, ai, settings, flags } = {}) {
     const r = express.Router();
     const hr = requireRole(ROLES.HR_ADMIN);
 
@@ -133,7 +135,43 @@ module.exports = {
       if (!userId || !competencyId || !Number.isInteger(score) || score < 0 || score > 4) throw badRequest('userId, competencyId, score 0-4 wajib');
       if (!(await stores.dna.getCompetency(req.tenantId, competencyId))) throw notFound('Kompetensi tidak ditemukan');
       if (!(await stores.people.get(req.tenantId, userId))) throw notFound('Karyawan tidak ditemukan');
-      res.status(201).json({ data: await stores.dna.addAssessment(req.tenantId, { userId, competencyId, score, confidence: 1, evidence: evidence || 'Penilaian ulang Admin ETA' }) });
+      res.status(201).json({ data: await stores.dna.addAssessment(req.tenantId, { userId, competencyId, score, confidence: 1, source: 'eta_review', evidence: evidence || 'Penilaian ulang Admin ETA' }) });
+    }));
+
+    // Cadence 11 Nov (C2): hasil wawancara DNA manual (mis. ELGOS) diimpor HR, satu baris = karyawan × kompetensi.
+    // Kompetensi dicocokkan dengan kamus (nama, tanpa beda huruf besar/kecil) atau competencyId; tidak dibuat otomatis.
+    r.post('/assessments/import', hr, wrap(async (req, res) => {
+      const { rows, assessor, assessedAt } = req.body || {};
+      if (!Array.isArray(rows) || !rows.length || rows.length > 5000) throw badRequest('rows wajib berisi 1-5000 baris');
+      if (assessedAt && Number.isNaN(Date.parse(assessedAt))) throw badRequest('assessedAt bukan tanggal yang valid');
+      const comps = await stores.dna.listCompetencies(req.tenantId);
+      const byName = new Map(comps.map((c) => [c.name.trim().toLowerCase(), c]));
+      const byId = new Map(comps.map((c) => [c.id, c]));
+      const users = await stores.people.resolve(req.tenantId, {
+        employeeIds: rows.map((r0) => r0 && r0.employeeId).filter(Boolean).map(String),
+        emails: rows.map((r0) => r0 && r0.email).filter(Boolean).map((e) => String(e).trim().toLowerCase()),
+      });
+      const batchId = crypto.randomUUID();
+      const rejected = [];
+      let imported = 0;
+      for (const [index, raw] of rows.entries()) {
+        const row = raw || {};
+        const score = Number(row.score);
+        if (!Number.isInteger(score) || score < 0 || score > 4) { rejected.push({ index, reason: 'score harus bilangan bulat 0-4' }); continue; }
+        const comp = row.competencyId ? byId.get(row.competencyId) : byName.get(String(row.competency || '').trim().toLowerCase());
+        if (!comp) { rejected.push({ index, reason: 'Kompetensi tidak ada di kamus kompetensi organisasi ini' }); continue; }
+        const email = row.email ? String(row.email).trim().toLowerCase() : null;
+        const u = users.find((x) => (row.employeeId && x.employeeId === String(row.employeeId)) || (email && x.email === email));
+        if (!u) { rejected.push({ index, reason: 'Karyawan tidak ditemukan di organisasi ini' }); continue; }
+        const when = row.assessedAt || assessedAt;
+        await stores.dna.addAssessment(req.tenantId, {
+          userId: u.id, competencyId: comp.id, score, confidence: 1, source: 'manual_interview',
+          evidence: row.evidence ? String(row.evidence) : null, assessor: row.assessor || assessor || null,
+          assessedAt: when && !Number.isNaN(Date.parse(when)) ? new Date(when) : null, importBatchId: batchId,
+        });
+        imported += 1;
+      }
+      res.status(201).json({ data: { batchId, imported, rejected } });
     }));
 
     // --- Dashboard karier & gap (learner: dirinya, atasan: timnya, HR: semua) ---
@@ -174,7 +212,8 @@ module.exports = {
       res.json({ data: rows.filter((p) => p.career.promotionCandidate) });
     }));
 
-    r.use('/sessions', interviewRouter({ submodule: 'dna', stores, ai }));
+    r.use('/sessions', requireFlag(flags, FLAGS.DNA_AI_INTERVIEW, 'Wawancara AI DNA belum diaktifkan; gunakan impor hasil wawancara manual'),
+      interviewRouter({ submodule: 'dna', stores, ai }));
     return r;
   },
 };

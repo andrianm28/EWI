@@ -4,8 +4,9 @@
 // membutuhkannya meminta pilihan eksplisit dari HR, bukan memakai default diam-diam.
 const DEFAULTS = Object.freeze({
   tna: {
-    // BT-29 terbuka: 'all_members' (semua anggota tim) | 'red_only' (hanya yang targetnya merah)
-    interviewScope: null,
+    // BT-29 diputuskan lewat cadence 11 Nov (C3, ditetapkan user 12 Nov): TNA reaktif, hanya mewawancarai
+    // karyawan yang targetnya merah. 'all_members' tetap tersedia sebagai konfigurasi klien lain.
+    interviewScope: 'red_only',
     // BT-30 terbuka: komponen skor Pareto yang dipakai
     pareto: { useMiss: true, useImportance: true },
   },

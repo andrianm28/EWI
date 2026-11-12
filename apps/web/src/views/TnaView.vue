@@ -24,7 +24,6 @@ const mySessions = computed(() => sessions.value.filter((s) => s.intervieweeId =
 const period = ref('')
 const csv = ref('')
 const projectId = ref('')
-const scope = ref<'' | 'all_members' | 'red_only'>('')
 
 async function load() {
   error.value = ''
@@ -55,8 +54,7 @@ const importCsv = () => act(async () => {
   return `${r.imported} baris diimpor (${r.red} target merah)${r.rejected.length ? `, ${r.rejected.length} ditolak: ${r.rejected.map((x) => `baris ${x.index + 2} ${x.reason}`).join('; ')}` : ''}.`
 })
 const schedule = () => act(async () => {
-  if (!scope.value) throw new Error('Pilih dulu siapa yang diwawancarai.')
-  const r = (await lna.scheduleTna(projectId.value, scope.value, period.value.trim())).data
+  const r = (await lna.scheduleTna(projectId.value, period.value.trim())).data
   return `${r.scheduled} wawancara dijadwalkan${r.skipped ? `, ${r.skipped} sudah terjadwal sebelumnya` : ''}.`
 })
 const planFinding = (id: string) => act(async () => {
@@ -112,11 +110,7 @@ const target = (f: Finding) => (f.metricName ? `${f.metricName}: target ${f.targ
             <option v-for="p in projects" :key="p.id" :value="p.id">{{ p.name }}</option>
           </select>
         </label>
-        <fieldset>
-          <legend>Siapa yang diwawancarai?</legend>
-          <label class="flex gap-2"><input v-model="scope" type="radio" value="all_members" /> Semua anggota tim (target merah dibahas lebih dalam)</label>
-          <label class="flex gap-2"><input v-model="scope" type="radio" value="red_only" /> Hanya yang punya target merah</label>
-        </fieldset>
+        <p class="text-xs text-slate-500" data-testid="tna-scope-note">Hanya karyawan dengan target merah pada periode di atas yang diwawancarai. TNA tidak memerlukan hasil DACUM.</p>
         <button type="submit" class="rounded bg-slate-900 px-3 py-1.5 text-white">Jadwalkan</button>
       </form>
     </section>

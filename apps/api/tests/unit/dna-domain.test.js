@@ -59,3 +59,17 @@ describe('careerStatus (jenjang + program)', () => {
     expect(careerStatus({ levels, currentLevelId: null, completions: [] }).currentLevel).toBeNull();
   });
 });
+
+describe('computeGap: hasil wawancara manual (cadence 11 Nov, C2)', () => {
+  it('memakai tanggal wawancara (assessedAt) bila ada, bukan waktu impor', () => {
+    const competencies = [{ id: 'k', name: 'Kontrak', kind: 'job', requiredScore: 3 }];
+    const r = computeGap({
+      competencies,
+      assessments: [
+        { competencyId: 'k', score: 4, source: 'manual_interview', assessedAt: '2026-11-01', createdAt: '2026-11-12' },
+        { competencyId: 'k', score: 1, source: 'manual_interview', assessedAt: '2026-10-01', createdAt: '2026-11-13' },
+      ],
+    });
+    expect(r.items[0]).toMatchObject({ score: 4, status: 'met', source: 'manual_interview' });
+  });
+});

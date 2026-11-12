@@ -6,6 +6,8 @@ const FLAGS = Object.freeze({
   MODULE_DNA: 'module.dna',
   MODULE_TNA: 'module.tna',
   MODULE_INA: 'module.ina',
+  // Cadence 11 Nov (C2): POC ELGOS memakai hasil wawancara DNA manual; wawancara AI DNA ditahan
+  DNA_AI_INTERVIEW: 'dna.ai_interview',
   VOICE_REALTIME: 'voice.realtime',
   VOICE_TTS: 'voice.tts',
   LANG_EN: 'lang.en',
@@ -35,4 +37,15 @@ function createFlagService(store) {
   };
 }
 
-module.exports = { FLAGS, createFlagService };
+/** Middleware: fitur di dalam submodul yang ditahan di balik flag (default mati). */
+function requireFlag(flags, flag, message) {
+  const { forbidden } = require('../errors');
+  return async (req, _res, next) => {
+    try {
+      if (!(await flags.isEnabled(req.tenantId, flag))) return next(forbidden('FEATURE_DISABLED', message || 'Fitur ini belum diaktifkan untuk organisasi Anda'));
+      return next();
+    } catch (e) { return next(e); }
+  };
+}
+
+module.exports = { FLAGS, createFlagService, requireFlag };
