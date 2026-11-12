@@ -5,6 +5,7 @@ async function mockApi(page: Page, access: { submodules: string[]; flags: Record
     route.fulfill({ json: { token: 't', user: { id: 'u', tenantId: 't-1', email: 'hr@demo.test', role: 'hr_admin' } } }),
   )
   await page.route('**/api/me/access', (route) => route.fulfill({ json: access }))
+  await page.route(/\/api\/(dna|tna)\//, (route) => route.fulfill({ json: { data: [] } }))
 }
 
 async function login(page: Page) {
@@ -31,7 +32,7 @@ test('POC Desember: DNA dan TNA terbuka, INA belum aktif', async ({ page }) => {
   await expect(page.getByTestId('card-ina')).toContainText('Belum aktif')
 
   await page.getByTestId('card-tna').getByRole('link', { name: 'Buka' }).click()
-  await expect(page.getByRole('heading', { name: /TNA/ })).toBeVisible()
+  await expect(page.getByRole('heading', { level: 1, name: /TNA/ })).toBeVisible()
 
   await page.goto('/m/ina')
   await expect(page).toHaveURL(/\/$/)
@@ -43,4 +44,22 @@ test('login gagal menampilkan pesan', async ({ page }) => {
   )
   await login(page)
   await expect(page.getByRole('alert')).toHaveText('Email atau password salah')
+})
+
+test('organisasi berupa dropdown bila API menyediakan daftar', async ({ page }) => {
+  let sent: { tenant?: string } | null = null
+  await page.route('**/api/auth/tenants', (route) =>
+    route.fulfill({ json: { data: [{ slug: 'demo', name: 'Demo Organisasi' }, { slug: 'elgos', name: 'ELGOS' }] } }),
+  )
+  await page.route('**/api/auth/login', async (route) => {
+    sent = route.request().postDataJSON()
+    await route.fulfill({ status: 401, json: { error: { code: 'UNAUTHORIZED', message: 'Email atau password salah' } } })
+  })
+  await page.goto('/login')
+  await page.getByLabel('Organisasi').selectOption({ label: 'Demo Organisasi' })
+  await page.getByLabel('Email').fill('hr@demo.test')
+  await page.getByLabel('Password').fill(`pw-${Date.now()}`)
+  await page.getByRole('button', { name: 'Masuk' }).click()
+  await expect(page.getByRole('alert')).toBeVisible()
+  expect(sent).toMatchObject({ tenant: 'demo' })
 })

@@ -1,12 +1,17 @@
 'use strict';
 // Implementasi store berbasis Postgres. Setiap query memfilter tenant_id.
 const { QueryTypes } = require('sequelize');
+const { createLnaStores } = require('./lna-stores');
 
 function createStores(sequelize) {
   const q = (sql, replacements, type = QueryTypes.SELECT) => sequelize.query(sql, { replacements, type });
 
   return {
+    ...createLnaStores(sequelize),
     users: {
+      async listActiveTenants() {
+        return q(`SELECT slug, name FROM tenants WHERE status = 'active' ORDER BY name`);
+      },
       async findByEmail(tenantSlug, email) {
         const [row] = await q(
           `SELECT u.id, u.tenant_id AS "tenantId", u.email, u.name, u.role, u.password_hash AS "passwordHash"

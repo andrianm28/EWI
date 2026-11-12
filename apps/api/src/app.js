@@ -12,18 +12,30 @@ const { requireSubmodule } = require('./core/entitlement/guard');
 const { errorHandler, notFound } = require('./core/errors');
 const projects = require('./modules/projects');
 const { webhookRouter } = require('./integrations/elitementor/webhook');
+const { createSettingsService } = require('./core/settings');
+const { createAiProvider } = require('./ai');
+const { createCatalogService, elitementorAdapter, moodleAdapter } = require('./integrations/catalog');
 const SUBMODULE_MODULES = ['cca', 'dna', 'tna', 'ina'].map((k) => require(`./modules/${k}`));
 
 /**
  * Bangun aplikasi Express. Semua akses data lewat `stores` agar bisa diganti di test.
- * stores: { users, flags, entitlements, projects }
+ * stores: { users, flags, entitlements, projects, people, settings, dna, interviews, tna, projectsExtra }
+ * ai / catalog bisa diganti di test; default mengikuti config (T3 dan K-1 masih terbuka).
  */
-function createApp({ config, stores }) {
+function createApp({ config, stores, ai, catalog }) {
   const app = express();
   const tokens = createTokenService(config.jwt);
   const flags = createFlagService(stores.flags);
   const entitlements = createEntitlementService(stores.entitlements);
   const auth = requireAuth(tokens);
+  const settings = createSettingsService(stores.settings);
+  const deps = {
+    stores,
+    flags,
+    settings,
+    ai: ai || createAiProvider(config.aiProvider),
+    catalog: catalog || createCatalogService({ elitementor: elitementorAdapter(), moodle: moodleAdapter() }),
+  };
 
   app.use(helmet());
   app.use(cors({ origin: config.corsOrigin.length ? config.corsOrigin : false }));
@@ -34,7 +46,7 @@ function createApp({ config, stores }) {
   app.use(express.json({ limit: '1mb' }));
 
   app.get('/api/health', (_req, res) => res.json({ status: 'ok', service: 'ewi-api' }));
-  app.use('/api/auth', authRoutes({ users: stores.users, tokens, requireAuth: auth }));
+  app.use('/api/auth', authRoutes({ users: stores.users, tokens, requireAuth: auth, tenantPicker: config.loginTenantPicker }));
 
   const api = express.Router();
   api.use(auth, tenantContext());
@@ -45,7 +57,7 @@ function createApp({ config, stores }) {
   });
   api.use('/projects', projects.router({ projects: stores.projects }));
   for (const m of SUBMODULE_MODULES) {
-    api.use(`/${m.key}`, requireSubmodule(m.key, { entitlements, flags }), m.router());
+    api.use(`/${m.key}`, requireSubmodule(m.key, { entitlements, flags }), m.router(deps));
   }
   app.use('/api', api);
 

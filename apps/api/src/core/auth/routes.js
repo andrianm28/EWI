@@ -1,14 +1,22 @@
 'use strict';
 const express = require('express');
 const bcrypt = require('bcryptjs');
-const { unauthorized, badRequest } = require('../errors');
+const { unauthorized, badRequest, notFound } = require('../errors');
 
 /**
  * Login email + password per tenant. Undangan dan OTP email menyusul (Sprint N1).
  * `users` adalah repository: { findByEmail(tenantSlug, email) }.
  */
-function authRoutes({ users, tokens, requireAuth }) {
+function authRoutes({ users, tokens, requireAuth, tenantPicker = false }) {
   const r = express.Router();
+
+  // Pilihan organisasi di halaman login (LOGIN_TENANT_PICKER, dev/staging saja). Mati -> 404, web memakai input teks.
+  r.get('/tenants', async (_req, res, next) => {
+    try {
+      if (!tenantPicker || !users.listActiveTenants) throw notFound();
+      res.json({ data: await users.listActiveTenants() });
+    } catch (e) { next(e); }
+  });
 
   r.post('/login', async (req, res, next) => {
     try {

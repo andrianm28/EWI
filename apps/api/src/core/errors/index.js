@@ -15,8 +15,11 @@ const badRequest = (msg) => new HttpError(400, 'BAD_REQUEST', msg);
 
 function errorHandler(err, _req, res, _next) {
   const status = err.status || 500;
-  if (status >= 500) console.error(err);
-  res.status(status).json({ error: { code: err.code || 'INTERNAL', message: status >= 500 ? 'Terjadi kesalahan' : err.message } });
+  // HttpError adalah respons yang disengaja (mis. 501 DECISION_PENDING); selain itu sembunyikan detail 5xx.
+  const expected = err instanceof HttpError;
+  if (status >= 500 && !expected) console.error(err);
+  const message = status >= 500 && !expected ? 'Terjadi kesalahan' : err.message;
+  res.status(status).json({ error: { code: err.code || 'INTERNAL', message } });
 }
 
 module.exports = { HttpError, unauthorized, forbidden, notFound, badRequest, errorHandler };
