@@ -206,6 +206,7 @@ run('POC DNA + TNA (Postgres)', () => {
     const all = await request(app).post(`/api/tna/projects/${projectId}/interviews`).set(as('hr')).send({ scope: 'all_members', jobRoleId: role.id, period: '2026-11' });
     expect(all.body.data).toMatchObject({ scheduled: 1, skipped: 2 }); // budi ditambahkan, yang lain sudah terjadwal
     expect((await request(app).post(`/api/tna/projects/${projectId}/interviews`).set(as('hr')).send({ scope: 'semua' })).status).toBe(400);
+    expect(roles.body.defaults).toEqual({ scope: 'red_only', jobRoleId: null });
     tnaSessionDimas = redOnly.body.data.sessions.find((s) => s.intervieweeId === u.dimas);
     expect(tnaSessionDimas.triggerRecordIds).toHaveLength(1);
   });
@@ -272,6 +273,19 @@ run('POC DNA + TNA (Postgres)', () => {
     expect(hr.body.data.sessions).toMatchObject({ completed: 1, scheduled: 2 });
     const budi = await request(app).get('/api/tna/dashboard').set(as('budi'));
     expect(budi.body.data).toMatchObject({ redTargets: 0, trainingFindings: 0, people: 1 });
+  });
+
+  it('BT-19/BT-29: klien bisa default ke semua anggota job role (ELGOS L1)', async () => {
+    await db.query(`UPDATE tenants SET settings = CAST(:s AS jsonb) WHERE id = :t`, {
+      replacements: { t: tenant.id, s: JSON.stringify({ tna: { interviewScope: 'all_members', interviewJobRoleId: role.id } }) },
+    });
+    const defaults = (await request(app).get('/api/tna/job-roles').set(as('hr'))).body.defaults;
+    expect(defaults).toEqual({ scope: 'all_members', jobRoleId: role.id });
+    const [[p]] = await db.query(`INSERT INTO lna_projects (tenant_id, name) VALUES (:t, 'ELGOS L1') RETURNING id`, { replacements: { t: tenant.id } });
+    const res = await request(app).post(`/api/tna/projects/${p.id}/interviews`).set(as('hr')).send({ period: '2026-11' });
+    expect(res.status).toBe(201);
+    expect(res.body.data).toMatchObject({ scope: 'all_members', scheduled: 3 }); // dimas, rina, budi di L1
+    await db.query(`UPDATE tenants SET settings = '{}'::jsonb WHERE id = :t`, { replacements: { t: tenant.id } });
   });
 
   it('C4: TNA berjalan tanpa DACUM/kamus kompetensi (karyawan tanpa job role)', async () => {

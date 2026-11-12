@@ -112,6 +112,27 @@ test('HR: cakupan TNA default target merah, atau semua karyawan di role tertentu
   expect(scheduledWith).toEqual({ scope: 'all_members', period: '2026-11', jobRoleId: 'jr1' })
 })
 
+test('HR: cakupan TNA mengikuti konfigurasi klien (ELGOS: semua anggota L1)', async ({ page }) => {
+  let scheduledWith: unknown = null
+  await page.route('**/api/tna/dashboard', (r) => r.fulfill({ json: { data: { role: 'hr_admin', people: null, redTargets: 0, sessions: {}, trainingFindings: 0, planItems: {} } } }))
+  for (const path of ['findings', 'plan-items', 'sessions', 'pareto']) await page.route(`**/api/tna/${path}`, (r) => r.fulfill({ json: { data: [] } }))
+  await page.route('**/api/tna/job-roles', (r) => r.fulfill({ json: { data: [{ id: 'jr1', name: 'Service Delivery L1', division: null }], defaults: { scope: 'all_members', jobRoleId: 'jr1' } } }))
+  await page.route('**/api/projects', (r) => r.fulfill({ json: { data: [{ id: 'p1', name: 'ELGOS L1', status: 'active' }] } }))
+  await page.route('**/api/tna/projects/p1/interviews', async (r) => {
+    scheduledWith = r.request().postDataJSON()
+    await r.fulfill({ status: 201, json: { data: { scope: 'all_members', scheduled: 5, skipped: 0 } } })
+  })
+  await loginAs(page, 'hr_admin')
+  await page.goto('/m/tna')
+  await expect(page.getByLabel('Semua karyawan di job role tertentu')).toBeChecked()
+  await expect(page.getByLabel(/^Job role/)).toHaveValue('jr1')
+  await page.getByLabel('Periode').fill('2026-11')
+  await page.getByLabel('Proyek').selectOption('p1')
+  await page.getByRole('button', { name: 'Jadwalkan' }).click()
+  await expect(page.getByRole('status')).toHaveText('5 wawancara dijadwalkan.')
+  expect(scheduledWith).toEqual({ scope: 'all_members', period: '2026-11', jobRoleId: 'jr1' })
+})
+
 test('learner: wawancara TNA lalu meminta training', async ({ page }) => {
   let state = 'scheduled'
   const empty = { data: [] }

@@ -27,6 +27,7 @@ const projectId = ref('')
 const scope = ref<'red_only' | 'all_members'>('red_only')
 const jobRoleId = ref('')
 const jobRoles = ref<{ id: string; name: string }[]>([])
+let defaultsApplied = false
 
 async function load() {
   error.value = ''
@@ -40,7 +41,15 @@ async function load() {
     if (!isLearner.value) tasks.push(lna.pareto().then((r) => (pareto.value = r.data)))
     if (isHr.value) {
       tasks.push(lna.projects().then((r) => (projects.value = r.data)))
-      tasks.push(lna.tnaJobRoles().then((r) => (jobRoles.value = r.data)))
+      tasks.push(lna.tnaJobRoles().then((r) => {
+        jobRoles.value = r.data
+        // Cakupan default mengikuti konfigurasi klien (BT-29), hanya saat pertama dimuat
+        if (!defaultsApplied && r.defaults) {
+          defaultsApplied = true
+          if (r.defaults.scope) scope.value = r.defaults.scope
+          if (r.defaults.jobRoleId) jobRoleId.value = r.defaults.jobRoleId
+        }
+      }))
     }
     await Promise.all(tasks)
   } catch (e) { error.value = (e as Error).message }

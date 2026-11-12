@@ -8,7 +8,9 @@ arahan cadence 11 Nov (Ahmad Gilang) yang ditetapkan berlaku penuh pada 12 Nov:
   ditahan di balik flag `dna.ai_interview` (default mati).
 - **C3** TNA reaktif: default hanya karyawan dengan target OKR/KPI/SLA merah yang diwawancarai (`red_only`).
   Klarifikasi user 12 Nov: cakupan mengikuti kebutuhan perusahaan, jadi HR juga bisa memilih semua karyawan
-  di job role tertentu (`all_members` + `jobRoleId`). BT-29 difinalkan di grilling bisnis.
+  di job role tertentu (`all_members` + `jobRoleId`). BT-29 final: cakupan diatur per klien/proyek.
+  BT-19: POC ELGOS L1 memakai mode semua anggota tim L1 (seed dev: `tna.interviewScope = all_members`,
+  `tna.interviewJobRoleId` = Service Delivery L1).
 - **C4** TNA bisa berjalan tanpa DACUM/DNA: karyawan tanpa job role atau kamus kompetensi tetap bisa
   diwawancarai; temuannya tidak tertaut kompetensi dan training plan-nya menjadi `needs_module`.
 
@@ -50,7 +52,7 @@ Visibilitas (RG-3) berlaku di semua endpoint data karyawan: learner dirinya, ata
 | Keputusan | Perilaku | Tempat |
 |---|---|---|
 | C2 DNA di POC = tampilan hasil manual | Impor hasil + flag `dna.ai_interview` default mati; web tidak memuat sesi DNA bila flag mati | `src/modules/dna`, `src/core/flags` |
-| C3 / BT-29 siapa diwawancarai TNA | Default `red_only`; HR bisa memilih semua karyawan di job role tertentu per penjadwalan; default organisasi diatur di settings | `settings.tna.interviewScope`, `src/modules/tna` |
+| C3 / BT-29 / BT-19 siapa diwawancarai TNA | Default produk `red_only`; per klien diatur `settings.tna.interviewScope` + `interviewJobRoleId` (ELGOS: semua anggota L1). Layar penjadwalan memakai default klien dan HR bisa menggantinya per proyek | `src/core/settings`, `src/modules/tna` |
 | C4 TNA tanpa DACUM | Tidak ada syarat job role/kamus kompetensi untuk sesi TNA | `src/modules/tna`, `src/modules/interviews` |
 
 ## Belum termasuk

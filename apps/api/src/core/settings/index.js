@@ -7,6 +7,9 @@ const DEFAULTS = Object.freeze({
     // BT-29 diputuskan lewat cadence 11 Nov (C3, ditetapkan user 12 Nov): TNA reaktif, hanya mewawancarai
     // karyawan yang targetnya merah. 'all_members' tetap tersedia sebagai konfigurasi klien lain.
     interviewScope: 'red_only',
+    // BT-29 final (12 Nov): cakupan diatur per klien. Untuk 'all_members', job role default yang diwawancarai
+    // (mis. ELGOS: semua anggota Service Delivery L1, BT-19). HR tetap bisa memilih lain saat menjadwalkan.
+    interviewJobRoleId: null,
     // BT-30 terbuka: komponen skor Pareto yang dipakai
     pareto: { useMiss: true, useImportance: true },
   },

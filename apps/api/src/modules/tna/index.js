@@ -58,8 +58,11 @@ module.exports = {
 
     // Job role untuk pilihan cakupan wawancara; tersedia tanpa modul DNA (TNA bisa dijual sendiri, C4)
     r.get('/job-roles', hr, wrap(async (req, res) => {
-      const rows = await stores.dna.listJobRoles(req.tenantId);
-      res.json({ data: rows.map((jr) => ({ id: jr.id, name: jr.name, division: jr.division ?? null })) });
+      const [rows, conf] = await Promise.all([stores.dna.listJobRoles(req.tenantId), settings.get(req.tenantId)]);
+      res.json({
+        data: rows.map((jr) => ({ id: jr.id, name: jr.name, division: jr.division ?? null })),
+        defaults: { scope: conf.tna.interviewScope, jobRoleId: conf.tna.interviewJobRoleId },
+      });
     }));
 
     r.get('/performance', wrap(async (req, res) => {
@@ -77,7 +80,10 @@ module.exports = {
         throw new HttpError(400, 'DECISION_PENDING', `Pilih siapa yang diwawancarai: ${INTERVIEW_SCOPES.join(' atau ')}`);
       }
       if (!INTERVIEW_SCOPES.includes(scope)) throw badRequest(`scope harus ${INTERVIEW_SCOPES.join(' atau ')}`);
-      const { jobRoleId, period } = req.body || {};
+      const body = req.body || {};
+      const { period } = body;
+      // jobRoleId dari body; bila scope diambil dari konfigurasi klien, job role default-nya ikut dipakai
+      const jobRoleId = body.jobRoleId || (!body.scope && scope === 'all_members' ? conf.tna.interviewJobRoleId : null) || undefined;
       // Klarifikasi user 12 Nov: cakupan mengikuti kebutuhan perusahaan, yaitu hanya target merah atau semua
       // karyawan di role tertentu. 'all_members' wajib menyebut job role agar tidak mewawancarai seluruh organisasi.
       if (scope === 'all_members' && !jobRoleId) throw badRequest('Pilih job role untuk mewawancarai semua karyawannya');
