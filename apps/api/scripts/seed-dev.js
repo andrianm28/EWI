@@ -88,5 +88,7 @@ const bcrypt = require('bcryptjs');
                    ON CONFLICT (tenant_id, key) DO UPDATE SET enabled = true`, [t.id, key]);
   }
   await c.end();
-  console.log(`seed selesai: tenant demo, hr@demo.test, spv@demo.test, dimas|rina|budi@demo.test, password ${password}`);
+  // Password hanya dicetak bila dibuat acak di sini; bila dari DEV_SEED_PASSWORD, pemilik env sudah tahu
+  const pwNote = process.env.DEV_SEED_PASSWORD ? 'password dari DEV_SEED_PASSWORD' : `password acak ${password} (set DEV_SEED_PASSWORD agar tidak dicetak)`;
+  console.log(`seed selesai: tenant demo, hr@demo.test, spv@demo.test, dimas|rina|budi@demo.test, ${pwNote}`);
 })().catch((e) => { console.error(e.message); process.exit(1); });
