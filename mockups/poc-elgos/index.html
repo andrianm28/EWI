@@ -1,0 +1,309 @@
+<!doctype html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="robots" content="noindex">
+<style>body{margin:0}[hidden]{display:none!important}</style>
+</head>
+<body>
+<title>Mockup POC ELGOS</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@500;600&display=swap">
+<style>
+/* Layout: app shell — role switch on top, left nav per role, content as stacked panels. Visual base follows Desty's EWI mockup (clean, trust, brown heat scale). */
+:root{
+  --bg:#f7f7f5; --surface:#ffffff; --ink:#1d1f24; --muted:#5f6470; --line:#e4e2dd;
+  --accent:#7a4a24; --accent-soft:#f3e9df; --link:#2f5bd3;
+  --h1:#f6ede4; --h2:#e9cfb4; --h3:#d29d6c; --h4:#a8642f; --h5:#6e3a14;
+  --ok:#1f7a4d; --ok-soft:#e3f3ea; --warn:#a15c00; --warn-soft:#fbefdc; --bad:#b3261e; --bad-soft:#fbe5e3;
+  --info-soft:#e8eefc;
+  --f-display:"Space Grotesk",system-ui,sans-serif; --f-body:"Inter",system-ui,sans-serif;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --bg:#15161a; --surface:#1e2025; --ink:#ecebe7; --muted:#a3a6ad; --line:#33353c;
+  --accent:#e0a97a; --accent-soft:#3a2b20; --link:#8fb0ff;
+  --h1:#2b2420; --h2:#4d3626; --h3:#7c5232; --h4:#b8784a; --h5:#e7b48a;
+  --ok:#6fd3a0; --ok-soft:#1d3a2c; --warn:#f0b864; --warn-soft:#3d2f17; --bad:#ff8a80; --bad-soft:#40201e; --info-soft:#1f2a44;
+  color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#15161a; --surface:#1e2025; --ink:#ecebe7; --muted:#a3a6ad; --line:#33353c;
+  --accent:#e0a97a; --accent-soft:#3a2b20; --link:#8fb0ff;
+  --h1:#2b2420; --h2:#4d3626; --h3:#7c5232; --h4:#b8784a; --h5:#e7b48a;
+  --ok:#6fd3a0; --ok-soft:#1d3a2c; --warn:#f0b864; --warn-soft:#3d2f17; --bad:#ff8a80; --bad-soft:#40201e; --info-soft:#1f2a44;
+  color-scheme:dark}
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--ink);font-family:var(--f-body);font-size:14px;line-height:1.5}
+.top{position:sticky;top:env(safe-area-inset-top,0px);z-index:5;background:var(--surface);border-bottom:1px solid var(--line);padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:10px;display:flex;flex-wrap:wrap;gap:12px;align-items:center;justify-content:space-between}
+body::before{content:"";position:fixed;inset:0 0 auto;height:env(safe-area-inset-top,0px);z-index:10;background:var(--surface)}
+.brand{font-family:var(--f-display);font-weight:600;font-size:16px}
+.brand small{display:block;font-family:var(--f-body);font-weight:400;font-size:12px;color:var(--muted)}
+.roles{display:flex;gap:4px;background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:3px;flex-wrap:wrap}
+.roles button{border:0;background:transparent;color:var(--muted);font:500 13px var(--f-body);padding:6px 12px;border-radius:6px;cursor:pointer}
+.roles button[aria-pressed="true"]{background:var(--surface);color:var(--ink);box-shadow:0 1px 2px rgba(0,0,0,.08)}
+.roles button:focus-visible,.nav a:focus-visible,.btn:focus-visible{outline:2px solid var(--link);outline-offset:2px}
+.shell{display:grid;grid-template-columns:220px 1fr;gap:24px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:20px 48px;max-width:1280px;margin:0 auto}
+.nav{display:flex;flex-direction:column;gap:2px}
+.nav .grp{font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);margin:12px 8px 4px}
+.nav a{color:var(--ink);text-decoration:none;padding:7px 10px;border-radius:6px;display:flex;justify-content:space-between;gap:8px}
+.nav a[aria-current="page"]{background:var(--accent-soft);color:var(--accent);font-weight:600}
+.nav a .tag{font-size:11px;color:var(--muted);font-weight:400}
+main{min-width:0;display:flex;flex-direction:column;gap:16px}
+h1{font-family:var(--f-display);font-size:24px;font-weight:600;margin:0;text-wrap:balance}
+h2{font-size:15px;font-weight:600;margin:0}
+.sub{color:var(--muted);margin:2px 0 0}
+.crumb{font-size:12px;color:var(--muted)}
+.panel{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:18px;min-width:0}
+.panel>h2+p{margin:4px 0 12px;color:var(--muted);font-size:13px}
+.grid2{display:grid;grid-template-columns:2fr 1fr;gap:16px}
+.grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:16px}
+.kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}
+.kpi{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:14px}
+.kpi b{display:block;font-family:var(--f-display);font-size:26px;font-weight:600;font-variant-numeric:tabular-nums}
+.kpi span{color:var(--muted);font-size:13px}
+.note{border-radius:8px;padding:10px 12px;font-size:13px;background:var(--info-soft)}
+.note.warn{background:var(--warn-soft)}
+.pill{display:inline-flex;align-items:center;gap:4px;font-size:12px;font-weight:500;padding:2px 8px;border-radius:999px;white-space:nowrap}
+.pill.ok{background:var(--ok-soft);color:var(--ok)} .pill.bad{background:var(--bad-soft);color:var(--bad)} .pill.warn{background:var(--warn-soft);color:var(--warn)} .pill.mute{background:var(--bg);color:var(--muted);border:1px solid var(--line)} .pill.acc{background:var(--accent-soft);color:var(--accent)}
+.tbl{overflow-x:auto}
+table{width:100%;border-collapse:collapse;font-size:13px}
+th{text-align:left;font-weight:500;color:var(--muted);border-bottom:1px solid var(--line);padding:8px 10px;white-space:nowrap}
+td{border-bottom:1px solid var(--line);padding:9px 10px;vertical-align:top}
+td.num,th.num{text-align:right;font-variant-numeric:tabular-nums}
+.heat td.c{text-align:center;font-variant-numeric:tabular-nums;font-weight:600;min-width:64px}
+.l1{background:var(--h1)} .l2{background:var(--h2)} .l3{background:var(--h3)} .l4{background:var(--h4);color:#fff} .l5{background:var(--h5);color:#fff}
+.legend{display:flex;gap:6px;align-items:center;font-size:12px;color:var(--muted);margin-top:10px;flex-wrap:wrap}
+.legend i{width:18px;height:10px;border-radius:2px;display:inline-block}
+.bar{height:6px;border-radius:3px;background:var(--line);overflow:hidden}
+.bar>i{display:block;height:100%;background:var(--accent)}
+.list{display:flex;flex-direction:column}
+.item{display:flex;justify-content:space-between;gap:12px;padding:10px 0;border-bottom:1px solid var(--line);flex-wrap:wrap}
+.item:last-child{border-bottom:0}
+.item .t{font-weight:500}
+.item .m{color:var(--muted);font-size:12.5px}
+.btn{font:500 13px var(--f-body);border-radius:7px;padding:7px 12px;cursor:pointer;border:1px solid var(--line);background:var(--surface);color:var(--ink)}
+.btn.pri{background:var(--accent);border-color:var(--accent);color:var(--surface)}
+a.lnk{color:var(--link);text-decoration:none;font-size:13px} a.lnk:hover{text-decoration:underline}
+.ladder{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}
+.step{border:1px solid var(--line);border-radius:8px;padding:10px;background:var(--bg)}
+.step b{display:block;font-size:13px}
+.step span{font-size:12px;color:var(--muted)}
+.step.cur{border-color:var(--accent);background:var(--accent-soft)}
+.chat{display:flex;flex-direction:column;gap:10px;max-width:640px}
+.msg{padding:10px 12px;border-radius:10px;max-width:85%}
+.msg.ai{background:var(--accent-soft);align-self:flex-start}
+.msg.me{background:var(--bg);border:1px solid var(--line);align-self:flex-end}
+.avatar{display:flex;gap:12px;align-items:center}
+.avatar .face{width:56px;height:56px;border-radius:50%;background:radial-gradient(circle at 50% 38%,var(--h3) 0 22%,var(--h2) 23% 100%);flex:none}
+.split{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+.mark{font-size:11px;color:var(--muted);border:1px dashed var(--line);border-radius:6px;padding:2px 6px}
+.ann{font-size:12px;color:var(--warn);background:var(--warn-soft);border-radius:6px;padding:6px 10px}
+@media (max-width:900px){.shell{grid-template-columns:1fr}.nav{flex-direction:row;flex-wrap:wrap}.nav .grp{width:100%;margin:6px 4px 0}.grid2,.grid3,.split{grid-template-columns:1fr}.kpis{grid-template-columns:repeat(2,1fr)}.ladder{grid-template-columns:repeat(2,1fr)}}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+
+<header class="top">
+  <div class="brand">Elite Workforce Intelligence<small>POC ELGOS · Service Delivery L1 · Desember 2026 · data contoh</small></div>
+  <div class="roles" role="group" aria-label="Lihat sebagai">
+    <button id="r-hr" data-role="hr" aria-pressed="true">HR (Mas Abdan)</button>
+    <button id="r-spv" data-role="spv" aria-pressed="false">Atasan (Team Lead)</button>
+    <button id="r-emp" data-role="emp" aria-pressed="false">Karyawan (Dimas)</button>
+  </div>
+</header>
+
+<div class="shell">
+  <nav class="nav" id="nav" aria-label="Menu"></nav>
+  <main id="main"></main>
+</div>
+
+<script>
+const ANN = t => `<div class="ann">Catatan mockup: ${t}</div>`;
+const heatClass = (v,max)=>{const r=v/max;return r<.15?'l1':r<.35?'l2':r<.6?'l3':r<.85?'l4':'l5'};
+
+const V = {
+/* ============ HR ============ */
+'hr-beranda':()=>`
+<div><div class="crumb">HR · Beranda</div><h1>POC ELGOS Service Delivery L1</h1><p class="sub">24 karyawan · data kinerja Oktober 2026 dari HappyFive · POC live 2 Desember 2026</p></div>
+<div class="kpis">
+ <div class="kpi"><b>24</b><span>Karyawan dengan hasil DNA</span></div>
+ <div class="kpi"><b>9</b><span>Karyawan dengan target merah</span></div>
+ <div class="kpi"><b>6 / 9</b><span>Wawancara TNA selesai</span></div>
+ <div class="kpi"><b>3</b><span>Kandidat promosi</span></div>
+</div>
+<div class="grid2">
+ <div class="panel"><h2>Perlu tindakan Anda</h2><p>Diurutkan dari yang paling mendesak.</p>
+  <div class="list">
+   <div class="item"><div><div class="t">Kebutuhan training "Memahami kontrak proyek" belum punya modul</div><div class="m">Muncul di 4 dari 6 wawancara TNA · belum ada di content library</div></div><a class="lnk" href="#hr-plan">Buat training plan</a></div>
+   <div class="item"><div><div class="t">2 permintaan training dari karyawan</div><div class="m">Dimas Aditya, Rina Putri · sudah disetujui atasan</div></div><a class="lnk" href="#hr-plan">Tinjau</a></div>
+   <div class="item"><div><div class="t">3 karyawan belum mengikuti wawancara TNA</div><div class="m">Link terkirim 18 Nov · pengingat otomatis 2 hari lagi</div></div><a class="lnk" href="#hr-tna">Lihat</a></div>
+   <div class="item"><div><div class="t">3 kandidat promosi junior → senior</div><div class="m">Sudah lulus program Intermediate · saran Elite AI</div></div><a class="lnk" href="#hr-karier">Lihat</a></div>
+  </div></div>
+ <div class="panel"><h2>Dua fungsi di POC ini</h2>
+  <div class="list">
+   <div class="item"><div><div class="t">DNA · proaktif</div><div class="m">Hasil DNA (wawancara manual) ditampilkan: kamus kompetensi, content library, learning program, gap per karyawan.</div></div><span class="pill mute">Hasil saja</span></div>
+   <div class="item"><div><div class="t">TNA · reaktif</div><div class="m">Agent AI mewawancarai karyawan yang target OKR/KPI/SLA-nya meleset, lalu memisahkan masalah training dan non-training.</div></div><span class="pill acc">AI aktif</span></div>
+  </div></div>
+</div>`,
+
+'hr-kamus':()=>`
+<div><div class="crumb">HR · DNA · Function 1</div><h1>Kamus kompetensi Service Delivery L1</h1><p class="sub">Hasil DACUM (wawancara DNA manual, diimpor 15 Nov 2026) · dipetakan ke jenjang karier ELGOS</p></div>
+<div class="note">Di POC, DNA menampilkan hasil yang sudah ada. Wawancara AI DNA belum diaktifkan.</div>
+<div class="panel"><h2>Kompetensi per jenjang</h2><p>Level minimal yang harus dikuasai di setiap jenjang (1 = mengenal, 4 = mahir/mengajarkan).</p>
+<div class="tbl"><table>
+<thead><tr><th>Kompetensi</th><th>Kelompok</th><th class="num">Junior</th><th class="num">Senior</th><th class="num">Leader</th></tr></thead>
+<tbody>
+<tr><td>Menangani tiket insiden sesuai SOP L1</td><td>Operasional</td><td class="num">2</td><td class="num">3</td><td class="num">4</td></tr>
+<tr><td>Memahami kontrak dan SLA proyek pelanggan</td><td>Operasional</td><td class="num">2</td><td class="num">3</td><td class="num">4</td></tr>
+<tr><td>Monitoring dan eskalasi alarm (CloudWatch, Pandu)</td><td>Teknis</td><td class="num">2</td><td class="num">3</td><td class="num">3</td></tr>
+<tr><td>Troubleshooting dasar AWS/GCP</td><td>Teknis</td><td class="num">1</td><td class="num">3</td><td class="num">3</td></tr>
+<tr><td>Komunikasi dengan pelanggan saat insiden</td><td>Perilaku</td><td class="num">2</td><td class="num">3</td><td class="num">4</td></tr>
+<tr><td>Membuat laporan bulanan layanan</td><td>Operasional</td><td class="num">1</td><td class="num">2</td><td class="num">4</td></tr>
+<tr><td>Mengelola jadwal shift dan handover tim</td><td>Kepemimpinan</td><td class="num">–</td><td class="num">2</td><td class="num">4</td></tr>
+</tbody></table></div></div>`,
+
+'hr-library':()=>`
+<div><div class="crumb">HR · DNA · Function 2</div><h1>Content library</h1><p class="sub">Materi di Moodle (Course 1–3) yang dipetakan ke kompetensi</p></div>
+<div class="panel"><div class="tbl"><table>
+<thead><tr><th>Materi</th><th>Kompetensi</th><th>Course</th><th>Status</th></tr></thead>
+<tbody>
+<tr><td>SOP L1 Incident Handling</td><td>Menangani tiket insiden</td><td>Course 1</td><td><span class="pill ok">Tersedia</span></td></tr>
+<tr><td>Monitoring dengan CloudWatch dan Pandu</td><td>Monitoring dan eskalasi</td><td>Course 1</td><td><span class="pill ok">Tersedia</span></td></tr>
+<tr><td>Troubleshooting AWS untuk L1</td><td>Troubleshooting dasar</td><td>Course 2</td><td><span class="pill ok">Tersedia</span></td></tr>
+<tr><td>Komunikasi pelanggan saat insiden</td><td>Komunikasi</td><td>Course 2</td><td><span class="pill ok">Tersedia</span></td></tr>
+<tr><td>Membaca kontrak dan SLA proyek</td><td>Kontrak dan SLA</td><td>–</td><td><span class="pill bad">Belum ada</span></td></tr>
+<tr><td>Leading a shift</td><td>Jadwal shift dan handover</td><td>Course 3</td><td><span class="pill ok">Tersedia</span></td></tr>
+</tbody></table></div></div>`,
+
+'hr-program':()=>`
+<div><div class="crumb">HR · DNA · Function 3</div><h1>Learning program</h1><p class="sub">Syarat lulus per jenjang karier ELGOS</p></div>
+<div class="grid3">
+ <div class="panel"><span class="pill acc">Basic</span><h2 style="margin-top:8px">Syarat lulus probation / junior</h2><p class="sub">Course 1 · 6 materi · ±12 jam</p><div class="m" style="margin-top:8px">22 dari 24 karyawan lulus</div><div class="bar"><i style="width:92%"></i></div></div>
+ <div class="panel"><span class="pill acc">Intermediate</span><h2 style="margin-top:8px">Syarat naik ke senior</h2><p class="sub">Course 2 · 8 materi · ±20 jam</p><div class="m" style="margin-top:8px">9 dari 24 karyawan lulus</div><div class="bar"><i style="width:38%"></i></div></div>
+ <div class="panel"><span class="pill acc">Advance</span><h2 style="margin-top:8px">Syarat naik ke leader</h2><p class="sub">Course 3 · 5 materi · ±16 jam</p><div class="m" style="margin-top:8px">2 dari 24 karyawan lulus</div><div class="bar"><i style="width:8%"></i></div></div>
+</div>`,
+
+'hr-karier':()=>`
+<div><div class="crumb">HR · DNA</div><h1>Gap kompetensi dan pergerakan karier</h1><p class="sub">Gap tiap karyawan terhadap kompetensi jabatannya · saran Elite AI, keputusan tetap di HR</p></div>
+<div class="panel heat"><h2>Peta gap per kompetensi</h2><p>Jumlah karyawan yang belum mencapai level jenjangnya.</p>
+<div class="tbl"><table><thead><tr><th>Kompetensi</th><th class="num">Junior (15)</th><th class="num">Senior (7)</th><th class="num">Leader (2)</th></tr></thead><tbody>
+${[['Kontrak dan SLA proyek',9,4,0],['Tiket insiden sesuai SOP L1',5,1,0],['Monitoring dan eskalasi',4,2,1],['Troubleshooting dasar',7,3,0],['Komunikasi pelanggan',3,2,0],['Laporan bulanan',2,4,1]].map(r=>`<tr><td>${r[0]}</td>${r.slice(1).map(v=>`<td class="c ${heatClass(v,9)}">${v}</td>`).join('')}</tr>`).join('')}
+</tbody></table></div>
+<div class="legend">Sedikit <i class="l1"></i><i class="l2"></i><i class="l3"></i><i class="l4"></i><i class="l5"></i> Banyak orang perlu dilatih</div></div>
+<div class="panel"><h2>Kandidat promosi (saran Elite AI)</h2><p>Sudah lulus program jenjang berikutnya, jabatan masih di bawah.</p>
+<div class="tbl"><table><thead><tr><th>Karyawan</th><th>Jabatan</th><th>Program lulus</th><th>Gap tersisa</th><th></th></tr></thead><tbody>
+<tr><td>Agus Setiawan</td><td>Junior</td><td>Basic, Intermediate</td><td>0 kompetensi</td><td><span class="pill ok">Siap senior</span></td></tr>
+<tr><td>Citra Melati</td><td>Junior</td><td>Basic, Intermediate</td><td>1 · Laporan bulanan</td><td><span class="pill warn">Hampir siap</span></td></tr>
+<tr><td>Eko Prasetyo</td><td>Senior</td><td>Basic, Intermediate, Advance</td><td>0 kompetensi</td><td><span class="pill ok">Siap leader</span></td></tr>
+</tbody></table></div></div>`,
+
+'hr-tna':()=>`
+<div><div class="crumb">HR · TNA</div><h1>TNA dari target kinerja</h1><p class="sub">Periode Oktober 2026 · sumber HappyFive (unggah file)</p></div>
+<div class="grid2">
+ <div class="panel"><h2>Target yang meleset</h2><p>Hanya karyawan dengan target merah yang diwawancarai agent TNA.</p>
+ <div class="tbl"><table><thead><tr><th>Karyawan</th><th>Target</th><th class="num">Target</th><th class="num">Realisasi</th><th>Wawancara</th></tr></thead><tbody>
+ <tr><td>Dimas Aditya</td><td>SLA respons tiket P2 (menit)</td><td class="num">30</td><td class="num">47</td><td><span class="pill ok">Selesai</span></td></tr>
+ <tr><td>Budi Hartono</td><td>SLA respons tiket P2 (menit)</td><td class="num">30</td><td class="num">41</td><td><span class="pill ok">Selesai</span></td></tr>
+ <tr><td>Rina Putri</td><td>Tiket selesai tanpa eskalasi (%)</td><td class="num">80</td><td class="num">62</td><td><span class="pill ok">Selesai</span></td></tr>
+ <tr><td>Fajar Nugroho</td><td>Laporan bulanan tepat waktu</td><td class="num">100%</td><td class="num">67%</td><td><span class="pill ok">Selesai</span></td></tr>
+ <tr><td>Andi Saputra</td><td>SLA respons tiket P2 (menit)</td><td class="num">30</td><td class="num">38</td><td><span class="pill ok">Selesai</span></td></tr>
+ <tr><td>Bayu Kurniawan</td><td>Tiket selesai tanpa eskalasi (%)</td><td class="num">80</td><td class="num">71</td><td><span class="pill ok">Selesai</span></td></tr>
+ <tr><td>Sari Wulandari</td><td>CSAT insiden</td><td class="num">4,5</td><td class="num">3,9</td><td><span class="pill warn">Terkirim</span></td></tr>
+ <tr><td>Hendra Wijaya</td><td>SLA respons tiket P2 (menit)</td><td class="num">30</td><td class="num">35</td><td><span class="pill warn">Terkirim</span></td></tr>
+ <tr><td>Lina Marlina</td><td>Laporan bulanan tepat waktu</td><td class="num">100%</td><td class="num">50%</td><td><span class="pill mute">Belum dikirim</span></td></tr>
+ </tbody></table></div></div>
+ <div class="panel"><h2>Unggah data kinerja</h2><p>File CSV/XLSX ekspor HappyFive: karyawan, target, realisasi, arah (lebih tinggi/lebih rendah lebih baik).</p>
+ <div class="note">Terakhir diunggah 15 Nov 2026 · 24 karyawan · 61 target · 9 karyawan merah</div>
+ <div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap"><button class="btn">Unggah file baru</button><button class="btn pri">Kirim link wawancara</button></div>
+ <p class="sub" style="margin-top:12px;font-size:12.5px">Link wawancara dikirim ke email karyawan. Agent membahas hanya target yang meleset, sekitar 30 menit.</p></div>
+</div>
+<div class="split">
+ <div class="panel"><h2>Masalah training (TNA)</h2><p>Dari 6 wawancara selesai.</p>
+ <div class="list">
+  <div class="item"><div><div class="t">Memahami kontrak dan SLA proyek</div><div class="m">Dimas, Budi, Andi, Rina · tidak tahu prioritas tiket per kontrak</div></div><span class="pill bad">4 orang</span></div>
+  <div class="item"><div><div class="t">SOP L1 versi terbaru</div><div class="m">Dimas, Bayu · masih memakai alur eskalasi lama</div></div><span class="pill warn">2 orang</span></div>
+  <div class="item"><div><div class="t">Menyusun laporan bulanan</div><div class="m">Fajar</div></div><span class="pill mute">1 orang</span></div>
+ </div></div>
+ <div class="panel"><h2>Masalah non-training</h2><p>Dicatat agent. Dashboard INA tidak ikut POC Desember.</p>
+ <div class="list">
+  <div class="item"><div><div class="t">SOP L1 di wiki belum diperbarui sejak Juli</div><div class="m">Disebut 3 orang</div></div><span class="pill mute">Dicatat</span></div>
+  <div class="item"><div><div class="t">Pandu sering lambat saat jam sibuk</div><div class="m">Disebut 2 orang</div></div><span class="pill mute">Dicatat</span></div>
+ </div></div>
+</div>`,
+
+'hr-plan':()=>`
+<div><div class="crumb">HR · TNA</div><h1>Training plan dan permintaan training</h1><p class="sub">Semua masalah training menjadi training plan</p></div>
+<div class="panel"><h2>Prioritas kebutuhan training</h2><p>Urutan = seberapa jauh target meleset × jumlah orang.</p>
+<div class="tbl"><table><thead><tr><th>Kebutuhan</th><th class="num">Orang</th><th>Materi</th><th>Tindakan</th></tr></thead><tbody>
+<tr><td>Memahami kontrak dan SLA proyek</td><td class="num">4</td><td><span class="pill bad">Belum ada</span></td><td><button class="btn pri">Buat modul / panggil vendor</button></td></tr>
+<tr><td>SOP L1 versi terbaru</td><td class="num">2</td><td><span class="pill ok">Course 1 · SOP L1</span></td><td><button class="btn">Tugaskan ke 2 orang</button></td></tr>
+<tr><td>Menyusun laporan bulanan</td><td class="num">1</td><td><span class="pill ok">Course 3</span></td><td><button class="btn">Tugaskan</button></td></tr>
+</tbody></table></div></div>
+<div class="panel"><h2>Permintaan training dari karyawan</h2><p>Diajukan karyawan dari hasil TNA-nya, disetujui atasan.</p>
+<div class="list">
+ <div class="item"><div><div class="t">Dimas Aditya · "Membaca kontrak dan SLA proyek"</div><div class="m">Disetujui atasan 19 Nov · materi belum ada</div></div><div style="display:flex;gap:6px"><button class="btn">Tolak</button><button class="btn pri">Masukkan ke plan</button></div></div>
+ <div class="item"><div><div class="t">Rina Putri · "Troubleshooting AWS untuk L1"</div><div class="m">Disetujui atasan 19 Nov · tersedia di Course 2</div></div><div style="display:flex;gap:6px"><button class="btn">Tolak</button><button class="btn pri">Tugaskan</button></div></div>
+</div></div>
+${ANN('alur persetujuan permintaan training (atasan dulu atau langsung HR) masih menunggu keputusan BT-31.')}`,
+
+/* ============ ATASAN ============ */
+'spv-tim':()=>`
+<div><div class="crumb">Atasan · Tim saya</div><h1>Tim Shift B · 8 orang</h1><p class="sub">Anda melihat anggota tim sendiri saja</p></div>
+<div class="kpis"><div class="kpi"><b>3</b><span>Target merah</span></div><div class="kpi"><b>3</b><span>Butuh training</span></div><div class="kpi"><b>1</b><span>Permintaan training</span></div><div class="kpi"><b>1</b><span>Kandidat promosi</span></div></div>
+<div class="panel"><div class="tbl"><table><thead><tr><th>Anggota</th><th>Jenjang</th><th>Target merah</th><th>Butuh training</th><th>Program</th></tr></thead><tbody>
+<tr><td>Dimas Aditya</td><td>Junior</td><td><span class="pill bad">SLA respons P2</span></td><td>Kontrak dan SLA; SOP L1 terbaru</td><td>Basic ✓</td></tr>
+<tr><td>Budi Hartono</td><td>Junior</td><td><span class="pill bad">SLA respons P2</span></td><td>Kontrak dan SLA</td><td>Basic ✓</td></tr>
+<tr><td>Rina Putri</td><td>Junior</td><td><span class="pill bad">Tanpa eskalasi</span></td><td>Kontrak dan SLA</td><td>Basic ✓</td></tr>
+<tr><td>Agus Setiawan</td><td>Junior</td><td><span class="pill ok">Semua hijau</span></td><td>–</td><td>Basic ✓ Intermediate ✓</td></tr>
+<tr><td>Citra Melati</td><td>Junior</td><td><span class="pill ok">Semua hijau</span></td><td>–</td><td>Basic ✓ Intermediate ✓</td></tr>
+</tbody></table></div></div>
+<div class="panel"><h2>Permintaan training menunggu Anda</h2>
+<div class="item"><div><div class="t">Dimas Aditya · "Membaca kontrak dan SLA proyek"</div><div class="m">Dari hasil TNA 18 Nov</div></div><div style="display:flex;gap:6px"><button class="btn">Tolak</button><button class="btn pri">Setujui</button></div></div></div>`,
+
+/* ============ KARYAWAN ============ */
+'emp-wawancara':()=>`
+<div><div class="crumb">Untuk Anda · Wawancara</div><h1>Ngobrol soal target Oktober</h1><p class="sub">Sekitar 30 menit · bisa dijeda dan dilanjutkan</p></div>
+<div class="note">Wawancara ini untuk mencari bantuan yang Anda butuhkan, bukan untuk menilai Anda.</div>
+<div class="panel"><div class="avatar" style="margin-bottom:14px"><div class="face" aria-hidden="true"></div><div><b>Asisten EWI</b><div class="m" style="color:var(--muted)">Membahas 1 target yang belum tercapai: SLA respons tiket P2</div></div></div>
+<div class="chat">
+ <div class="msg ai">Halo Dimas. Bulan Oktober rata-rata respons tiket P2 Anda 47 menit, targetnya 30 menit. Boleh ceritakan tiket P2 terakhir yang terasa lama?</div>
+ <div class="msg me">Biasanya saya bingung tiket itu masuk prioritas berapa, karena tiap pelanggan kontraknya beda.</div>
+ <div class="msg ai">Kalau sedang bingung, Anda biasanya cek ke mana dulu?</div>
+ <div class="msg me">Tanya senior di grup. Kadang SOP di wiki juga beda dengan yang dipakai tim.</div>
+</div>
+<div style="display:flex;gap:8px;margin-top:14px;flex-wrap:wrap"><button class="btn">🎙 Jawab dengan suara</button><button class="btn">Ketik jawaban</button></div></div>`,
+
+'emp-hasil':()=>`
+<div><div class="crumb">Untuk Anda · Hasil saya</div><h1>Hasil Anda</h1><p class="sub">Dimas Aditya · Junior Service Delivery L1</p></div>
+<div class="panel"><h2>Jenjang karier</h2><p>Lulus program Intermediate untuk bisa naik ke senior.</p>
+<div class="ladder"><div class="step"><b>Probation</b><span>Selesai</span></div><div class="step cur"><b>Junior</b><span>Basic ✓ · posisi sekarang</span></div><div class="step"><b>Senior</b><span>Perlu Intermediate</span></div><div class="step"><b>Leader</b><span>Perlu Advance</span></div></div></div>
+<div class="split">
+ <div class="panel"><h2>Dari wawancara TNA</h2><p>Penyebab target SLA respons P2 belum tercapai.</p>
+ <div class="list"><div class="item"><div><div class="t">Memahami kontrak dan SLA tiap pelanggan</div><div class="m">Materi sedang disiapkan HR</div></div><span class="pill warn">Diminta</span></div>
+ <div class="item"><div><div class="t">SOP L1 versi terbaru</div><div class="m">Course 1 · SOP L1 Incident Handling · 2 jam</div></div><a class="lnk" href="#emp-hasil">Mulai belajar</a></div></div></div>
+ <div class="panel"><h2>Saran Elite AI berikutnya</h2><p>Menuju senior.</p>
+ <div class="list"><div class="item"><div><div class="t">Troubleshooting AWS untuk L1</div><div class="m">Course 2 · bagian dari Intermediate</div></div><a class="lnk" href="#emp-hasil">Mulai</a></div>
+ <div class="item"><div><div class="t">Komunikasi pelanggan saat insiden</div><div class="m">Course 2 · bagian dari Intermediate</div></div><a class="lnk" href="#emp-hasil">Mulai</a></div></div>
+ <button class="btn" style="margin-top:10px">Minta training lain</button></div>
+</div>`,
+};
+
+const NAV = {
+ hr:[['Ringkasan'],['hr-beranda','Beranda'],['DNA · hasil'],['hr-kamus','Kamus kompetensi'],['hr-library','Content library'],['hr-program','Learning program'],['hr-karier','Gap & karier'],['TNA · AI'],['hr-tna','Target & wawancara'],['hr-plan','Training plan']],
+ spv:[['Tim'],['spv-tim','Tim saya']],
+ emp:[['Untuk Anda'],['emp-wawancara','Wawancara saya'],['emp-hasil','Hasil saya']],
+};
+const roleOf = v => v.split('-')[0];
+function render(){
+  let v = (location.hash||'').slice(1); if(!V[v]) v='hr-beranda';
+  const role = roleOf(v);
+  document.querySelectorAll('.roles button').forEach(b=>b.setAttribute('aria-pressed', b.dataset.role===role));
+  document.getElementById('nav').innerHTML = NAV[role].map(n=> !V[n[0]] ? `<div class="grp">${n[0]}</div>` : `<a href="#${n[0]}" ${n[0]===v?'aria-current="page"':''}>${n[1]}</a>`).join('');
+  document.getElementById('main').innerHTML = V[v]();
+  window.scrollTo(0,0);
+}
+document.querySelectorAll('.roles button').forEach(b=>b.addEventListener('click',()=>{location.hash = NAV[b.dataset.role].find(n=>V[n[0]])[0]}));
+addEventListener('hashchange',render); render();
+</script>
+
+</body>
+</html>
