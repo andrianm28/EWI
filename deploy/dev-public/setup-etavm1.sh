@@ -38,6 +38,18 @@ if ! sudo test -f "$DIR/.env"; then
   echo ".env disalin ke $DIR/.env"
 fi
 
+# 2b. Variabel yang dibutuhkan sejak enkripsi lokal (PR #2). Kunci dibuat sekali bila belum ada;
+#     CADANGKAN nilainya: hilang = data dev terenkripsi tidak terbaca.
+add_env() { sudo grep -q "^$1=" "$DIR/.env" || echo "$1=$2" | sudo tee -a "$DIR/.env" >/dev/null; }
+if ! sudo grep -qE '^EWI_LOCAL_MASTER_KEY=.+' "$DIR/.env"; then
+  sudo sed -i '/^EWI_LOCAL_MASTER_KEY=/d' "$DIR/.env"
+  add_env EWI_LOCAL_MASTER_KEY "$(openssl rand -hex 32)"
+  echo "EWI_LOCAL_MASTER_KEY dibuat di $DIR/.env -- simpan cadangannya di tempat aman."
+fi
+PUB="$(sudo sed -n 's/^PUBLIC_URL=//p' "$DIR/.env" | tail -1)"
+add_env APP_BASE_URL "${PUB:-https://dev-elgos.eliteacademy.id}"
+add_env MAIL_PROVIDER log
+
 # 3. Mockup statis: tetap dilayani nginx host di /mockup/, isinya kini ditulis pipeline.
 sudo install -d -m 755 "$MOCKUP_DST"
 sudo chown -R "$DEPLOY_USER:$DEPLOY_USER" "$MOCKUP_DST"
