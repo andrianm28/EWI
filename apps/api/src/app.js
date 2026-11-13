@@ -7,6 +7,8 @@ const { requireAuth } = require('./core/auth/middleware');
 const { authRoutes } = require('./core/auth/routes');
 const { tenantContext } = require('./core/tenant');
 const { createFlagService } = require('./core/flags');
+const { flagAdminRouter } = require('./core/flags/admin-routes');
+const { createAuditService, memoryAuditStore } = require('./core/audit');
 const { createEntitlementService } = require('./core/entitlement');
 const { requireSubmodule } = require('./core/entitlement/guard');
 const { errorHandler, notFound } = require('./core/errors');
@@ -19,7 +21,7 @@ const SUBMODULE_MODULES = ['cca', 'dna', 'tna', 'ina'].map((k) => require(`./mod
 
 /**
  * Bangun aplikasi Express. Semua akses data lewat `stores` agar bisa diganti di test.
- * stores: { users, flags, entitlements, projects, people, settings, dna, interviews, tna, projectsExtra }
+ * stores: { users, flags, audit, entitlements, projects, people, settings, dna, interviews, tna, projectsExtra }
  * ai / catalog bisa diganti di test; default mengikuti config (T3 dan K-1 masih terbuka).
  */
 function createApp({ config, stores, ai, catalog }) {
@@ -29,9 +31,13 @@ function createApp({ config, stores, ai, catalog }) {
   const entitlements = createEntitlementService(stores.entitlements);
   const auth = requireAuth(tokens);
   const settings = createSettingsService(stores.settings);
+  // R2-2: store audit wajib di luar test; in-memory hanya untuk test yang tidak menyediakannya.
+  if (!stores.audit && config.nodeEnv !== 'test') throw new Error('stores.audit wajib (R2-2)');
+  const audit = createAuditService(stores.audit || memoryAuditStore());
   const deps = {
     stores,
     flags,
+    audit,
     settings,
     ai: ai || createAiProvider(config.aiProvider),
     catalog: catalog || createCatalogService({ elitementor: elitementorAdapter(), moodle: moodleAdapter() }),
@@ -56,6 +62,7 @@ function createApp({ config, stores, ai, catalog }) {
     } catch (e) { next(e); }
   });
   api.use('/projects', projects.router({ projects: stores.projects }));
+  api.use('/admin', flagAdminRouter({ flags, audit }));
   for (const m of SUBMODULE_MODULES) {
     api.use(`/${m.key}`, requireSubmodule(m.key, { entitlements, flags }), m.router(deps));
   }

@@ -63,5 +63,18 @@ Visibilitas (RG-3) berlaku di semua endpoint data karyawan: learner dirinya, ata
 | C3 / BT-29 / BT-19 siapa diwawancarai TNA | Default produk `red_only`; per klien diatur `settings.tna.interviewScope` + `interviewJobRoleId` (ELGOS: semua anggota L1). Layar penjadwalan memakai default klien dan HR bisa menggantinya per proyek | `src/core/settings`, `src/modules/tna` |
 | C4 TNA tanpa DACUM | Tidak ada syarat job role/kamus kompetensi untuk sesi TNA | `src/modules/tna`, `src/modules/interviews` |
 
+## Keamanan data (grilling teknis 13 Nov)
+
+| Keputusan | Perilaku | Tempat |
+|---|---|---|
+| R2-1 siapa mengubah flag | Hanya `eta_admin` (HR 403, termasuk baca rincian): `GET /api/admin/flags`, `PUT /api/admin/flags/:key` `{enabled}` untuk tenant tempat Admin ETA login. Kill switch global `PUT /api/admin/kill-switches/:key` `{active, reason}` mematikan fitur di semua tenant tanpa deploy (alasan wajib saat menyalakan). Setiap perubahan masuk `audit_logs` (`feature_flag`/`kill_switch`, nilai lama dan baru). | `src/core/flags`, tabel `feature_kill_switches` |
+| R2-2 audit baca data individu | Wajib, tanpa flag. Dicatat: siapa, peran, kapan, tenant, karyawan (`meta.employeeIds`), objek (`meta.objectType/objectIds`). Endpoint: detail/daftar profil DNA, kandidat promosi, transkrip sesi DNA/TNA, temuan TNA, training plan. Dashboard agregat (`/tna/dashboard`, `/tna/pareto`) tidak dicatat. Gagal mencatat = request gagal. `audit_logs` append-only: UPDATE/DELETE/TRUNCATE ditolak trigger; pemeliharaan hanya DBA lewat `SET LOCAL ewi.audit_maintenance = 'on'`. | `src/core/audit`, migrasi `20261113000005` |
+
+Catatan R2-1: panel Admin ETA lintas tenant (memilih tenant lain dari satu login) belum dibuat karena aturan arsitektur 2
+(tenant hanya dari `req.tenantId`); Admin ETA masuk ke tenant yang mau diatur. Di produksi, role DB aplikasi
+sebaiknya juga tanpa hak UPDATE/DELETE/TRUNCATE pada `audit_logs`.
+
 ## Belum termasuk
-SSO deep link (T1), token endpoint OAuth2 (T2), email undangan (T4), Sync Back webhook ke `lna_program_completions`, suara.
+SSO deep link (T1), token endpoint OAuth2 (T2), email undangan (T4), Sync Back webhook ke `lna_program_completions`.
+Diputuskan 13 Nov, menyusul di PR terpisah: R2-3 enkripsi envelope dengan kunci KMS per tenant, R3-1 wawancara
+TNA teks + suara, R3-2 login karyawan lewat link email, R3-3 impor XLSX/CSV dengan pemetaan kolom, validasi, dan pratinjau.

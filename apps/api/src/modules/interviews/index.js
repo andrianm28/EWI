@@ -40,7 +40,7 @@ async function analyze({ stores, ai, tenantId, session, transcript, ctx }) {
   return { findings: saved };
 }
 
-function interviewRouter({ submodule, stores, ai }) {
+function interviewRouter({ submodule, stores, ai, audit }) {
   const r = express.Router();
 
   async function loadVisible(req) {
@@ -79,7 +79,10 @@ function interviewRouter({ submodule, stores, ai }) {
 
   r.get('/:id', wrap(async (req, res) => {
     const s = await loadVisible(req);
-    res.json({ data: { ...s, turns: await stores.interviews.turns(s.id) } });
+    const turns = await stores.interviews.turns(s.id);
+    // R2-2: baca transkrip individu selalu dicatat (termasuk atasan dan Admin ETA)
+    await audit.readIndividual(req, `${submodule}.interview_transcript`, { employeeIds: [s.intervieweeId], objectType: 'interview_session', objectIds: [s.id] });
+    res.json({ data: { ...s, turns } });
   }));
 
   r.post('/:id/consent', wrap(async (req, res) => {

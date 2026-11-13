@@ -22,7 +22,7 @@ const PLAN_STATUSES = ['proposed', 'needs_module', 'assigned', 'in_progress', 'c
 module.exports = {
   key: 'tna',
   title: 'Training Needs Analysis',
-  router({ stores, ai, settings, catalog, flags } = {}) {
+  router({ stores, ai, settings, catalog, flags, audit } = {}) {
     const r = express.Router();
     const hr = requireRole(ROLES.HR_ADMIN);
 
@@ -101,12 +101,14 @@ module.exports = {
       res.status(201).json({ data: { scope, scheduled: created.length, skipped: picks.length - created.length, sessions: created } });
     }));
 
-    r.use('/sessions', interviewRouter({ submodule: 'tna', stores, ai }));
+    r.use('/sessions', interviewRouter({ submodule: 'tna', stores, ai, audit }));
 
     // --- Temuan & Pareto ---
     r.get('/findings', wrap(async (req, res) => {
       const scope = await scopeFor(req, stores.people);
-      res.json({ data: await stores.tna.listFindings(req.tenantId, scope, { projectId: req.query.projectId, categories: await visibleCategories(req.tenantId) }) });
+      const rows = await stores.tna.listFindings(req.tenantId, scope, { projectId: req.query.projectId, categories: await visibleCategories(req.tenantId) });
+      await audit.readIndividual(req, 'tna.findings', { employeeIds: rows.map((f) => f.userId), objectType: 'tna_finding', objectIds: rows.map((f) => f.id) });
+      res.json({ data: rows });
     }));
 
     r.get('/pareto', wrap(async (req, res) => {
@@ -152,7 +154,9 @@ module.exports = {
 
     r.get('/plan-items', wrap(async (req, res) => {
       const scope = await scopeFor(req, stores.people);
-      res.json({ data: await stores.tna.listPlanItems(req.tenantId, scope) });
+      const rows = await stores.tna.listPlanItems(req.tenantId, scope);
+      await audit.readIndividual(req, 'tna.plan_items', { employeeIds: rows.map((p) => p.userId), objectType: 'tna_plan_item', objectIds: rows.map((p) => p.id) });
+      res.json({ data: rows });
     }));
 
     r.patch('/plan-items/:id', requireRole(ROLES.HR_ADMIN, ROLES.SUPERVISOR), wrap(async (req, res) => {

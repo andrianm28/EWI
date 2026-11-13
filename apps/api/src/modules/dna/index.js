@@ -67,7 +67,7 @@ async function canSeePromotion(req, flags, settings) {
 module.exports = {
   key: 'dna',
   title: 'Development Need Analysis',
-  router({ stores, ai, settings, flags } = {}) {
+  router({ stores, ai, settings, flags, audit } = {}) {
     const r = express.Router();
     const hr = requireRole(ROLES.HR_ADMIN);
 
@@ -187,6 +187,7 @@ module.exports = {
       const people = await stores.people.list(req.tenantId, scope, { roles: ['learner', 'supervisor', 'role_leader', 'sme'], jobRoleId: req.query.jobRoleId });
       const showPromotion = await canSeePromotion(req, flags, settings);
       const rows = await profiles(stores, req.tenantId, people);
+      await audit.readIndividual(req, 'dna.employee_results', { employeeIds: people.map((p) => p.id), objectType: 'dna_profile' });
       res.json({ data: rows.map((p) => (showPromotion ? p : { ...p, career: { ...p.career, promotionCandidate: undefined } })) });
     }));
 
@@ -203,6 +204,7 @@ module.exports = {
       ]);
       const career = careerStatus({ levels, currentLevelId: person.careerLevelId, completions });
       if (!(await canSeePromotion(req, flags, settings))) delete career.promotionCandidate;
+      await audit.readIndividual(req, 'dna.employee_result', { employeeIds: [person.id], objectType: 'dna_profile', objectIds: assessments.map((a) => a.id) });
       res.json({ data: { person, gap: computeGap({ competencies, assessments }), career, completions, levels } });
     }));
 
@@ -212,12 +214,13 @@ module.exports = {
       }
       const scope = await scopeFor(req, stores.people);
       const people = await stores.people.list(req.tenantId, scope, { roles: ['learner', 'supervisor', 'role_leader', 'sme'] });
-      const rows = await profiles(stores, req.tenantId, people);
-      res.json({ data: rows.filter((p) => p.career.promotionCandidate) });
+      const rows = (await profiles(stores, req.tenantId, people)).filter((p) => p.career.promotionCandidate);
+      await audit.readIndividual(req, 'dna.promotion_candidates', { employeeIds: rows.map((p) => p.id), objectType: 'dna_profile' });
+      res.json({ data: rows });
     }));
 
     r.use('/sessions', requireFlag(flags, FLAGS.DNA_AI_INTERVIEW, 'Wawancara AI DNA belum diaktifkan; gunakan impor hasil wawancara manual'),
-      interviewRouter({ submodule: 'dna', stores, ai }));
+      interviewRouter({ submodule: 'dna', stores, ai, audit }));
     return r;
   },
 };
