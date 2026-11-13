@@ -49,6 +49,8 @@ export const imports = {
     post<{ data: ImportPreview }>(`/${sm}/imports/batches/${id}/preview`, { mapping, options }),
   commit: (sm: Submodule, id: string, mapping: Mapping, options: Record<string, string>) =>
     post<{ data: ImportBatch }>(`/${sm}/imports/batches/${id}/commit`, { mapping, options }),
+  /** R3-2: undang karyawan yang belum pernah masuk (link email berlaku 7 hari). */
+  invitePending: () => post<{ data: { sent: number } }>('/invitations', {}),
   /** Unduh template lewat fetch (butuh token), lalu simpan sebagai file. */
   async downloadTemplate(sm: Submodule, kind: string, format: 'xlsx' | 'csv') {
     const res = await raw(`/${sm}/imports/templates/${kind}.${format}`)

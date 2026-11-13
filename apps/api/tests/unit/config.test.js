@@ -14,4 +14,13 @@ describe('loadConfig', () => {
   it('memakai audience ewi secara default', () => {
     expect(loadConfig({ NODE_ENV: 'test', EWI_JWT_SECRET: 'x'.repeat(40) }).jwt.audience).toBe('ewi');
   });
+  it('R3-2: produksi wajib SES dengan MAIL_FROM; dev default log', () => {
+    const base = { EWI_JWT_SECRET: 'x'.repeat(40), DATABASE_URL: 'postgres://x' };
+    expect(() => loadConfig({ ...base, NODE_ENV: 'production' })).toThrow(/MAIL_PROVIDER=ses/);
+    expect(() => loadConfig({ ...base, NODE_ENV: 'production', MAIL_PROVIDER: 'ses' })).toThrow(/MAIL_FROM/);
+    expect(loadConfig({ ...base, NODE_ENV: 'production', MAIL_PROVIDER: 'ses', MAIL_FROM: 'ELGOS <no-reply@x.id>' }).mail.provider).toBe('ses');
+    const dev = loadConfig({ ...base, NODE_ENV: 'development', CORS_ORIGIN: 'https://dev.x.id/,http://a' });
+    expect(dev.mail.provider).toBe('log');
+    expect(dev.appBaseUrl).toBe('https://dev.x.id');
+  });
 });

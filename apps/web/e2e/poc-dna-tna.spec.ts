@@ -213,3 +213,46 @@ test('learner: wawancara TNA lalu meminta training', async ({ page }) => {
   await expect(page.getByRole('status')).toHaveText('Permintaan training terkirim.')
   expect(requested).toBe(true)
 })
+
+test('karyawan: minta link masuk lalu masuk dari link email (R3-2)', async ({ page }) => {
+  let requested: unknown = null; let verified: unknown = null
+  await mockImports(page)
+  await page.route('**/api/auth/email-link', async (r) => {
+    requested = r.request().postDataJSON()
+    await r.fulfill({ status: 202, json: { message: 'Bila email terdaftar di organisasi ini, link masuk sudah dikirim. Periksa kotak masuk Anda.' } })
+  })
+  await page.route('**/api/auth/email-link/verify', async (r) => {
+    verified = r.request().postDataJSON()
+    await r.fulfill({ json: { token: 't', user: { id: 'u-l', tenantId: 't-1', email: 'dimas@demo.test', role: 'learner' } } })
+  })
+  await page.route('**/api/me/access', (r) => r.fulfill({ json: ACCESS }))
+  await page.goto('/login')
+  await page.getByLabel('Organisasi').fill('demo')
+  await page.getByLabel('Email').fill('dimas@demo.test')
+  await page.getByRole('button', { name: 'Minta link lewat email' }).click()
+  await expect(page.getByRole('status')).toContainText('link masuk sudah dikirim')
+  expect(requested).toEqual({ tenant: 'demo', email: 'dimas@demo.test' })
+
+  await page.goto('/masuk#token=abcdefghijklmnopqrstuvwxyz012345')
+  await expect(page).toHaveURL(/\/masuk$/) // token dihapus dari address bar
+  expect(verified).toBeNull() // belum ditukar sebelum tombol ditekan
+  await page.getByRole('button', { name: 'Lanjutkan masuk' }).click()
+  await expect(page.getByTestId('card-dna')).toBeVisible()
+  expect(verified).toEqual({ token: 'abcdefghijklmnopqrstuvwxyz012345' })
+})
+
+test('link masuk tidak valid menampilkan pesan', async ({ page }) => {
+  await page.route('**/api/auth/email-link/verify', (r) => r.fulfill({ status: 401, json: { error: { code: 'UNAUTHORIZED', message: 'Link masuk tidak valid, sudah dipakai, atau kedaluwarsa. Minta link baru.' } } }))
+  await page.goto('/masuk#token=abcdefghijklmnopqrstuvwxyz012345')
+  await page.getByRole('button', { name: 'Lanjutkan masuk' }).click()
+  await expect(page.getByRole('alert')).toContainText('Minta link baru')
+})
+
+test('HR: kirim undangan masuk ke karyawan baru', async ({ page }) => {
+  await page.route('**/api/dna/employees', (r) => r.fulfill({ json: { data: [] } }))
+  await loginAs(page, 'hr_admin')
+  await page.route('**/api/invitations', (r) => r.fulfill({ status: 201, json: { data: { sent: 12 } } }))
+  await page.goto('/m/dna')
+  await page.getByRole('button', { name: 'Kirim undangan masuk ke karyawan yang belum pernah masuk' }).click()
+  await expect(page.getByTestId('import-panel').getByRole('status')).toHaveText('Undangan masuk dikirim ke 12 karyawan.')
+})

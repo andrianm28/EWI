@@ -11,6 +11,11 @@ function loadConfig(env = process.env) {
     errors.push('EWI_JWT_SECRET tidak boleh sama dengan SESSION_SECRET EliteMentor');
   }
   if (!env.DATABASE_URL && env.NODE_ENV !== 'test') errors.push('DATABASE_URL wajib diisi');
+  const mailProvider = env.MAIL_PROVIDER || (env.NODE_ENV === 'test' ? 'memory' : 'log');
+  if (!['ses', 'log', 'memory'].includes(mailProvider)) errors.push('MAIL_PROVIDER harus ses, log, atau memory');
+  // R3-2: di produksi link masuk harus benar-benar terkirim, bukan ditulis ke log
+  if (env.NODE_ENV === 'production' && mailProvider !== 'ses') errors.push('MAIL_PROVIDER=ses wajib di produksi');
+  if (mailProvider === 'ses' && !env.MAIL_FROM) errors.push('MAIL_FROM wajib diisi untuk MAIL_PROVIDER=ses');
   if (errors.length) {
     const err = new Error(`Konfigurasi tidak valid:\n- ${errors.join('\n- ')}`);
     err.code = 'CONFIG_INVALID';
@@ -32,6 +37,13 @@ function loadConfig(env = process.env) {
       clientId: env.ELITEMENTOR_CLIENT_ID || '',
       clientSecret: env.ELITEMENTOR_CLIENT_SECRET || '',
       webhookSecret: env.ELITEMENTOR_WEBHOOK_SECRET || '',
+    }),
+    // Alamat web untuk link masuk (R3-2), mis. https://dev-elgos.eliteacademy.id
+    appBaseUrl: (env.APP_BASE_URL || (env.CORS_ORIGIN || '').split(',')[0] || 'http://localhost:5174').replace(/\/$/, ''),
+    mail: Object.freeze({
+      provider: mailProvider,
+      from: env.MAIL_FROM || '',
+      region: env.MAIL_REGION || env.AWS_REGION || 'ap-southeast-3',
     }),
     jwt: Object.freeze({
       secret,

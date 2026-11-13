@@ -5,6 +5,8 @@ const cors = require('cors');
 const { createTokenService } = require('./core/auth/tokens');
 const { requireAuth } = require('./core/auth/middleware');
 const { authRoutes } = require('./core/auth/routes');
+const { createEmailLinkService, emailLinkRoutes, invitationRoutes } = require('./core/auth/email-link');
+const { createMailer } = require('./integrations/mailer');
 const { tenantContext } = require('./core/tenant');
 const { createFlagService } = require('./core/flags');
 const { flagAdminRouter } = require('./core/flags/admin-routes');
@@ -24,7 +26,7 @@ const SUBMODULE_MODULES = ['cca', 'dna', 'tna', 'ina'].map((k) => require(`./mod
  * stores: { users, flags, audit, entitlements, projects, people, settings, dna, interviews, tna, projectsExtra }
  * ai / catalog bisa diganti di test; default mengikuti config (T3 dan K-1 masih terbuka).
  */
-function createApp({ config, stores, ai, catalog }) {
+function createApp({ config, stores, ai, catalog, mailer }) {
   const app = express();
   const tokens = createTokenService(config.jwt);
   const flags = createFlagService(stores.flags);
@@ -34,6 +36,7 @@ function createApp({ config, stores, ai, catalog }) {
   // R2-2: store audit wajib di luar test; in-memory hanya untuk test yang tidak menyediakannya.
   if (!stores.audit && config.nodeEnv !== 'test') throw new Error('stores.audit wajib (R2-2)');
   const audit = createAuditService(stores.audit || memoryAuditStore());
+  const links = createEmailLinkService({ stores, mailer: mailer || createMailer(config.mail || {}), appBaseUrl: config.appBaseUrl });
   const deps = {
     stores,
     flags,
@@ -52,6 +55,7 @@ function createApp({ config, stores, ai, catalog }) {
   app.use(express.json({ limit: '1mb' }));
 
   app.get('/api/health', (_req, res) => res.json({ status: 'ok', service: 'ewi-api' }));
+  if (stores.loginLinks) app.use('/api/auth/email-link', emailLinkRoutes({ users: stores.users, links, tokens, audit }));
   app.use('/api/auth', authRoutes({ users: stores.users, tokens, requireAuth: auth, tenantPicker: config.loginTenantPicker }));
 
   const api = express.Router();
@@ -63,6 +67,7 @@ function createApp({ config, stores, ai, catalog }) {
   });
   api.use('/projects', projects.router({ projects: stores.projects }));
   api.use('/admin', flagAdminRouter({ flags, audit }));
+  if (stores.loginLinks) api.use('/invitations', invitationRoutes({ users: stores.users, links, audit }));
   for (const m of SUBMODULE_MODULES) {
     api.use(`/${m.key}`, requireSubmodule(m.key, { entitlements, flags }), m.router(deps));
   }

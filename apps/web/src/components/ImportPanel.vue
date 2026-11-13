@@ -71,6 +71,11 @@ const save = () => run(async () => {
   await loadHistory()
 })
 
+const invite = () => run(async () => {
+  const r = (await imports.invitePending()).data
+  notice.value = r.sent ? `Undangan masuk dikirim ke ${r.sent} karyawan.` : 'Semua karyawan sudah pernah masuk; tidak ada undangan baru.'
+})
+
 const fmt = (v: unknown) => (v === null || v === undefined ? '' : String(v))
 const when = (s: string | null) => (s ? new Date(s).toLocaleString('id-ID', { dateStyle: 'medium', timeStyle: 'short' }) : '')
 </script>
@@ -160,6 +165,11 @@ const when = (s: string | null) => (s ? new Date(s).toLocaleString('id-ID', { da
           </table>
         </div>
       </div>
+    </div>
+
+    <div class="border-t pt-2">
+      <button type="button" class="text-blue-700" :disabled="busy" @click="invite">Kirim undangan masuk ke karyawan yang belum pernah masuk</button>
+      <p class="text-xs text-slate-500">Karyawan masuk lewat link di email (tanpa password). Link undangan berlaku 7 hari.</p>
     </div>
 
     <div v-if="history.length" data-testid="import-history">

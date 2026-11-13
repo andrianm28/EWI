@@ -21,6 +21,49 @@ function createStores(sequelize) {
         );
         return row || null;
       },
+      /** R3-2: penerima undangan; `pendingOnly` = belum pernah masuk. HR/Admin tidak diundang lewat jalur ini. */
+      async listInvitees(tenantId, { userIds, pendingOnly } = {}) {
+        let sql = `SELECT id, tenant_id AS "tenantId", email, name, role FROM users
+                    WHERE tenant_id = :tenantId AND status <> 'disabled' AND role NOT IN ('hr_admin','eta_admin')`;
+        const rep = { tenantId };
+        if (userIds) { sql += ' AND id IN (:userIds)'; rep.userIds = userIds.length ? userIds : ['00000000-0000-0000-0000-000000000000']; }
+        if (pendingOnly) sql += ' AND last_login_at IS NULL';
+        return q(`${sql} ORDER BY name NULLS LAST, email`, rep);
+      },
+      async tenantName(tenantId) {
+        const [row] = await q('SELECT name FROM tenants WHERE id = :tenantId', { tenantId });
+        return row ? row.name : null;
+      },
+    },
+    // R3-2: link masuk via email (hanya hash token yang disimpan)
+    loginLinks: {
+      async create({ tenantId, userId, tokenHash, purpose, expiresAt, createdBy }) {
+        await sequelize.query(
+          `INSERT INTO login_links (tenant_id, user_id, token_hash, purpose, expires_at, created_by)
+           VALUES (:tenantId, :userId, :tokenHash, :purpose, :expiresAt, :createdBy)`,
+          { replacements: { tenantId, userId, tokenHash, purpose, expiresAt, createdBy: createdBy || null } },
+        );
+      },
+      async countSince(tenantId, userId, since) {
+        const [row] = await q(`SELECT count(*)::int AS n FROM login_links WHERE tenant_id = :tenantId AND user_id = :userId AND created_at > :since`, { tenantId, userId, since });
+        return row.n;
+      },
+      /** Pakai token sekali (atomik). Return user aktif + tenant atau null. */
+      async consume(tokenHash) {
+        const [row] = await q(
+          `WITH used AS (
+             UPDATE login_links SET used_at = now()
+              WHERE token_hash = :tokenHash AND used_at IS NULL AND expires_at > now()
+              RETURNING tenant_id, user_id, purpose)
+           SELECT u.id, u.tenant_id AS "tenantId", u.email, u.name, u.role, used.purpose
+             FROM used JOIN users u ON u.id = used.user_id AND u.tenant_id = used.tenant_id
+             JOIN tenants t ON t.id = u.tenant_id
+            WHERE u.status <> 'disabled' AND t.status = 'active'`,
+          { tokenHash },
+        );
+        if (row) await q(`UPDATE users SET status = 'active', last_login_at = now() WHERE id = :id`, { id: row.id }, QueryTypes.UPDATE);
+        return row || null;
+      },
     },
     flags: {
       async getTenantFlags(tenantId) {
