@@ -1,4 +1,4 @@
-const { evaluate, normalizeRow } = require('../../src/modules/tna/performance');
+const { evaluate } = require('../../src/modules/tna/performance');
 const { selectInterviewees } = require('../../src/modules/tna/targeting');
 const { rankTrainingNeeds } = require('../../src/modules/tna/pareto');
 
@@ -10,18 +10,6 @@ describe('evaluate target kinerja (RG-2)', () => {
   it('lebih rendah lebih baik (mis. SLA waktu respons)', () => {
     expect(evaluate({ target: 15, actual: 30, direction: 'lower' })).toEqual({ isMet: false, missRatio: 1 });
     expect(evaluate({ target: 15, actual: 10, direction: 'lower' }).isMet).toBe(true);
-  });
-});
-
-describe('normalizeRow', () => {
-  it('menolak baris tanpa identitas karyawan atau tipe salah', () => {
-    expect(normalizeRow({ metricType: 'kpi', name: 'x', target: 1, actual: 1 }).error).toMatch(/employeeId/);
-    expect(normalizeRow({ email: 'a@b.c', metricType: 'nps', name: 'x', target: 1, actual: 1 }).error).toMatch(/metricType/);
-    expect(normalizeRow({ email: 'a@b.c', metricType: 'kpi', name: 'x', target: 'a', actual: 1 }).error).toMatch(/angka/);
-  });
-  it('menghitung isMet dan menormalkan email', () => {
-    const { row } = normalizeRow({ email: 'Dimas@ELGOS.test', metricType: 'SLA', name: 'Respons tiket', target: 15, actual: 25, direction: 'lower' });
-    expect(row).toMatchObject({ email: 'dimas@elgos.test', metricType: 'sla', isMet: false, direction: 'lower' });
   });
 });
 

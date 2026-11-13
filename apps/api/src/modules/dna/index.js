@@ -11,6 +11,9 @@ const { badRequest, notFound, HttpError } = require('../../core/errors');
 const { interviewRouter, wrap } = require('../interviews');
 const { computeGap } = require('./gap');
 const { careerStatus } = require('./career');
+const { importRouter } = require('../imports');
+const { getKind } = require('../imports/kinds');
+const { validateRows, commitRows } = require('../imports/engine');
 
 const TIERS = ['basic', 'intermediate', 'advanced'];
 const KINDS = ['core', 'job'];
@@ -151,35 +154,16 @@ module.exports = {
       const { rows, assessor, assessedAt } = req.body || {};
       if (!Array.isArray(rows) || !rows.length || rows.length > 5000) throw badRequest('rows wajib berisi 1-5000 baris');
       if (assessedAt && Number.isNaN(Date.parse(assessedAt))) throw badRequest('assessedAt bukan tanggal yang valid');
-      const comps = await stores.dna.listCompetencies(req.tenantId);
-      const byName = new Map(comps.map((c) => [c.name.trim().toLowerCase(), c]));
-      const byId = new Map(comps.map((c) => [c.id, c]));
-      const users = await stores.people.resolve(req.tenantId, {
-        employeeIds: rows.map((r0) => r0 && r0.employeeId).filter(Boolean).map(String),
-        emails: rows.map((r0) => r0 && r0.email).filter(Boolean).map((e) => String(e).trim().toLowerCase()),
-      });
+      const kind = getKind('dna_results');
+      const ctx = { stores, tenantId: req.tenantId, options: { assessor, assessedAt } };
+      const { accepted, rejected } = await validateRows(kind, rows, ctx);
       const batchId = crypto.randomUUID();
-      const rejected = [];
-      let imported = 0;
-      for (const [index, raw] of rows.entries()) {
-        const row = raw || {};
-        const score = Number(row.score);
-        if (!Number.isInteger(score) || score < 0 || score > 4) { rejected.push({ index, reason: 'score harus bilangan bulat 0-4' }); continue; }
-        const comp = row.competencyId ? byId.get(row.competencyId) : byName.get(String(row.competency || '').trim().toLowerCase());
-        if (!comp) { rejected.push({ index, reason: 'Kompetensi tidak ada di kamus kompetensi organisasi ini' }); continue; }
-        const email = row.email ? String(row.email).trim().toLowerCase() : null;
-        const u = users.find((x) => (row.employeeId && x.employeeId === String(row.employeeId)) || (email && x.email === email));
-        if (!u) { rejected.push({ index, reason: 'Karyawan tidak ditemukan di organisasi ini' }); continue; }
-        const when = row.assessedAt || assessedAt;
-        await stores.dna.addAssessment(req.tenantId, {
-          userId: u.id, competencyId: comp.id, score, confidence: 1, source: 'manual_interview',
-          evidence: row.evidence ? String(row.evidence) : null, assessor: row.assessor || assessor || null,
-          assessedAt: when && !Number.isNaN(Date.parse(when)) ? new Date(when) : null, importBatchId: batchId,
-        });
-        imported += 1;
-      }
-      res.status(201).json({ data: { batchId, imported, rejected } });
+      await commitRows(kind, accepted, { ...ctx, batchId, user: req.user });
+      res.status(201).json({ data: { batchId, imported: accepted.length, rejected: rejected.map(({ index, reason }) => ({ index, reason })) } });
     }));
+
+    // R3-3: impor file XLSX/CSV dengan pemetaan kolom (karyawan, jenjang, kamus, status lulus, hasil DNA)
+    r.use('/imports', importRouter({ submodule: 'dna', stores, audit }));
 
     // --- Dashboard karier & gap (learner: dirinya, atasan: timnya, HR: semua) ---
     r.get('/employees', wrap(async (req, res) => {

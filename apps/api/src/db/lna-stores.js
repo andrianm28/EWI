@@ -56,9 +56,52 @@ function createLnaStores(sequelize) {
                     FROM users WHERE tenant_id = :tenantId AND id = :userId`, { tenantId, userId });
     },
     async resolve(tenantId, { employeeIds, emails }) {
-      return select(`SELECT id, email, employee_id AS "employeeId" FROM users
+      return select(`SELECT id, email, employee_id AS "employeeId", role, job_role_id AS "jobRoleId", career_level_id AS "careerLevelId"
+                       FROM users
                       WHERE tenant_id = :tenantId AND (employee_id IN (:employeeIds) OR email IN (:emails))`,
       { tenantId, employeeIds: employeeIds.length ? employeeIds : [''], emails: emails.length ? emails : [''] });
+    },
+    /**
+     * R3-3: buat/perbarui karyawan dari impor (satu transaksi), lalu tautkan atasan berdasarkan ID karyawan.
+     * Akun baru tanpa kata sandi (masuk lewat link email, R3-2). Akun HR/Admin sudah ditolak saat validasi.
+     */
+    async importEmployees(tenantId, rows) {
+      const t = await sequelize.transaction();
+      try {
+        let created = 0; let updated = 0;
+        for (const r of rows) {
+          const rep = withNulls({ tenantId, ...r }, ['id', 'jobRoleId', 'careerLevelId']);
+          if (r.id) {
+            await sequelize.query(
+              `UPDATE users SET employee_id = :employeeId, name = :name, email = :email, role = :role,
+                      job_role_id = :jobRoleId, career_level_id = :careerLevelId, updated_at = now()
+                WHERE tenant_id = :tenantId AND id = :id AND role NOT IN ('hr_admin','eta_admin')`,
+              { replacements: rep, transaction: t },
+            );
+            updated += 1;
+          } else {
+            await sequelize.query(
+              `INSERT INTO users (tenant_id, employee_id, name, email, role, status, job_role_id, career_level_id)
+               VALUES (:tenantId, :employeeId, :name, :email, :role, 'active', :jobRoleId, :careerLevelId)`,
+              { replacements: rep, transaction: t },
+            );
+            created += 1;
+          }
+        }
+        let linked = 0;
+        for (const r of rows.filter((x) => x.supervisorEmployeeId)) {
+          const [, meta] = await sequelize.query(
+            `UPDATE users u SET supervisor_id = s.id, updated_at = now()
+               FROM users s
+              WHERE u.tenant_id = :tenantId AND u.employee_id = :employeeId
+                AND s.tenant_id = :tenantId AND s.employee_id = :sup`,
+            { replacements: { tenantId, employeeId: r.employeeId, sup: r.supervisorEmployeeId }, transaction: t },
+          );
+          linked += (meta && meta.rowCount) || 0;
+        }
+        await t.commit();
+        return { created, updated, supervisorsLinked: linked };
+      } catch (e) { await t.rollback(); throw e; }
     },
     async setPosition(tenantId, userId, { jobRoleId, careerLevelId }) {
       return insert(`UPDATE users SET job_role_id = :jobRoleId, career_level_id = :careerLevelId, updated_at = now()
@@ -221,9 +264,9 @@ function createLnaStores(sequelize) {
       try {
         for (const r of rows) {
           await sequelize.query(
-            `INSERT INTO lna_performance_records (tenant_id, project_id, user_id, metric_type, name, target, actual, is_met, period, direction, unit, import_batch_id)
-             VALUES (:tenantId, :projectId, :userId, :metricType, :name, :target, :actual, :isMet, :period, :direction, :unit, :batchId)`,
-            { replacements: withNulls({ tenantId, projectId, period, batchId, ...r }, ['projectId', 'period', 'unit', 'isMet']), transaction: t },
+            `INSERT INTO lna_performance_records (tenant_id, project_id, user_id, metric_type, name, target, actual, is_met, period, direction, unit, value_type, import_batch_id)
+             VALUES (:tenantId, :projectId, :userId, :metricType, :name, :target, :actual, :isMet, :period, :direction, :unit, COALESCE(:valueType, 'angka'), :batchId)`,
+            { replacements: withNulls({ tenantId, projectId, period, batchId, ...r }, ['projectId', 'period', 'unit', 'isMet', 'valueType']), transaction: t },
           );
         }
         await t.commit();
@@ -232,7 +275,8 @@ function createLnaStores(sequelize) {
     async listPerformance(tenantId, scope, { period, projectId, userIds } = {}) {
       const rep = { tenantId };
       let sql = `SELECT r.id, r.user_id AS "userId", u.name AS "userName", r.metric_type AS "metricType", r.name,
-                        r.target::float AS target, r.actual::float AS actual, r.is_met AS "isMet", r.period, r.direction, r.unit
+                        r.target::float AS target, r.actual::float AS actual, r.is_met AS "isMet", r.period, r.direction, r.unit,
+                        r.value_type AS "valueType"
                    FROM lna_performance_records r JOIN users u ON u.id = r.user_id
                   WHERE r.tenant_id = :tenantId`;
       sql += scopeSql('r.user_id', scope, rep);
@@ -315,7 +359,39 @@ function createLnaStores(sequelize) {
     },
   };
 
-  return { people, settings, dna, interviews, tna, projectsExtra };
+  const BATCH_COLS = `b.id, b.submodule, b.kind, b.filename, b.status, b.row_count AS "rowCount", b.headers, b.mapping, b.options,
+    b.result, b.created_at AS "createdAt", b.committed_at AS "committedAt", u.name AS "createdByName"`;
+  const imports = {
+    async create(tenantId, b) {
+      await sequelize.query(
+        `INSERT INTO import_batches (id, tenant_id, submodule, kind, filename, row_count, headers, rows, mapping, created_by)
+         VALUES (:id, :tenantId, :submodule, :kind, :filename, :rowCount, CAST(:headers AS jsonb), CAST(:rows AS jsonb), CAST(:mapping AS jsonb), :createdBy)`,
+        { replacements: { ...b, tenantId, headers: JSON.stringify(b.headers), rows: JSON.stringify(b.rows), mapping: JSON.stringify(b.mapping || {}) } },
+      );
+      return imports.get(tenantId, b.id);
+    },
+    async get(tenantId, id) {
+      return one(`SELECT ${BATCH_COLS}, b.rows FROM import_batches b LEFT JOIN users u ON u.id = b.created_by
+                   WHERE b.tenant_id = :tenantId AND b.id = :id`, { tenantId, id });
+    },
+    async list(tenantId, submodule) {
+      return select(`SELECT ${BATCH_COLS} FROM import_batches b LEFT JOIN users u ON u.id = b.created_by
+                      WHERE b.tenant_id = :tenantId AND b.submodule = :submodule ORDER BY b.created_at DESC LIMIT 100`, { tenantId, submodule });
+    },
+    async update(tenantId, id, patch) {
+      const sets = []; const rep = { tenantId, id };
+      for (const k of ['mapping', 'options', 'result', 'rows']) {
+        if (patch[k] !== undefined) { sets.push(`${k} = CAST(:${k} AS jsonb)`); rep[k] = JSON.stringify(patch[k]); }
+      }
+      if (patch.status) { sets.push('status = :status'); rep.status = patch.status; }
+      if (patch.committedAt) { sets.push('committed_at = :committedAt'); rep.committedAt = patch.committedAt; }
+      if (patch.committedBy) { sets.push('committed_by = :committedBy'); rep.committedBy = patch.committedBy; }
+      if (sets.length) await sequelize.query(`UPDATE import_batches SET ${sets.join(', ')} WHERE tenant_id = :tenantId AND id = :id`, { replacements: rep });
+      return imports.get(tenantId, id);
+    },
+  };
+
+  return { people, settings, dna, interviews, tna, projectsExtra, imports };
 }
 
 module.exports = { createLnaStores, scopeSql };
