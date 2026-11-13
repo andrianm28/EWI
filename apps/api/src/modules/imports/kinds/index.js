@@ -1,8 +1,8 @@
 'use strict';
-// Urutan = urutan impor yang disarankan ke HR.
+// Urutan = urutan impor yang disarankan ke HR (job role dulu agar posisi karyawan dikenali).
 const KINDS = [
-  require('./employees'),
   require('./job-levels'),
+  require('./employees'),
   require('./competencies'),
   require('./completions'),
   require('./dna-results'),

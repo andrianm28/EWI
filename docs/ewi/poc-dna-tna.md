@@ -30,7 +30,7 @@ INA tidak ikut POC (RG-4): temuan non-training tetap direkam, disembunyikan sela
 |---|---|---|
 | Jenjang & kamus kompetensi | `GET/POST /api/dna/job-roles`, `GET/POST /api/dna/competencies`, `POST /competencies/bulk`, `POST /competencies/:id/approve` | Jumlah/nama jenjang dan syarat program per jenjang = konfigurasi per klien. `source` kompetensi dicatat (hr_rule, dacum, cca, both). |
 | Posisi & program | `PUT /api/dna/employees/:id/position`, `POST /api/dna/program-completions` | Status lulus Basic/Intermediate/Advanced, sumber `manual` (HR). |
-| Hasil DNA manual (C2) | `POST /api/dna/assessments/import` | HR mengunggah CSV: `employeeId`/`email`, `competency` (nama di kamus) atau `competencyId`, `score` 0–4, `evidence`. Pewawancara dan tanggal wawancara dicatat; baris tak dikenal ditolak per baris. Sumber skor (`manual_interview`, `ai_interview`, `eta_review`) tampil di detail karyawan. |
+| Hasil DNA manual (C2) | `POST /api/dna/assessments/import` (rows JSON) atau impor file R3-3 | HR mengunggah: `employeeId`/`email`, `competency` (nama di kamus) atau `competencyId`, `score` 0–4, `evidence`. Pewawancara dan tanggal wawancara dicatat; baris tak dikenal ditolak per baris. Sumber skor (`manual_interview`, `ai_interview`, `eta_review`) tampil di detail karyawan. |
 | Gap & karier | `GET /api/dna/employees`, `GET /api/dna/employees/:id`, `GET /api/dna/promotion-candidates` | Gap = skor terbaru vs skor minimal (0–4). Kandidat promosi (sudah lulus program jenjang berikutnya) hanya bila flag `promotion.recommendation` aktif (G2-A). |
 | Wawancara AI (teks) | `/api/{dna,tna}/sessions` (+ `/:id/consent`, `/:id/turns`, `/:id/complete`) | Persetujuan wajib sebelum pertanyaan pertama. Analisis lewat port AI. Sesi DNA butuh flag `dna.ai_interview` (403 `FEATURE_DISABLED` bila mati). |
 | Data kinerja | `POST /api/tna/performance/import`, `GET /api/tna/performance` | OKR/KPI/SLA, arah target higher/lower, baris tak dikenal ditolak per baris. |
@@ -70,11 +70,13 @@ Visibilitas (RG-3) berlaku di semua endpoint data karyawan: learner dirinya, ata
 | R2-1 siapa mengubah flag | Hanya `eta_admin` (HR 403, termasuk baca rincian): `GET /api/admin/flags`, `PUT /api/admin/flags/:key` `{enabled}` untuk tenant tempat Admin ETA login. Kill switch global `PUT /api/admin/kill-switches/:key` `{active, reason}` mematikan fitur di semua tenant tanpa deploy (alasan wajib saat menyalakan). Setiap perubahan masuk `audit_logs` (`feature_flag`/`kill_switch`, nilai lama dan baru). | `src/core/flags`, tabel `feature_kill_switches` |
 | R2-2 audit baca data individu | Wajib, tanpa flag. Dicatat: siapa, peran, kapan, tenant, karyawan (`meta.employeeIds`), objek (`meta.objectType/objectIds`). Endpoint: detail/daftar profil DNA, kandidat promosi, transkrip sesi DNA/TNA, temuan TNA, training plan. Dashboard agregat (`/tna/dashboard`, `/tna/pareto`) tidak dicatat. Gagal mencatat = request gagal. `audit_logs` append-only: UPDATE/DELETE/TRUNCATE ditolak trigger; pemeliharaan hanya DBA lewat `SET LOCAL ewi.audit_maintenance = 'on'`. | `src/core/audit`, migrasi `20261113000005` |
 
+| R3-3 impor data POC | HR mengimpor file XLSX/CSV lewat `/api/{dna,tna}/imports`: unduh template (`GET /templates/:jenis.xlsx|csv`, XLSX berisi lembar Petunjuk), unggah (`POST /:jenis?filename=`, body file mentah), saran pemetaan kolom dari judul + sinonim, `POST /batches/:id/preview` (validasi semua baris, alasan penolakan per nomor baris), `POST /batches/:id/commit`, riwayat `GET /batches`. Jenis: jenjang & program, data karyawan & posisi (akun tanpa kata sandi, HR/Admin tidak bisa diubah), kamus kompetensi, status lulus program, hasil DNA manual, kinerja KPI/OKR/SLA. Baris mentah dihapus setelah disimpan; simpan masuk audit log. BT-26: tipe nilai angka/persen/rating/biner/tenggat. Template untuk klien: `node apps/api/scripts/export-templates.js <folder>`. | `src/modules/imports`, migrasi `20261113000006` |
+
 Catatan R2-1: panel Admin ETA lintas tenant (memilih tenant lain dari satu login) belum dibuat karena aturan arsitektur 2
 (tenant hanya dari `req.tenantId`); Admin ETA masuk ke tenant yang mau diatur. Di produksi, role DB aplikasi
 sebaiknya juga tanpa hak UPDATE/DELETE/TRUNCATE pada `audit_logs`.
 
 ## Belum termasuk
 SSO deep link (T1), token endpoint OAuth2 (T2), email undangan (T4), Sync Back webhook ke `lna_program_completions`.
-Diputuskan 13 Nov, menyusul di PR terpisah: R2-3 enkripsi envelope dengan kunci KMS per tenant, R3-1 wawancara
-TNA teks + suara, R3-2 login karyawan lewat link email, R3-3 impor XLSX/CSV dengan pemetaan kolom, validasi, dan pratinjau.
+Diputuskan 13 Nov, menyusul: R2-3 enkripsi envelope dengan kunci KMS per tenant, R3-1 wawancara TNA teks + suara
+(realtime speech-to-speech lewat voice gateway ELGOS, adapter penyedia bisa diganti), R3-2 login karyawan lewat link email.

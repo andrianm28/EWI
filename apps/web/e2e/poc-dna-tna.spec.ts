@@ -3,7 +3,27 @@ import { test, expect, type Page } from '@playwright/test'
 // Alur POC DNA + TNA dengan API di-mock (tanpa backend/LLM).
 const ACCESS = { submodules: ['cca', 'dna', 'tna', 'ina'], flags: { 'module.dna': true, 'module.tna': true, 'module.cca': false, 'module.ina': false } as Record<string, boolean> }
 
+// R3-3: daftar template & riwayat impor kosong secara default; test impor menimpanya
+const KINDS = {
+  dna: [{ key: 'dna_results', label: 'Hasil DNA manual (gap)', description: 'Skor 0-4 per karyawan per kompetensi.', options: [
+    { key: 'assessor', label: 'Pewawancara (bila kolom kosong)', type: 'text' }, { key: 'assessedAt', label: 'Tanggal wawancara (bila kolom kosong)', type: 'date' }],
+  fields: [
+    { key: 'employeeId', header: 'ID Karyawan', required: false, oneOf: 'employee', help: null, example: 'E-1' },
+    { key: 'email', header: 'Email', required: false, oneOf: 'employee', help: null, example: null },
+    { key: 'competency', header: 'Kompetensi', required: false, oneOf: 'competency', help: null, example: null },
+    { key: 'score', header: 'Skor', required: true, oneOf: null, help: 'Bilangan bulat 0-4.', example: 2 },
+  ] }],
+  tna: [{ key: 'tna_performance', label: 'Kinerja KPI/OKR/SLA', description: 'Target dan realisasi.', options: [{ key: 'period', label: 'Periode (bila kolom kosong)', type: 'text', required: true }], fields: [] }],
+}
+async function mockImports(page: Page) {
+  for (const sm of ['dna', 'tna'] as const) {
+    await page.route(`**/api/${sm}/imports/templates`, (r) => r.fulfill({ json: { data: KINDS[sm] } }))
+    await page.route(`**/api/${sm}/imports/batches`, (r) => r.fulfill({ json: { data: [] } }))
+  }
+}
+
 async function loginAs(page: Page, role: string, id = 'u-1', extraFlags: Record<string, boolean> = {}) {
+  await mockImports(page)
   await page.route('**/api/auth/login', (r) => r.fulfill({ json: { token: 't', user: { id, tenantId: 't-1', email: `${role}@demo.test`, role } } }))
   await page.route('**/api/me/access', (r) => r.fulfill({ json: { ...ACCESS, flags: { ...ACCESS.flags, ...extraFlags } } }))
   await page.route('**/api/auth/me', (r) => r.fulfill({ json: { user: { id, tenantId: 't-1', email: `${role}@demo.test`, role } } }))
@@ -43,26 +63,57 @@ test('HR: dashboard DNA menampilkan kandidat promosi (modul promosi aktif) dan g
   expect(sessionsRequested).toBe(false)
 })
 
-test('HR: impor hasil wawancara DNA manual (POC ELGOS)', async ({ page }) => {
-  let body: { rows: Record<string, string>[]; assessor?: string; assessedAt?: string } | null = null
-  await page.route('**/api/dna/employees', (r) => r.fulfill({ json: { data: [] } }))
-  await page.route('**/api/dna/assessments/import', async (r) => {
-    body = r.request().postDataJSON()
-    await r.fulfill({ status: 201, json: { data: { imported: 1, rejected: [{ index: 1, reason: 'Kompetensi tidak ada di kamus kompetensi organisasi ini' }] } } })
-  })
+test('HR: impor hasil DNA manual dari file dengan pemetaan kolom (R3-3)', async ({ page }) => {
+  let uploaded = ''; let previewBody: unknown = null; let commitBody: unknown = null; let reloads = 0
+  await page.route('**/api/dna/employees', (r) => { reloads += 1; return r.fulfill({ json: { data: [] } }) })
   await loginAs(page, 'hr_admin')
+  await page.route(/\/api\/dna\/imports\/dna_results\?filename=/, async (r) => {
+    uploaded = new URL(r.request().url()).searchParams.get('filename') ?? ''
+    expect(r.request().headers()['content-type']).toBe('application/octet-stream')
+    await r.fulfill({ status: 201, json: { data: { id: 'b1', kind: 'dna_results', filename: uploaded, status: 'uploaded', rowCount: 3, headers: ['NIK', 'Nama Kompetensi', 'Nilai'], mapping: { employeeId: 'NIK', email: null, competency: null, score: 'Nilai' }, options: {}, result: null, createdAt: '2026-11-13T10:00:00Z', committedAt: null, createdByName: 'HR' } } })
+  })
+  await page.route('**/api/dna/imports/batches/b1/preview', async (r) => {
+    previewBody = r.request().postDataJSON()
+    await r.fulfill({ json: { data: { valid: 2, rejectedCount: 1, rejected: [{ row: 4, reason: 'Kompetensi tidak ada di kamus kompetensi organisasi ini' }], sample: [{ row: 2, values: { employeeId: 'D-RINA', competency: 'Memahami kontrak proyek', score: 4 } }] } } })
+  })
+  await page.route('**/api/dna/imports/batches/b1/commit', async (r) => {
+    commitBody = r.request().postDataJSON()
+    await r.fulfill({ json: { data: { id: 'b1', kind: 'dna_results', filename: uploaded, status: 'committed', rowCount: 3, headers: [], mapping: {}, options: {}, result: { imported: 2, rejectedCount: 1, rejected: [] }, createdAt: '2026-11-13T10:00:00Z', committedAt: '2026-11-13T10:01:00Z', createdByName: 'HR' } } })
+  })
   await page.goto('/m/dna')
   await expect(page.getByTestId('dna-candidates')).toHaveCount(0) // modul promosi mati (G2-A)
-  const form = page.getByTestId('dna-import')
-  await form.getByLabel('Pewawancara').fill('Tim ETA')
-  await form.getByLabel('Tanggal wawancara').fill('2026-10-20')
-  await form.getByLabel('CSV').fill('employeeId,competency,score\nD-RINA,Memahami kontrak proyek,4\nD-RINA,Asing,2')
-  await form.getByRole('button', { name: 'Impor' }).click()
-  await expect(page.getByRole('status')).toContainText('1 hasil diimpor, 1 ditolak: baris 3 Kompetensi tidak ada')
-  expect(body).toEqual({
-    assessor: 'Tim ETA', assessedAt: '2026-10-20',
-    rows: [{ employeeId: 'D-RINA', competency: 'Memahami kontrak proyek', score: '4' }, { employeeId: 'D-RINA', competency: 'Asing', score: '2' }],
-  })
+  const panel = page.getByTestId('import-panel')
+  await expect(panel.getByLabel('Jenis data')).toHaveValue('dna_results')
+  await panel.getByLabel('File (.xlsx atau .csv)').setInputFiles({ name: 'hasil-elgos.csv', mimeType: 'text/csv', buffer: Buffer.from('NIK,Nama Kompetensi,Nilai\nD-RINA,Memahami kontrak proyek,4\n') })
+  const mapping = page.getByTestId('import-mapping')
+  await expect(mapping).toContainText('hasil-elgos.csv · 3 baris')
+  await expect(mapping.getByLabel('ID Karyawan')).toHaveValue('NIK')
+  await mapping.getByLabel('Kompetensi').selectOption('Nama Kompetensi')
+  await mapping.getByLabel('Pewawancara (bila kolom kosong)').fill('Tim ETA')
+  await mapping.getByLabel('Tanggal wawancara (bila kolom kosong)').fill('2026-10-20')
+  await panel.getByRole('button', { name: 'Periksa' }).click()
+  await expect(page.getByTestId('import-preview')).toContainText('2 baris valid, 1 baris akan dilewati')
+  await expect(page.getByTestId('import-preview')).toContainText('Baris 4: Kompetensi tidak ada')
+  await expect(page.getByTestId('import-preview')).toContainText('Memahami kontrak proyek')
+  const expected = { mapping: { employeeId: 'NIK', email: null, competency: 'Nama Kompetensi', score: 'Nilai' }, options: { assessor: 'Tim ETA', assessedAt: '2026-10-20' } }
+  expect(previewBody).toEqual(expected)
+  const before = reloads
+  await panel.getByRole('button', { name: 'Simpan 2 baris' }).click()
+  await expect(panel.getByRole('status')).toHaveText('2 baris disimpan, 1 baris dilewati.')
+  expect(commitBody).toEqual(expected)
+  expect(uploaded).toBe('hasil-elgos.csv')
+  await expect(page.getByTestId('import-mapping')).toHaveCount(0)
+  await expect.poll(() => reloads).toBeGreaterThan(before)
+})
+
+test('HR: unduh template impor', async ({ page }) => {
+  await page.route('**/api/dna/employees', (r) => r.fulfill({ json: { data: [] } }))
+  await loginAs(page, 'hr_admin')
+  await page.route('**/api/dna/imports/templates/dna_results.xlsx', (r) => r.fulfill({ body: Buffer.from('xlsx'), headers: { 'content-type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' } }))
+  await page.goto('/m/dna')
+  const download = page.waitForEvent('download')
+  await page.getByTestId('import-panel').getByRole('button', { name: 'Unduh XLSX' }).click()
+  expect((await download).suggestedFilename()).toBe('template-elgos-dna_results.xlsx')
 })
 
 test('atasan: tidak melihat kartu kandidat promosi', async ({ page }) => {
@@ -95,7 +146,7 @@ test('HR: cakupan TNA default target merah, atau semua karyawan di role tertentu
   await expect(page.getByTestId('tna-pareto')).toContainText('Memahami kontrak proyek')
   await expect(page.getByTestId('tna-findings')).toContainText('SLA respons: target 15, realisasi 30')
 
-  await page.getByLabel('Periode').fill('2026-11')
+  await page.getByLabel('Periode', { exact: true }).fill('2026-11')
   await page.getByLabel('Proyek').selectOption('p1')
   await expect(page.getByLabel('Hanya karyawan dengan target merah')).toBeChecked()
   await page.getByRole('button', { name: 'Jadwalkan' }).click()
@@ -127,7 +178,7 @@ test('HR: cakupan TNA mengikuti konfigurasi klien (ELGOS: semua anggota L1)', as
   await page.goto('/m/tna')
   await expect(page.getByLabel('Semua karyawan di job role tertentu')).toBeChecked()
   await expect(page.getByLabel(/^Job role/)).toHaveValue('jr1')
-  await page.getByLabel('Periode').fill('2026-11')
+  await page.getByLabel('Periode', { exact: true }).fill('2026-11')
   await page.getByLabel('Proyek').selectOption('p1')
   await page.getByRole('button', { name: 'Jadwalkan' }).click()
   await expect(page.getByRole('status')).toHaveText('5 wawancara dijadwalkan.')
