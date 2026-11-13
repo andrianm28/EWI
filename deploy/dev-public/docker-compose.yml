@@ -1,4 +1,4 @@
-# Lingkungan dev EWI yang bisa diakses publik, di luar AWS (keputusan user 11 Nov 2026: etavm1 + tunnel).
+# Lingkungan dev ELGOS yang bisa diakses publik, di luar AWS (keputusan user 11 Nov 2026: etavm1 + tunnel).
 #   cd deploy/dev-public && cp .env.example .env   # isi EWI_JWT_SECRET
 #   docker compose up -d --build
 #   docker compose logs tunnel | grep trycloudflare  # URL publik

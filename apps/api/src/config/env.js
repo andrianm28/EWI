@@ -1,6 +1,6 @@
 'use strict';
 // Konfigurasi dibaca sekali dan divalidasi saat boot. Tidak ada fallback untuk secret
-// (keputusan B22: EWI punya secret & audience JWT sendiri, tanpa fallback hardcoded).
+// (keputusan B22: ELGOS punya secret & audience JWT sendiri, tanpa fallback hardcoded).
 require('dotenv').config();
 
 function loadConfig(env = process.env) {

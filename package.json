@@ -1,7 +1,7 @@
 {
   "name": "ewi-platform",
   "private": true,
-  "description": "Elite Workforce Intelligence (EWI): API dan web app",
+  "description": "Elite Learning & Growth Operating System (ELGOS): API dan web app",
   "workspaces": ["apps/api", "apps/web"],
   "engines": { "node": ">=24.0.0" },
   "scripts": {

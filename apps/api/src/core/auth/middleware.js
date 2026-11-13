@@ -1,7 +1,7 @@
 'use strict';
 const { unauthorized } = require('../errors');
 
-/** Login EWI non-LTI: Bearer token dengan audience `ewi`. Token LTI/portal EliteMentor ditolak. */
+/** Login ELGOS non-LTI: Bearer token dengan audience `ewi`. Token LTI/portal EliteMentor ditolak. */
 function requireAuth(tokens) {
   return (req, _res, next) => {
     const header = req.get('authorization') || '';

@@ -39,7 +39,7 @@ async function submit() {
   <main class="min-h-screen grid place-items-center bg-slate-50 px-4">
     <form class="w-full max-w-sm space-y-4 rounded-xl bg-white p-6 shadow" @submit.prevent="submit">
       <div>
-        <h1 class="text-xl font-semibold text-slate-900">Elite Workforce Intelligence</h1>
+        <h1 class="text-xl font-semibold text-slate-900">Elite Learning & Growth Operating System</h1>
         <p class="text-sm text-slate-500">Masuk ke akun organisasi Anda</p>
       </div>
       <label class="block text-sm">Organisasi

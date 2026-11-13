@@ -1,5 +1,5 @@
 'use strict';
-// Persona EWI (BRD 3 persona + B2 + RG-3 = 7 persona).
+// Persona ELGOS (BRD 3 persona + B2 + RG-3 = 7 persona).
 const ROLES = Object.freeze({
   ETA_ADMIN: 'eta_admin',       // Admin ETA: kalibrasi skor AI, golden set (B2/B20)
   HR_ADMIN: 'hr_admin',         // HR klien: melihat seluruh karyawan (RG-3)

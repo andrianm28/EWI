@@ -1,4 +1,4 @@
-# Web EWI statis di nginx; /api diteruskan ke service API (dipakai lingkungan dev publik).
+# Web ELGOS statis di nginx; /api diteruskan ke service API (dipakai lingkungan dev publik).
 #   docker build -f apps/web/Dockerfile -t ewi-web .
 FROM node:24-alpine AS build
 WORKDIR /app

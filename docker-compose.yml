@@ -1,4 +1,4 @@
-# Postgres lokal untuk development. EWI punya database sendiri (ADR 0001).
+# Postgres lokal untuk development. ELGOS punya database sendiri (ADR 0001).
 services:
   db:
     image: pgvector/pgvector:pg16
