@@ -111,6 +111,14 @@ find "$DIR/backups" -name '*.dump' -printf '%T@ %p\n' | sort -rn | tail -n +"$((
 
 trap rollback ERR
 
+# 2b. Image yang memakai enkripsi lokal (PR #2) tidak bisa boot tanpa EWI_LOCAL_MASTER_KEY: gagal di sini,
+#     sebelum migrasi, dengan pesan jelas (rollback otomatis memasang image lama lagi).
+if docker run --rm --entrypoint test "$NEW_API" -f /app/apps/api/scripts/encrypt-existing.js \
+   && ! grep -qE '^EWI_LOCAL_MASTER_KEY=.{32,}' "$EWI_ENV_FILE"; then
+  echo "::error::Image $TAG butuh EWI_LOCAL_MASTER_KEY di $EWI_ENV_FILE (openssl rand -hex 32, simpan aman)"
+  false
+fi
+
 # 3. Migrasi dengan image baru, sebelum container lama diganti.
 export EWI_API_IMAGE="$NEW_API" EWI_WEB_IMAGE="$NEW_WEB"
 MIG_OUT="$(dc run --rm --no-deps -T -e RUN_MIGRATIONS=false api npm run migrate 2>&1)" || { echo "$MIG_OUT" >&2; false; }
@@ -137,6 +145,12 @@ if [ "$SEED" != skip ]; then
       log "PERINGATAN: DEV_SEED_PASSWORD kosong di $EWI_ENV_FILE, seed dilewati"
     fi
   fi
+fi
+
+# 5b. Enkripsi data lama (seed/dev) bila image punya skripnya. Idempoten.
+if dc exec -T api test -f scripts/encrypt-existing.js 2>/dev/null; then
+  dc exec -T api docker-entrypoint.sh node scripts/encrypt-existing.js
+  log "encrypt-existing.js dijalankan"
 fi
 
 trap - ERR

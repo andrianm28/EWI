@@ -56,8 +56,11 @@ atau kosongkan bila `gh` di VM sudah login dengan akses admin repo. Script ini m
 (grup docker), `/srv/ewi-dev` (menyalin `.env` dari deploy manual lama), membuat `/var/www/ewi-mockup`
 bisa ditulis pipeline, dan memasang runner `etavm1-ewi-dev` (label `etavm1,ewi-dev`) sebagai service.
 
-`/srv/ewi-dev/.env` wajib berisi `DEV_SEED_PASSWORD`; tanpa itu seed dilewati agar password demo tidak
-berubah acak.
+`/srv/ewi-dev/.env` wajib berisi `DEV_SEED_PASSWORD` (tanpa itu seed dilewati agar password demo tidak
+berubah acak) dan, sejak enkripsi lokal (PR #2), `EWI_LOCAL_MASTER_KEY` (`openssl rand -hex 32`, unik untuk
+dev, simpan cadangannya: hilang = data terenkripsi tidak terbaca), `APP_BASE_URL`, `MAIL_PROVIDER=log`.
+Jangan set `NODE_ENV=production` di dev. Image yang butuh kunci itu ditolak sebelum migrasi bila kuncinya
+belum ada, dan `scripts/encrypt-existing.js` (idempoten) dijalankan otomatis setelah seed.
 
 ## Operasi
 
