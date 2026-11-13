@@ -11,6 +11,10 @@ arahan cadence 11 Nov (Ahmad Gilang) yang ditetapkan berlaku penuh pada 12 Nov:
   di job role tertentu (`all_members` + `jobRoleId`). BT-29 final: cakupan diatur per klien/proyek.
   BT-19: POC ELGOS L1 memakai mode semua anggota tim L1 (seed dev: `tna.interviewScope = all_members`,
   `tna.interviewJobRoleId` = Service Delivery L1).
+- **F6-A** (grilling komersial 13 Nov, menggantikan RG-1d): DNA = impor/bangun kamus kompetensi + asesmen
+  gap individu yang proaktif; TNA tetap reaktif terhadap masalah kinerja. Kode POC sudah sesuai (gap individu
+  ada di DNA lewat `lna_assessments`; TNA dipicu target merah), jadi tidak ada perubahan. Nama produk
+  (ELGOS, G3) belum final; repo tetap memakai "EWI".
 - **C4** TNA bisa berjalan tanpa DACUM/DNA: karyawan tanpa job role atau kamus kompetensi tetap bisa
   diwawancarai; temuannya tidak tertaut kompetensi dan training plan-nya menjadi `needs_module`.
 
