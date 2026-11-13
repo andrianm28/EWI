@@ -164,6 +164,15 @@ run('POC DNA + TNA (Postgres)', () => {
     expect(await names('hr')).toEqual(['budi', 'dimas', 'rina', 'spv']);
 
     expect((await request(app).get(`/api/dna/employees/${u.budi}`).set(as('spv'))).status).toBe(404);
+
+    // G2-A: rekomendasi promosi = modul terpisah, flag promotion.recommendation default mati
+    const off = await request(app).get('/api/dna/promotion-candidates').set(as('hr'));
+    expect(off.status).toBe(403);
+    expect(off.body.error.code).toBe('FEATURE_DISABLED');
+    const hrList = (await request(app).get('/api/dna/employees').set(as('hr'))).body.data;
+    expect(hrList.every((p) => p.career.promotionCandidate === undefined)).toBe(true);
+    await db.query(`INSERT INTO feature_flags (tenant_id, key, enabled) VALUES (:t, 'promotion.recommendation', true)`, { replacements: { t: tenant.id } });
+
     expect((await request(app).get('/api/dna/promotion-candidates').set(as('spv'))).status).toBe(403);
     const cand = await request(app).get('/api/dna/promotion-candidates').set(as('hr'));
     expect(cand.body.data.map((p) => p.name)).toEqual(['rina']);

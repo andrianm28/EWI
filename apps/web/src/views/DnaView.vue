@@ -21,6 +21,8 @@ const assessedAt = ref('')
 const isLearner = computed(() => session.role === 'learner')
 const isHr = computed(() => session.role === 'hr_admin')
 const aiInterview = computed(() => session.access?.flags['dna.ai_interview'] === true)
+// G2-A: rekomendasi promosi modul terpisah (flag promotion.recommendation, default mati)
+const promotionOn = computed(() => session.access?.flags['promotion.recommendation'] === true)
 const candidates = computed(() => people.value.filter((p) => p.career.promotionCandidate))
 const behind = computed(() => people.value.filter((p) => p.career.behindCurrentLevel))
 const mySessions = computed(() => sessions.value.filter((s) => s.intervieweeId === session.user?.id && s.status !== 'completed'))
@@ -77,7 +79,7 @@ const pct = (n: number | null) => (n == null ? 'Belum dinilai' : `${n}%`)
     <section v-if="!isLearner && !loading" class="mt-4 grid gap-3 sm:grid-cols-3">
       <div class="rounded-lg border bg-white p-4"><div class="text-2xl font-semibold">{{ people.length }}</div><div class="text-sm text-slate-500">Karyawan</div></div>
       <div class="rounded-lg border bg-white p-4"><div class="text-2xl font-semibold">{{ behind.length }}</div><div class="text-sm text-slate-500">Belum lulus program jenjangnya</div></div>
-      <div v-if="session.role === 'hr_admin' || session.role === 'eta_admin'" class="rounded-lg border bg-white p-4" data-testid="dna-candidates">
+      <div v-if="promotionOn && (session.role === 'hr_admin' || session.role === 'eta_admin')" class="rounded-lg border bg-white p-4" data-testid="dna-candidates">
         <div class="text-2xl font-semibold">{{ candidates.length }}</div><div class="text-sm text-slate-500">Saran kandidat promosi</div>
       </div>
     </section>

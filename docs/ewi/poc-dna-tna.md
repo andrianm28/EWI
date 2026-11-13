@@ -15,6 +15,10 @@ arahan cadence 11 Nov (Ahmad Gilang) yang ditetapkan berlaku penuh pada 12 Nov:
   gap individu yang proaktif; TNA tetap reaktif terhadap masalah kinerja. Kode POC sudah sesuai (gap individu
   ada di DNA lewat `lna_assessments`; TNA dipicu target merah), jadi tidak ada perubahan. Nama produk
   (ELGOS, G3) belum final; repo tetap memakai "EWI".
+- **G2-A** (13 Nov): rekomendasi promosi adalah modul terpisah, di luar POC. Kode tetap ada tetapi di balik
+  flag `promotion.recommendation` (default mati): `GET /api/dna/promotion-candidates` 403 dan
+  `career.promotionCandidate` tidak dikirim. G3-A (nama produk ELGOS) dan G4 (pilot Desember 2026, 1 bulan)
+  sudah final; penggantian nama di repo menunggu jadwal dari user.
 - **C4** TNA bisa berjalan tanpa DACUM/DNA: karyawan tanpa job role atau kamus kompetensi tetap bisa
   diwawancarai; temuannya tidak tertaut kompetensi dan training plan-nya menjadi `needs_module`.
 
@@ -27,7 +31,7 @@ INA tidak ikut POC (RG-4): temuan non-training tetap direkam, disembunyikan sela
 | Jenjang & kamus kompetensi | `GET/POST /api/dna/job-roles`, `GET/POST /api/dna/competencies`, `POST /competencies/bulk`, `POST /competencies/:id/approve` | Jumlah/nama jenjang dan syarat program per jenjang = konfigurasi per klien. `source` kompetensi dicatat (hr_rule, dacum, cca, both). |
 | Posisi & program | `PUT /api/dna/employees/:id/position`, `POST /api/dna/program-completions` | Status lulus Basic/Intermediate/Advanced, sumber `manual` (HR). |
 | Hasil DNA manual (C2) | `POST /api/dna/assessments/import` | HR mengunggah CSV: `employeeId`/`email`, `competency` (nama di kamus) atau `competencyId`, `score` 0–4, `evidence`. Pewawancara dan tanggal wawancara dicatat; baris tak dikenal ditolak per baris. Sumber skor (`manual_interview`, `ai_interview`, `eta_review`) tampil di detail karyawan. |
-| Gap & karier | `GET /api/dna/employees`, `GET /api/dna/employees/:id`, `GET /api/dna/promotion-candidates` | Gap = skor terbaru vs skor minimal (0–4). Kandidat promosi = sudah lulus program jenjang berikutnya. |
+| Gap & karier | `GET /api/dna/employees`, `GET /api/dna/employees/:id`, `GET /api/dna/promotion-candidates` | Gap = skor terbaru vs skor minimal (0–4). Kandidat promosi (sudah lulus program jenjang berikutnya) hanya bila flag `promotion.recommendation` aktif (G2-A). |
 | Wawancara AI (teks) | `/api/{dna,tna}/sessions` (+ `/:id/consent`, `/:id/turns`, `/:id/complete`) | Persetujuan wajib sebelum pertanyaan pertama. Analisis lewat port AI. Sesi DNA butuh flag `dna.ai_interview` (403 `FEATURE_DISABLED` bila mati). |
 | Data kinerja | `POST /api/tna/performance/import`, `GET /api/tna/performance` | OKR/KPI/SLA, arah target higher/lower, baris tak dikenal ditolak per baris. |
 | Jadwal TNA | `POST /api/tna/projects/:id/interviews`, `GET /api/tna/job-roles` | Cakupan: `red_only` (default, dari `settings.tna.interviewScope`) atau `all_members` dengan `jobRoleId` wajib. Target merah jadi pemicu yang dibahas. Daftar job role tersedia tanpa modul DNA. |

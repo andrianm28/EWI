@@ -1,11 +1,11 @@
 import { test, expect, type Page } from '@playwright/test'
 
 // Alur POC DNA + TNA dengan API di-mock (tanpa backend/LLM).
-const ACCESS = { submodules: ['cca', 'dna', 'tna', 'ina'], flags: { 'module.dna': true, 'module.tna': true, 'module.cca': false, 'module.ina': false } }
+const ACCESS = { submodules: ['cca', 'dna', 'tna', 'ina'], flags: { 'module.dna': true, 'module.tna': true, 'module.cca': false, 'module.ina': false } as Record<string, boolean> }
 
-async function loginAs(page: Page, role: string, id = 'u-1') {
+async function loginAs(page: Page, role: string, id = 'u-1', extraFlags: Record<string, boolean> = {}) {
   await page.route('**/api/auth/login', (r) => r.fulfill({ json: { token: 't', user: { id, tenantId: 't-1', email: `${role}@demo.test`, role } } }))
-  await page.route('**/api/me/access', (r) => r.fulfill({ json: ACCESS }))
+  await page.route('**/api/me/access', (r) => r.fulfill({ json: { ...ACCESS, flags: { ...ACCESS.flags, ...extraFlags } } }))
   await page.route('**/api/auth/me', (r) => r.fulfill({ json: { user: { id, tenantId: 't-1', email: `${role}@demo.test`, role } } }))
   await page.goto('/login')
   await page.getByLabel('Organisasi').fill('demo')
@@ -20,7 +20,7 @@ const career = (o: Record<string, unknown> = {}) => ({
   currentTierPassed: true, nextTierPassed: false, behindCurrentLevel: false, ...o,
 })
 
-test('HR: dashboard DNA menampilkan kandidat promosi dan gap', async ({ page }) => {
+test('HR: dashboard DNA menampilkan kandidat promosi (modul promosi aktif) dan gap', async ({ page }) => {
   // Wawancara AI DNA mati di POC (flag dna.ai_interview): daftar sesi tidak diminta
   let sessionsRequested = false
   await page.route('**/api/dna/sessions', (r) => { sessionsRequested = true; return r.fulfill({ json: { data: [] } }) })
@@ -32,7 +32,7 @@ test('HR: dashboard DNA menampilkan kandidat promosi dan gap', async ({ page }) 
     person: { id: 'b', name: 'Budi', email: 'budi@demo.test' }, career: career(), completions: [],
     gap: { summary: { total: 1, assessed: 1, met: 0, gaps: 1, readiness: 0 }, items: [{ competencyId: 'c1', name: 'Memahami kontrak proyek', kind: 'job', required: 3, score: 1, gap: 2, status: 'gap', source: 'manual_interview' }] },
   } } }))
-  await loginAs(page, 'hr_admin')
+  await loginAs(page, 'hr_admin', 'u-1', { 'promotion.recommendation': true })
   await page.getByTestId('card-dna').getByRole('link', { name: 'Buka' }).click()
   await expect(page.getByTestId('dna-candidates')).toContainText('1')
   await expect(page.getByTestId('dna-table')).toContainText('Kandidat Senior')
@@ -52,6 +52,7 @@ test('HR: impor hasil wawancara DNA manual (POC ELGOS)', async ({ page }) => {
   })
   await loginAs(page, 'hr_admin')
   await page.goto('/m/dna')
+  await expect(page.getByTestId('dna-candidates')).toHaveCount(0) // modul promosi mati (G2-A)
   const form = page.getByTestId('dna-import')
   await form.getByLabel('Pewawancara').fill('Tim ETA')
   await form.getByLabel('Tanggal wawancara').fill('2026-10-20')

@@ -57,6 +57,13 @@ async function profiles(stores, tenantId, people) {
   return out;
 }
 
+/** Saran kandidat promosi hanya bila modul promosi aktif (G2-A) dan peran diizinkan (RG-1e). */
+async function canSeePromotion(req, flags, settings) {
+  if (!(await flags.isEnabled(req.tenantId, FLAGS.PROMOTION_RECOMMENDATION))) return false;
+  if (req.user.role === ROLES.ETA_ADMIN) return true;
+  return (await settings.get(req.tenantId)).dna.promotionVisibleTo.includes(req.user.role);
+}
+
 module.exports = {
   key: 'dna',
   title: 'Development Need Analysis',
@@ -178,8 +185,7 @@ module.exports = {
     r.get('/employees', wrap(async (req, res) => {
       const scope = await scopeFor(req, stores.people);
       const people = await stores.people.list(req.tenantId, scope, { roles: ['learner', 'supervisor', 'role_leader', 'sme'], jobRoleId: req.query.jobRoleId });
-      const conf = await settings.get(req.tenantId);
-      const showPromotion = req.user.role === ROLES.ETA_ADMIN || conf.dna.promotionVisibleTo.includes(req.user.role);
+      const showPromotion = await canSeePromotion(req, flags, settings);
       const rows = await profiles(stores, req.tenantId, people);
       res.json({ data: rows.map((p) => (showPromotion ? p : { ...p, career: { ...p.career, promotionCandidate: undefined } })) });
     }));
@@ -195,15 +201,13 @@ module.exports = {
         person.jobRoleId ? stores.dna.listLevels(req.tenantId, person.jobRoleId) : [],
         stores.dna.completions(req.tenantId, [person.id]),
       ]);
-      const conf = await settings.get(req.tenantId);
       const career = careerStatus({ levels, currentLevelId: person.careerLevelId, completions });
-      if (!(req.user.role === ROLES.ETA_ADMIN || conf.dna.promotionVisibleTo.includes(req.user.role))) delete career.promotionCandidate;
+      if (!(await canSeePromotion(req, flags, settings))) delete career.promotionCandidate;
       res.json({ data: { person, gap: computeGap({ competencies, assessments }), career, completions, levels } });
     }));
 
-    r.get('/promotion-candidates', wrap(async (req, res) => {
-      const conf = await settings.get(req.tenantId);
-      if (!(req.user.role === ROLES.ETA_ADMIN || conf.dna.promotionVisibleTo.includes(req.user.role))) {
+    r.get('/promotion-candidates', requireFlag(flags, FLAGS.PROMOTION_RECOMMENDATION, 'Modul rekomendasi promosi belum diaktifkan'), wrap(async (req, res) => {
+      if (!(await canSeePromotion(req, flags, settings))) {
         throw new HttpError(403, 'ROLE_FORBIDDEN', 'Saran kandidat promosi hanya untuk HR');
       }
       const scope = await scopeFor(req, stores.people);

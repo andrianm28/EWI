@@ -8,6 +8,8 @@ const FLAGS = Object.freeze({
   MODULE_INA: 'module.ina',
   // Cadence 11 Nov (C2): POC ELGOS memakai hasil wawancara DNA manual; wawancara AI DNA ditahan
   DNA_AI_INTERVIEW: 'dna.ai_interview',
+  // G2-A (13 Nov): rekomendasi promosi = modul terpisah, di luar POC DNA+TNA
+  PROMOTION_RECOMMENDATION: 'promotion.recommendation',
   VOICE_REALTIME: 'voice.realtime',
   VOICE_TTS: 'voice.tts',
   LANG_EN: 'lang.en',
