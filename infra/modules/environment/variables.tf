@@ -70,3 +70,14 @@ variable "elitementor_token_url" {
   type    = string
   default = ""
 }
+
+variable "mail_from" {
+  type        = string
+  description = "Alamat pengirim email SES (MAIL_FROM). Domain final menunggu R2-5r; identitas SES harus terverifikasi."
+}
+
+variable "tenant_ids" {
+  type        = set(string)
+  default     = []
+  description = "R2-3: id tenant yang aktif di lingkungan ini; masing-masing mendapat satu kunci KMS + alias."
+}

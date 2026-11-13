@@ -92,10 +92,10 @@ resource "aws_iam_role" "task" {
   assume_role_policy = data.aws_iam_policy_document.ecs_assume.json
 }
 
-# R2-3: API membuat satu customer managed key per tenant saat onboarding (tag elgos:env + elgos:tenant)
-# lalu memakainya untuk envelope encryption kolom transkrip/hasil dan SSE-KMS objek di bucket data.
-# Hanya kunci bertag lingkungan ini dan bertag tenant yang bisa dibuat/dipakai. Tidak ada izin
-# menghapus/menonaktifkan kunci atau mengubah key policy (itu tugas admin).
+# R2-3: satu customer managed key per tenant, dibuat oleh IaC/Admin (kms.tf, var.tenant_ids), bukan
+# oleh API. API hanya memakai kunci lewat alias `alias/elgos-<env>-tenant-<tenantId>` untuk envelope
+# encryption (GenerateDataKey/Decrypt dengan encryption context {tenant}) dan SSE-KMS objek bucket data.
+# Tidak ada izin membuat, menghapus, atau mengubah kunci dari aplikasi.
 resource "aws_iam_role_policy" "task" {
   name = "${local.name}-api-task"
   role = aws_iam_role.task.id
@@ -109,40 +109,31 @@ resource "aws_iam_role_policy" "task" {
         Resource = [aws_s3_bucket.data.arn, "${aws_s3_bucket.data.arn}/*"]
       },
       {
-        Sid      = "BuatKunciTenant"
+        Sid      = "EnvelopeKunciTenant"
         Effect   = "Allow"
-        Action   = ["kms:CreateKey", "kms:TagResource"]
-        Resource = "*"
-        Condition = {
-          StringEquals                = { "aws:RequestTag/elgos:env" = var.env }
-          "ForAllValues:StringEquals" = { "aws:TagKeys" = ["elgos:env", "elgos:tenant"] }
-          Null                        = { "aws:RequestTag/elgos:tenant" = "false" }
-        }
-      },
-      {
-        Sid    = "PakaiKunciTenant"
-        Effect = "Allow"
-        Action = [
-          "kms:Encrypt", "kms:Decrypt", "kms:GenerateDataKey", "kms:GenerateDataKeyWithoutPlaintext",
-          "kms:ReEncryptFrom", "kms:ReEncryptTo", "kms:DescribeKey", "kms:EnableKeyRotation", "kms:CreateAlias",
-        ]
+        Action   = ["kms:GenerateDataKey", "kms:Decrypt"]
         Resource = "${local.arn}:kms:${local.region}:${local.account}:key/*"
         Condition = {
           StringEquals = { "aws:ResourceTag/elgos:env" = var.env }
+          Null         = { "aws:ResourceTag/elgos:tenant" = "false", "kms:EncryptionContext:tenant" = "false" }
+        }
+      },
+      {
+        Sid      = "SseKmsBucketData"
+        Effect   = "Allow"
+        Action   = ["kms:GenerateDataKey", "kms:Decrypt"]
+        Resource = "${local.arn}:kms:${local.region}:${local.account}:key/*"
+        Condition = {
+          StringEquals = { "aws:ResourceTag/elgos:env" = var.env, "kms:ViaService" = "s3.${local.region}.amazonaws.com" }
           Null         = { "aws:ResourceTag/elgos:tenant" = "false" }
         }
       },
       {
-        Sid      = "AliasKunciTenant"
-        Effect   = "Allow"
-        Action   = ["kms:CreateAlias"]
-        Resource = "${local.arn}:kms:${local.region}:${local.account}:alias/elgos/${var.env}/tenant/*"
-      },
-      {
-        Sid      = "DaftarAliasKunci"
-        Effect   = "Allow"
-        Action   = ["kms:ListAliases"]
-        Resource = "*"
+        Sid       = "KirimEmail"
+        Effect    = "Allow"
+        Action    = ["ses:SendEmail", "ses:SendRawEmail"]
+        Resource  = "*"
+        Condition = { StringEquals = { "ses:FromAddress" = var.mail_from } }
       },
       {
         Sid      = "EcsExec"
@@ -188,9 +179,14 @@ resource "aws_ecs_task_definition" "api" {
       { name = "CORS_ORIGIN", value = local.web_origin },
       { name = "ELITEMENTOR_API_URL", value = var.elitementor_api_url },
       { name = "ELITEMENTOR_TOKEN_URL", value = var.elitementor_token_url },
-      # R2-3: kunci per tenant di AWS KMS; dev di luar AWS memakai provider `local`.
-      { name = "TENANT_KEY_PROVIDER", value = "aws-kms" },
-      { name = "TENANT_KEY_ALIAS_PREFIX", value = "alias/elgos/${var.env}/tenant/" },
+      { name = "APP_BASE_URL", value = local.web_origin },
+      # R2-3: kunci per tenant di AWS KMS (wajib di produksi); dev di luar AWS memakai provider `local`.
+      { name = "ENCRYPTION_PROVIDER", value = "kms" },
+      { name = "KMS_KEY_ALIAS_PREFIX", value = local.tenant_key_prefix },
+      { name = "KMS_REGION", value = local.region },
+      { name = "MAIL_PROVIDER", value = "ses" },
+      { name = "MAIL_FROM", value = var.mail_from },
+      { name = "MAIL_REGION", value = local.region },
       { name = "DATA_BUCKET", value = aws_s3_bucket.data.bucket },
       { name = "AWS_REGION", value = local.region },
     ]

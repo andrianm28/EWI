@@ -49,7 +49,10 @@ module "env" {
   db_instance_class        = "db.t4g.small"
   db_max_allocated_storage = 200
   db_backup_retention_days = 7 # PITR 7 hari
-  log_retention_days       = 90
+  # R2-5r (domain email) belum diputuskan: ganti bila sudah final; identitas SES harus terverifikasi.
+  mail_from          = "noreply@eliteacademy.id"
+  tenant_ids         = [] # id tenant ELGOS ditambahkan saat pilot diaktifkan (R2-4)
+  log_retention_days = 90
 
   elitementor_api_url   = var.elitementor_api_url
   elitementor_token_url = var.elitementor_token_url

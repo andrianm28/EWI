@@ -9,7 +9,7 @@ Keputusan acuan (`ewi-grilling/teknis.md`; produk kini bernama ELGOS, G3-A):
 |---|---|---|
 | T7 | ECS Fargate + ALB | `modules/environment/app.tf` |
 | T8 | RDS Postgres sendiri, ap-southeast-1, Single-AZ saat pilot | `data.tf` (Multi-AZ = satu variabel) |
-| R2-3 | Kunci KMS **per tenant** | role task boleh membuat/memakai kunci bertag `elgos:env` + `elgos:tenant`; bucket data wajib SSE-KMS |
+| R2-3 | Kunci KMS **per tenant** | kunci dibuat Terraform (`kms.tf`, `tenant_ids`); role task hanya GenerateDataKey/Decrypt; bucket data wajib SSE-KMS |
 | R2-4 | Pilot ELGOS di **prod**, flag per tenant | prod harus hidup sebelum uji internal 25 Nov / POC 2 Des; data nyata hanya di prod |
 | R2-8 | **Terraform** | seluruh `infra/` (HCL), state di S3 dengan lock native |
 | R2-9 | AWS hanya staging + prod; dev di etavm1 | `live/staging`, `live/prod`; dev di `deploy/dev-public` |
@@ -38,15 +38,24 @@ Keduanya: PITR 7 hari, deletion protection RDS, snapshot akhir saat dihapus, Per
 
 ### Kunci per tenant (R2-3)
 
-- API membuat satu customer managed key per tenant saat onboarding, dengan tag `elgos:env=<env>` dan
-  `elgos:tenant=<id>`, alias `alias/elgos/<env>/tenant/<id>`, lalu menyalakan rotasi tahunan.
-- Kunci dipakai untuk envelope encryption kolom transkrip/hasil (GenerateDataKey) dan SSE-KMS objek di
-  bucket data (header `x-amz-server-side-encryption: aws:kms` + id kunci tenant; tanpa header ditolak).
-- Role task tidak bisa menghapus/menonaktifkan kunci atau mengubah key policy, dan tidak bisa memakai
-  kunci tanpa tag tenant atau milik lingkungan lain.
+- Satu customer managed key per tenant dibuat oleh Terraform saat tenant diaktifkan: tambahkan id tenant
+  (`req.tenantId`) ke `tenant_ids` di `live/<env>/main.tf`, lalu apply. Tag `elgos:env` + `elgos:tenant`,
+  rotasi tahunan, `prevent_destroy`.
+- Alias mengikuti kontrak API (PR #2): `alias/elgos-<env>-tenant-<tenantId>`, dengan env
+  `ENCRYPTION_PROVIDER=kms` dan `KMS_KEY_ALIAS_PREFIX=elgos-<env>-tenant`. API menolak boot di produksi
+  tanpa `kms`.
+- Role task hanya boleh `kms:GenerateDataKey` dan `kms:Decrypt` pada kunci bertag lingkungan ini, dan
+  hanya dengan encryption context `tenant` (envelope encryption) atau lewat S3 (SSE-KMS bucket data).
+  Tidak ada izin membuat, menghapus, menonaktifkan kunci, atau mengubah key policy.
 - Biaya: US$1/kunci/bulan + US$0,03 per 10.000 permintaan. 10 tenant ≈ US$10/bulan.
-- Dev (etavm1) memakai `TENANT_KEY_PROVIDER=local` dengan kunci induk dari `.env`; hanya data sintetis.
-- Kode aplikasi untuk provider `aws-kms`/`local` belum ada; variabel lingkungan sudah disiapkan.
+- Dev (etavm1) memakai `ENCRYPTION_PROVIDER=local` dengan `EWI_LOCAL_MASTER_KEY` dari `.env`; hanya data sintetis.
+
+### Email (SES)
+
+- API memakai `MAIL_PROVIDER=ses` dengan `MAIL_FROM` (variabel `mail_from`) dan `APP_BASE_URL` = URL web.
+  Role task hanya boleh `ses:SendEmail`/`ses:SendRawEmail` dari alamat `mail_from`.
+- Domain email final menunggu R2-5r; sementara `noreply@eliteacademy.id`. Identitas SES harus
+  diverifikasi dan akun keluar dari SES sandbox sebelum kirim ke penerima nyata. Dev memakai `MAIL_PROVIDER=log`.
 
 ## Estimasi biaya (on-demand ap-southeast-1, perkiraan, belum pajak)
 
