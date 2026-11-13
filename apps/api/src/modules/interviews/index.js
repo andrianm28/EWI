@@ -79,7 +79,7 @@ function interviewRouter({ submodule, stores, ai, audit }) {
 
   r.get('/:id', wrap(async (req, res) => {
     const s = await loadVisible(req);
-    const turns = await stores.interviews.turns(s.id);
+    const turns = await stores.interviews.turns(req.tenantId, s.id);
     // R2-2: baca transkrip individu selalu dicatat (termasuk atasan dan Admin ETA)
     await audit.readIndividual(req, `${submodule}.interview_transcript`, { employeeIds: [s.intervieweeId], objectType: 'interview_session', objectIds: [s.id] });
     res.json({ data: { ...s, turns } });
@@ -93,7 +93,7 @@ function interviewRouter({ submodule, stores, ai, audit }) {
     await stores.interviews.update(req.tenantId, s.id, { consentAt: now, startedAt: now, status: 'in_progress' });
     const ctx = await buildContext(stores, req.tenantId, s);
     const q = ai.nextQuestion({ submodule, askedCount: 0, context: ctx });
-    const turn = q ? await stores.interviews.addTurn(s.id, 'ai', q) : null;
+    const turn = q ? await stores.interviews.addTurn(req.tenantId, s.id, 'ai', q) : null;
     res.json({ data: { status: 'in_progress', question: turn } });
   }));
 
@@ -103,11 +103,11 @@ function interviewRouter({ submodule, stores, ai, audit }) {
     if (s.status !== 'in_progress') throw new HttpError(409, 'INVALID_STATE', 'Sesi belum dimulai atau sudah selesai');
     const text = String((req.body || {}).text || '').trim();
     if (!text) throw badRequest('Jawaban tidak boleh kosong');
-    await stores.interviews.addTurn(s.id, 'human', text.slice(0, 8000));
-    const turns = await stores.interviews.turns(s.id);
+    await stores.interviews.addTurn(req.tenantId, s.id, 'human', text.slice(0, 8000));
+    const turns = await stores.interviews.turns(req.tenantId, s.id);
     const ctx = await buildContext(stores, req.tenantId, s);
     const q = ai.nextQuestion({ submodule, askedCount: turns.filter((t) => t.speaker === 'ai').length, context: ctx });
-    const turn = q ? await stores.interviews.addTurn(s.id, 'ai', q) : null;
+    const turn = q ? await stores.interviews.addTurn(req.tenantId, s.id, 'ai', q) : null;
     res.json({ data: { question: turn, done: !q } });
   }));
 
@@ -117,7 +117,7 @@ function interviewRouter({ submodule, stores, ai, audit }) {
       throw forbidden('ROLE_FORBIDDEN', 'Peran Anda tidak bisa menutup sesi ini');
     }
     if (s.status !== 'in_progress') throw new HttpError(409, 'INVALID_STATE', 'Sesi belum dimulai atau sudah selesai');
-    const transcript = await stores.interviews.turns(s.id);
+    const transcript = await stores.interviews.turns(req.tenantId, s.id);
     if (!transcript.some((t) => t.speaker === 'human')) throw badRequest('Belum ada jawaban di sesi ini');
     const ctx = await buildContext(stores, req.tenantId, s);
     const result = await analyze({ stores, ai, tenantId: req.tenantId, session: s, transcript, ctx });

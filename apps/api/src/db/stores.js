@@ -1,13 +1,48 @@
 'use strict';
 // Implementasi store berbasis Postgres. Setiap query memfilter tenant_id.
 const { QueryTypes } = require('sequelize');
+const crypto = require('crypto');
 const { createLnaStores } = require('./lna-stores');
+const { createFieldCipher, createProvider } = require('../core/crypto');
 
-function createStores(sequelize) {
+/** Penyimpan DEK terbungkus per tenant (R2-3). */
+function tenantKeyStore(sequelize) {
+  const cols = 'version, key_ref AS "keyRef", wrapped_key AS "wrappedKey"';
+  return {
+    async get(tenantId) {
+      const [row] = await sequelize.query(`SELECT ${cols} FROM tenant_keys WHERE tenant_id = :tenantId ORDER BY version DESC LIMIT 1`,
+        { replacements: { tenantId }, type: QueryTypes.SELECT });
+      return row || null;
+    },
+    async insert(tenantId, { version, keyRef, wrappedKey }) {
+      // aman bila dua request membuat kunci bersamaan: yang kalah memakai kunci yang sudah tersimpan
+      await sequelize.query(
+        `INSERT INTO tenant_keys (tenant_id, version, key_ref, wrapped_key) VALUES (:tenantId, :version, :keyRef, :wrappedKey)
+         ON CONFLICT (tenant_id, version) DO NOTHING`,
+        { replacements: { tenantId, version, keyRef, wrappedKey } },
+      );
+      const [row] = await sequelize.query(`SELECT ${cols} FROM tenant_keys WHERE tenant_id = :tenantId AND version = :version`,
+        { replacements: { tenantId, version }, type: QueryTypes.SELECT });
+      return row;
+    },
+  };
+}
+
+/**
+ * encryption: config.encryption (R2-3). Tanpa config hanya boleh di test (kunci lokal acak per proses).
+ */
+function createStores(sequelize, { encryption } = {}) {
   const q = (sql, replacements, type = QueryTypes.SELECT) => sequelize.query(sql, { replacements, type });
+  let enc = encryption;
+  if (!enc) {
+    if (process.env.NODE_ENV !== 'test') throw new Error('createStores butuh config.encryption (R2-3)');
+    enc = { provider: 'local', localMasterKey: crypto.randomBytes(32) };
+  }
+  const cipher = createFieldCipher({ provider: createProvider(enc), keyStore: tenantKeyStore(sequelize) });
 
   return {
-    ...createLnaStores(sequelize),
+    cipher,
+    ...createLnaStores(sequelize, { cipher }),
     users: {
       async listActiveTenants() {
         return q(`SELECT slug, name FROM tenants WHERE status = 'active' ORDER BY name`);

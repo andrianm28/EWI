@@ -169,7 +169,7 @@ run('Impor file R3-3 (Postgres)', () => {
     const hist = (await request(app).get('/api/dna/imports/batches').set(as('hr'))).body.data;
     expect(hist.length).toBe(5);
     expect(hist.every((b) => b.status === 'committed' && b.createdByName === 'hr')).toBe(true);
-    const [{ n }] = await db.query(`SELECT count(*)::int AS n FROM import_batches WHERE tenant_id = :t AND jsonb_array_length(rows) > 0`, { replacements: { t: tenant.id }, type: 'SELECT' });
+    const [{ n }] = await db.query(`SELECT count(*)::int AS n FROM import_batches WHERE tenant_id = :t AND (jsonb_typeof(rows) <> 'array' OR jsonb_array_length(rows) > 0)`, { replacements: { t: tenant.id }, type: 'SELECT' });
     expect(n).toBe(0);
     const audits = await db.query(`SELECT resource FROM audit_logs WHERE tenant_id = :t AND action = 'create' AND resource LIKE 'import.%'`, { replacements: { t: tenant.id }, type: 'SELECT' });
     expect(audits.length).toBe(6);
@@ -177,6 +177,11 @@ run('Impor file R3-3 (Postgres)', () => {
 
   it('isolasi tenant dan validasi unggahan', async () => {
     const up = await upload('dna', 'employees', 'k.csv', csv(['ID Karyawan,Nama,Email', 'E-9,Nn,nn@imp.test']));
+    // R2-3: baris mentah tersimpan terenkripsi
+    const [[raw]] = await db.query('SELECT rows #>> \'{}\' AS rows FROM import_batches WHERE id = :id', { replacements: { id: up.body.data.id } });
+    expect(raw.rows).toMatch(/^enc:v1:/);
+    expect(raw.rows).not.toContain('nn@imp.test');
+    expect(up.body.data.sample[0]).toMatchObject({ Email: 'nn@imp.test' });
     expect((await request(app).get(`/api/dna/imports/batches/${up.body.data.id}`).set(as('luar'))).status).toBe(404);
     expect((await request(app).post(`/api/dna/imports/batches/${up.body.data.id}/commit`).set(as('luar')).send({})).status).toBe(404);
     expect((await request(app).get(`/api/tna/imports/batches/${up.body.data.id}`).set(as('hr'))).status).toBe(404); // beda submodul

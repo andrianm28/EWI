@@ -26,7 +26,16 @@ function withNulls(obj, keys) {
   return out;
 }
 
-function createLnaStores(sequelize) {
+/**
+ * cipher: enkripsi kolom per tenant (R2-3). Kolom terenkripsi: transkrip/jawaban (lna_interview_turns.text),
+ * bukti asesmen (lna_assessments.evidence), temuan (lna_findings.title, detail), catatan rencana training
+ * (lna_training_plan_items.note), dan baris mentah impor (import_batches.rows). Skor angka tetap terbuka
+ * agar bisa dihitung; skor tanpa transkrip/bukti tidak mengungkap isi wawancara.
+ */
+function createLnaStores(sequelize, { cipher } = {}) {
+  if (!cipher) throw new Error('createLnaStores butuh cipher (R2-3)');
+  const enc = (tenantId, v) => cipher.encrypt(tenantId, v);
+  const open = (tenantId, rows, fields) => cipher.open(tenantId, rows, fields);
   const select = (sql, replacements = {}) => sequelize.query(sql, { replacements, type: QueryTypes.SELECT });
   const one = async (sql, replacements) => (await select(sql, replacements))[0] || null;
   const insert = async (sql, replacements) => {
@@ -181,9 +190,9 @@ function createLnaStores(sequelize) {
                       WHERE tenant_id = :tenantId AND id = :id RETURNING id, approved_at AS "approvedAt"`, { tenantId, id, userId });
     },
     async assessments(tenantId, userId) {
-      return select(`SELECT competency_id AS "competencyId", score, confidence, evidence, session_id AS "sessionId", source, assessor,
+      return open(tenantId, await select(`SELECT id, competency_id AS "competencyId", score, confidence, evidence, session_id AS "sessionId", source, assessor,
                             assessed_at AS "assessedAt", created_at AS "createdAt"
-                       FROM lna_assessments WHERE tenant_id = :tenantId AND user_id = :userId ORDER BY created_at`, { tenantId, userId });
+                       FROM lna_assessments WHERE tenant_id = :tenantId AND user_id = :userId ORDER BY created_at`, { tenantId, userId }), ['evidence']);
     },
     async assessmentsFor(tenantId, userIds) {
       if (!userIds.length) return [];
@@ -194,7 +203,7 @@ function createLnaStores(sequelize) {
       return insert(`INSERT INTO lna_assessments (tenant_id, user_id, competency_id, session_id, score, confidence, evidence, source, assessor, assessed_at, import_batch_id)
                      VALUES (:tenantId, :userId, :competencyId, :sessionId, :score, :confidence, :evidence, COALESCE(:source, 'ai_interview'), :assessor, :assessedAt, :importBatchId)
                      RETURNING id, competency_id AS "competencyId", score, source, assessed_at AS "assessedAt", created_at AS "createdAt"`,
-      withNulls({ tenantId, ...a }, ['sessionId', 'confidence', 'evidence', 'source', 'assessor', 'assessedAt', 'importBatchId']));
+      withNulls({ tenantId, ...a, evidence: await enc(tenantId, a.evidence) }, ['sessionId', 'confidence', 'evidence', 'source', 'assessor', 'assessedAt', 'importBatchId']));
     },
     async completions(tenantId, userIds) {
       if (!userIds.length) return [];
@@ -242,12 +251,17 @@ function createLnaStores(sequelize) {
                          started_at AS "startedAt", ended_at AS "endedAt"
                     FROM lna_interview_sessions WHERE tenant_id = :tenantId AND id = :id`, { tenantId, id });
     },
-    async turns(sessionId) {
-      return select(`SELECT speaker, text, at FROM lna_interview_turns WHERE session_id = :sessionId ORDER BY id`, { sessionId });
+    async turns(tenantId, sessionId) {
+      const rows = await select(`SELECT t.speaker, t.text, t.at FROM lna_interview_turns t
+                                   JOIN lna_interview_sessions s ON s.id = t.session_id
+                                  WHERE s.tenant_id = :tenantId AND t.session_id = :sessionId ORDER BY t.id`, { tenantId, sessionId });
+      return open(tenantId, rows, ['text']);
     },
-    async addTurn(sessionId, speaker, text) {
-      return insert(`INSERT INTO lna_interview_turns (session_id, speaker, text) VALUES (:sessionId, :speaker, :text)
-                     RETURNING speaker, text, at`, { sessionId, speaker, text });
+    async addTurn(tenantId, sessionId, speaker, text) {
+      const row = await insert(`INSERT INTO lna_interview_turns (session_id, speaker, text)
+                                SELECT s.id, :speaker, :text FROM lna_interview_sessions s WHERE s.tenant_id = :tenantId AND s.id = :sessionId
+                                RETURNING speaker, at`, { tenantId, sessionId, speaker, text: await enc(tenantId, text) });
+      return row ? { ...row, text } : null;
     },
     async update(tenantId, id, fields) {
       const allowed = { status: 'status', consentAt: 'consent_at', startedAt: 'started_at', endedAt: 'ended_at' };
@@ -296,8 +310,10 @@ function createLnaStores(sequelize) {
                                                 gap_score, performance_record_id, linked_finding_id)
                      VALUES (:tenantId, :projectId, :userId, :competencyId, :sessionId, :category, :title, :detail,
                              :gapScore, :performanceRecordId, :linkedFindingId)
-                     RETURNING id, category, title`,
-      withNulls({ tenantId, ...f }, ['competencyId', 'sessionId', 'detail', 'gapScore', 'performanceRecordId', 'linkedFindingId']));
+                     RETURNING id, category`,
+      withNulls({ tenantId, ...f, title: await enc(tenantId, f.title), detail: await enc(tenantId, f.detail) },
+        ['competencyId', 'sessionId', 'detail', 'gapScore', 'performanceRecordId', 'linkedFindingId']))
+        .then((row) => ({ ...row, title: f.title }));
     },
     async listFindings(tenantId, scope, { projectId, categories }) {
       const rep = { tenantId, categories };
@@ -312,11 +328,11 @@ function createLnaStores(sequelize) {
                   WHERE f.tenant_id = :tenantId AND f.category IN (:categories)`;
       sql += scopeSql('f.user_id', scope, rep);
       if (projectId) { sql += ' AND f.project_id = :projectId'; rep.projectId = projectId; }
-      return select(`${sql} ORDER BY f.created_at DESC`, rep);
+      return open(tenantId, await select(`${sql} ORDER BY f.created_at DESC`, rep), ['title', 'detail']);
     },
     async getFinding(tenantId, id) {
-      return one(`SELECT f.id, f.user_id AS "userId", f.category, f.title, f.competency_id AS "competencyId", f.status
-                    FROM lna_findings f WHERE f.tenant_id = :tenantId AND f.id = :id`, { tenantId, id });
+      return open(tenantId, await one(`SELECT f.id, f.user_id AS "userId", f.category, f.title, f.competency_id AS "competencyId", f.status
+                    FROM lna_findings f WHERE f.tenant_id = :tenantId AND f.id = :id`, { tenantId, id }), ['title']);
     },
     async setFindingStatus(tenantId, id, status) {
       return insert('UPDATE lna_findings SET status = :status WHERE tenant_id = :tenantId AND id = :id RETURNING id, status', { tenantId, id, status });
@@ -328,18 +344,19 @@ function createLnaStores(sequelize) {
                              :catalogItemTitle, :note, :requestedBy)
                      RETURNING id, user_id AS "userId", finding_id AS "findingId", origin, status, catalog_source AS "catalogSource",
                                catalog_item_ref AS "catalogItemRef", catalog_item_title AS "catalogItemTitle", note`,
-      withNulls({ tenantId, ...p }, ['findingId', 'programTier', 'catalogSource', 'catalogItemRef', 'catalogItemTitle', 'note', 'requestedBy']));
+      withNulls({ tenantId, ...p, note: await enc(tenantId, p.note) }, ['findingId', 'programTier', 'catalogSource', 'catalogItemRef', 'catalogItemTitle', 'note', 'requestedBy']))
+        .then((row) => open(tenantId, row, ['note']));
     },
     async listPlanItems(tenantId, scope) {
       const rep = { tenantId };
       const sql = `SELECT ${PLAN_COLS}, f.title AS "findingTitle" FROM lna_training_plan_items p
                      JOIN users u ON u.id = p.user_id LEFT JOIN lna_findings f ON f.id = p.finding_id
                     WHERE p.tenant_id = :tenantId${scopeSql('p.user_id', scope, rep)} ORDER BY p.created_at DESC`;
-      return select(sql, rep);
+      return open(tenantId, await select(sql, rep), ['note', 'findingTitle']);
     },
     async getPlanItem(tenantId, id) {
-      return one(`SELECT ${PLAN_COLS} FROM lna_training_plan_items p JOIN users u ON u.id = p.user_id
-                   WHERE p.tenant_id = :tenantId AND p.id = :id`, { tenantId, id });
+      return open(tenantId, await one(`SELECT ${PLAN_COLS} FROM lna_training_plan_items p JOIN users u ON u.id = p.user_id
+                   WHERE p.tenant_id = :tenantId AND p.id = :id`, { tenantId, id }), ['note']);
     },
     async updatePlanItem(tenantId, id, { status, catalogItemRef, catalogItemTitle, catalogSource }) {
       return insert(`UPDATE lna_training_plan_items
@@ -366,13 +383,15 @@ function createLnaStores(sequelize) {
       await sequelize.query(
         `INSERT INTO import_batches (id, tenant_id, submodule, kind, filename, row_count, headers, rows, mapping, created_by)
          VALUES (:id, :tenantId, :submodule, :kind, :filename, :rowCount, CAST(:headers AS jsonb), CAST(:rows AS jsonb), CAST(:mapping AS jsonb), :createdBy)`,
-        { replacements: { ...b, tenantId, headers: JSON.stringify(b.headers), rows: JSON.stringify(b.rows), mapping: JSON.stringify(b.mapping || {}) } },
+        { replacements: { ...b, tenantId, headers: JSON.stringify(b.headers), rows: JSON.stringify(await cipher.encryptJson(tenantId, b.rows)), mapping: JSON.stringify(b.mapping || {}) } },
       );
       return imports.get(tenantId, b.id);
     },
     async get(tenantId, id) {
-      return one(`SELECT ${BATCH_COLS}, b.rows FROM import_batches b LEFT JOIN users u ON u.id = b.created_by
+      const row = await one(`SELECT ${BATCH_COLS}, b.rows FROM import_batches b LEFT JOIN users u ON u.id = b.created_by
                    WHERE b.tenant_id = :tenantId AND b.id = :id`, { tenantId, id });
+      if (row) row.rows = await cipher.decryptJson(tenantId, row.rows);
+      return row;
     },
     async list(tenantId, submodule) {
       return select(`SELECT ${BATCH_COLS} FROM import_batches b LEFT JOIN users u ON u.id = b.created_by

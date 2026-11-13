@@ -381,4 +381,21 @@ run('POC DNA + TNA (Postgres)', () => {
     ]);
     expect(logs[1].meta).toMatchObject({ key: 'dna.ai_interview', reason: 'Biaya AI melonjak', global: true });
   });
+  it('R2-3: transkrip, bukti, temuan, dan catatan tersimpan terenkripsi per tenant', async () => {
+    const one = async (sql) => (await db.query(sql, { replacements: { t: tenant.id }, type: 'SELECT' }))[0];
+    const turn = await one(`SELECT t.text FROM lna_interview_turns t JOIN lna_interview_sessions s ON s.id = t.session_id WHERE s.tenant_id = :t AND t.speaker = 'human' LIMIT 1`);
+    expect(turn.text).toMatch(/^enc:v1:/);
+    const ev = await one(`SELECT evidence FROM lna_assessments WHERE tenant_id = :t AND evidence IS NOT NULL AND source = 'manual_interview' LIMIT 1`);
+    expect(ev.evidence).toMatch(/^enc:v1:/);
+    const f = await one(`SELECT title, detail FROM lna_findings WHERE tenant_id = :t LIMIT 1`);
+    expect(f.title).toMatch(/^enc:v1:/);
+    const key = await one(`SELECT key_ref AS "keyRef", wrapped_key AS "wrappedKey" FROM tenant_keys WHERE tenant_id = :t`);
+    expect(key.keyRef).toBe('local');
+    // lewat API tetap terbaca
+    const [s] = (await db.query(`SELECT id FROM lna_interview_sessions WHERE tenant_id = :t AND submodule = 'tna' AND status = 'completed' LIMIT 1`, { replacements: { t: tenant.id }, type: 'SELECT' }));
+    const res = await request(app).get(`/api/tna/sessions/${s.id}`).set(as('hr'));
+    expect(res.body.data.turns.find((x) => x.speaker === 'human').text).not.toMatch(/^enc:/);
+    const findings = (await request(app).get('/api/tna/findings').set(as('hr'))).body.data;
+    expect(findings.every((x) => !x.title.startsWith('enc:'))).toBe(true);
+  });
 });

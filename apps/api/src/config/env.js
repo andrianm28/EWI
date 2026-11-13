@@ -16,6 +16,21 @@ function loadConfig(env = process.env) {
   // R3-2: di produksi link masuk harus benar-benar terkirim, bukan ditulis ke log
   if (env.NODE_ENV === 'production' && mailProvider !== 'ses') errors.push('MAIL_PROVIDER=ses wajib di produksi');
   if (mailProvider === 'ses' && !env.MAIL_FROM) errors.push('MAIL_FROM wajib diisi untuk MAIL_PROVIDER=ses');
+  // R2-3: enkripsi kolom per tenant. Produksi wajib KMS; dev/staging di luar KMS memakai kunci induk lokal dari env.
+  const encProvider = env.ENCRYPTION_PROVIDER || 'local';
+  if (!['local', 'kms'].includes(encProvider)) errors.push('ENCRYPTION_PROVIDER harus local atau kms');
+  if (env.NODE_ENV === 'production' && encProvider !== 'kms') errors.push('ENCRYPTION_PROVIDER=kms wajib di produksi');
+  let localMasterKey = null;
+  if (encProvider === 'local') {
+    const raw = env.EWI_LOCAL_MASTER_KEY || '';
+    localMasterKey = /^[0-9a-f]{64}$/i.test(raw) ? Buffer.from(raw, 'hex') : (raw ? Buffer.from(raw, 'base64') : null);
+    if (localMasterKey && localMasterKey.length !== 32) errors.push('EWI_LOCAL_MASTER_KEY harus 32 byte (64 hex atau base64)');
+    if (!localMasterKey) {
+      // hanya test yang boleh tanpa kunci: kunci acak per proses (data uji dibuang setiap run)
+      if (env.NODE_ENV === 'test') localMasterKey = require('crypto').randomBytes(32);
+      else errors.push('EWI_LOCAL_MASTER_KEY wajib diisi untuk ENCRYPTION_PROVIDER=local (buat: openssl rand -hex 32)');
+    }
+  }
   if (errors.length) {
     const err = new Error(`Konfigurasi tidak valid:\n- ${errors.join('\n- ')}`);
     err.code = 'CONFIG_INVALID';
@@ -40,6 +55,12 @@ function loadConfig(env = process.env) {
     }),
     // Alamat web untuk link masuk (R3-2), mis. https://dev-elgos.eliteacademy.id
     appBaseUrl: (env.APP_BASE_URL || (env.CORS_ORIGIN || '').split(',')[0] || 'http://localhost:5174').replace(/\/$/, ''),
+    encryption: Object.freeze({
+      provider: encProvider,
+      localMasterKey,
+      kmsAliasPrefix: env.KMS_KEY_ALIAS_PREFIX || 'elgos-tenant',
+      region: env.KMS_REGION || env.AWS_REGION || 'ap-southeast-3',
+    }),
     mail: Object.freeze({
       provider: mailProvider,
       from: env.MAIL_FROM || '',
