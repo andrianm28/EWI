@@ -13,12 +13,12 @@ arahan cadence 11 Nov (Ahmad Gilang) yang ditetapkan berlaku penuh pada 12 Nov:
   `tna.interviewJobRoleId` = Service Delivery L1).
 - **F6-A** (grilling komersial 13 Nov, menggantikan RG-1d): DNA = impor/bangun kamus kompetensi + asesmen
   gap individu yang proaktif; TNA tetap reaktif terhadap masalah kinerja. Kode POC sudah sesuai (gap individu
-  ada di DNA lewat `lna_assessments`; TNA dipicu target merah), jadi tidak ada perubahan. Nama produk
-  (ELGOS, G3) belum final; repo tetap memakai "EWI".
+  ada di DNA lewat `lna_assessments`; TNA dipicu target merah), jadi tidak ada perubahan.
 - **G2-A** (13 Nov): rekomendasi promosi adalah modul terpisah, di luar POC. Kode tetap ada tetapi di balik
   flag `promotion.recommendation` (default mati): `GET /api/dna/promotion-candidates` 403 dan
-  `career.promotionCandidate` tidak dikirim. G3-A (nama produk ELGOS) dan G4 (pilot Desember 2026, 1 bulan)
-  sudah final; penggantian nama di repo menunggu jadwal dari user.
+  `career.promotionCandidate` tidak dikirim. G4: pilot Desember 2026 (1 bulan).
+- **G3-A** (13 Nov): nama produk resmi **ELGOS**. Teks yang dibaca orang memakai ELGOS; identifier teknis
+  (schema `ewi`, variabel `EWI_*`, audience JWT `ewi`, path `docs/ewi/`) belum diganti dan menunggu keputusan user.
 - **C4** TNA bisa berjalan tanpa DACUM/DNA: karyawan tanpa job role atau kamus kompetensi tetap bisa
   diwawancarai; temuannya tidak tertaut kompetensi dan training plan-nya menjadi `needs_module`.
 
