@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Deploy dev EWI di etavm1 dengan image GHCR. Dipanggil oleh .github/workflows/deploy-dev.yml (runner
+# Deploy dev ELGOS di etavm1 dengan image GHCR. Dipanggil oleh .github/workflows/deploy-dev.yml (runner
 # self-hosted), bisa juga manual oleh user ewi-deploy:
 #   EWI_DEV_DIR=/srv/ewi-dev deploy/dev-public/deploy.sh <sha>
 #
@@ -76,7 +76,7 @@ rollback() {
   if [ "$MIGRATED" = 1 ]; then
     log "Migrasi sudah jalan: kembalikan schema ewi ke kondisi sebelum deploy (${BACKUP:-kosong})"
     dc stop api web || true
-    # Semua tabel EWI (termasuk SequelizeMeta) ada di schema ewi; backup hanya schema itu.
+    # Semua tabel ELGOS (termasuk SequelizeMeta) ada di schema ewi; backup hanya schema itu.
     dc exec -T db psql -U ewi -d ewi_dev -v ON_ERROR_STOP=1 -c 'DROP SCHEMA IF EXISTS ewi CASCADE' >&2 || true
     if [ -n "$BACKUP" ]; then
       dc exec -T db pg_restore -U ewi -d ewi_dev --no-owner < "$BACKUP" >&2 || log "PERINGATAN: pg_restore melaporkan error, cek manual"
