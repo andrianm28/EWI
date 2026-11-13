@@ -1,0 +1,9 @@
+output "web_url" { value = local.web_origin }
+output "web_bucket" { value = aws_s3_bucket.web.bucket }
+output "data_bucket" { value = aws_s3_bucket.data.bucket }
+output "distribution_id" { value = aws_cloudfront_distribution.web.id }
+output "cluster_name" { value = aws_ecs_cluster.this.name }
+output "service_name" { value = aws_ecs_service.api.name }
+output "db_endpoint" { value = aws_db_instance.this.address }
+output "app_secret_arn" { value = aws_secretsmanager_secret.app.arn }
+output "elitementor_secret_arn" { value = aws_secretsmanager_secret.elitementor.arn }

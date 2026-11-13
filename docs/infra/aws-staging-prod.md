@@ -1,44 +1,54 @@
-# Lingkungan AWS EWI: staging dan prod
+# Lingkungan AWS ELGOS: staging dan prod (Terraform)
 
-Status: IaC siap, **belum di-deploy**. Target: **akun AWS khusus EWI** (anggota AWS Organizations ETA),
-dibuat lewat profil SSO `eta-andrian` di akun management. Deploy pertama menunggu akun itu jadi.
+Status: IaC siap, **belum di-deploy**. Target: **akun AWS khusus ELGOS** (anggota AWS Organizations ETA),
+dibuat dari akun management lewat profil SSO `eta-andrian` (ada di etavm1).
 
-Acuan keputusan (`ewi-grilling/teknis.md`): T7 ECS Fargate + ALB, T8 RDS Postgres sendiri di
-ap-southeast-1 Single-AZ untuk pilot (Multi-AZ sebelum komersial), R2-8 alat IaC = AWS CDK TypeScript
-(rekomendasi, dipakai di sini), R2-9 = **staging + prod di AWS; dev di luar AWS** (ralat user
-11 Nov 2026 07:19 UTC).
+Keputusan acuan (`ewi-grilling/teknis.md`; produk kini bernama ELGOS, G3-A):
+
+| Kode | Keputusan | Wujud di IaC |
+|---|---|---|
+| T7 | ECS Fargate + ALB | `modules/environment/app.tf` |
+| T8 | RDS Postgres sendiri, ap-southeast-1, Single-AZ saat pilot | `data.tf` (Multi-AZ = satu variabel) |
+| R2-3 | Kunci KMS **per tenant** | role task boleh membuat/memakai kunci bertag `elgos:env` + `elgos:tenant`; bucket data wajib SSE-KMS |
+| R2-4 | Pilot ELGOS di **prod**, flag per tenant | prod harus hidup sebelum uji internal 25 Nov / POC 2 Des; data nyata hanya di prod |
+| R2-8 | **Terraform** | seluruh `infra/` (HCL), state di S3 dengan lock native |
+| R2-9 | AWS hanya staging + prod; dev di etavm1 | `live/staging`, `live/prod`; dev di `deploy/dev-public` |
 
 ## Arsitektur per lingkungan
 
 ```
-Browser ──HTTPS──> CloudFront (*.cloudfront.net) ──┬── /*      ──> S3 (web Vue, privat, OAC)
+Browser ──HTTPS──> CloudFront (*.cloudfront.net) ──┬── /*      ──> S3 web (privat, OAC)
                                                     └── /api/*  ──> ALB (hanya dari CloudFront)
                                                                      └──> ECS Fargate "api"
-                                                                            └──> RDS Postgres 16
-                                                                                 (subnet terisolasi, terenkripsi)
-Secrets Manager: ewi/<env>/db, ewi/<env>/app (EWI_JWT_SECRET), ewi/<env>/elitementor
+                                                                            ├──> RDS Postgres 16 (subnet terisolasi, TLS wajib)
+                                                                            ├──> S3 data tenant (SSE-KMS wajib)
+                                                                            └──> KMS: satu kunci per tenant
+Secrets Manager: password master RDS (dikelola RDS), elgos-<env>/app (JWT), elgos-<env>/elitementor
 ```
 
-| Stack | Isi |
+| Folder | Isi |
 |---|---|
-| `Ewi-shared` | Repo ECR `ewi-api` (tag immutable, scan on push), OIDC GitHub + role `ewi-github-deploy` |
-| `Ewi-staging` | VPC 10.41.0.0/16, Fargate 0,25 vCPU/0,5 GB, RDS db.t4g.micro, backup 7 hari |
-| `Ewi-prod` | VPC 10.42.0.0/16, Fargate 0,5 vCPU/1 GB, RDS db.t4g.small, backup 7 hari (PITR), log 90 hari |
+| `infra/bootstrap` | Bucket state `elgos-tfstate-<akun>` (versioning, SSE-KMS, TLS wajib). State lokal, sekali per akun. |
+| `infra/live/shared` | ECR `elgos-api` (tag immutable, scan), OIDC GitHub, role `elgos-github-deploy`. Di-apply admin. |
+| `infra/live/staging` | VPC 10.41/16, Fargate 0,25 vCPU/0,5 GB, RDS db.t4g.micro, log 30 hari |
+| `infra/live/prod` | VPC 10.42/16, Fargate 0,5 vCPU/1 GB, RDS db.t4g.small, log 90 hari |
+| `infra/modules/environment` | Semua sumber daya per lingkungan |
 
-Keduanya: deletion protection RDS, snapshot saat stack dihapus, termination protection stack,
-secret/bucket/log dipertahankan bila stack dihapus.
+Keduanya: PITR 7 hari, deletion protection RDS, snapshot akhir saat dihapus, Performance Insights.
 
-Pilihan yang disengaja:
-- **Tanpa NAT Gateway.** Task Fargate di subnet publik dengan IP publik, security group hanya menerima
-  dari ALB; ALB hanya menerima dari prefix list CloudFront. RDS di subnet tanpa internet.
-  Saat komersial, pertimbangkan subnet privat + NAT untuk prod.
-- **Tanpa domain dulu.** URL `https://<id>.cloudfront.net`. Domain + sertifikat ACM ditambahkan setelah
-  R2-5 diputuskan.
-- **Migrasi saat container start** (`RUN_MIGRATIONS=true`). Migrasi gagal = task tidak sehat =
-  ECS circuit breaker rollback ke versi sebelumnya.
-- DB dihubungkan dengan TLS terverifikasi (CA RDS dibundel di image, `ssl=true`).
+### Kunci per tenant (R2-3)
 
-## Estimasi biaya (on-demand ap-southeast-1, perkiraan, belum termasuk pajak)
+- API membuat satu customer managed key per tenant saat onboarding, dengan tag `elgos:env=<env>` dan
+  `elgos:tenant=<id>`, alias `alias/elgos/<env>/tenant/<id>`, lalu menyalakan rotasi tahunan.
+- Kunci dipakai untuk envelope encryption kolom transkrip/hasil (GenerateDataKey) dan SSE-KMS objek di
+  bucket data (header `x-amz-server-side-encryption: aws:kms` + id kunci tenant; tanpa header ditolak).
+- Role task tidak bisa menghapus/menonaktifkan kunci atau mengubah key policy, dan tidak bisa memakai
+  kunci tanpa tag tenant atau milik lingkungan lain.
+- Biaya: US$1/kunci/bulan + US$0,03 per 10.000 permintaan. 10 tenant ≈ US$10/bulan.
+- Dev (etavm1) memakai `TENANT_KEY_PROVIDER=local` dengan kunci induk dari `.env`; hanya data sintetis.
+- Kode aplikasi untuk provider `aws-kms`/`local` belum ada; variabel lingkungan sudah disiapkan.
+
+## Estimasi biaya (on-demand ap-southeast-1, perkiraan, belum pajak)
 
 | Komponen | staging / bulan | prod / bulan |
 |---|---|---|
@@ -46,57 +56,39 @@ Pilihan yang disengaja:
 | Application Load Balancer | ± US$20 | ± US$20 |
 | RDS Single-AZ + 20 GB gp3 | ± US$22 (t4g.micro) | ± US$41 (t4g.small) |
 | IPv4 publik (ALB 2 + task 1) | ± US$11 | ± US$11 |
-| Secrets Manager, CloudWatch Logs, S3, CloudFront, ECR | ± US$4 | ± US$5 |
-| **Total** | **± US$68** | **± US$99** |
+| KMS per tenant, Secrets, Logs, S3, CloudFront, ECR | ± US$5 | ± US$10 |
+| **Total** | **± US$69** | **± US$104** |
 
-Keduanya ± **US$167/bulan (± Rp 2,7 juta)**. Perkiraan dari harga publik; periksa di AWS Pricing
-Calculator. Belum termasuk AI (Bedrock/Transcribe), SES, transfer data besar, dan Multi-AZ prod
-(± +US$41) saat komersial.
+Keduanya ± **US$173/bulan (± Rp 2,8 juta)**. Belum termasuk AI (Bedrock/Transcribe), SES, dan transfer
+data besar. Periksa di AWS Pricing Calculator.
 
-## Setup sekali
+## Setup sekali (urutan)
 
-1. **Akun EWI**: dari akun management (profil `eta-andrian`), `aws organizations create-account
-   --email <email-root-unik> --account-name EWI`, lalu beri akses Identity Center (permission set
-   AdministratorAccess) ke user ETA yang men-deploy. Buat profil SSO baru, misalnya `ewi-admin`.
-2. Bootstrap CDK di akun EWI:
-   ```bash
-   cd infra && npm ci
-   npx cdk bootstrap aws://<EWI_ACCOUNT_ID>/ap-southeast-1 --profile ewi-admin
-   ```
-3. Stack bersama: `npx cdk deploy Ewi-shared --profile ewi-admin`
-   (akun baru belum punya OIDC provider GitHub, jadi stack ini membuatnya).
-4. GitHub repo: Settings > Secrets and variables > Actions > Variables, tambah `AWS_ACCOUNT_ID`
-   (id akun EWI). Settings > Environments: buat `staging` dan `prod`; di `prod` pasang required reviewer.
-5. Deploy pertama staging: Actions > Deploy > Run workflow (environment `staging`). Workflow mem-build
-   image di GitHub (Docker lokal tidak diperlukan), `cdk deploy Ewi-staging`, mengunggah web, smoke test.
-   Catatan: `workflow_dispatch` baru muncul setelah file workflow ada di `main`.
-6. Setelah staging sehat: Run workflow environment `prod`, `image_tag` = SHA yang sama.
-7. Isi kredensial EliteMentor di `ewi/<env>/elitementor` (ELITEMENTOR_CLIENT_ID/SECRET) setelah EM
-   menerbitkannya (T2); `ELITEMENTOR_WEBHOOK_SECRET` sudah dibangkitkan, serahkan ke tim EM (T6).
-   URL API/token EM lewat context: `-c staging:elitementorApiUrl=... -c staging:elitementorTokenUrl=...`
-   (atau tambahkan ke `infra/cdk.json`). Restart service setelah mengubah secret.
-
-## Alur deploy rutin
-
-- Merge ke `main` → otomatis deploy ke **staging**.
-- Promosi ke **prod**: Run workflow manual dengan SHA yang sudah lulus di staging (image yang sama),
-  disetujui reviewer environment `prod`.
-- Workflow tidak jalan sama sekali sampai `AWS_ACCOUNT_ID` diisi, jadi aman di-merge lebih dulu.
+1. **Akun ELGOS**: dari etavm1, `aws sso login --profile eta-andrian`, lalu
+   `aws organizations create-account --email <email-root-unik> --account-name ELGOS`. Beri permission set
+   AdministratorAccess di Identity Center ke user ETA yang men-deploy; buat profil `elgos-admin`.
+2. **State**: `cd infra/bootstrap && AWS_PROFILE=elgos-admin terraform init && terraform apply`.
+   Salin `live/backend.hcl.example` ke `live/backend.hcl` dan isi id akun.
+3. **Shared**: `cd infra/live/shared && terraform init -backend-config=../backend.hcl && terraform apply`.
+4. **GitHub**: variabel repo `AWS_ACCOUNT_ID` (akun ELGOS); Environments `staging` dan `prod`
+   (`prod` dengan required reviewer).
+5. **Staging**: merge ke `main` (atau Run workflow `staging`). Workflow build image di GitHub, `terraform
+   apply`, unggah web, smoke test `/api/health`.
+6. **Prod**: Run workflow `prod` dengan `image_tag` = SHA yang sudah sehat di staging. Target sebelum 25 Nov.
+7. Isi `ELITEMENTOR_CLIENT_ID/SECRET` di secret `elgos-<env>/elitementor` setelah EM menerbitkannya (T2);
+   secret webhook sudah dibangkitkan, serahkan ke tim EM (T6). URL EM: `-var elitementor_api_url=...`.
 
 ## Operasional
 
-- Log API: CloudWatch `/ewi/<env>/api`. Log Postgres: `/aws/rds/instance/.../postgresql`.
-- Shell ke container: `aws ecs execute-command --cluster ewi-<env> --task <id> --container api --interactive --command sh`.
-- Data karyawan nyata hanya di prod (R2-4 rekomendasi, belum diputuskan).
+- Log API: CloudWatch `/elgos/<env>/api`. Log Postgres: `/aws/rds/instance/elgos-<env>/postgresql`.
+- Shell ke container: `aws ecs execute-command --cluster elgos-<env> --task <id> --container api --interactive --command sh`.
+- Role CI (`elgos-github-deploy`): PowerUserAccess + IAM terbatas pada `elgos-*`; tidak bisa mengubah dirinya.
 
 ## Belum termasuk (menunggu keputusan)
 
 | Item | Menunggu |
 |---|---|
-| (selesai) Dev publik di luar AWS | etavm1 + Cloudflare Tunnel, lihat `deploy/dev-public/` |
-| Domain + HTTPS ke ALB, alamat pengirim email SES | R2-5 |
+| Domain (mis. elgos.eliteacademy.id) + sertifikat ACM, pengirim email SES | R2-5r |
 | EventBridge Scheduler untuk job (rekonsiliasi T6, pengingat, retensi) | job belum ada di kode; L3 |
-| Alarm CloudWatch + notifikasi, WAF | R2-10 (RPO/RTO, dukungan) |
-| Kebijakan data nyata di staging | R2-4 |
-| Enkripsi kolom/KMS per tenant | R2-3 (saat ini enkripsi storage bawaan) |
-| Multi-AZ prod | sebelum komersial (T8) |
+| Alarm CloudWatch + notifikasi, WAF, target backup final | R2-10r (selaras RG-11) |
+| Multi-AZ prod | sebelum komersial (T8); RG-11 menyatakan bukan HA |
