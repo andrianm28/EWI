@@ -37,7 +37,7 @@ jobs:
       - name: Migrasi naik, turun, naik lagi
         run: |
           npm run migrate -w apps/api
-          (cd apps/api && npx sequelize-cli db:migrate:undo:all)
+          npm run migrate:undo:all -w apps/api
           npm run migrate -w apps/api
       - run: npm test -w apps/api
 
