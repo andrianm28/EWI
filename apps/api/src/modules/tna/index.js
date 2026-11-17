@@ -25,7 +25,7 @@ const PLAN_STATUSES = ['proposed', 'needs_module', 'assigned', 'in_progress', 'c
 module.exports = {
   key: 'tna',
   title: 'Training Needs Analysis',
-  router({ stores, ai, settings, catalog, flags, audit } = {}) {
+  router({ stores, ai, aiConfig, settings, catalog, flags, audit } = {}) {
     const r = express.Router();
     const hr = requireRole(ROLES.HR_ADMIN);
 
@@ -98,7 +98,7 @@ module.exports = {
       res.status(201).json({ data: { scope, scheduled: created.length, skipped: picks.length - created.length, sessions: created } });
     }));
 
-    r.use('/sessions', interviewRouter({ submodule: 'tna', stores, ai, audit }));
+    r.use('/sessions', interviewRouter({ submodule: 'tna', stores, ai, aiConfig, audit }));
 
     // --- Temuan & Pareto ---
     r.get('/findings', wrap(async (req, res) => {

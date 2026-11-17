@@ -24,7 +24,7 @@ const SUBMODULE_MODULES = ['cca', 'dna', 'tna', 'ina'].map((k) => require(`./mod
 /**
  * Bangun aplikasi Express. Semua akses data lewat `stores` agar bisa diganti di test.
  * stores: { users, flags, audit, entitlements, projects, people, settings, dna, interviews, tna, projectsExtra }
- * ai / catalog bisa diganti di test; default mengikuti config (T3 dan K-1 masih terbuka).
+ * ai / catalog bisa diganti di test; default mengikuti config (AI_PROVIDER, PK-06; K-1 masih terbuka).
  */
 function createApp({ config, stores, ai, catalog, mailer }) {
   const app = express();
@@ -42,7 +42,8 @@ function createApp({ config, stores, ai, catalog, mailer }) {
     flags,
     audit,
     settings,
-    ai: ai || createAiProvider(config.aiProvider),
+    ai: ai || createAiProvider(config.ai || config.aiProvider),
+    aiConfig: config.ai || {},
     catalog: catalog || createCatalogService({ elitementor: elitementorAdapter(), moodle: moodleAdapter() }),
   };
 
