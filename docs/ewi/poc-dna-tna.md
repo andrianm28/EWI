@@ -78,6 +78,19 @@ Catatan R2-1: panel Admin ETA lintas tenant (memilih tenant lain dari satu login
 (tenant hanya dari `req.tenantId`); Admin ETA masuk ke tenant yang mau diatur. Di produksi, role DB aplikasi
 sebaiknya juga tanpa hak UPDATE/DELETE/TRUNCATE pada `audit_logs`.
 
+## Review hasil AI oleh HR (PK-14, 17 Nov)
+
+Dibangun dengan opsi ★ karena PD-13, PD-14, PM-3, dan PM-5 belum dijawab.
+
+- **Analisis sebagai job (PD-13 ★A).** `POST /:submodule/sessions/:id/complete` hanya menutup sesi (update bersyarat, jadi dua permintaan bersamaan menghasilkan satu 202 dan satu 409) lalu membuat satu job di `lna_analysis_jobs` (unik per sesi) dan menjalankannya di latar. Job diklaim dengan update bersyarat dan lease 10 menit. Hasil disimpan dalam satu transaksi bersama penandaan job selesai, dan indeks unik `(analysis_job_id, finding_seq)` menjadi pengaman kedua, sehingga job yang diulang tidak menggandakan temuan. Gagal diulang otomatis sampai 3 kali (jeda 1, 2 menit); setelah itu HR mengulang lewat `POST /:submodule/sessions/:id/analysis/retry`. Status: `GET /:submodule/sessions/:id/analysis` (HR melihat jumlah hasil dan kode galat, peran lain hanya status). Server menyapu job tertinggal tiap menit; `node apps/api/scripts/run-analysis.js` untuk pemulihan manual.
+- **Dua kali penilaian.** Model dipanggil dua kali. Temuan yang muncul di kedua penilaian (kunci: kategori + kompetensi + target) mendapat rata-rata keyakinan dan `scoring_agreement = true`; yang hanya muncul sekali mendapat setengah keyakinan. Temuan yang hanya muncul di penilaian kedua tidak disimpan, hanya dihitung (`result.onlySecond`). Biaya AI analisis menjadi dua kali.
+- **Status review per temuan (PD-14 ★A).** `lna_findings.review_status`: `draft` → `approved` | `edited` | `rejected`, dengan `confidence`, `reviewed_by`, `reviewed_at`, `review_note`, dan versi asli AI (`original_title`, `original_detail`, `original_category`) bila diubah, sebagai bahan pemantauan akurasi (PM-2). Judul, rincian, catatan, dan versi asli terenkripsi per tenant. Penolakan wajib beralasan. Setiap putusan dicatat di audit (`update`, `tna.finding_review`).
+- **Draf tersembunyi (PM-5 ★A).** `tna.listFindings` hanya mengembalikan temuan `approved`/`edited`, jadi draf dan yang ditolak tidak muncul di daftar temuan, Pareto, dashboard, rencana training, maupun ekspor data karyawan (PR #11 memakai `listFindings`). Training plan dan permintaan training dari draf ditolak. Dashboard HR menampilkan `reviewPending`.
+- **Antrean HR (PM-3 ★A).** `GET /api/tna/review?status=draft|reviewed|all` dan `POST /api/tna/findings/:id/review` `{ decision: approve|edit|reject, title?, detail?, category?, note? }`, hanya HR (dan Admin ETA). Layar web `/m/tna/review`.
+- **Tidak di balik flag.** Review adalah pengaman wajib sebelum hasil AI dipakai, bukan fitur opsional, jadi tidak mengikuti aturan "fitur baru di balik flag".
+- **Migrasi.** `20261117000400-ai-review.js`. Temuan lama yang sudah ditindaklanjuti HR (status bukan `open`) dianggap disetujui; temuan lama lain menjadi draf.
+- **Belum:** skor AI DNA tidak punya status review (wawancara AI DNA di balik flag `dna.ai_interview`, mati di POC; job DNA tetap dua kali nilai). Transkrip tidak ditampilkan di layar review karena PO-6 ★A (transkrip hanya untuk karyawan sendiri).
+
 ## Belum termasuk
 SSO deep link (T1), token endpoint OAuth2 (T2), pengingat wawancara lewat email (T4), Sync Back webhook ke `lna_program_completions`.
 Diputuskan 13 Nov, menyusul: R3-1 wawancara TNA teks + suara

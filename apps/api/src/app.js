@@ -18,6 +18,7 @@ const projects = require('./modules/projects');
 const { webhookRouter } = require('./integrations/elitementor/webhook');
 const { createSettingsService } = require('./core/settings');
 const { createAiProvider } = require('./ai');
+const { createAnalysisRunner } = require('./modules/interviews/analysis');
 const { createCatalogService, elitementorAdapter, moodleAdapter } = require('./integrations/catalog');
 const SUBMODULE_MODULES = ['cca', 'dna', 'tna', 'ina'].map((k) => require(`./modules/${k}`));
 
@@ -46,6 +47,9 @@ function createApp({ config, stores, ai, catalog, mailer }) {
     aiConfig: config.ai || {},
     catalog: catalog || createCatalogService({ elitementor: elitementorAdapter(), moodle: moodleAdapter() }),
   };
+  // PK-14: analisis wawancara berjalan di latar. app.locals.analysis dipakai server (penyapu) dan test (drain).
+  deps.analysis = createAnalysisRunner({ stores, ai: deps.ai, aiConfig: deps.aiConfig });
+  app.locals.analysis = deps.analysis;
 
   app.use(helmet());
   app.use(cors({ origin: config.corsOrigin.length ? config.corsOrigin : false }));

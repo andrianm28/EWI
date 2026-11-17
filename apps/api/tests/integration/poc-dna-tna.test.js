@@ -14,6 +14,13 @@ const run = process.env.DATABASE_URL ? describe : describe.skip;
 run('POC DNA + TNA (Postgres)', () => {
   let db; let app; let tokens; let baseConfig; let stores; let tenant; let otherTenant; const u = {}; const tok = {};
   const as = (who) => ({ Authorization: `Bearer ${tok[who]}` });
+  // PK-14: analisis berjalan di latar; tunggu selesai, lalu HR menyetujui draf (PD-14 ★A)
+  const drain = (a = app) => a.locals.analysis.drain();
+  const approveAll = async (projectId) => {
+    const q = await request(app).get(`/api/tna/review${projectId ? `?projectId=${projectId}` : ''}`).set(as('hr')).expect(200);
+    for (const f of q.body.data) await request(app).post(`/api/tna/findings/${f.id}/review`).set(as('hr')).send({ decision: 'approve' }).expect(200);
+    return q.body.data;
+  };
 
   beforeAll(async () => {
     const config = makeConfig();
@@ -155,10 +162,15 @@ run('POC DNA + TNA (Postgres)', () => {
       done = t.body.data.done;
     }
     const complete = await request(app).post(`/api/dna/sessions/${sid}/complete`).set(as('dimas'));
-    expect(complete.status).toBe(200);
-    expect(complete.body.data).toMatchObject({ status: 'completed', assessments: 3, aiProvider: 'stub' });
-    // R3-6: setiap panggilan AI tercatat per sesi (stub: token 0)
-    expect(complete.body.data.aiUsage).toMatchObject({ calls: 6, inputTokens: 0, outputTokens: 0 }); // 5 panggilan pertanyaan (terakhir = selesai) + 1 penilaian
+    expect(complete.status).toBe(202);
+    expect(complete.body.data).toMatchObject({ status: 'completed', analysis: { status: 'queued' }, aiProvider: 'stub' });
+    await drain();
+    const job = await request(app).get(`/api/dna/sessions/${sid}/analysis`).set(as('hr'));
+    expect(job.body.data).toMatchObject({ status: 'done', attempts: 1, result: { assessments: 3, agreed: 3 } });
+    expect((await request(app).get(`/api/dna/sessions/${sid}/analysis`).set(as('dimas'))).body.data).toEqual({ status: 'done' });
+    // R3-6: setiap panggilan AI tercatat per sesi (stub: token 0): 5 pertanyaan (terakhir = selesai) + 2 penilaian (PD-13 ★A)
+    const [[usage]] = await db.query('SELECT count(*)::int AS calls FROM ai_usage_logs WHERE session_id = :sid', { replacements: { sid } });
+    expect(usage.calls).toBe(7);
 
     const detail = await request(app).get(`/api/dna/employees/${u.dimas}`).set(as('dimas'));
     expect(detail.body.data.gap.summary.assessed).toBe(3);
@@ -236,7 +248,12 @@ run('POC DNA + TNA (Postgres)', () => {
     await request(app).post(`/api/tna/sessions/${sid}/turns`).set(as('dimas')).send({ text: 'Saya sulit memahami kontrak proyek pelanggan.' }).expect(200);
     await request(app).post(`/api/tna/sessions/${sid}/turns`).set(as('dimas')).send({ text: 'SOP L1 juga belum diperbarui dan tools Pandu lambat.' }).expect(200);
     const complete = await request(app).post(`/api/tna/sessions/${sid}/complete`).set(as('dimas'));
-    expect(complete.body.data.findings).toBe(2);
+    expect(complete.status).toBe(202);
+    await drain();
+    // PM-5 ★A: draf belum terlihat siapa pun selain antrean review HR
+    expect((await request(app).get('/api/tna/findings').set(as('hr'))).body.data).toHaveLength(0);
+    const drafts = await approveAll(projectId);
+    expect(drafts).toHaveLength(2);
 
     // RG-4: non-training direkam tapi tidak tampil selama INA mati
     const [[{ n }]] = await db.query(`SELECT count(*)::int AS n FROM lna_findings WHERE session_id = :sid AND category = 'non_training'`, { replacements: { sid } });
@@ -275,8 +292,8 @@ run('POC DNA + TNA (Postgres)', () => {
 
   it('modul belum ada di katalog -> needs_module (HR membuat/memanggil vendor)', async () => {
     const [[f]] = await db.query(
-      `INSERT INTO lna_findings (tenant_id, project_id, user_id, competency_id, category, title)
-       VALUES (:t, :p, :u, :c, 'training', 'Komunikasi saat eskalasi') RETURNING id`,
+      `INSERT INTO lna_findings (tenant_id, project_id, user_id, competency_id, category, title, review_status)
+       VALUES (:t, :p, :u, :c, 'training', 'Komunikasi saat eskalasi', 'approved') RETURNING id`,
       { replacements: { t: tenant.id, p: projectId, u: u.rina, c: compCore.id } },
     );
     const plan = await request(app).post(`/api/tna/findings/${f.id}/plan`).set(as('hr')).send({ programTier: 'basic' });
@@ -322,7 +339,9 @@ run('POC DNA + TNA (Postgres)', () => {
     expect((await request(app).post(`/api/tna/sessions/${s.id}/consent`).set(sari)).body.data.question.text).toMatch(/Closing deal/);
     await request(app).post(`/api/tna/sessions/${s.id}/turns`).set(sari).send({ text: 'Saya belum menguasai teknik negosiasi.' }).expect(200);
     const done = await request(app).post(`/api/tna/sessions/${s.id}/complete`).set(sari);
-    expect(done.status).toBe(200);
+    expect(done.status).toBe(202);
+    await drain();
+    await approveAll(p.id);
     const [finding] = (await request(app).get(`/api/tna/findings?projectId=${p.id}`).set(as('hr'))).body.data;
     expect(finding).toMatchObject({ category: 'training', competencyId: null });
     const plan = await request(app).post(`/api/tna/findings/${finding.id}/plan`).set(as('hr')).send({});
@@ -407,7 +426,7 @@ run('POC DNA + TNA (Postgres)', () => {
   it('PK-06: wawancara TNA ujung ke ujung dengan penyedia Bedrock (respons rekaman), token tercatat, gagal AI tidak menyimpan jawaban', async () => {
     const fx = (n) => JSON.parse(JSON.stringify(require(`../fixtures/bedrock/${n}.json`)));
     const responses = [fx('tna-question'), Object.assign(new Error('Too many requests'), { name: 'ThrottlingException' }),
-      fx('tna-question'), fx('tna-question-done'), fx('tna-analysis')];
+      fx('tna-question'), fx('tna-question-done'), fx('tna-analysis'), fx('tna-analysis')];
     const sent = [];
     const client = { async send(cmd) { sent.push(cmd.input); const r = responses.shift(); if (r instanceof Error) throw r; return r; } };
     const aiCfg = { provider: 'bedrock', region: 'ap-southeast-1', modelId: 'anthropic.model-uji', maxQuestions: 8, priceInputPerMTok: 3, priceOutputPerMTok: 15 };
@@ -447,16 +466,23 @@ run('POC DNA + TNA (Postgres)', () => {
     expect(last.body.data).toMatchObject({ question: null, done: true });
 
     const done = await request(bedrockApp).post(`/api/tna/sessions/${s.id}/complete`).set(tika);
-    expect(done.status).toBe(200);
-    expect(done.body.data).toMatchObject({ findings: 3, aiProvider: 'bedrock', aiModel: 'anthropic.model-uji' });
-    expect(done.body.data.aiUsage).toMatchObject({ calls: 4, inputTokens: 812 * 2 + 1530 + 1904, outputTokens: 46 * 2 + 5 + 231 });
-    expect(done.body.data.aiUsage.costUsd).toBeCloseTo(((812 * 2 + 1530 + 1904) * 3 + (46 * 2 + 5 + 231) * 15) / 1e6, 6);
+    expect(done.status).toBe(202);
+    expect(done.body.data).toMatchObject({ aiProvider: 'bedrock', aiModel: 'anthropic.model-uji' });
+    await drain(bedrockApp);
+    const job = (await request(bedrockApp).get(`/api/tna/sessions/${s.id}/analysis`).set(as('hr'))).body.data;
+    expect(job).toMatchObject({ status: 'done', result: { findings: 3, agreed: 3, onlySecond: 0 } });
+    // PD-13 ★A: analisis dinilai dua kali
+    const totals = await stores.aiUsage.sessionTotals(tenant.id, s.id);
+    expect(totals).toMatchObject({ calls: 5, inputTokens: 812 * 2 + 1530 + 1904 * 2, outputTokens: 46 * 2 + 5 + 231 * 2 });
+    expect(totals.costUsd).toBeCloseTo(((812 * 2 + 1530 + 1904 * 2) * 3 + (46 * 2 + 5 + 231 * 2) * 15) / 1e6, 6);
 
     const logs = await db.query('SELECT operation, provider, model, user_id AS "userId", project_id AS "projectId" FROM ai_usage_logs WHERE session_id = :sid ORDER BY id',
       { replacements: { sid: s.id }, type: 'SELECT' });
-    expect(logs.map((l) => l.operation)).toEqual(['next_question', 'next_question', 'next_question', 'analyze_tna']);
+    expect(logs.map((l) => l.operation)).toEqual(['next_question', 'next_question', 'next_question', 'analyze_tna', 'analyze_tna']);
     expect(logs.every((l) => l.provider === 'bedrock' && l.userId === row.id && l.projectId === p.id)).toBe(true);
 
+    expect((await request(app).get(`/api/tna/findings?projectId=${p.id}`).set(as('hr'))).body.data).toHaveLength(0);
+    await approveAll(p.id);
     const findings = (await request(app).get(`/api/tna/findings?projectId=${p.id}`).set(as('hr'))).body.data;
     const [rec] = await db.query('SELECT id FROM lna_performance_records WHERE user_id = :u', { replacements: { u: row.id }, type: 'SELECT' });
     expect(findings.find((f) => f.title.startsWith('Belum memahami klausul SLA'))).toMatchObject({ category: 'training', competencyId: null, performanceRecordId: rec.id });

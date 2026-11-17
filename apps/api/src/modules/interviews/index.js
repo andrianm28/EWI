@@ -1,94 +1,17 @@
 'use strict';
 // Sesi wawancara AI (teks) yang dipakai DNA dan TNA. Suara (voice) di balik flag dan menyusul.
 // Pertanyaan dan analisis memakai port AI (src/ai): Bedrock di produksi, tiruan (stub) di test/dev (PK-06).
-// Setiap panggilan model dicatat di ai_usage_logs (R3-6).
+// Setiap panggilan model dicatat di ai_usage_logs (R3-6). Analisis setelah sesi ditutup berjalan sebagai job
+// terpisah (analysis.js, PK-14 / PD-13 ★A); hasil TNA berstatus draf sampai direview HR.
 const express = require('express');
-const { estimateCost } = require('../../ai');
+const { buildContext, aiContext, callAi } = require('./ai-calls');
 const { requireRole, ROLES } = require('../../core/rbac');
 const { scopeFor, inScope } = require('../../core/rbac/scope');
 const { badRequest, forbidden, notFound, HttpError } = require('../../core/errors');
 
 const wrap = (fn) => (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
 
-/** Konteks pertanyaan & analisis: kompetensi posisi karyawan (DNA/TNA) + target merah pemicu (TNA). */
-async function buildContext(stores, tenantId, session) {
-  const person = await stores.people.get(tenantId, session.intervieweeId);
-  const competencies = person && person.jobRoleId
-    ? await stores.dna.competenciesForPosition(tenantId, { jobRoleId: person.jobRoleId, careerLevelId: person.careerLevelId })
-    : [];
-  const triggers = session.submodule === 'tna' ? await stores.tna.performanceByIds(tenantId, session.triggerRecordIds) : [];
-  return { person, competencies, triggers };
-}
-
-/**
- * Konteks yang boleh dikirim ke model (PM-10 ★A): kompetensi jabatan dan target milik karyawan yang diwawancarai.
- * Nama, email, dan data karyawan lain tidak ikut. Target milik orang lain dibuang walau ID-nya terselip di sesi.
- */
-function aiContext(ctx, session) {
-  const competencies = (ctx.competencies || []).map((c) => ({
-    id: c.id, name: c.name, definition: c.definition, indicators: c.indicators, requiredScore: c.requiredScore,
-  }));
-  const triggers = (ctx.triggers || [])
-    .filter((t) => !t.userId || t.userId === session.intervieweeId)
-    .map((t) => ({
-      id: t.id, metricType: t.metricType, name: t.name, target: t.target, actual: t.actual, period: t.period, direction: t.direction, unit: t.unit,
-    }));
-  return { competencies, triggers };
-}
-
-/** Simpan catatan pemakaian AI (R3-6). Gagal mencatat tidak boleh menggagalkan wawancara. */
-async function recordUsage({ stores, aiConfig, tenantId, session }, usage) {
-  if (!stores.aiUsage || !usage) return;
-  for (const u of usage) {
-    try {
-      await stores.aiUsage.record(tenantId, {
-        projectId: session.projectId, sessionId: session.id, userId: session.intervieweeId, submodule: session.submodule,
-        operation: u.operation, provider: u.provider, model: u.model, inputTokens: u.inputTokens, outputTokens: u.outputTokens,
-        latencyMs: u.latencyMs, costUsd: estimateCost(u, aiConfig),
-      });
-    } catch (e) {
-      console.error('Gagal mencatat pemakaian AI:', e.message);
-    }
-  }
-}
-
-/** Panggil AI; catatan pemakaian disimpan juga saat format jawaban gagal (token tetap terpakai). */
-async function callAi(env, fn) {
-  try {
-    const out = await fn();
-    await recordUsage(env, out.usage);
-    return out;
-  } catch (e) {
-    if (e.usage) await recordUsage(env, e.usage);
-    throw e;
-  }
-}
-
-async function analyze({ stores, ai, aiConfig, tenantId, session, transcript, ctx }) {
-  const env = { stores, aiConfig, tenantId, session };
-  const safe = aiContext(ctx, session);
-  if (session.submodule === 'dna') {
-    const { results } = await callAi(env, () => ai.assessCompetencies({ transcript, competencies: safe.competencies }));
-    for (const r of results) {
-      await stores.dna.addAssessment(tenantId, { userId: session.intervieweeId, competencyId: r.competencyId, sessionId: session.id, score: r.score, confidence: r.confidence, evidence: r.evidence });
-    }
-    return { assessments: results.length };
-  }
-  const { findings } = await callAi(env, () => ai.analyzeTna({ transcript, triggers: safe.triggers, competencies: safe.competencies }));
-  let lastTraining = null; let saved = 0;
-  for (const f of findings) {
-    const row = await stores.tna.insertFinding(tenantId, {
-      projectId: session.projectId, userId: session.intervieweeId, sessionId: session.id, category: f.category,
-      title: f.title, detail: f.detail, competencyId: f.competencyId || null, performanceRecordId: f.performanceRecordId || null,
-      linkedFindingId: f.category === 'non_training' && lastTraining ? lastTraining.id : null,
-    });
-    if (f.category === 'training') lastTraining = row;
-    saved += 1;
-  }
-  return { findings: saved };
-}
-
-function interviewRouter({ submodule, stores, ai, aiConfig = {}, audit }) {
+function interviewRouter({ submodule, stores, ai, aiConfig = {}, audit, analysis }) {
   const r = express.Router();
   const maxQuestions = aiConfig.maxQuestions || 8;
 
@@ -179,11 +102,31 @@ function interviewRouter({ submodule, stores, ai, aiConfig = {}, audit }) {
     if (s.status !== 'in_progress') throw new HttpError(409, 'INVALID_STATE', 'Sesi belum dimulai atau sudah selesai');
     const transcript = await stores.interviews.turns(req.tenantId, s.id);
     if (!transcript.some((t) => t.speaker === 'human')) throw badRequest('Belum ada jawaban di sesi ini');
-    const ctx = await buildContext(stores, req.tenantId, s);
-    const result = await analyze({ stores, ai, aiConfig, tenantId: req.tenantId, session: s, transcript, ctx });
-    await stores.interviews.update(req.tenantId, s.id, { status: 'completed', endedAt: new Date() });
+    // Penutupan bersyarat: dari dua permintaan bersamaan hanya satu yang lolos, jadi job tidak dibuat ganda.
+    const closed = await stores.interviews.close(req.tenantId, s.id);
+    if (!closed) throw new HttpError(409, 'INVALID_STATE', 'Sesi belum dimulai atau sudah selesai');
+    const job = await stores.analysis.enqueue(req.tenantId, { sessionId: s.id, submodule });
+    analysis.kick(req.tenantId, job.id);
     const aiUsage = stores.aiUsage ? await stores.aiUsage.sessionTotals(req.tenantId, s.id) : null;
-    res.json({ data: { status: 'completed', ...result, aiProvider: ai.name, aiModel: ai.model, aiUsage } });
+    res.status(202).json({ data: { status: 'completed', analysis: { status: job.status }, aiProvider: ai.name, aiModel: ai.model, aiUsage } });
+  }));
+
+  // Status analisis. HR melihat jumlah hasil dan kode galat; karyawan dan atasan hanya status.
+  r.get('/:id/analysis', wrap(async (req, res) => {
+    const s = await loadVisible(req);
+    const job = await stores.analysis.forSession(req.tenantId, s.id);
+    if (!job) throw notFound('Analisis belum dibuat untuk sesi ini');
+    const isHr = [ROLES.HR_ADMIN, ROLES.ETA_ADMIN].includes(req.user.role);
+    res.json({ data: isHr ? job : { status: job.status } });
+  }));
+
+  // HR mengulang analisis yang gagal permanen (setelah batas percobaan otomatis habis).
+  r.post('/:id/analysis/retry', requireRole(ROLES.HR_ADMIN), wrap(async (req, res) => {
+    const s = await loadVisible(req);
+    const job = await stores.analysis.requeue(req.tenantId, s.id);
+    if (!job) throw new HttpError(409, 'INVALID_STATE', 'Hanya analisis yang gagal yang bisa diulang');
+    analysis.kick(req.tenantId, job.id);
+    res.status(202).json({ data: { status: job.status } });
   }));
 
   return r;

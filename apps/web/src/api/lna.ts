@@ -27,7 +27,19 @@ export interface Turn { speaker: 'ai' | 'human'; text: string; at: string }
 export interface Finding { id: string; userId: string; userName: string | null; title: string; status: string; competencyName: string | null; metricName: string | null; target: number | null; actual: number | null }
 export interface ParetoRow { key: string; label: string; people: number; avgMiss: number; score: number; share: number; cumulativeShare: number }
 export interface PlanItem { id: string; userId: string; userName: string | null; findingTitle: string | null; origin: string; status: string; catalogItemTitle: string | null; note: string | null }
-export interface TnaDashboard { role: string; people: number | null; redTargets: number; sessions: Record<string, number>; trainingFindings: number; planItems: Record<string, number> }
+export interface TnaDashboard { role: string; people: number | null; redTargets: number; sessions: Record<string, number>; trainingFindings: number; planItems: Record<string, number>; reviewPending?: number }
+// PK-14: review hasil AI oleh HR (PD-14 ★A)
+export type ReviewStatus = 'draft' | 'approved' | 'edited' | 'rejected'
+export interface ReviewItem {
+  id: string; projectId: string; sessionId: string | null; userId: string; userName: string | null
+  category: 'training' | 'non_training'; title: string; detail: string | null
+  competencyName: string | null; metricName: string | null; target: number | null; actual: number | null
+  confidence: number | null; scoringAgreement: boolean | null; reviewStatus: ReviewStatus
+  reviewedByName: string | null; reviewedAt: string | null; reviewNote: string | null
+  originalTitle: string | null; originalDetail: string | null; originalCategory: string | null; createdAt: string
+}
+export type ReviewCounts = Record<ReviewStatus, number>
+export interface ReviewDecision { decision: 'approve' | 'edit' | 'reject'; title?: string; detail?: string; category?: 'training' | 'non_training'; note?: string }
 export interface Project { id: string; name: string; status: string }
 
 function call<T>(path: string, init: RequestInit = {}) {
@@ -43,7 +55,9 @@ export const lna = {
   session: (key: 'dna' | 'tna', id: string) => call<{ data: Session & { turns: Turn[] } }>(`/${key}/sessions/${id}`),
   consent: (key: 'dna' | 'tna', id: string) => post<{ data: { question: Turn | null } }>(`/${key}/sessions/${id}/consent`, {}),
   answer: (key: 'dna' | 'tna', id: string, text: string) => post<{ data: { question: Turn | null; done: boolean } }>(`/${key}/sessions/${id}/turns`, { text }),
-  complete: (key: 'dna' | 'tna', id: string) => post<{ data: { status: string } }>(`/${key}/sessions/${id}/complete`, {}),
+  complete: (key: 'dna' | 'tna', id: string) => post<{ data: { status: string; analysis?: { status: string } } }>(`/${key}/sessions/${id}/complete`, {}),
+  reviewQueue: (status: 'draft' | 'reviewed' = 'draft') => call<{ data: ReviewItem[]; counts: ReviewCounts }>(`/tna/review?status=${status}`),
+  reviewFinding: (id: string, body: ReviewDecision) => post<{ data: ReviewItem }>(`/tna/findings/${id}/review`, body),
   tnaDashboard: () => call<{ data: TnaDashboard }>('/tna/dashboard'),
   pareto: () => call<{ data: ParetoRow[] }>('/tna/pareto'),
   findings: () => call<{ data: Finding[] }>('/tna/findings'),
@@ -67,6 +81,16 @@ export const ROLE_LABEL: Record<string, string> = {
 }
 export const PLAN_STATUS_LABEL: Record<string, string> = {
   proposed: 'Diusulkan', needs_module: 'Perlu modul baru', assigned: 'Ditugaskan', in_progress: 'Berjalan', completed: 'Selesai', cancelled: 'Dibatalkan',
+}
+export const REVIEW_STATUS_LABEL: Record<ReviewStatus, string> = {
+  draft: 'Menunggu review', approved: 'Disetujui', edited: 'Diubah lalu disetujui', rejected: 'Ditolak',
+}
+/** Label keyakinan dari dua kali penilaian AI (PD-13 ★A). */
+export function confidenceLabel(c: number | null): { text: string; tone: 'ok' | 'warn' | 'low' } {
+  if (c == null) return { text: 'Keyakinan tidak diketahui', tone: 'low' }
+  if (c >= 0.75) return { text: `Keyakinan tinggi (${Math.round(c * 100)}%)`, tone: 'ok' }
+  if (c >= 0.5) return { text: `Keyakinan sedang (${Math.round(c * 100)}%)`, tone: 'warn' }
+  return { text: `Keyakinan rendah (${Math.round(c * 100)}%)`, tone: 'low' }
 }
 export const ASSESSMENT_SOURCE_LABEL: Record<string, string> = {
   manual_interview: 'wawancara manual', ai_interview: 'wawancara AI', eta_review: 'penilaian ulang ETA',
