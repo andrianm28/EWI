@@ -1,0 +1,80 @@
+# Staging dan prod ELGOS di VPS etavm2 (8 vCPU / 32 GB / 100 GB, keputusan user 17 Nov 2026).
+# Satu file untuk kedua lingkungan; dijalankan sebagai dua project compose terpisah:
+#   ELGOS_ENV=staging  -> project elgos-staging, data di volume elgos-staging_db-data, web di 127.0.0.1:8181
+#   ELGOS_ENV=prod     -> project elgos-prod,    data di volume elgos-prod_db-data,    web di 127.0.0.1:8180
+# Normalnya dipanggil oleh deploy.sh (pipeline .github/workflows/deploy.yml). Secret di
+# /srv/elgos-<env>/.env (lihat .env.example). Data karyawan nyata HANYA di prod (R2-4).
+name: elgos-${ELGOS_ENV:?ELGOS_ENV wajib staging atau prod}
+
+services:
+  db:
+    image: pgvector/pgvector:pg16
+    restart: unless-stopped
+    env_file: ${ELGOS_ENV_FILE:?ELGOS_ENV_FILE wajib}   # POSTGRES_PASSWORD
+    environment:
+      POSTGRES_USER: elgos
+      POSTGRES_DB: elgos
+    command: ["postgres", "-c", "shared_buffers=${PG_SHARED_BUFFERS:-1GB}", "-c", "effective_cache_size=${PG_EFFECTIVE_CACHE:-3GB}"]
+    volumes:
+      - db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U elgos -d elgos"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    deploy:
+      resources:
+        limits: { cpus: "${DB_CPUS:-2}", memory: "${DB_MEMORY:-6g}" }
+
+  api:
+    image: ${ELGOS_API_IMAGE:?ELGOS_API_IMAGE wajib}
+    restart: unless-stopped
+    depends_on:
+      db: { condition: service_healthy }
+    # Secret: POSTGRES_PASSWORD, EWI_JWT_SECRET, AWS_ACCESS_KEY_ID/SECRET (IAM user elgos-<env>-app),
+    # ELITEMENTOR_*. Variabel non-secret per lingkungan (PUBLIC_URL, MAIL_FROM, KMS_*) juga di .env.
+    env_file: ${ELGOS_ENV_FILE}
+    environment:
+      NODE_ENV: production
+      EWI_ENV: ${ELGOS_ENV}
+      PORT: 4100
+      DB_HOST: db
+      DB_PORT: 5432
+      DB_NAME: elgos
+      DB_USER: elgos
+      DB_SSL: "false"          # Postgres di jaringan compose yang sama, tidak terekspos ke host
+      DB_SCHEMA: ewi
+      RUN_MIGRATIONS: "false"  # migrasi dijalankan deploy.sh sebelum container diganti
+      EWI_JWT_AUDIENCE: ewi
+      EWI_JWT_ISSUER: elgos-api-${ELGOS_ENV}
+      CORS_ORIGIN: ${PUBLIC_URL:?PUBLIC_URL wajib}
+      APP_BASE_URL: ${PUBLIC_URL}
+      # R2-3 + keputusan 17 Nov: kunci per tenant tetap di AWS KMS, email lewat SES.
+      ENCRYPTION_PROVIDER: kms
+      KMS_REGION: ap-southeast-1
+      MAIL_PROVIDER: ses
+      MAIL_REGION: ap-southeast-1
+      AWS_REGION: ap-southeast-1
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:4100/api/health | grep -q '\"ok\"'"]
+      interval: 5s
+      timeout: 3s
+      retries: 24
+      start_period: 10s
+    deploy:
+      resources:
+        limits: { cpus: "${API_CPUS:-2}", memory: "${API_MEMORY:-4g}" }
+
+  web:
+    image: ${ELGOS_WEB_IMAGE:?ELGOS_WEB_IMAGE wajib}
+    restart: unless-stopped
+    depends_on:
+      api: { condition: service_healthy }
+    ports:
+      - "127.0.0.1:${WEB_PORT:?WEB_PORT wajib}:80"   # publik hanya lewat Caddy (proxy/) dengan TLS
+    deploy:
+      resources:
+        limits: { cpus: "1", memory: "256m" }
+
+volumes:
+  db-data:

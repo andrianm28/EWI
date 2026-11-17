@@ -1,2 +1,6 @@
-node_modules/
-cdk.out/
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfplan
+backend.hcl
+crash.log
