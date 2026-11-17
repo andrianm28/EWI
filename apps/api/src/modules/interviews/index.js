@@ -5,6 +5,7 @@ const express = require('express');
 const { requireRole, ROLES } = require('../../core/rbac');
 const { scopeFor, inScope } = require('../../core/rbac/scope');
 const { badRequest, forbidden, notFound, HttpError } = require('../../core/errors');
+const { currentConsentVersion, isAcceptedConsentVersion } = require('../../core/consent');
 
 const wrap = (fn) => (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
 
@@ -77,24 +78,48 @@ function interviewRouter({ submodule, stores, ai, audit }) {
     }));
   }
 
+  // PO-6 A (17 Nov): transkrip mentah hanya untuk karyawan yang diwawancarai. Atasan, HR, dan Admin ETA
+  // tetap melihat status sesi, tetapi tidak percakapannya; mereka melihat temuan lewat /findings.
+  const isInterviewee = (req, s) => s.intervieweeId === req.user.id;
+
   r.get('/:id', wrap(async (req, res) => {
     const s = await loadVisible(req);
+    if (!isInterviewee(req, s)) {
+      return res.json({ data: { ...s, turns: undefined, transcriptVisible: false } });
+    }
     const turns = await stores.interviews.turns(req.tenantId, s.id);
-    // R2-2: baca transkrip individu selalu dicatat (termasuk atasan dan Admin ETA)
+    // R2-2: baca transkrip individu selalu dicatat
     await audit.readIndividual(req, `${submodule}.interview_transcript`, { employeeIds: [s.intervieweeId], objectType: 'interview_session', objectIds: [s.id] });
-    res.json({ data: { ...s, turns } });
+    return res.json({ data: { ...s, turns, transcriptVisible: true, consentVersionRequired: currentConsentVersion(submodule) } });
   }));
 
+  r.get('/:id/transcript', wrap(async (req, res) => {
+    const s = await loadVisible(req);
+    if (!isInterviewee(req, s)) throw forbidden('TRANSCRIPT_PRIVATE', 'Transkrip wawancara hanya bisa dibaca karyawan yang diwawancarai');
+    const turns = await stores.interviews.turns(req.tenantId, s.id);
+    await audit.readIndividual(req, `${submodule}.interview_transcript`, { employeeIds: [s.intervieweeId], objectType: 'interview_session', objectIds: [s.id] });
+    res.json({ data: turns });
+  }));
+
+  // PM-9 A: persetujuan wajib menyebut kode versi teks yang ditampilkan; versi disimpan bersama waktunya.
   r.post('/:id/consent', wrap(async (req, res) => {
     const s = await loadVisible(req);
     mustBeInterviewee(req, s);
     if (s.status !== 'scheduled') throw new HttpError(409, 'INVALID_STATE', 'Sesi sudah dimulai atau selesai');
+    const current = currentConsentVersion(submodule);
+    if (!current) throw new HttpError(409, 'CONSENT_TEXT_PENDING', 'Teks persetujuan untuk wawancara ini belum terbit');
+    const consentVersion = String((req.body || {}).consentVersion || '').trim();
+    if (!consentVersion) throw badRequest(`consentVersion wajib diisi (versi berlaku: ${current})`);
+    if (!isAcceptedConsentVersion(submodule, consentVersion)) {
+      throw new HttpError(409, 'CONSENT_VERSION_OUTDATED', `Teks persetujuan sudah berubah. Baca dan setujui versi ${current}`);
+    }
     const now = new Date();
-    await stores.interviews.update(req.tenantId, s.id, { consentAt: now, startedAt: now, status: 'in_progress' });
+    await stores.interviews.update(req.tenantId, s.id, { consentAt: now, consentVersion, startedAt: now, status: 'in_progress' });
+    await audit.record(req, 'create', `${submodule}.interview_consent`, { employeeIds: [s.intervieweeId], objectType: 'interview_session', objectIds: [s.id], consentVersion });
     const ctx = await buildContext(stores, req.tenantId, s);
     const q = ai.nextQuestion({ submodule, askedCount: 0, context: ctx });
     const turn = q ? await stores.interviews.addTurn(req.tenantId, s.id, 'ai', q) : null;
-    res.json({ data: { status: 'in_progress', question: turn } });
+    res.json({ data: { status: 'in_progress', consentVersion, question: turn } });
   }));
 
   r.post('/:id/turns', wrap(async (req, res) => {

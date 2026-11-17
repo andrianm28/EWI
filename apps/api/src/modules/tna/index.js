@@ -64,7 +64,10 @@ module.exports = {
 
     r.get('/performance', wrap(async (req, res) => {
       const scope = await scopeFor(req, stores.people);
-      res.json({ data: await stores.tna.listPerformance(req.tenantId, scope, { period: req.query.period, projectId: req.query.projectId }) });
+      const rows = await stores.tna.listPerformance(req.tenantId, scope, { period: req.query.period, projectId: req.query.projectId });
+      // PK-15: baca data kinerja individu dicatat (R2-2)
+      await audit.readIndividual(req, 'tna.performance', { employeeIds: rows.map((p) => p.userId), objectType: 'performance_record', objectIds: rows.map((p) => p.id) });
+      res.json({ data: rows });
     }));
 
     // --- Jadwalkan wawancara TNA untuk tim. Scope dari body, lalu settings tenant (default red_only) ---
@@ -132,6 +135,9 @@ module.exports = {
         note: req.body?.note || null,
       });
       await stores.tna.setFindingStatus(req.tenantId, f.id, 'planned');
+      // PK-15: perubahan temuan dan rencana dicatat
+      await audit.record(req, 'create', 'tna.plan_item', { employeeIds: [f.userId], objectType: 'tna_plan_item', objectIds: [item.id], findingId: f.id, status: item.status });
+      await audit.record(req, 'update', 'tna.finding', { employeeIds: [f.userId], objectType: 'tna_finding', objectIds: [f.id], from: f.status, to: 'planned' });
       res.status(201).json({ data: item });
     }));
 
@@ -146,6 +152,7 @@ module.exports = {
       const item = await stores.tna.insertPlanItem(req.tenantId, {
         findingId: findingId || null, userId: req.user.id, origin: 'learner_request', status: 'proposed', note: note || null, requestedBy: req.user.id,
       });
+      await audit.record(req, 'create', 'tna.plan_item', { employeeIds: [req.user.id], objectType: 'tna_plan_item', objectIds: [item.id], findingId: findingId || null, origin: 'learner_request' });
       res.status(201).json({ data: item });
     }));
 
@@ -162,7 +169,10 @@ module.exports = {
       if (!item || !inScope(scope, item.userId)) throw notFound('Item training plan tidak ditemukan');
       const { status, catalogItemRef, catalogItemTitle, catalogSource } = req.body || {};
       if (status && !PLAN_STATUSES.includes(status)) throw badRequest(`status harus salah satu: ${PLAN_STATUSES.join(', ')}`);
-      res.json({ data: await stores.tna.updatePlanItem(req.tenantId, item.id, { status, catalogItemRef, catalogItemTitle, catalogSource }) });
+      const saved = await stores.tna.updatePlanItem(req.tenantId, item.id, { status, catalogItemRef, catalogItemTitle, catalogSource });
+      const changed = Object.fromEntries(Object.entries({ status, catalogItemRef, catalogItemTitle, catalogSource }).filter(([, v]) => v !== undefined));
+      await audit.record(req, 'update', 'tna.plan_item', { employeeIds: [item.userId], objectType: 'tna_plan_item', objectIds: [item.id], from: { status: item.status }, changed });
+      res.json({ data: saved });
     }));
 
     // Ringkasan dashboard sesuai peran

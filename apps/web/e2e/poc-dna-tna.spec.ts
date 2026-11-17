@@ -193,7 +193,8 @@ test('learner: wawancara TNA lalu meminta training', async ({ page }) => {
   await page.route('**/api/tna/plan-items', (r) => r.fulfill({ json: empty }))
   await page.route('**/api/tna/sessions', (r) => r.fulfill({ json: { data: state === 'completed' ? [] : [{ id: 's1', projectId: 'p1', intervieweeId: 'u-1', intervieweeName: 'Dimas', status: state, triggerCount: 1 }] } }))
   await page.route('**/api/tna/sessions/s1', (r) => r.fulfill({ json: { data: { id: 's1', status: state, turns: [] } } }))
-  await page.route('**/api/tna/sessions/s1/consent', (r) => { state = 'in_progress'; return r.fulfill({ json: { data: { question: { speaker: 'ai', text: 'Target "SLA respons" belum tercapai. Apa penyebabnya?', at: '' } } } }) })
+  let consentBody: unknown = null
+  await page.route('**/api/tna/sessions/s1/consent', (r) => { consentBody = r.request().postDataJSON(); state = 'in_progress'; return r.fulfill({ json: { data: { question: { speaker: 'ai', text: 'Target "SLA respons" belum tercapai. Apa penyebabnya?', at: '' } } } }) })
   await page.route('**/api/tna/sessions/s1/turns', (r) => r.fulfill({ json: { data: { question: null, done: true } } }))
   await page.route('**/api/tna/sessions/s1/complete', (r) => { state = 'completed'; return r.fulfill({ json: { data: { status: 'completed' } } }) })
   let requested = false
@@ -202,8 +203,13 @@ test('learner: wawancara TNA lalu meminta training', async ({ page }) => {
   await loginAs(page, 'learner')
   await page.goto('/m/tna')
   await page.getByTestId('tna-my-sessions').getByRole('link', { name: 'Mulai wawancara' }).click()
-  await page.getByRole('button', { name: 'Saya setuju, mulai' }).click()
+  // PM-9 A: tombol aktif setelah kotak dicentang; kode versi teks ikut terkirim
+  const start = page.getByRole('button', { name: 'Setuju dan mulai' })
+  await expect(start).toBeDisabled()
+  await page.getByTestId('consent-check').check()
+  await start.click()
   await expect(page.getByTestId('turn-ai')).toContainText('SLA respons')
+  expect(consentBody).toEqual({ consentVersion: 'tna-consent-id-v1.0' })
   await page.getByLabel('Jawaban').fill('Saya sulit memahami kontrak proyek.')
   await page.getByRole('button', { name: 'Kirim' }).click()
   await page.getByRole('button', { name: 'Selesai dan kirim' }).click()
@@ -255,4 +261,12 @@ test('HR: kirim undangan masuk ke karyawan baru', async ({ page }) => {
   await page.goto('/m/dna')
   await page.getByRole('button', { name: 'Kirim undangan masuk ke karyawan yang belum pernah masuk' }).click()
   await expect(page.getByTestId('import-panel').getByRole('status')).toHaveText('Undangan masuk dikirim ke 12 karyawan.')
+})
+
+test('PO-6 A: HR membuka sesi wawancara tanpa melihat percakapan', async ({ page }) => {
+  await page.route('**/api/tna/sessions/s9', (r) => r.fulfill({ json: { data: { id: 's9', status: 'completed', transcriptVisible: false } } }))
+  await loginAs(page, 'hr_admin')
+  await page.goto('/m/tna/sessions/s9')
+  await expect(page.getByTestId('transcript-private')).toBeVisible()
+  await expect(page.getByTestId('turn-human')).toHaveCount(0)
 })

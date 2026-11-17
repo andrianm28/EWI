@@ -112,6 +112,24 @@ function createLnaStores(sequelize, { cipher } = {}) {
         return { created, updated, supervisorsLinked: linked };
       } catch (e) { await t.rollback(); throw e; }
     },
+    /**
+     * PK-15: hapus karyawan (hak hapus subjek data). Satu transaksi: bersihkan barisnya dari riwayat impor,
+     * lalu DELETE user. FK menghapus data turunan (kinerja, sesi + transkrip, temuan, rencana, asesmen, link masuk)
+     * dan mengosongkan user_id di audit_logs (diizinkan trigger 20261117000502). Akun HR/Admin tidak dihapus di sini.
+     */
+    async deleteEmployee(tenantId, userId) {
+      return sequelize.transaction(async (transaction) => {
+        const [person] = await sequelize.query(
+          `SELECT id, employee_id AS "employeeId", email, role FROM users WHERE tenant_id = :tenantId AND id = :userId FOR UPDATE`,
+          { replacements: { tenantId, userId }, type: QueryTypes.SELECT, transaction },
+        );
+        if (!person || ['hr_admin', 'eta_admin'].includes(person.role)) return null;
+        const scrubbed = await imports.scrubEmployee(tenantId, person, { transaction });
+        await sequelize.query('DELETE FROM users WHERE tenant_id = :tenantId AND id = :userId',
+          { replacements: { tenantId, userId }, transaction });
+        return { id: person.id, scrubbedImportRows: scrubbed };
+      });
+    },
     async setPosition(tenantId, userId, { jobRoleId, careerLevelId }) {
       return insert(`UPDATE users SET job_role_id = :jobRoleId, career_level_id = :careerLevelId, updated_at = now()
                       WHERE tenant_id = :tenantId AND id = :userId RETURNING id`, { tenantId, userId, jobRoleId, careerLevelId });
@@ -237,7 +255,7 @@ function createLnaStores(sequelize, { cipher } = {}) {
     async list(tenantId, submodule, scope, { projectId } = {}) {
       const rep = { tenantId, submodule };
       let sql = `SELECT s.id, s.project_id AS "projectId", s.interviewee_id AS "intervieweeId", u.name AS "intervieweeName",
-                        s.status, s.mode, s.consent_at AS "consentAt", s.started_at AS "startedAt", s.ended_at AS "endedAt",
+                        s.status, s.mode, s.consent_at AS "consentAt", s.consent_version AS "consentVersion", s.started_at AS "startedAt", s.ended_at AS "endedAt",
                         cardinality(s.trigger_record_ids) AS "triggerCount"
                    FROM lna_interview_sessions s JOIN users u ON u.id = s.interviewee_id
                   WHERE s.tenant_id = :tenantId AND s.submodule = :submodule`;
@@ -247,7 +265,7 @@ function createLnaStores(sequelize, { cipher } = {}) {
     },
     async get(tenantId, id) {
       return one(`SELECT id, project_id AS "projectId", submodule, interviewee_id AS "intervieweeId", job_role_id AS "jobRoleId",
-                         status, mode, consent_at AS "consentAt", trigger_record_ids AS "triggerRecordIds",
+                         status, mode, consent_at AS "consentAt", consent_version AS "consentVersion", trigger_record_ids AS "triggerRecordIds",
                          started_at AS "startedAt", ended_at AS "endedAt"
                     FROM lna_interview_sessions WHERE tenant_id = :tenantId AND id = :id`, { tenantId, id });
     },
@@ -264,7 +282,7 @@ function createLnaStores(sequelize, { cipher } = {}) {
       return row ? { ...row, text } : null;
     },
     async update(tenantId, id, fields) {
-      const allowed = { status: 'status', consentAt: 'consent_at', startedAt: 'started_at', endedAt: 'ended_at' };
+      const allowed = { status: 'status', consentAt: 'consent_at', consentVersion: 'consent_version', startedAt: 'started_at', endedAt: 'ended_at' };
       const sets = Object.keys(fields).filter((k) => allowed[k]).map((k) => `${allowed[k]} = :${k}`);
       if (!sets.length) return null;
       return insert(`UPDATE lna_interview_sessions SET ${sets.join(', ')} WHERE tenant_id = :tenantId AND id = :id RETURNING id, status`,
@@ -408,6 +426,44 @@ function createLnaStores(sequelize, { cipher } = {}) {
       if (sets.length) await sequelize.query(`UPDATE import_batches SET ${sets.join(', ')} WHERE tenant_id = :tenantId AND id = :id`, { replacements: rep });
       return imports.get(tenantId, id);
     },
+  };
+
+  /** Nilai sel baris impor yang menunjuk karyawan ini (ID karyawan atau email, tanpa beda huruf besar/kecil). */
+  const rowMentions = (row, needles) => Object.entries(row || {}).some(([k, v]) => k !== '__row' && v != null
+    && needles.has(String(v).trim().toLowerCase()));
+
+  /**
+   * PK-15 butir 2: hapus baris milik karyawan dari batch impor yang belum disimpan; batch tersimpan tidak
+   * menyimpan baris lagi (dikosongkan saat commit, sisa lama dikosongkan di sini). Return jumlah baris yang dibuang.
+   */
+  imports.scrubEmployee = async (tenantId, { employeeId, email }, { transaction } = {}) => {
+    const needles = new Set([employeeId, email].filter(Boolean).map((v) => String(v).trim().toLowerCase()));
+    await sequelize.query(`UPDATE import_batches SET rows = '[]'::jsonb WHERE tenant_id = :tenantId AND status = 'committed' AND rows <> '[]'::jsonb`,
+      { replacements: { tenantId }, transaction });
+    if (!needles.size) return 0;
+    const batches = await sequelize.query(`SELECT id, rows FROM import_batches WHERE tenant_id = :tenantId AND status = 'uploaded' FOR UPDATE`,
+      { replacements: { tenantId }, type: QueryTypes.SELECT, transaction });
+    let removed = 0;
+    for (const b of batches) {
+      const rows = (await cipher.decryptJson(tenantId, b.rows)) || [];
+      const kept = rows.filter((r) => !rowMentions(r, needles));
+      if (kept.length === rows.length) continue;
+      removed += rows.length - kept.length;
+      await sequelize.query(`UPDATE import_batches SET rows = CAST(:rows AS jsonb), row_count = :n WHERE tenant_id = :tenantId AND id = :id`,
+        { replacements: { tenantId, id: b.id, n: kept.length, rows: JSON.stringify(await cipher.encryptJson(tenantId, kept)) }, transaction });
+    }
+    return removed;
+  };
+
+  /**
+   * PK-15 butir 2: job pembersihan riwayat impor (semua tenant). Batch 'uploaded' yang tidak di-commit lebih dari
+   * `olderThanDays` hari dihapus; batch 'committed' yang masih menyimpan baris dikosongkan (row_count dan result tetap).
+   */
+  imports.cleanup = async ({ olderThanDays = 7, now = new Date() } = {}) => {
+    const cutoff = new Date(now.getTime() - olderThanDays * 24 * 3600 * 1000);
+    const [, delMeta] = await sequelize.query(`DELETE FROM import_batches WHERE status = 'uploaded' AND created_at < :cutoff`, { replacements: { cutoff } });
+    const [, clrMeta] = await sequelize.query(`UPDATE import_batches SET rows = '[]'::jsonb WHERE status = 'committed' AND rows <> '[]'::jsonb`);
+    return { deletedUploaded: (delMeta && delMeta.rowCount) || 0, clearedCommitted: (clrMeta && clrMeta.rowCount) || 0 };
   };
 
   return { people, settings, dna, interviews, tna, projectsExtra, imports };

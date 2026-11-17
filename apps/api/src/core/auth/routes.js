@@ -7,7 +7,7 @@ const { unauthorized, badRequest, notFound } = require('../errors');
  * Login email + password per tenant. Undangan dan OTP email menyusul (Sprint N1).
  * `users` adalah repository: { findByEmail(tenantSlug, email) }.
  */
-function authRoutes({ users, tokens, requireAuth, tenantPicker = false }) {
+function authRoutes({ users, tokens, requireAuth, audit, tenantPicker = false }) {
   const r = express.Router();
 
   // Pilihan organisasi di halaman login (LOGIN_TENANT_PICKER, dev/staging saja). Mati -> 404, web memakai input teks.
@@ -26,6 +26,8 @@ function authRoutes({ users, tokens, requireAuth, tenantPicker = false }) {
       if (!user || !user.passwordHash || !(await bcrypt.compare(password, user.passwordHash))) {
         throw unauthorized('Email atau password salah');
       }
+      // PK-15: login berhasil dicatat (login lewat link email dicatat di email-link.js)
+      if (audit) await audit.record({ tenantId: user.tenantId, user }, 'login', 'auth.password', {});
       res.json({ token: tokens.sign(user), user: publicUser(user) });
     } catch (e) { next(e); }
   });

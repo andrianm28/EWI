@@ -141,9 +141,12 @@ run('POC DNA + TNA (Postgres)', () => {
     const sid = created.body.data[0].id;
 
     expect((await request(app).post(`/api/dna/sessions/${sid}/consent`).set(as('rina'))).status).toBe(404); // bukan sesinya
-    const consent = await request(app).post(`/api/dna/sessions/${sid}/consent`).set(as('dimas'));
-    expect(consent.status).toBe(200);
-    expect(consent.body.data.question.text).toMatch(/Komunikasi pelanggan|kontrak|SOP/);
+    // PM-9 A: teks persetujuan v1.0 hanya untuk TNA; persetujuan DNA ditolak sampai teks DNA terbit
+    const consent = await request(app).post(`/api/dna/sessions/${sid}/consent`).set(as('dimas')).send({ consentVersion: 'tna-consent-id-v1.0' });
+    expect(consent.status).toBe(409);
+    expect(consent.body.error.code).toBe('CONSENT_TEXT_PENDING');
+    // alur analisis DNA tetap diuji: sesi dimulai langsung di DB seolah sudah disetujui
+    await db.query(`UPDATE lna_interview_sessions SET status = 'in_progress', consent_at = now(), consent_version = 'uji', started_at = now() WHERE id = :sid`, { replacements: { sid } });
 
     let done = false; let guard = 0;
     while (!done && guard++ < 10) {
@@ -226,7 +229,7 @@ run('POC DNA + TNA (Postgres)', () => {
 
   it('wawancara TNA membahas target merah dan memisahkan training / non-training', async () => {
     const sid = tnaSessionDimas.id;
-    const consent = await request(app).post(`/api/tna/sessions/${sid}/consent`).set(as('dimas'));
+    const consent = await request(app).post(`/api/tna/sessions/${sid}/consent`).set(as('dimas')).send({ consentVersion: 'tna-consent-id-v1.0' });
     expect(consent.body.data.question.text).toMatch(/Waktu respons tiket/);
     await request(app).post(`/api/tna/sessions/${sid}/turns`).set(as('dimas')).send({ text: 'Saya sulit memahami kontrak proyek pelanggan.' }).expect(200);
     await request(app).post(`/api/tna/sessions/${sid}/turns`).set(as('dimas')).send({ text: 'SOP L1 juga belum diperbarui dan tools Pandu lambat.' }).expect(200);
@@ -314,7 +317,7 @@ run('POC DNA + TNA (Postgres)', () => {
     const sched = await request(app).post(`/api/tna/projects/${p.id}/interviews`).set(as('hr')).send({ period: '2026-11' });
     const s = sched.body.data.sessions.find((x) => x.intervieweeId === row.id);
     expect(s).toBeTruthy();
-    expect((await request(app).post(`/api/tna/sessions/${s.id}/consent`).set(sari)).body.data.question.text).toMatch(/Closing deal/);
+    expect((await request(app).post(`/api/tna/sessions/${s.id}/consent`).set(sari).send({ consentVersion: 'tna-consent-id-v1.0' })).body.data.question.text).toMatch(/Closing deal/);
     await request(app).post(`/api/tna/sessions/${s.id}/turns`).set(sari).send({ text: 'Saya belum menguasai teknik negosiasi.' }).expect(200);
     const done = await request(app).post(`/api/tna/sessions/${s.id}/complete`).set(sari);
     expect(done.status).toBe(200);
@@ -338,8 +341,14 @@ run('POC DNA + TNA (Postgres)', () => {
     expect(findings[0].meta.employeeIds.length).toBeGreaterThan(0);
 
     const [[s]] = await db.query(`SELECT id FROM lna_interview_sessions WHERE tenant_id = :t AND submodule = 'tna' LIMIT 1`, { replacements: { t: tenant.id } });
-    await request(app).get(`/api/tna/sessions/${s.id}`).set(as('hr')).expect(200);
-    const [tr] = (await auditRows('tna.interview_transcript')).filter((r) => r.userId === u.hr);
+    // PO-6 A: HR melihat status sesi tanpa transkrip; baca transkrip oleh karyawan sendiri tercatat
+    const hrView = await request(app).get(`/api/tna/sessions/${s.id}`).set(as('hr')).expect(200);
+    expect(hrView.body.data.turns).toBeUndefined();
+    expect(hrView.body.data.transcriptVisible).toBe(false);
+    const [[owner]] = await db.query('SELECT interviewee_id AS id FROM lna_interview_sessions WHERE id = :id', { replacements: { id: s.id } });
+    const ownerTok = { Authorization: `Bearer ${tokens.sign({ id: owner.id, tenantId: tenant.id, role: 'learner', email: 'x@elgos.test' })}` };
+    await request(app).get(`/api/tna/sessions/${s.id}`).set(ownerTok).expect(200);
+    const [tr] = (await auditRows('tna.interview_transcript')).filter((r) => r.userId === owner.id);
     expect(tr.meta).toMatchObject({ objectType: 'interview_session', objectIds: [s.id] });
 
     const before = (await auditRows('tna.dashboard')).length;
@@ -392,8 +401,8 @@ run('POC DNA + TNA (Postgres)', () => {
     const key = await one(`SELECT key_ref AS "keyRef", wrapped_key AS "wrappedKey" FROM tenant_keys WHERE tenant_id = :t`);
     expect(key.keyRef).toBe('local');
     // lewat API tetap terbaca
-    const [s] = (await db.query(`SELECT id FROM lna_interview_sessions WHERE tenant_id = :t AND submodule = 'tna' AND status = 'completed' LIMIT 1`, { replacements: { t: tenant.id }, type: 'SELECT' }));
-    const res = await request(app).get(`/api/tna/sessions/${s.id}`).set(as('hr'));
+    const [s] = (await db.query(`SELECT id FROM lna_interview_sessions WHERE tenant_id = :t AND submodule = 'tna' AND status = 'completed' AND interviewee_id = :d LIMIT 1`, { replacements: { t: tenant.id, d: u.dimas }, type: 'SELECT' }));
+    const res = await request(app).get(`/api/tna/sessions/${s.id}`).set(as('dimas'));
     expect(res.body.data.turns.find((x) => x.speaker === 'human').text).not.toMatch(/^enc:/);
     const findings = (await request(app).get('/api/tna/findings').set(as('hr'))).body.data;
     expect(findings.every((x) => !x.title.startsWith('enc:'))).toBe(true);
