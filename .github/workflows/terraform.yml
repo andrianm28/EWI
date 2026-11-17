@@ -1,0 +1,87 @@
+name: Terraform
+
+# PK-08 / N-8: Terraform akun ELGOS (KMS per tenant, SES, backup S3, peringatan) dijalankan dari
+# GitHub Actions dengan role terbatas lewat OIDC, bukan profil admin dari etavm1.
+#   PR yang mengubah infra/  -> plan (role elgos-terraform-plan, hanya baca); hasil plan ada di
+#                               ringkasan job dan artefak run PR untuk direview.
+#   Run workflow (dari main) -> plan + apply satu stack lewat environment `infra` (penyetuju wajib),
+#                               role elgos-terraform-apply.
+# Diam sampai variabel repo AWS_ACCOUNT_ID diisi. Variabel lain: ETAVM2_IP, ALERT_EMAILS (JSON list).
+on:
+  pull_request:
+    paths: ["infra/**", ".github/workflows/terraform.yml"]
+  workflow_dispatch:
+    inputs:
+      stack:
+        description: Stack yang di-apply
+        type: choice
+        options: [shared, staging, prod]
+
+permissions:
+  contents: read
+  id-token: write
+
+env:
+  AWS_REGION: ap-southeast-1
+  TF_IN_AUTOMATION: "1"
+  TF_VAR_etavm2_ip: ${{ vars.ETAVM2_IP }}
+  TF_VAR_alert_emails: ${{ vars.ALERT_EMAILS || '[]' }}
+
+jobs:
+  plan:
+    if: github.event_name == 'pull_request' && vars.AWS_ACCOUNT_ID != ''
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        stack: [shared, staging, prod]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+        with: { terraform_version: 1.13.4, terraform_wrapper: false }
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::${{ vars.AWS_ACCOUNT_ID }}:role/elgos-terraform-plan
+          aws-region: ${{ env.AWS_REGION }}
+      - name: Plan
+        working-directory: infra/live/${{ matrix.stack }}
+        run: |
+          terraform init -input=false -backend-config="bucket=elgos-tfstate-${{ vars.AWS_ACCOUNT_ID }}"
+          terraform plan -input=false -lock-timeout=2m -no-color -out=tfplan | tee plan.txt
+          {
+            echo "### Plan \`${{ matrix.stack }}\`"
+            echo '```'
+            grep -E '^(Plan:|No changes|  # |Changes to Outputs)' plan.txt || true
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: plan-${{ matrix.stack }}
+          path: infra/live/${{ matrix.stack }}/plan.txt
+          retention-days: 30
+
+  apply:
+    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && vars.AWS_ACCOUNT_ID != ''
+    runs-on: ubuntu-latest
+    environment: infra
+    concurrency: { group: terraform-${{ inputs.stack }}, cancel-in-progress: false }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+        with: { terraform_version: 1.13.4, terraform_wrapper: false }
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::${{ vars.AWS_ACCOUNT_ID }}:role/elgos-terraform-apply
+          aws-region: ${{ env.AWS_REGION }}
+      - name: Plan + apply
+        working-directory: infra/live/${{ inputs.stack }}
+        run: |
+          terraform init -input=false -backend-config="bucket=elgos-tfstate-${{ vars.AWS_ACCOUNT_ID }}"
+          terraform plan -input=false -no-color -out=tfplan | tee plan.txt
+          terraform apply -input=false tfplan
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: apply-${{ inputs.stack }}
+          path: infra/live/${{ inputs.stack }}/plan.txt
+          retention-days: 90

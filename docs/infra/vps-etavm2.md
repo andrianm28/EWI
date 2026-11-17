@@ -4,8 +4,8 @@ Keputusan user 17 Nov 2026:
 
 | Keputusan | Wujud |
 |---|---|
-| Staging dan prod di VPS **etavm2** (8 vCPU / 32 GB / 100 GB), bukan AWS | `deploy/vps/` (docker compose, Caddy TLS, backup harian), `.github/workflows/deploy.yml` |
-| Kunci per tenant (R2-3) dan email **tetap di AWS** (KMS + SES) | `infra/` (Terraform, R2-8): KMS per tenant, identitas SES, IAM user per lingkungan |
+| Staging dan prod di VPS **etavm2** (8 vCPU / 32 GB / 100 GB), bukan AWS | `deploy/vps/` (docker compose, Caddy TLS, backup ke S3, pemantauan), `.github/workflows/deploy.yml` |
+| Kunci per tenant (R2-3) dan email **tetap di AWS** (KMS + SES), plus Bedrock, backup S3, pemantauan | `infra/` (Terraform, R2-8) |
 | Dev per git worktree per thread | `deploy/dev-worktree/dev.sh` |
 | R2-4: pilot ELGOS di prod, data nyata hanya di prod | prod tidak pernah di-seed; staging hanya data uji |
 
@@ -31,50 +31,108 @@ api ──HTTPS──> AWS ap-southeast-1: KMS (GenerateDataKey/Decrypt, kunci p
 
 | Pemicu | Hasil |
 |---|---|
-| PR | `ci.yml`: lint, migrasi naik-turun-naik, jest, build, e2e, terraform validate, cek skrip deploy |
-| push ke `main` | CI → build image `ghcr.io/andrianm28/ewi-{api,web}:<sha>` → deploy **staging** |
-| Actions > Deploy staging/prod > Run workflow | `prod` + `image_tag` (SHA yang sudah lolos di staging) → deploy **prod** lewat environment `prod` |
+| PR | `ci.yml`: lint, migrasi naik-turun-naik, jest, build, e2e, terraform validate, `bash -n` + shellcheck skrip deploy |
+| PR yang mengubah `infra/` | `terraform.yml`: plan shared/staging/prod dengan role OIDC baca-saja |
+| push ke `main` | CI → image `ghcr.io/andrianm28/ewi-{api,web}:<sha>` → deploy **staging** |
+| Actions > Deploy > Run workflow (dari `main`) | `prod` + `image_tag` SHA 40 karakter yang ada di `main` → environment `prod` berpenyetuju |
+| Actions > Terraform > Run workflow (dari `main`) | apply lewat environment `infra` berpenyetuju |
 | dev | `deploy-dev.yml` (PR #5) untuk etavm1; dev per worktree lewat `dev.sh` |
 
-`deploy/vps/deploy.sh` di runner etavm2: cek `.env` → pull image → backup schema `ewi` → migrasi →
-ganti container → health lokal + publik. Gagal setelah backup = rollback otomatis ke image sebelumnya,
-dan schema direstore bila migrasi sempat jalan. Diuji lokal: deploy pertama, deploy ulang, dan v2 dengan
-migrasi baru + API crash (rollback ke v1, tabel migrasi v2 hilang, data user tetap, health OK).
+Alur lengkap, pengaman, dan aturan migrasi: [alur-rilis.md](alur-rilis.md).
 
-## Backup
+`deploy/vps/deploy.sh` di runner etavm2:
+cek `.env` + `db.env` → pull image → backup schema `ewi` dan verifikasi terbaca (`pg_restore --list`) →
+migrasi sebagai pemilik `elgos` → pasang role aplikasi `elgos_app` (`ops/app-role.sql`) → ganti
+container → `/api/ready` lokal + publik. Gagal = rollback ke image sebelumnya; schema direstore hanya
+bila backupnya terverifikasi. Diuji lokal: deploy pertama, deploy ulang, v2 dengan migrasi baru + API
+crash (rollback, data tetap, role dipasang ulang).
 
-- Sebelum setiap deploy (20 terakhir) dan harian 02:15 WIB prod / 02:45 WIB staging (14 terakhir),
-  di `/srv/elgos-<env>/backups`. Timer systemd `elgos-backup@<env>.timer`.
-- Salinan di luar etavm2 belum ada: menunggu R2-10r (selaras RG-11). `backup.sh` sudah punya kait `OFFSITE_CMD`.
+### Pemisahan kredensial DB (PD-8 A)
 
-## AWS yang tersisa (Terraform)
+| Berkas | Isi | Dipakai oleh |
+|---|---|---|
+| `/srv/elgos-<env>/.env` | config + secret aplikasi, `DB_PASSWORD` role `elgos_app` | container api |
+| `/srv/elgos-<env>/db.env` | `POSTGRES_PASSWORD` pemilik `elgos` | container db, langkah migrasi/backup/restore |
+
+`elgos_app` hanya DML di schema `ewi`, tanpa DDL; `audit_logs` hanya INSERT/SELECT (log audit tidak
+bisa diubah aplikasi); `sequelize_meta` hanya SELECT. Variabel aplikasi: `DB_USER`/`DB_PASSWORD`, migrasi:
+`DB_MIGRATION_USER`/`DB_MIGRATION_PASSWORD` (disepakati dengan thread aplikasi).
+
+### Job terjadwal (PD-15 A)
+
+`sudo deploy/vps/ops/install-job.sh <env> <nama> <npm-script> "<OnCalendar>"` membuat timer systemd
+`elgos-job-<env>-<nama>` yang menjalankan `ops/run-job.sh` (container sekali jalan, flock, peringatan
+bila gagal). Contoh: `install-job.sh prod pengingat jobs:reminders "Mon..Fri *-*-* 01:00:00 UTC"`.
+
+## Backup dan pemulihan (PD-20 A)
+
+| Jenis | Jadwal | Lokal | S3 `elgos-backup-<akun>` |
+|---|---|---|---|
+| hourly (prod) | Sen–Jum tiap jam 08.05–18.05 WIB | 7 hari | 7 hari |
+| nightly | prod 02.15 WIB, staging 02.45 WIB | 30 hari | 30 hari |
+| pre-deploy | setiap deploy | 30 hari | – |
+| manual | `ops/backup.sh manual` | 30 hari | 30 hari |
+
+- `ops/backup.sh`: `pg_dump -Fc` → verifikasi `pg_restore --list` → unggah SSE-KMS (kunci khusus
+  `alias/elgos-backup`) + checksum SHA-256. Prod gagal keras bila `BACKUP_BUCKET` kosong.
+- Bucket: versioning, blokir akses publik, wajib TLS dan kunci backup, versi lama dihapus setelah 7 hari.
+  User `elgos-ops-etavm2` hanya boleh unggah (tidak bisa baca atau hapus), dan hanya dari IP etavm2.
+  Baca hanya lewat `elgos-restore` yang kuncinya dibuat saat dibutuhkan.
+- `ops/restore.sh uji <s3://… | berkas>`: pulihkan ke Postgres sementara tanpa jaringan, hitung baris
+  per tabel, catat lama pemulihan di `/srv/elgos-restore-uji.log`, lalu hapus. Data prod tidak pernah
+  masuk staging. Diuji lokal: 16 tabel, 4 detik.
+- `ops/restore.sh pulihkan <env> <src>`: pemulihan sungguhan (prod butuh `KONFIRMASI=prod`), didahului
+  backup pengaman. Langkah insiden: [runbook-insiden.md](runbook-insiden.md).
+
+## Pemantauan (PK-21)
+
+- Dari luar: Route 53 health check HTTPS `/api/ready` tiap 30 detik untuk prod dan staging, alarm
+  CloudWatch `elgos-<env>-down` → SNS `elgos-alerts-uptime` (us-east-1) → email.
+- Di etavm2: `elgos-monitor.timer` tiap 5 menit (disk, container, Caddy, kesiapan, umur backup);
+  backup dan job gagal → `elgos-alert` → SNS `elgos-alerts` → email. Peringatan yang sama tidak diulang
+  dalam 60 menit. Semua tercatat di journal (`journalctl -t elgos-alert`).
+- Log container dirotasi 20 MB × 5 per container (compose dan `daemon.json`).
+- Biaya: AWS Budget `elgos-bulanan` US$150 (PO-10 A), email di 80% dan 100% aktual serta 100% prakiraan.
+- Jadwal siaga: [runbook-insiden.md](runbook-insiden.md) (PO-9 B, jam kerja selama pilot).
+
+## AWS yang tersisa (Terraform, R2-8)
 
 | Folder | Isi |
 |---|---|
-| `infra/bootstrap` | bucket state `elgos-tfstate-<akun>` (sekali per akun, state lokal) |
-| `infra/live/shared` | identitas domain SES (`mail_domain`, sementara `eliteacademy.id`, R2-5r) + output 3 CNAME DKIM |
-| `infra/live/staging`, `infra/live/prod` | modul `app-crypto`: kunci KMS per tenant (`tenant_ids`) + alias `alias/elgos-<env>-tenant-<tenantId>`, IAM user `elgos-<env>-app` |
+| `infra/bootstrap` | bucket state `elgos-tfstate-<akun>` + provider OIDC GitHub + role `elgos-terraform-plan`/`-apply` (sekali per akun, state lokal, oleh admin) |
+| `infra/live/shared` | identitas SES, bucket + kunci backup, user `elgos-ops-etavm2` dan `elgos-restore`, SNS, health check + alarm, budget |
+| `infra/live/staging`, `infra/live/prod` | modul `app-crypto`: kunci KMS per tenant + alias, IAM user `elgos-<env>-app` |
 
-- User aplikasi hanya boleh `kms:GenerateDataKey` dan `kms:Decrypt` pada kunci bertag lingkungannya
-  dengan encryption context `tenant`, dan `ses:SendEmail`/`SendRawEmail` dari `mail_from`.
-- Kunci dibuat Terraform saat tenant diaktifkan (tambah id ke `tenant_ids`, apply), bukan oleh API.
-- Access key IAM user dibuat lewat CLI agar tidak masuk state Terraform:
-  `aws iam create-access-key --user-name elgos-prod-app`, isi ke `/srv/elgos-prod/.env`, rotasi berkala.
-- Biaya AWS: US$1 per kunci tenant per bulan + US$0,03 per 10.000 permintaan KMS + SES US$0,10 per 1.000 email.
+- User aplikasi: `kms:GenerateDataKey`/`Decrypt` pada kunci bertag lingkungannya dengan encryption
+  context `tenant`, `ses:SendEmail`/`SendRawEmail` dari `mail_from`, dan Bedrock `InvokeModel` model
+  Anthropic di ap-southeast-1 (PD-1 A). Semua hanya dari IP etavm2 (`aws:SourceIp`, N-4).
+- Kunci KMS dibuat Terraform saat tenant diaktifkan (tambah id ke `tenant_ids`, PR → plan → apply).
+- Access key dibuat lewat CLI agar tidak masuk state; rotasi 90 hari: [rotasi-kunci.md](rotasi-kunci.md).
+- Biaya: US$1 per kunci per bulan (tenant + backup) + permintaan KMS, SES US$0,10 per 1.000 email,
+  S3 backup beberapa sen per GB, health check Route 53 ±US$1–2 per bulan, Bedrock sesuai pemakaian.
 
 ## Setup sekali
 
-1. AWS (dari etavm1, profile `eta-andrian`, setelah akun ELGOS ada): `infra/bootstrap` → salin
-   `live/backend.hcl.example` ke `live/backend.hcl` → apply `live/shared`, `live/staging`, `live/prod`.
-   Tambahkan CNAME DKIM di Cloudflare, ajukan keluar dari SES sandbox.
-2. DNS Cloudflare: A record `elgos` dan `stg-elgos` ke IP publik etavm2 (DNS only saat pertama agar
+1. AWS (dari laptop admin, profil SSO akun ELGOS, setelah akun ada): `infra/bootstrap` apply
+   (`-var github_repo=andrianm28/EWI`) → salin `live/backend.hcl.example` ke `live/backend.hcl`.
+2. GitHub: variabel repo `AWS_ACCOUNT_ID`, `ETAVM2_IP`, `ALERT_EMAILS` (JSON list); environment
+   `staging`, `prod`, `infra` dan branch protection sesuai [alur-rilis.md](alur-rilis.md).
+3. Actions > Terraform > Run workflow dari `main` (apply shared, staging, prod). Konfirmasi email
+   langganan SNS. Tambahkan CNAME DKIM di Cloudflare, ajukan keluar dari SES sandbox, aktifkan akses
+   model Bedrock Anthropic di ap-southeast-1.
+4. DNS Cloudflare: A record `elgos` dan `stg-elgos` ke IP publik etavm2 (DNS only saat pertama agar
    Let's Encrypt HTTP-01 jalan; boleh di-proxy setelahnya dengan SSL mode Full (strict)).
-3. etavm2: clone repo, lalu `RUNNER_TOKEN=<token> ACME_EMAIL=<email> deploy/vps/setup-etavm2.sh`.
-   Isi `AWS_ACCESS_KEY_ID/SECRET` dan `ELITEMENTOR_*` di `/srv/elgos-staging/.env` dan `/srv/elgos-prod/.env`
-   (secret DB/JWT sudah dibuat acak oleh skrip). Staging: tambah `DEV_SEED_PASSWORD` bila ingin data demo.
-4. GitHub: Settings > Environments: buat `staging` dan `prod` (prod: required reviewer).
-5. Deploy pertama staging: Actions > Deploy staging/prod > Run workflow (staging, `image_tag` kosong).
-   Prod: Run workflow dengan `prod` + SHA yang sama, sebelum uji internal 25 Nov (R2-4).
+5. etavm2 (admin dengan kunci SSH sudah terpasang): clone repo, lalu
+   `RUNNER_TOKEN=<token> ACME_EMAIL=<email> deploy/vps/setup-etavm2.sh`. Skrip mengeraskan SSH
+   (kunci saja, tanpa root), ufw, fail2ban, unattended-upgrades, rotasi log Docker, membuat secret DB/JWT
+   acak, timer backup dan pemantauan.
+6. Isi access key `elgos-<env>-app` dan `ELITEMENTOR_*` di `/srv/elgos-<env>/.env`; isi access key
+   `elgos-ops-etavm2`, `BACKUP_BUCKET`, dan `ALERT_TOPIC_ARN` di `/etc/elgos/ops.env`. Catat di
+   [akses-etavm2.md](akses-etavm2.md).
+7. Deploy pertama staging (Run workflow staging), lalu prod dengan SHA yang sama sebelum 25 Nov (R2-4).
+8. `ops/backup.sh manual` + `ops/restore.sh uji` di prod sebelum data nyata diimpor (24 Nov); catat
+   lama pemulihan.
+9. Setelah semua jalan dari GitHub OIDC: hapus profil SSO `eta-andrian` dari etavm1 (P1-6).
 
 ## Dev per worktree
 
