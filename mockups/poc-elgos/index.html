@@ -239,12 +239,18 @@ ${ANN('rekomendasi promosi adalah modul terpisah di luar POC ini (G2-A), jadi ti
   <div class="item"><div><div class="t">SOP L1 versi terbaru</div><div class="m">Dimas, Bayu · masih memakai alur eskalasi lama</div></div><span class="pill warn">2 orang</span></div>
   <div class="item"><div><div class="t">Menyusun laporan bulanan</div><div class="m">Fajar</div></div><span class="pill mute">1 orang</span></div>
  </div></div>
- <div class="panel"><h2>Masalah non-training</h2><p>Hanya HR yang melihat daftar ini. Daftar ringkas tanpa rencana aksi; analisis INA tidak ikut POC Desember.</p>
+ <div class="panel"><h2>Masalah non-training</h2><p>Terlihat oleh HR. Atasan langsung hanya melihat timnya sendiri bila Anda beri akses. Daftar ringkas tanpa rencana aksi; analisis INA tidak ikut POC Desember.</p>
  <div class="list">
   <div class="item"><div><div class="t">SOP L1 di wiki belum diperbarui sejak Juli</div><div class="m">Disebut 3 orang</div></div><span class="pill mute">Dicatat</span></div>
   <div class="item"><div><div class="t">Pandu sering lambat saat jam sibuk</div><div class="m">Disebut 2 orang</div></div><span class="pill mute">Dicatat</span></div>
  </div></div>
-</div>`,
+</div>
+<div class="panel"><h2>Akses atasan ke temuan non-training</h2><p>Bawaan: hanya HR. Akses diberikan per atasan, berlaku untuk anggota timnya saja, dan bisa dicabut kapan saja. Setiap perubahan tercatat di log audit.</p>
+<div class="tbl"><table><thead><tr><th>Atasan</th><th>Tim</th><th>Akses</th><th>Tindakan</th></tr></thead><tbody>
+<tr><td>Team Lead Shift A</td><td>8 orang</td><td><span class="pill mute">Tidak ada</span></td><td><button class="btn">Beri akses</button></td></tr>
+<tr><td>Team Lead Shift B</td><td>8 orang</td><td><span class="pill ok">Diberikan 18 Nov oleh Mas Abdan</span></td><td><button class="btn">Cabut akses</button></td></tr>
+<tr><td>Team Lead Shift C</td><td>8 orang</td><td><span class="pill mute">Tidak ada</span></td><td><button class="btn">Beri akses</button></td></tr>
+</tbody></table></div></div>`,
 
 'hr-plan':()=>`
 <div><div class="crumb">HR · TNA</div><h1>Training plan</h1><p class="sub">Semua masalah training yang sudah direview menjadi training plan</p></div>
@@ -267,7 +273,12 @@ ${ANN('rekomendasi promosi adalah modul terpisah di luar POC ini (G2-A), jadi ti
 <tr><td>Agus Setiawan</td><td>Junior</td><td><span class="pill ok">Semua hijau</span></td><td>–</td><td>Basic ✓ Intermediate ✓</td></tr>
 <tr><td>Citra Melati</td><td>Junior</td><td><span class="pill ok">Semua hijau</span></td><td>–</td><td>Basic ✓ Intermediate ✓</td></tr>
 </tbody></table></div></div>
-<div class="note">Anda melihat kebutuhan training tim yang sudah direview HR. Temuan di luar pelatihan hanya terlihat oleh HR selama POC.</div>`,
+<div class="panel"><h2>Masalah non-training di tim Anda</h2><p>HR memberi Anda akses ke daftar ini pada 18 Nov. Akses bisa dicabut HR. Daftar ringkas, tanpa rencana aksi.</p>
+<div class="list">
+ <div class="item"><div><div class="t">SOP L1 di wiki belum diperbarui sejak Juli</div><div class="m">Disebut 2 anggota tim</div></div><span class="pill mute">Dicatat</span></div>
+ <div class="item"><div><div class="t">Pandu sering lambat saat jam sibuk</div><div class="m">Disebut 1 anggota tim</div></div><span class="pill mute">Dicatat</span></div>
+</div></div>
+<div class="note">Anda melihat kebutuhan training tim yang sudah direview HR. Atasan yang belum diberi akses oleh HR tidak melihat panel non-training.</div>`,
 
 /* ============ KARYAWAN ============ */
 'emp-wawancara':()=>`
