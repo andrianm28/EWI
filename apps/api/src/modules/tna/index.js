@@ -4,23 +4,25 @@
 // tetap direkam tetapi tidak ditampilkan selama flag INA mati.
 // Cadence 11 Nov: TNA bisa berjalan tanpa DACUM/DNA (C4). Cakupan wawancara per kebutuhan perusahaan:
 // hanya target merah (default, C3) atau semua karyawan di job role tertentu.
-// Terbuka: BT-30 (rumus Pareto), BT-31 (alur request training), K-1 (LMS), K-3 (status).
+// PK-23 (PM-8 ★ B+C+D+E, PM-6 ★ B): status rencana K-3, permintaan training ditunda di balik flag (BT-31),
+// daftar ringkas non-training hanya untuk HR di balik flag. Undangan 7 hari + pengingat: modules/interviews.
+// Terbuka: BT-30 (rumus Pareto), BT-31 (alur request training), K-1 (LMS).
 const crypto = require('crypto');
 const express = require('express');
 const { requireRole, ROLES } = require('../../core/rbac');
 const { scopeFor, inScope } = require('../../core/rbac/scope');
 const { INTERVIEW_SCOPES } = require('../../core/settings');
-const { FLAGS } = require('../../core/flags');
+const { FLAGS, requireFlag } = require('../../core/flags');
 const { badRequest, notFound, forbidden, HttpError } = require('../../core/errors');
 const { interviewRouter, wrap } = require('../interviews');
+const { inviteExpiry } = require('../interviews/invitation');
 const { evaluate } = require('./performance');
 const { selectInterviewees } = require('./targeting');
 const { rankTrainingNeeds } = require('./pareto');
 const { importRouter } = require('../imports');
 const { getKind } = require('../imports/kinds');
 const { validateRows, commitRows } = require('../imports/engine');
-
-const PLAN_STATUSES = ['proposed', 'needs_module', 'assigned', 'in_progress', 'completed', 'cancelled'];
+const { PLAN_STATUSES, PLAN_STATUS_LABEL, initialStatus, canTransition } = require('./plan-status');
 
 module.exports = {
   key: 'tna',
@@ -93,12 +95,22 @@ module.exports = {
       for (const p of picks) {
         if (open.has(p.userId)) continue;
         const m = members.find((x) => x.id === p.userId);
-        created.push({ ...(await stores.interviews.create(req.tenantId, { projectId, submodule: 'tna', intervieweeId: p.userId, jobRoleId: m.jobRoleId, triggerRecordIds: p.triggerRecordIds })), focus: p.focus });
+        created.push({ ...(await stores.interviews.create(req.tenantId, { projectId, submodule: 'tna', intervieweeId: p.userId, jobRoleId: m.jobRoleId, triggerRecordIds: p.triggerRecordIds, inviteExpiresAt: inviteExpiry() })), focus: p.focus });
       }
       res.status(201).json({ data: { scope, scheduled: created.length, skipped: picks.length - created.length, sessions: created } });
     }));
 
     r.use('/sessions', interviewRouter({ submodule: 'tna', stores, ai, audit }));
+
+    // PM-6 B: temuan "bukan masalah pelatihan" tampil hanya untuk HR, ringkas, tanpa rencana aksi.
+    // Atasan dan karyawan tidak melihatnya (RG-4 tetap: dashboard INA penuh menunggu flag INA).
+    r.get('/findings/non-training', hr,
+      requireFlag(flags, FLAGS.TNA_NON_TRAINING_HR, 'Daftar temuan di luar pelatihan belum diaktifkan untuk organisasi Anda'),
+      wrap(async (req, res) => {
+        const rows = await stores.tna.listNonTrainingSummary(req.tenantId, { projectId: req.query.projectId });
+        await audit.readIndividual(req, 'tna.findings_non_training', { employeeIds: rows.map((f) => f.userId), objectType: 'tna_finding', objectIds: rows.map((f) => f.id) });
+        res.json({ data: rows });
+      }));
 
     // --- Temuan & Pareto ---
     r.get('/findings', wrap(async (req, res) => {
@@ -127,7 +139,7 @@ module.exports = {
       const competency = f.competencyId ? await stores.dna.getCompetency(req.tenantId, f.competencyId) : null;
       const hit = await catalog.match({ tenantId: req.tenantId, targets: conf.lms.targets, competency, tier: req.body?.programTier });
       const item = await stores.tna.insertPlanItem(req.tenantId, {
-        findingId: f.id, userId: f.userId, origin: 'hr', status: hit ? 'proposed' : 'needs_module',
+        findingId: f.id, userId: f.userId, origin: 'hr', status: initialStatus('hr'),
         programTier: req.body?.programTier || null, catalogSource: hit?.source, catalogItemRef: hit?.ref, catalogItemTitle: hit?.title,
         note: req.body?.note || null,
       });
@@ -135,8 +147,9 @@ module.exports = {
       res.status(201).json({ data: item });
     }));
 
-    // Request training oleh learner (RG-2). BT-31 terbuka: HR dan atasan sama-sama bisa memproses lewat PATCH.
-    r.post('/training-requests', wrap(async (req, res) => {
+    // Request training oleh learner (RG-2). PM-8 B: BT-31 ditunda, jadi endpoint di balik flag (default mati)
+    // dan tombolnya disembunyikan di web. Bila dinyalakan, HR dan atasan memproses lewat PATCH.
+    r.post('/training-requests', requireFlag(flags, FLAGS.TNA_TRAINING_REQUEST, 'Permintaan training belum dibuka selama POC'), wrap(async (req, res) => {
       const { findingId, note } = req.body || {};
       if (!findingId && !note) throw badRequest('findingId atau note wajib diisi');
       if (findingId) {
@@ -144,7 +157,7 @@ module.exports = {
         if (!f || f.userId !== req.user.id) throw notFound('Temuan tidak ditemukan');
       }
       const item = await stores.tna.insertPlanItem(req.tenantId, {
-        findingId: findingId || null, userId: req.user.id, origin: 'learner_request', status: 'proposed', note: note || null, requestedBy: req.user.id,
+        findingId: findingId || null, userId: req.user.id, origin: 'learner_request', status: initialStatus('learner_request'), note: note || null, requestedBy: req.user.id,
       });
       res.status(201).json({ data: item });
     }));
@@ -153,15 +166,19 @@ module.exports = {
       const scope = await scopeFor(req, stores.people);
       const rows = await stores.tna.listPlanItems(req.tenantId, scope);
       await audit.readIndividual(req, 'tna.plan_items', { employeeIds: rows.map((p) => p.userId), objectType: 'tna_plan_item', objectIds: rows.map((p) => p.id) });
-      res.json({ data: rows });
+      res.json({ data: rows, statusLabels: PLAN_STATUS_LABEL });
     }));
 
+    // K-3: hanya perpindahan status yang sah (Diminta -> Baru -> Berjalan -> Selesai; Ditolak sebelum selesai)
     r.patch('/plan-items/:id', requireRole(ROLES.HR_ADMIN, ROLES.SUPERVISOR), wrap(async (req, res) => {
       const item = await stores.tna.getPlanItem(req.tenantId, req.params.id);
       const scope = await scopeFor(req, stores.people);
       if (!item || !inScope(scope, item.userId)) throw notFound('Item training plan tidak ditemukan');
       const { status, catalogItemRef, catalogItemTitle, catalogSource } = req.body || {};
       if (status && !PLAN_STATUSES.includes(status)) throw badRequest(`status harus salah satu: ${PLAN_STATUSES.join(', ')}`);
+      if (status && status !== item.status && !canTransition(item.status, status)) {
+        throw new HttpError(409, 'INVALID_TRANSITION', `Status "${PLAN_STATUS_LABEL[item.status]}" tidak bisa diubah menjadi "${PLAN_STATUS_LABEL[status]}"`);
+      }
       res.json({ data: await stores.tna.updatePlanItem(req.tenantId, item.id, { status, catalogItemRef, catalogItemTitle, catalogSource }) });
     }));
 

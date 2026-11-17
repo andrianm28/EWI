@@ -22,11 +22,13 @@ export interface EmployeeDetail {
   career: Career
   completions: { programTier: string; status: string; source: string }[]
 }
-export interface Session { id: string; projectId: string; intervieweeId: string; intervieweeName: string | null; status: string; triggerCount: number }
+export interface Session { id: string; projectId: string; intervieweeId: string; intervieweeName: string | null; status: string; triggerCount: number; inviteExpiresAt?: string; inviteExtendedCount?: number }
 export interface Turn { speaker: 'ai' | 'human'; text: string; at: string }
 export interface Finding { id: string; userId: string; userName: string | null; title: string; status: string; competencyName: string | null; metricName: string | null; target: number | null; actual: number | null }
 export interface ParetoRow { key: string; label: string; people: number; avgMiss: number; score: number; share: number; cumulativeShare: number }
-export interface PlanItem { id: string; userId: string; userName: string | null; findingTitle: string | null; origin: string; status: string; catalogItemTitle: string | null; note: string | null }
+export interface PlanItem { id: string; userId: string; userName: string | null; findingTitle: string | null; origin: string; status: string; catalogItemTitle: string | null; needsModule?: boolean; note: string | null }
+// PM-6 B: ringkasan temuan di luar pelatihan untuk HR (tanpa detail, tanpa rencana aksi)
+export interface NonTrainingFinding { id: string; userId: string; userName: string | null; title: string; metricName: string | null; linkedTrainingTitle: string | null; createdAt: string }
 export interface TnaDashboard { role: string; people: number | null; redTargets: number; sessions: Record<string, number>; trainingFindings: number; planItems: Record<string, number> }
 export interface Project { id: string; name: string; status: string }
 
@@ -50,6 +52,8 @@ export const lna = {
   planItems: () => call<{ data: PlanItem[] }>('/tna/plan-items'),
   planFinding: (id: string) => post<{ data: PlanItem }>(`/tna/findings/${id}/plan`, {}),
   requestTraining: (findingId: string, note: string) => post<{ data: PlanItem }>('/tna/training-requests', { findingId, note }),
+  nonTrainingFindings: () => call<{ data: NonTrainingFinding[] }>('/tna/findings/non-training'),
+  extendInvite: (id: string, days = 7) => post<{ data: { inviteExpiresAt: string } }>(`/tna/sessions/${id}/extend`, { days }),
   setPlanStatus: (id: string, status: string) => call<{ data: PlanItem }>(`/tna/plan-items/${id}`, { method: 'PATCH', body: JSON.stringify({ status }) }),
   // Cakupan sesuai kebutuhan perusahaan: hanya target merah (default) atau semua karyawan di job role tertentu
   tnaJobRoles: () => call<{
@@ -65,9 +69,16 @@ export const lna = {
 export const ROLE_LABEL: Record<string, string> = {
   hr_admin: 'HR', supervisor: 'Atasan', learner: 'Karyawan', eta_admin: 'Admin ETA',
 }
+// K-3: satu set status rencana (sama dengan apps/api/src/modules/tna/plan-status.js)
 export const PLAN_STATUS_LABEL: Record<string, string> = {
-  proposed: 'Diusulkan', needs_module: 'Perlu modul baru', assigned: 'Ditugaskan', in_progress: 'Berjalan', completed: 'Selesai', cancelled: 'Dibatalkan',
+  requested: 'Diminta', new: 'Baru', in_progress: 'Berjalan', completed: 'Selesai', rejected: 'Ditolak',
 }
+export const PLAN_NEXT: Record<string, string[]> = {
+  requested: ['new', 'rejected'], new: ['in_progress', 'rejected'], in_progress: ['completed', 'rejected'], completed: [], rejected: [],
+}
+export const FLAG_TRAINING_REQUEST = 'tna.training_request'
+export const FLAG_NON_TRAINING_HR = 'tna.non_training_hr'
+export const formatWib = (iso: string) => new Intl.DateTimeFormat('id-ID', { timeZone: 'Asia/Jakarta', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }).format(new Date(iso))
 export const ASSESSMENT_SOURCE_LABEL: Record<string, string> = {
   manual_interview: 'wawancara manual', ai_interview: 'wawancara AI', eta_review: 'penilaian ulang ETA',
 }
