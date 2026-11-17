@@ -1,4 +1,4 @@
-// Submodul EWI Modul 01. Teks deskripsi mengikuti RG-1..RG-4 (rapat 10 Nov).
+// Submodul ELGOS Modul 01. Teks deskripsi mengikuti RG-1..RG-4 (rapat 10 Nov).
 export type SubmoduleKey = 'cca' | 'dna' | 'tna' | 'ina'
 
 export const SUBMODULES: { key: SubmoduleKey; code: string; title: string; summary: string }[] = [

@@ -1,5 +1,5 @@
 #!/bin/sh
-# Entrypoint container API EWI.
+# Entrypoint container API ELGOS.
 # - Di AWS, kredensial DB datang terpisah dari Secrets Manager (DB_HOST, DB_USER, ...);
 #   DATABASE_URL dirakit di sini dengan password ter-URL-encode dan TLS wajib.
 # - RUN_MIGRATIONS=true menjalankan migrasi sebelum server start. Gagal migrasi = container

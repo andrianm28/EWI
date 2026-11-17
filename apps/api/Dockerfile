@@ -1,4 +1,4 @@
-# Image API EWI untuk ECS Fargate. Build dari root repo (butuh package-lock workspace):
+# Image API ELGOS untuk ECS Fargate. Build dari root repo (butuh package-lock workspace):
 #   docker build -f apps/api/Dockerfile -t ewi-api .
 FROM node:24-alpine AS deps
 WORKDIR /app

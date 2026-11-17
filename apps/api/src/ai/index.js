@@ -1,5 +1,5 @@
 'use strict';
-// Port komponen AI EWI. T3 (dibangun ulang ramping / paket bersama / lewat API EliteMentor) BELUM diputuskan,
+// Port komponen AI ELGOS. T3 (dibangun ulang ramping / paket bersama / lewat API EliteMentor) BELUM diputuskan,
 // jadi seluruh pemanggil hanya bergantung pada kontrak di bawah. Ganti implementasi lewat AI_PROVIDER
 // tanpa menyentuh modul DNA/TNA.
 //

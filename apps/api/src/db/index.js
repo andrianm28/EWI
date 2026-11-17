@@ -2,7 +2,7 @@
 const { Sequelize } = require('sequelize');
 
 /**
- * Koneksi ke database EWI sendiri (ADR 0001). Tabel di schema `ewi`.
+ * Koneksi ke database ELGOS sendiri (ADR 0001). Tabel di schema `ewi`.
  * Data EliteMentor hanya diakses lewat src/integrations/elitementor.
  */
 function createDb(config) {

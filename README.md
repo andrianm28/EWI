@@ -1,9 +1,11 @@
-# Elite Workforce Intelligence (EWI)
+# Elite Learning & Growth Operating System (ELGOS)
 
-Repo produk EWI, Modul 01 Learning Needs Analysis: **CCA, DNA, TNA, INA**.
-EWI adalah produk yang **terpisah penuh** dari EliteMentor: repo, database, deploy, dan login sendiri.
+Repo produk ELGOS, Modul 01 Learning Needs Analysis: **CCA, DNA, TNA, INA**.
+ELGOS adalah produk yang **terpisah penuh** dari EliteMentor: repo, database, deploy, dan login sendiri.
 Integrasi ke EliteMentor hanya lewat API OAuth2 dan webhook bertanda tangan
 (lihat [ADR 0001](docs/adr/0001-ewi-terpisah-penuh.md)).
+
+> **Nama produk.** Sejak 13 Nov 2026 (keputusan komersial G3-A) nama produk adalah **ELGOS**; **EWI (Elite Workforce Intelligence)** adalah nama lama. Proyek HR Elitery adalah implementasi pertama ELGOS. Learning Needs Analysis (CCA, DNA, TNA, INA) adalah satu dari 4 module ELGOS; rekomendasi promosi berbasis kompetensi adalah module terpisah (G2-A). Identifier teknis (nama repo, schema `ewi`, env `EWI_*`, audience JWT `ewi`, image/paket `ewi-*`, stack CDK `Ewi*`, path di server dev) sengaja belum diganti sampai ada keputusan terpisah.
 
 ## Struktur
 

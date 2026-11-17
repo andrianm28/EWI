@@ -1,4 +1,4 @@
-# Dev EWI publik (di luar AWS)
+# Dev ELGOS publik (di luar AWS)
 
 Keputusan user 11 Nov 2026: AWS hanya untuk staging + prod; dev jalan di **etavm1** lewat docker compose
 dan dibuka ke publik dengan **Cloudflare Tunnel** (tanpa membuka port di VM).
