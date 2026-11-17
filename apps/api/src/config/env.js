@@ -31,6 +31,13 @@ function loadConfig(env = process.env) {
       else errors.push('EWI_LOCAL_MASTER_KEY wajib diisi untuk ENCRYPTION_PROVIDER=local (buat: openssl rand -hex 32)');
     }
   }
+  // PK-16 / PD-10 ★B: di produksi semua login lewat link email. Login password hanya untuk dev/staging.
+  const isProd = env.NODE_ENV === 'production';
+  if (isProd && env.AUTH_PASSWORD_LOGIN === 'true') errors.push('AUTH_PASSWORD_LOGIN=true tidak diizinkan di produksi (PD-10)');
+  const etaAdminEmails = (env.ETA_ADMIN_EMAILS || '').split(',').map((e) => e.trim().toLowerCase()).filter(Boolean);
+  if (etaAdminEmails.some((e) => !/^[^@\s]+@[^@\s]+$/.test(e))) errors.push('ETA_ADMIN_EMAILS berisi alamat email yang tidak valid');
+  const trustProxy = parseTrustProxy(env.TRUST_PROXY);
+  if (trustProxy === undefined) errors.push('TRUST_PROXY harus angka jumlah hop, true/false, atau daftar alamat');
   if (errors.length) {
     const err = new Error(`Konfigurasi tidak valid:\n- ${errors.join('\n- ')}`);
     err.code = 'CONFIG_INVALID';
@@ -66,6 +73,15 @@ function loadConfig(env = process.env) {
       from: env.MAIL_FROM || '',
       region: env.MAIL_REGION || env.AWS_REGION || 'ap-southeast-3',
     }),
+    auth: Object.freeze({
+      // Login password: mati di produksi, nyala di dev/staging kecuali AUTH_PASSWORD_LOGIN=false
+      passwordLogin: !isProd && env.AUTH_PASSWORD_LOGIN !== 'false',
+      // Admin ETA hanya boleh masuk bila emailnya ada di daftar ini. Di produksi daftar kosong = tidak ada Admin ETA.
+      etaAdminEmails: Object.freeze(etaAdminEmails),
+      etaAdminRequireList: isProd || etaAdminEmails.length > 0,
+    }),
+    // Express 'trust proxy' agar req.ip = IP klien di belakang nginx (dipakai batas laju per IP)
+    trustProxy,
     jwt: Object.freeze({
       secret,
       audience: env.EWI_JWT_AUDIENCE || 'ewi',
@@ -73,6 +89,15 @@ function loadConfig(env = process.env) {
       ttl: env.EWI_JWT_TTL || '8h',
     }),
   });
+}
+
+/** TRUST_PROXY: kosong/false = mati, true, angka hop, atau daftar alamat/subnet. undefined = tidak valid. */
+function parseTrustProxy(raw) {
+  if (raw === undefined || raw === '' || raw === 'false') return false;
+  if (raw === 'true') return true;
+  if (/^\d+$/.test(raw)) return Number(raw);
+  const list = raw.split(',').map((s) => s.trim()).filter(Boolean);
+  return list.every((s) => /^[0-9a-f:.]+(\/\d+)?$/i.test(s) || ['loopback', 'linklocal', 'uniquelocal'].includes(s)) ? list : undefined;
 }
 
 module.exports = { loadConfig };

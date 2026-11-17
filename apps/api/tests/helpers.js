@@ -18,6 +18,7 @@ function makeStores({ entitlements = {}, flags = {} } = {}) {
   const users = [
     { id: 'u-hr', tenantId: 't-1', tenantSlug: 'elgos', email: 'hr@elgos.test', name: 'HR', role: 'hr_admin', passwordHash: hash },
     { id: 'u-l', tenantId: 't-1', tenantSlug: 'elgos', email: 'agent@elgos.test', name: 'Agent', role: 'learner', passwordHash: hash },
+    { id: 'u-eta', tenantId: 't-0', tenantSlug: 'eta', email: 'admin@eta.test', name: 'Admin ETA', role: 'eta_admin', passwordHash: hash },
     { id: 'u-x', tenantId: 't-2', tenantSlug: 'other', email: 'hr@other.test', name: 'HR2', role: 'hr_admin', passwordHash: hash },
   ];
   const projects = [];
@@ -34,8 +35,19 @@ function makeStores({ entitlements = {}, flags = {} } = {}) {
   };
 }
 
+/**
+ * PK-16: token test harus menunjuk sesi aktif. sign(user) membuat baris sesi di store lalu mengembalikan JWT.
+ * store: stores.authSessions (Postgres) atau memorySessionStore().
+ */
+function sessionSigner(config, store) {
+  const { createTokenService } = require('../src/core/auth/tokens');
+  const { createSessionService } = require('../src/core/auth/sessions');
+  const sessions = createSessionService({ store, tokens: createTokenService(config.jwt) });
+  return { sign: async (user) => (await sessions.issue(user, { method: 'unknown' })).token };
+}
+
 function makeApp(opts, env = {}) {
   return createApp({ config: makeConfig(env), stores: makeStores(opts) });
 }
 
-module.exports = { SECRET, TEST_PASSWORD, makeConfig, makeStores, makeApp };
+module.exports = { SECRET, TEST_PASSWORD, makeConfig, makeStores, makeApp, sessionSigner };
