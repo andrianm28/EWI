@@ -98,6 +98,9 @@ a.lnk{color:var(--link);text-decoration:none;font-size:13px} a.lnk:hover{text-de
 .split{display:grid;grid-template-columns:1fr 1fr;gap:16px}
 .mark{font-size:11px;color:var(--muted);border:1px dashed var(--line);border-radius:6px;padding:2px 6px}
 .ann{font-size:12px;color:var(--warn);background:var(--warn-soft);border-radius:6px;padding:6px 10px}
+.soon{display:inline-flex;align-items:center;font-size:11.5px;font-weight:600;padding:2px 8px;border-radius:999px;border:1px dashed var(--warn);color:var(--warn);background:var(--warn-soft);white-space:nowrap}
+.btn[disabled]{opacity:.55;cursor:not-allowed}
+.scope{display:flex;gap:10px;align-items:center;flex-wrap:wrap;font-size:12.5px;color:var(--muted);padding:8px 24px;border-bottom:1px solid var(--line);background:var(--surface)}
 @media (max-width:900px){.shell{grid-template-columns:1fr}.nav{flex-direction:row;flex-wrap:wrap}.nav .grp{width:100%;margin:6px 4px 0}.grid2,.grid3,.split{grid-template-columns:1fr}.kpis{grid-template-columns:repeat(2,1fr)}.ladder{grid-template-columns:repeat(2,1fr)}}
 @media (prefers-reduced-motion:reduce){*{transition:none!important}}
 </style>
@@ -108,8 +111,10 @@ a.lnk{color:var(--link);text-decoration:none;font-size:13px} a.lnk:hover{text-de
     <button id="r-hr" data-role="hr" aria-pressed="true">HR (Mas Abdan)</button>
     <button id="r-spv" data-role="spv" aria-pressed="false">Atasan (Team Lead)</button>
     <button id="r-emp" data-role="emp" aria-pressed="false">Karyawan (Dimas)</button>
+    <button id="r-adm" data-role="adm" aria-pressed="false">Admin ETA</button>
   </div>
 </header>
+<div class="scope" role="note">Mockup = janji cakupan live 2 Desember 2026. Yang belum ikut diberi label <span class="soon">Menyusul saat pilot</span> dan tidak bisa dipakai saat live.</div>
 
 <div class="shell">
   <nav class="nav" id="nav" aria-label="Menu"></nav>
@@ -118,32 +123,38 @@ a.lnk{color:var(--link);text-decoration:none;font-size:13px} a.lnk:hover{text-de
 
 <script>
 const ANN = t => `<div class="ann">Catatan mockup: ${t}</div>`;
+const SOON = '<span class="soon">Menyusul saat pilot</span>';
 const heatClass = (v,max)=>{const r=v/max;return r<.15?'l1':r<.35?'l2':r<.6?'l3':r<.85?'l4':'l5'};
 
 const V = {
 /* ============ HR ============ */
 'hr-beranda':()=>`
-<div><div class="crumb">HR · Beranda</div><h1>POC ELGOS Service Delivery L1</h1><p class="sub">24 karyawan · data kinerja Oktober 2026 dari HappyFive · POC live 2 Desember 2026</p></div>
+<div><div class="crumb">HR · Beranda</div><h1>POC ELGOS Service Delivery L1</h1><p class="sub">24 karyawan · data kinerja Oktober 2026 dari HappyFive · POC live 2 Desember 2026 · semua anggota L1 ikut wawancara TNA</p></div>
 <div class="kpis">
  <div class="kpi"><b>24</b><span>Karyawan dengan hasil DNA</span></div>
  <div class="kpi"><b>9</b><span>Karyawan dengan target merah</span></div>
- <div class="kpi"><b>6 / 9</b><span>Wawancara TNA selesai</span></div>
- <div class="kpi"><b>3</b><span>Kandidat promosi</span></div>
+ <div class="kpi"><b>18 / 24</b><span>Wawancara TNA selesai</span></div>
+ <div class="kpi"><b>4</b><span>Temuan AI menunggu review Anda</span></div>
 </div>
 <div class="grid2">
  <div class="panel"><h2>Perlu tindakan Anda</h2><p>Diurutkan dari yang paling mendesak.</p>
   <div class="list">
-   <div class="item"><div><div class="t">Kebutuhan training "Memahami kontrak proyek" belum punya modul</div><div class="m">Muncul di 4 dari 6 wawancara TNA · belum ada di content library</div></div><a class="lnk" href="#hr-plan">Buat training plan</a></div>
-   <div class="item"><div><div class="t">2 permintaan training dari karyawan</div><div class="m">Dimas Aditya, Rina Putri · sudah disetujui atasan</div></div><a class="lnk" href="#hr-plan">Tinjau</a></div>
-   <div class="item"><div><div class="t">3 karyawan belum mengikuti wawancara TNA</div><div class="m">Link terkirim 18 Nov · pengingat otomatis 2 hari lagi</div></div><a class="lnk" href="#hr-tna">Lihat</a></div>
-   <div class="item"><div><div class="t">3 kandidat promosi junior → senior</div><div class="m">Sudah lulus program Intermediate · saran Elite AI</div></div><a class="lnk" href="#hr-karier">Lihat</a></div>
+   <div class="item"><div><div class="t">Kebutuhan training "Memahami kontrak proyek" belum punya modul</div><div class="m">Muncul di 4 dari 18 wawancara TNA · belum ada di katalog materi</div></div><a class="lnk" href="#hr-plan">Buat training plan</a></div>
+   <div class="item"><div><div class="t">4 temuan AI dari wawancara TNA menunggu review</div><div class="m">Temuan baru tampil ke atasan dan karyawan, dan baru dihitung di dashboard, setelah Anda setujui</div></div><a class="lnk" href="#hr-tna">Review</a></div>
+   <div class="item"><div><div class="t">6 karyawan belum mengikuti wawancara TNA</div><div class="m">Link terkirim 18 Nov · pengingat email H-3 dan H-1 sebelum batas</div></div><a class="lnk" href="#hr-tna">Lihat</a></div>
   </div></div>
  <div class="panel"><h2>Dua fungsi di POC ini</h2>
   <div class="list">
-   <div class="item"><div><div class="t">DNA · proaktif</div><div class="m">Hasil DNA (wawancara manual) ditampilkan: kamus kompetensi, content library, learning program, gap per karyawan.</div></div><span class="pill mute">Hasil saja</span></div>
-   <div class="item"><div><div class="t">TNA · reaktif</div><div class="m">Agent AI mewawancarai karyawan yang target OKR/KPI/SLA-nya meleset, lalu memisahkan masalah training dan non-training.</div></div><span class="pill acc">AI aktif</span></div>
+   <div class="item"><div><div class="t">DNA · proaktif</div><div class="m">Hasil DNA (wawancara manual, diimpor HR) ditampilkan: kamus kompetensi, katalog materi, learning program, gap per jenjang.</div></div><span class="pill mute">Hasil saja</span></div>
+   <div class="item"><div><div class="t">TNA · reaktif</div><div class="m">Agent AI mewawancarai anggota L1 lewat teks, membahas target OKR/KPI/SLA yang meleset, lalu memisahkan masalah training dan non-training. Semua hasil AI direview HR sebelum tampil.</div></div><span class="pill acc">AI aktif · teks</span></div>
   </div></div>
-</div>`,
+</div>
+<div class="panel"><h2>Belum ikut live 2 Desember</h2><p>Sudah diputus, masuk bertahap selama pilot Desember.</p>
+ <div class="list">
+  <div class="item"><div><div class="t">Wawancara suara</div><div class="m">Wawancara TNA saat live memakai teks</div></div>${SOON}</div>
+  <div class="item"><div><div class="t">Sinkron Moodle (status lulus otomatis)</div><div class="m">Saat live, katalog dari daftar course Moodle dan kelulusan diimpor HR dari file</div></div>${SOON}</div>
+  <div class="item"><div><div class="t">Permintaan training dari karyawan (BT-31)</div><div class="m">Tombol disembunyikan selama POC</div></div>${SOON}</div>
+ </div></div>`,
 
 'hr-kamus':()=>`
 <div><div class="crumb">HR · DNA · Function 1</div><h1>Kamus kompetensi Service Delivery L1</h1><p class="sub">Hasil DACUM (wawancara DNA manual, diimpor 15 Nov 2026) · dipetakan ke jenjang karier ELGOS</p></div>
@@ -162,7 +173,8 @@ const V = {
 </tbody></table></div></div>`,
 
 'hr-library':()=>`
-<div><div class="crumb">HR · DNA · Function 2</div><h1>Content library</h1><p class="sub">Materi di Moodle (Course 1–3) yang dipetakan ke kompetensi</p></div>
+<div><div class="crumb">HR · DNA · Function 2</div><h1>Katalog materi</h1><p class="sub">Dari daftar course Moodle (Course 1–3) yang diunggah HR, dipetakan ke kompetensi</p></div>
+<div class="note">Saat live, katalog diperbarui dengan mengunggah daftar course. Sinkron langsung dengan Moodle ${SOON}</div>
 <div class="panel"><div class="tbl"><table>
 <thead><tr><th>Materi</th><th>Kompetensi</th><th>Course</th><th>Status</th></tr></thead>
 <tbody>
@@ -175,7 +187,8 @@ const V = {
 </tbody></table></div></div>`,
 
 'hr-program':()=>`
-<div><div class="crumb">HR · DNA · Function 3</div><h1>Learning program</h1><p class="sub">Syarat lulus per jenjang karier ELGOS</p></div>
+<div><div class="crumb">HR · DNA · Function 3</div><h1>Learning program</h1><p class="sub">Syarat lulus per jenjang karier ELGOS · data kelulusan diimpor HR dari file per 15 Nov 2026</p></div>
+<div class="note">Kelulusan otomatis dari Moodle ${SOON}</div>
 <div class="grid3">
  <div class="panel"><span class="pill acc">Basic</span><h2 style="margin-top:8px">Syarat lulus probation / junior</h2><p class="sub">Course 1 · 6 materi · ±12 jam</p><div class="m" style="margin-top:8px">22 dari 24 karyawan lulus</div><div class="bar"><i style="width:92%"></i></div></div>
  <div class="panel"><span class="pill acc">Intermediate</span><h2 style="margin-top:8px">Syarat naik ke senior</h2><p class="sub">Course 2 · 8 materi · ±20 jam</p><div class="m" style="margin-top:8px">9 dari 24 karyawan lulus</div><div class="bar"><i style="width:38%"></i></div></div>
@@ -183,23 +196,18 @@ const V = {
 </div>`,
 
 'hr-karier':()=>`
-<div><div class="crumb">HR · DNA</div><h1>Gap kompetensi dan pergerakan karier</h1><p class="sub">Gap tiap karyawan terhadap kompetensi jabatannya · saran Elite AI, keputusan tetap di HR</p></div>
+<div><div class="crumb">HR · DNA</div><h1>Gap kompetensi per jenjang</h1><p class="sub">Dari hasil DNA yang diimpor: berapa karyawan yang belum mencapai level kompetensi jenjangnya</p></div>
 <div class="panel heat"><h2>Peta gap per kompetensi</h2><p>Jumlah karyawan yang belum mencapai level jenjangnya.</p>
 <div class="tbl"><table><thead><tr><th>Kompetensi</th><th class="num">Junior (15)</th><th class="num">Senior (7)</th><th class="num">Leader (2)</th></tr></thead><tbody>
 ${[['Kontrak dan SLA proyek',9,4,0],['Tiket insiden sesuai SOP L1',5,1,0],['Monitoring dan eskalasi',4,2,1],['Troubleshooting dasar',7,3,0],['Komunikasi pelanggan',3,2,0],['Laporan bulanan',2,4,1]].map(r=>`<tr><td>${r[0]}</td>${r.slice(1).map(v=>`<td class="c ${heatClass(v,9)}">${v}</td>`).join('')}</tr>`).join('')}
 </tbody></table></div>
 <div class="legend">Sedikit <i class="l1"></i><i class="l2"></i><i class="l3"></i><i class="l4"></i><i class="l5"></i> Banyak orang perlu dilatih</div></div>
-<div class="panel"><h2>Kandidat promosi (saran Elite AI)</h2><p>Sudah lulus program jenjang berikutnya, jabatan masih di bawah.</p>
-<div class="tbl"><table><thead><tr><th>Karyawan</th><th>Jabatan</th><th>Program lulus</th><th>Gap tersisa</th><th></th></tr></thead><tbody>
-<tr><td>Agus Setiawan</td><td>Junior</td><td>Basic, Intermediate</td><td>0 kompetensi</td><td><span class="pill ok">Siap senior</span></td></tr>
-<tr><td>Citra Melati</td><td>Junior</td><td>Basic, Intermediate</td><td>1 · Laporan bulanan</td><td><span class="pill warn">Hampir siap</span></td></tr>
-<tr><td>Eko Prasetyo</td><td>Senior</td><td>Basic, Intermediate, Advance</td><td>0 kompetensi</td><td><span class="pill ok">Siap leader</span></td></tr>
-</tbody></table></div></div>`,
+${ANN('rekomendasi promosi adalah modul terpisah di luar POC ini (G2-A), jadi tidak ditampilkan.')}`,
 
 'hr-tna':()=>`
-<div><div class="crumb">HR · TNA</div><h1>TNA dari target kinerja</h1><p class="sub">Periode Oktober 2026 · sumber HappyFive (unggah file)</p></div>
+<div><div class="crumb">HR · TNA</div><h1>TNA dari target kinerja</h1><p class="sub">Periode Oktober 2026 · sumber HappyFive (unggah file) · mode semua anggota Service Delivery L1</p></div>
 <div class="grid2">
- <div class="panel"><h2>Target yang meleset</h2><p>Hanya karyawan dengan target merah yang diwawancarai agent TNA.</p>
+ <div class="panel"><h2>Target yang meleset</h2><p>Semua 24 anggota L1 diundang wawancara (18 selesai). Di bawah ini 9 karyawan yang targetnya merah; agent membahas target itu.</p>
  <div class="tbl"><table><thead><tr><th>Karyawan</th><th>Target</th><th class="num">Target</th><th class="num">Realisasi</th><th>Wawancara</th></tr></thead><tbody>
  <tr><td>Dimas Aditya</td><td>SLA respons tiket P2 (menit)</td><td class="num">30</td><td class="num">47</td><td><span class="pill ok">Selesai</span></td></tr>
  <tr><td>Budi Hartono</td><td>SLA respons tiket P2 (menit)</td><td class="num">30</td><td class="num">41</td><td><span class="pill ok">Selesai</span></td></tr>
@@ -213,17 +221,25 @@ ${[['Kontrak dan SLA proyek',9,4,0],['Tiket insiden sesuai SOP L1',5,1,0],['Moni
  </tbody></table></div></div>
  <div class="panel"><h2>Unggah data kinerja</h2><p>File CSV/XLSX ekspor HappyFive: karyawan, target, realisasi, arah (lebih tinggi/lebih rendah lebih baik).</p>
  <div class="note">Terakhir diunggah 15 Nov 2026 · 24 karyawan · 61 target · 9 karyawan merah</div>
+ <p class="sub" style="margin-top:8px;font-size:12.5px">Peserta: semua anggota satu Job Role (dipakai POC L1) atau hanya karyawan bertarget merah, dipilih saat menjadwalkan.</p>
  <div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap"><button class="btn">Unggah file baru</button><button class="btn pri">Kirim link wawancara</button></div>
- <p class="sub" style="margin-top:12px;font-size:12.5px">Link wawancara dikirim ke email karyawan. Agent membahas hanya target yang meleset, sekitar 30 menit.</p></div>
+ <p class="sub" style="margin-top:12px;font-size:12.5px">Link wawancara dikirim ke email karyawan, berlaku 7 hari, dengan pengingat H-3 dan H-1. Wawancara lewat teks, sekitar 30 menit.</p></div>
 </div>
+<div class="panel"><h2>Review hasil AI</h2><p>Temuan AI baru tampil ke atasan dan karyawan, dan baru dihitung di dashboard, setelah Anda setujui.</p>
+ <div class="tbl"><table><thead><tr><th>Karyawan</th><th>Temuan AI</th><th>Jenis</th><th>Tindakan</th></tr></thead><tbody>
+ <tr><td>Sari Wulandari</td><td>Belum pernah dilatih komunikasi saat insiden besar</td><td><span class="pill acc">Training</span></td><td><div style="display:flex;gap:6px;flex-wrap:wrap"><button class="btn">Lihat transkrip</button><button class="btn">Ubah</button><button class="btn pri">Setujui</button></div></td></tr>
+ <tr><td>Hendra Wijaya</td><td>Belum paham prioritas tiket per kontrak pelanggan</td><td><span class="pill acc">Training</span></td><td><div style="display:flex;gap:6px;flex-wrap:wrap"><button class="btn">Lihat transkrip</button><button class="btn">Ubah</button><button class="btn pri">Setujui</button></div></td></tr>
+ <tr><td>Hendra Wijaya</td><td>Akses VPN sering putus saat shift malam</td><td><span class="pill mute">Non-training</span></td><td><div style="display:flex;gap:6px;flex-wrap:wrap"><button class="btn">Lihat transkrip</button><button class="btn">Ubah</button><button class="btn pri">Setujui</button></div></td></tr>
+ <tr><td>Yoga Pratama</td><td>Belum menguasai format laporan bulanan baru</td><td><span class="pill acc">Training</span></td><td><div style="display:flex;gap:6px;flex-wrap:wrap"><button class="btn">Lihat transkrip</button><button class="btn">Ubah</button><button class="btn pri">Setujui</button></div></td></tr>
+ </tbody></table></div></div>
 <div class="split">
- <div class="panel"><h2>Masalah training (TNA)</h2><p>Dari 6 wawancara selesai.</p>
+ <div class="panel"><h2>Masalah training (TNA)</h2><p>Temuan yang sudah Anda setujui.</p>
  <div class="list">
   <div class="item"><div><div class="t">Memahami kontrak dan SLA proyek</div><div class="m">Dimas, Budi, Andi, Rina · tidak tahu prioritas tiket per kontrak</div></div><span class="pill bad">4 orang</span></div>
   <div class="item"><div><div class="t">SOP L1 versi terbaru</div><div class="m">Dimas, Bayu · masih memakai alur eskalasi lama</div></div><span class="pill warn">2 orang</span></div>
   <div class="item"><div><div class="t">Menyusun laporan bulanan</div><div class="m">Fajar</div></div><span class="pill mute">1 orang</span></div>
  </div></div>
- <div class="panel"><h2>Masalah non-training</h2><p>Dicatat agent. Dashboard INA tidak ikut POC Desember.</p>
+ <div class="panel"><h2>Masalah non-training</h2><p>Hanya HR yang melihat daftar ini. Daftar ringkas tanpa rencana aksi; analisis INA tidak ikut POC Desember.</p>
  <div class="list">
   <div class="item"><div><div class="t">SOP L1 di wiki belum diperbarui sejak Juli</div><div class="m">Disebut 3 orang</div></div><span class="pill mute">Dicatat</span></div>
   <div class="item"><div><div class="t">Pandu sering lambat saat jam sibuk</div><div class="m">Disebut 2 orang</div></div><span class="pill mute">Dicatat</span></div>
@@ -231,24 +247,19 @@ ${[['Kontrak dan SLA proyek',9,4,0],['Tiket insiden sesuai SOP L1',5,1,0],['Moni
 </div>`,
 
 'hr-plan':()=>`
-<div><div class="crumb">HR · TNA</div><h1>Training plan dan permintaan training</h1><p class="sub">Semua masalah training menjadi training plan</p></div>
+<div><div class="crumb">HR · TNA</div><h1>Training plan</h1><p class="sub">Semua masalah training yang sudah direview menjadi training plan</p></div>
 <div class="panel"><h2>Prioritas kebutuhan training</h2><p>Urutan = seberapa jauh target meleset × jumlah orang.</p>
 <div class="tbl"><table><thead><tr><th>Kebutuhan</th><th class="num">Orang</th><th>Materi</th><th>Tindakan</th></tr></thead><tbody>
 <tr><td>Memahami kontrak dan SLA proyek</td><td class="num">4</td><td><span class="pill bad">Belum ada</span></td><td><button class="btn pri">Buat modul / panggil vendor</button></td></tr>
 <tr><td>SOP L1 versi terbaru</td><td class="num">2</td><td><span class="pill ok">Course 1 · SOP L1</span></td><td><button class="btn">Tugaskan ke 2 orang</button></td></tr>
 <tr><td>Menyusun laporan bulanan</td><td class="num">1</td><td><span class="pill ok">Course 3</span></td><td><button class="btn">Tugaskan</button></td></tr>
 </tbody></table></div></div>
-<div class="panel"><h2>Permintaan training dari karyawan</h2><p>Diajukan karyawan dari hasil TNA-nya, disetujui atasan.</p>
-<div class="list">
- <div class="item"><div><div class="t">Dimas Aditya · "Membaca kontrak dan SLA proyek"</div><div class="m">Disetujui atasan 19 Nov · materi belum ada</div></div><div style="display:flex;gap:6px"><button class="btn">Tolak</button><button class="btn pri">Masukkan ke plan</button></div></div>
- <div class="item"><div><div class="t">Rina Putri · "Troubleshooting AWS untuk L1"</div><div class="m">Disetujui atasan 19 Nov · tersedia di Course 2</div></div><div style="display:flex;gap:6px"><button class="btn">Tolak</button><button class="btn pri">Tugaskan</button></div></div>
-</div></div>
-${ANN('alur persetujuan permintaan training (atasan dulu atau langsung HR) masih menunggu keputusan BT-31.')}`,
+<div class="panel"><h2>Permintaan training dari karyawan ${SOON}</h2><p>Sudah diputus (BT-31): permintaan dari karyawan dicek dulu lewat TNA sebelum masuk plan. Selama POC tombolnya disembunyikan, karena semua anggota L1 sudah ikut TNA.</p></div>`,
 
 /* ============ ATASAN ============ */
 'spv-tim':()=>`
 <div><div class="crumb">Atasan · Tim saya</div><h1>Tim Shift B · 8 orang</h1><p class="sub">Anda melihat anggota tim sendiri saja</p></div>
-<div class="kpis"><div class="kpi"><b>3</b><span>Target merah</span></div><div class="kpi"><b>3</b><span>Butuh training</span></div><div class="kpi"><b>1</b><span>Permintaan training</span></div><div class="kpi"><b>1</b><span>Kandidat promosi</span></div></div>
+<div class="kpis"><div class="kpi"><b>3</b><span>Target merah</span></div><div class="kpi"><b>3</b><span>Butuh training</span></div><div class="kpi"><b>6 / 8</b><span>Wawancara TNA selesai</span></div><div class="kpi"><b>2</b><span>Program Intermediate lulus</span></div></div>
 <div class="panel"><div class="tbl"><table><thead><tr><th>Anggota</th><th>Jenjang</th><th>Target merah</th><th>Butuh training</th><th>Program</th></tr></thead><tbody>
 <tr><td>Dimas Aditya</td><td>Junior</td><td><span class="pill bad">SLA respons P2</span></td><td>Kontrak dan SLA; SOP L1 terbaru</td><td>Basic ✓</td></tr>
 <tr><td>Budi Hartono</td><td>Junior</td><td><span class="pill bad">SLA respons P2</span></td><td>Kontrak dan SLA</td><td>Basic ✓</td></tr>
@@ -256,8 +267,7 @@ ${ANN('alur persetujuan permintaan training (atasan dulu atau langsung HR) masih
 <tr><td>Agus Setiawan</td><td>Junior</td><td><span class="pill ok">Semua hijau</span></td><td>–</td><td>Basic ✓ Intermediate ✓</td></tr>
 <tr><td>Citra Melati</td><td>Junior</td><td><span class="pill ok">Semua hijau</span></td><td>–</td><td>Basic ✓ Intermediate ✓</td></tr>
 </tbody></table></div></div>
-<div class="panel"><h2>Permintaan training menunggu Anda</h2>
-<div class="item"><div><div class="t">Dimas Aditya · "Membaca kontrak dan SLA proyek"</div><div class="m">Dari hasil TNA 18 Nov</div></div><div style="display:flex;gap:6px"><button class="btn">Tolak</button><button class="btn pri">Setujui</button></div></div></div>`,
+<div class="note">Anda melihat kebutuhan training tim yang sudah direview HR. Temuan di luar pelatihan hanya terlihat oleh HR selama POC.</div>`,
 
 /* ============ KARYAWAN ============ */
 'emp-wawancara':()=>`
@@ -270,27 +280,51 @@ ${ANN('alur persetujuan permintaan training (atasan dulu atau langsung HR) masih
  <div class="msg ai">Kalau sedang bingung, Anda biasanya cek ke mana dulu?</div>
  <div class="msg me">Tanya senior di grup. Kadang SOP di wiki juga beda dengan yang dipakai tim.</div>
 </div>
-<div style="display:flex;gap:8px;margin-top:14px;flex-wrap:wrap"><button class="btn">🎙 Jawab dengan suara</button><button class="btn">Ketik jawaban</button></div></div>`,
+<div style="display:flex;gap:8px;margin-top:14px;flex-wrap:wrap;align-items:center"><button class="btn pri">Ketik jawaban</button><button class="btn" disabled aria-disabled="true">🎙 Jawab dengan suara</button>${SOON}</div></div>`,
 
 'emp-hasil':()=>`
-<div><div class="crumb">Untuk Anda · Hasil saya</div><h1>Hasil Anda</h1><p class="sub">Dimas Aditya · Junior Service Delivery L1</p></div>
+<div><div class="crumb">Untuk Anda · Hasil saya</div><h1>Hasil Anda</h1><p class="sub">Dimas Aditya · Junior Service Delivery L1 · hasil tampil setelah direview HR</p></div>
 <div class="panel"><h2>Jenjang karier</h2><p>Lulus program Intermediate untuk bisa naik ke senior.</p>
 <div class="ladder"><div class="step"><b>Probation</b><span>Selesai</span></div><div class="step cur"><b>Junior</b><span>Basic ✓ · posisi sekarang</span></div><div class="step"><b>Senior</b><span>Perlu Intermediate</span></div><div class="step"><b>Leader</b><span>Perlu Advance</span></div></div></div>
 <div class="split">
  <div class="panel"><h2>Dari wawancara TNA</h2><p>Penyebab target SLA respons P2 belum tercapai.</p>
- <div class="list"><div class="item"><div><div class="t">Memahami kontrak dan SLA tiap pelanggan</div><div class="m">Materi sedang disiapkan HR</div></div><span class="pill warn">Diminta</span></div>
+ <div class="list"><div class="item"><div><div class="t">Memahami kontrak dan SLA tiap pelanggan</div><div class="m">Materi sedang disiapkan HR</div></div><span class="pill warn">Disiapkan HR</span></div>
  <div class="item"><div><div class="t">SOP L1 versi terbaru</div><div class="m">Course 1 · SOP L1 Incident Handling · 2 jam</div></div><a class="lnk" href="#emp-hasil">Mulai belajar</a></div></div></div>
- <div class="panel"><h2>Saran Elite AI berikutnya</h2><p>Menuju senior.</p>
+ <div class="panel"><h2>Materi berikutnya</h2><p>Bagian program Intermediate, syarat menuju senior.</p>
  <div class="list"><div class="item"><div><div class="t">Troubleshooting AWS untuk L1</div><div class="m">Course 2 · bagian dari Intermediate</div></div><a class="lnk" href="#emp-hasil">Mulai</a></div>
  <div class="item"><div><div class="t">Komunikasi pelanggan saat insiden</div><div class="m">Course 2 · bagian dari Intermediate</div></div><a class="lnk" href="#emp-hasil">Mulai</a></div></div>
- <button class="btn" style="margin-top:10px">Minta training lain</button></div>
+ <div style="display:flex;gap:8px;margin-top:10px;align-items:center;flex-wrap:wrap"><button class="btn" disabled aria-disabled="true">Minta training lain</button>${SOON}</div></div>
 </div>`,
+
+/* ============ ADMIN ETA ============ */
+'adm-tenant':()=>`
+<div><div class="crumb">Admin ETA · Tenant</div><h1>Tenant ELGOS (POC Service Delivery L1)</h1><p class="sub">Dikelola tim ETA · empat persona aktif di POC</p></div>
+<div class="grid2">
+ <div class="panel"><h2>Akun per persona</h2><div class="list">
+  <div class="item"><div><div class="t">HR</div><div class="m">Login lewat link email · melihat semua karyawan</div></div><span class="pill ok">2 akun</span></div>
+  <div class="item"><div><div class="t">Atasan langsung</div><div class="m">Melihat anggota timnya saja</div></div><span class="pill ok">3 akun</span></div>
+  <div class="item"><div><div class="t">Karyawan</div><div class="m">Melihat hasilnya sendiri</div></div><span class="pill ok">24 akun</span></div>
+  <div class="item"><div><div class="t">Admin ETA</div><div class="m">Pengaturan tenant, fitur, impor data</div></div><span class="pill ok">2 akun</span></div>
+ </div></div>
+ <div class="panel"><h2>Fitur di tenant ini</h2><div class="list">
+  <div class="item"><div><div class="t">DNA · tampilan hasil (impor)</div></div><span class="pill ok">Aktif</span></div>
+  <div class="item"><div><div class="t">TNA · wawancara AI teks + review HR</div></div><span class="pill ok">Aktif</span></div>
+  <div class="item"><div><div class="t">TNA · wawancara suara</div></div>${SOON}</div>
+  <div class="item"><div><div class="t">Sinkron Moodle</div></div>${SOON}</div>
+  <div class="item"><div><div class="t">Wawancara AI untuk DNA</div></div><span class="pill mute">Mati</span></div>
+  <div class="item"><div><div class="t">INA · analisis non-training</div></div><span class="pill mute">Mati</span></div>
+ </div></div>
+</div>
+<div class="panel"><h2>Impor data</h2><p>Enam template: jenjang, karyawan, kompetensi, kelulusan program, hasil DNA, data kinerja.</p>
+<div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn">Unduh template</button><button class="btn pri">Unggah file</button></div></div>
+${ANN('tiga persona lain, termasuk Role Leader dan Pimpinan, belum aktif di POC (PM-7). Pimpinan melihat hasil lewat presentasi HR.')}`,
 };
 
 const NAV = {
- hr:[['Ringkasan'],['hr-beranda','Beranda'],['DNA · hasil'],['hr-kamus','Kamus kompetensi'],['hr-library','Content library'],['hr-program','Learning program'],['hr-karier','Gap & karier'],['TNA · AI'],['hr-tna','Target & wawancara'],['hr-plan','Training plan']],
+ hr:[['Ringkasan'],['hr-beranda','Beranda'],['DNA · hasil'],['hr-kamus','Kamus kompetensi'],['hr-library','Katalog materi'],['hr-program','Learning program'],['hr-karier','Gap per jenjang'],['TNA · AI'],['hr-tna','Target & wawancara'],['hr-plan','Training plan']],
  spv:[['Tim'],['spv-tim','Tim saya']],
  emp:[['Untuk Anda'],['emp-wawancara','Wawancara saya'],['emp-hasil','Hasil saya']],
+ adm:[['Admin ETA'],['adm-tenant','Tenant & fitur']],
 };
 const roleOf = v => v.split('-')[0];
 function render(){
