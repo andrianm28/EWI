@@ -4,8 +4,8 @@
 // tetap direkam tetapi tidak ditampilkan selama flag INA mati.
 // Cadence 11 Nov: TNA bisa berjalan tanpa DACUM/DNA (C4). Cakupan wawancara per kebutuhan perusahaan:
 // hanya target merah (default, C3) atau semua karyawan di job role tertentu.
-// PK-23 (PM-8 ★ B+C+D+E, PM-6 ★ B): status rencana K-3, permintaan training ditunda di balik flag (BT-31),
-// daftar ringkas non-training hanya untuk HR di balik flag. Undangan 7 hari + pengingat: modules/interviews.
+// PK-23 (PM-8 ★ B+C+D+E, PM-6 dijawab 17 Nov): status rencana K-3, permintaan training ditunda di balik flag
+// (BT-31), daftar ringkas non-training untuk HR dan atasan yang diberi akses HR, di balik flag. Undangan 7 hari + pengingat: modules/interviews.
 // Terbuka: BT-30 (rumus Pareto), BT-31 (alur request training), K-1 (LMS).
 const crypto = require('crypto');
 const express = require('express');
@@ -102,15 +102,61 @@ module.exports = {
 
     r.use('/sessions', interviewRouter({ submodule: 'tna', stores, ai, audit }));
 
-    // PM-6 B: temuan "bukan masalah pelatihan" tampil hanya untuk HR, ringkas, tanpa rencana aksi.
-    // Atasan dan karyawan tidak melihatnya (RG-4 tetap: dashboard INA penuh menunggu flag INA).
-    r.get('/findings/non-training', hr,
-      requireFlag(flags, FLAGS.TNA_NON_TRAINING_HR, 'Daftar temuan di luar pelatihan belum diaktifkan untuk organisasi Anda'),
-      wrap(async (req, res) => {
-        const rows = await stores.tna.listNonTrainingSummary(req.tenantId, { projectId: req.query.projectId });
-        await audit.readIndividual(req, 'tna.findings_non_training', { employeeIds: rows.map((f) => f.userId), objectType: 'tna_finding', objectIds: rows.map((f) => f.id) });
-        res.json({ data: rows });
-      }));
+    // PM-6 (jawaban user 17 Nov): temuan "bukan masalah pelatihan" tampil untuk HR secara bawaan, ringkas,
+    // tanpa rencana aksi. Atasan langsung melihat temuan timnya hanya bila HR memberinya akses (bisa dicabut,
+    // diaudit). Karyawan tidak melihatnya. Seluruhnya di balik flag tna.non_training_hr.
+    const nonTrainingFlag = requireFlag(flags, FLAGS.TNA_NON_TRAINING_HR, 'Daftar temuan di luar pelatihan belum diaktifkan untuk organisasi Anda');
+    r.get('/findings/non-training', nonTrainingFlag, wrap(async (req, res) => {
+      const { role } = req.user;
+      let userIds;
+      if (role === ROLES.SUPERVISOR) {
+        if (!(await stores.tna.hasNonTrainingGrant(req.tenantId, req.user.id))) {
+          throw forbidden('NO_NON_TRAINING_ACCESS', 'HR belum memberi Anda akses ke temuan di luar pelatihan');
+        }
+        userIds = await stores.people.directReportIds(req.tenantId, req.user.id); // tim saja, bukan dirinya
+      } else if (![ROLES.HR_ADMIN, ROLES.ETA_ADMIN].includes(role)) {
+        throw forbidden('ROLE_FORBIDDEN', 'Temuan di luar pelatihan hanya untuk HR dan atasan yang diberi akses');
+      }
+      const rows = await stores.tna.listNonTrainingSummary(req.tenantId, { projectId: req.query.projectId, userIds });
+      await audit.readIndividual(req, 'tna.findings_non_training', { employeeIds: rows.map((f) => f.userId), objectType: 'tna_finding', objectIds: rows.map((f) => f.id) });
+      res.json({ data: rows });
+    }));
+
+    // Atasan memeriksa apakah dirinya punya akses (untuk menampilkan bagian di web)
+    r.get('/non-training-access/me', nonTrainingFlag, wrap(async (req, res) => {
+      const granted = [ROLES.HR_ADMIN, ROLES.ETA_ADMIN].includes(req.user.role)
+        || (req.user.role === ROLES.SUPERVISOR && (await stores.tna.hasNonTrainingGrant(req.tenantId, req.user.id)));
+      res.json({ data: { granted } });
+    }));
+
+    // HR mengelola izin atasan
+    r.get('/non-training-access', hr, nonTrainingFlag, wrap(async (req, res) => {
+      const [grants, supervisors] = await Promise.all([
+        stores.tna.nonTrainingGrants(req.tenantId),
+        stores.people.list(req.tenantId, { all: true }, { roles: [ROLES.SUPERVISOR] }),
+      ]);
+      res.json({ data: grants, supervisors: supervisors.map((s) => ({ id: s.id, name: s.name, email: s.email })) });
+    }));
+
+    async function loadSupervisor(req) {
+      const person = await stores.people.get(req.tenantId, req.params.supervisorId);
+      if (!person || person.role !== ROLES.SUPERVISOR) throw notFound('Atasan tidak ditemukan');
+      return person;
+    }
+
+    r.put('/non-training-access/:supervisorId', hr, nonTrainingFlag, wrap(async (req, res) => {
+      const sup = await loadSupervisor(req);
+      const created = await stores.tna.grantNonTraining(req.tenantId, sup.id, req.user.id);
+      if (created) await audit.record(req, 'create', 'tna.non_training_access', { supervisorId: sup.id, employeeIds: [sup.id] });
+      res.json({ data: { supervisorId: sup.id, granted: true, changed: created } });
+    }));
+
+    r.delete('/non-training-access/:supervisorId', hr, nonTrainingFlag, wrap(async (req, res) => {
+      const sup = await loadSupervisor(req);
+      const revoked = await stores.tna.revokeNonTraining(req.tenantId, sup.id, req.user.id);
+      if (revoked) await audit.record(req, 'delete', 'tna.non_training_access', { supervisorId: sup.id, employeeIds: [sup.id] });
+      res.json({ data: { supervisorId: sup.id, granted: false, changed: revoked } });
+    }));
 
     // --- Temuan & Pareto ---
     r.get('/findings', wrap(async (req, res) => {

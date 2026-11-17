@@ -21,7 +21,7 @@ const FLAGS = Object.freeze({
   INA_DASHBOARD: 'ina.dashboard', // RG-4: ditahan dari POC Desember
   // PM-8 B: BT-31 ditunda; permintaan training dari karyawan disembunyikan selama POC
   TNA_TRAINING_REQUEST: 'tna.training_request',
-  // PM-6 B: daftar ringkas temuan non-training hanya untuk HR. Mati = PM-6 C (disembunyikan)
+  // PM-6 (17 Nov): daftar ringkas temuan non-training untuk HR; atasan bila diberi akses HR. Mati = disembunyikan
   TNA_NON_TRAINING_HR: 'tna.non_training_hr',
 });
 

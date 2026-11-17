@@ -115,24 +115,53 @@ run('Aturan bisnis wajib live (Postgres)', () => {
     err.mockRestore();
   });
 
-  it('PM-6 B: temuan non-training hanya untuk HR, ringkas, di balik flag', async () => {
+  it('PM-6: temuan non-training untuk HR; atasan hanya dengan akses dari HR (bisa dicabut, diaudit)', async () => {
     await request(app).post(`/api/tna/sessions/${sessionId}/consent`).set(as('dimas')).expect(200);
     await request(app).post(`/api/tna/sessions/${sessionId}/turns`).set(as('dimas')).send({ text: 'Saya belum paham kontrak; SOP juga belum diperbarui dan tools lambat.' }).expect(200);
     await request(app).post(`/api/tna/sessions/${sessionId}/complete`).set(as('dimas')).expect(200);
+    const nt = (who) => request(app).get('/api/tna/findings/non-training').set(as(who));
 
-    expect((await request(app).get('/api/tna/findings/non-training').set(as('hr'))).status).toBe(403); // flag mati = PM-6 C
+    expect((await nt('hr')).status).toBe(403); // flag mati = disembunyikan
     await flag('tna.non_training_hr', true);
-    const hr = await request(app).get('/api/tna/findings/non-training').set(as('hr'));
+    const hr = await nt('hr');
     expect(hr.status).toBe(200);
     expect(hr.body.data.length).toBeGreaterThan(0);
     expect(hr.body.data[0]).toMatchObject({ userName: 'dimas' });
     expect(hr.body.data[0]).not.toHaveProperty('detail');
-    expect((await request(app).get('/api/tna/findings/non-training').set(as('spv'))).status).toBe(403);
-    expect((await request(app).get('/api/tna/findings/non-training').set(as('dimas'))).status).toBe(403);
-    const spvFindings = (await request(app).get('/api/tna/findings').set(as('spv'))).body.data;
-    expect(spvFindings.every((f) => f.category === 'training')).toBe(true);
+    expect((await nt('dimas')).status).toBe(403);
+
+    // Atasan tanpa akses: ditolak
+    const denied = await nt('spv');
+    expect(denied.status).toBe(403);
+    expect(denied.body.error.code).toBe('NO_NON_TRAINING_ACCESS');
+    expect((await request(app).get('/api/tna/non-training-access/me').set(as('spv'))).body.data.granted).toBe(false);
+
+    // Hanya HR yang memberi akses; target harus atasan
+    expect((await request(app).put(`/api/tna/non-training-access/${u.spv}`).set(as('spv'))).status).toBe(403);
+    expect((await request(app).put(`/api/tna/non-training-access/${u.dimas}`).set(as('hr'))).status).toBe(404);
+    const grant = await request(app).put(`/api/tna/non-training-access/${u.spv}`).set(as('hr'));
+    expect(grant.body.data).toMatchObject({ granted: true, changed: true });
+    expect((await request(app).put(`/api/tna/non-training-access/${u.spv}`).set(as('hr'))).body.data.changed).toBe(false);
+    const list = await request(app).get('/api/tna/non-training-access').set(as('hr'));
+    expect(list.body.data.map((g) => g.supervisorId)).toEqual([u.spv]);
+    expect(list.body.supervisors.map((x) => x.id)).toContain(u.spv);
+
+    const spv = await nt('spv');
+    expect(spv.status).toBe(200);
+    expect(spv.body.data.every((f) => f.userId === u.dimas)).toBe(true); // hanya timnya
+    expect(spv.body.data.length).toBe(hr.body.data.length);
+    expect((await request(app).get('/api/tna/non-training-access/me').set(as('spv'))).body.data.granted).toBe(true);
+
+    // Dicabut: atasan ditolak lagi
+    expect((await request(app).delete(`/api/tna/non-training-access/${u.spv}`).set(as('hr'))).body.data).toMatchObject({ granted: false, changed: true });
+    expect((await nt('spv')).status).toBe(403);
+    const audits = await db.query(`SELECT action FROM audit_logs WHERE tenant_id = :t AND resource = 'tna.non_training_access' ORDER BY at, id`, { replacements: { t: tenant.id }, type: 'SELECT' });
+    expect(audits.map((a) => a.action)).toEqual(['create', 'delete']);
+
     // tanpa rencana aksi: temuan non-training tidak bisa dibuatkan rencana
     expect((await request(app).post(`/api/tna/findings/${hr.body.data[0].id}/plan`).set(as('hr')).send({})).status).toBe(404);
+    const spvFindings = (await request(app).get('/api/tna/findings').set(as('spv'))).body.data;
+    expect(spvFindings.every((f) => f.category === 'training')).toBe(true);
     findingId = spvFindings[0].id;
   });
 

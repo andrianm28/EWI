@@ -6,7 +6,7 @@ import AppShell from '@/components/AppShell.vue'
 import ImportPanel from '@/components/ImportPanel.vue'
 import {
   lna, PLAN_STATUS_LABEL, PLAN_NEXT, FLAG_TRAINING_REQUEST, FLAG_NON_TRAINING_HR, formatWib,
-  type Finding, type NonTrainingFinding, type ParetoRow, type PlanItem, type Project, type Session, type TnaDashboard,
+  type Finding, type NonTrainingFinding, type NonTrainingGrant, type ParetoRow, type PlanItem, type Project, type Session, type TnaDashboard,
 } from '@/api/lna'
 import { useSessionStore } from '@/stores/session'
 
@@ -15,6 +15,10 @@ const dash = ref<TnaDashboard | null>(null)
 const pareto = ref<ParetoRow[]>([])
 const findings = ref<Finding[]>([])
 const nonTraining = ref<NonTrainingFinding[]>([])
+const grants = ref<NonTrainingGrant[]>([])
+const supervisors = ref<{ id: string; name: string | null; email: string }[]>([])
+const grantPick = ref('')
+const supervisorGranted = ref(false)
 const plan = ref<PlanItem[]>([])
 const sessions = ref<Session[]>([])
 const projects = ref<Project[]>([])
@@ -26,8 +30,11 @@ const isLearner = computed(() => session.role === 'learner')
 const mySessions = computed(() => sessions.value.filter((s) => s.intervieweeId === session.user?.id && s.status !== 'completed'))
 // PM-8 B: BT-31 ditunda, tombol permintaan training hanya tampil bila flag dinyalakan
 const canRequestTraining = computed(() => isLearner.value && session.hasFlag(FLAG_TRAINING_REQUEST))
-// PM-6 B: daftar ringkas temuan di luar pelatihan hanya untuk HR
-const showNonTraining = computed(() => isHr.value && session.hasFlag(FLAG_NON_TRAINING_HR))
+// PM-6: temuan di luar pelatihan untuk HR; atasan hanya bila HR memberinya akses
+const nonTrainingOn = computed(() => session.hasFlag(FLAG_NON_TRAINING_HR))
+const isSupervisor = computed(() => session.role === 'supervisor')
+const showNonTraining = computed(() => nonTrainingOn.value && (isHr.value || (isSupervisor.value && supervisorGranted.value)))
+const ungranted = computed(() => supervisors.value.filter((s) => !grants.value.some((g) => g.supervisorId === s.id)))
 // Q38: undangan yang belum selesai, untuk dipantau dan diperpanjang HR
 const openInvites = computed(() => sessions.value.filter((s) => s.status === 'scheduled' || s.status === 'in_progress'))
 const isExpired = (s: Session) => !!s.inviteExpiresAt && new Date(s.inviteExpiresAt).getTime() <= Date.now()
@@ -51,7 +58,9 @@ async function load() {
       lna.sessions('tna').then((r) => (sessions.value = r.data)),
     ]
     if (!isLearner.value) tasks.push(lna.pareto().then((r) => (pareto.value = r.data)))
+    if (nonTrainingOn.value && isSupervisor.value) supervisorGranted.value = (await lna.nonTrainingAccessMe()).data.granted
     if (showNonTraining.value) tasks.push(lna.nonTrainingFindings().then((r) => (nonTraining.value = r.data)))
+    if (nonTrainingOn.value && isHr.value) tasks.push(lna.nonTrainingAccess().then((r) => { grants.value = r.data; supervisors.value = r.supervisors }))
     if (isHr.value) {
       tasks.push(lna.projects().then((r) => (projects.value = r.data)))
       tasks.push(lna.tnaJobRoles().then((r) => {
@@ -90,6 +99,16 @@ const requestTraining = (id: string) => act(async () => {
 const extend = (s: Session) => act(async () => {
   const r = (await lna.extendInvite(s.id, 7)).data
   return `Undangan ${s.intervieweeName ?? ''} diperpanjang sampai ${formatWib(r.inviteExpiresAt)} WIB.`
+})
+const grant = () => act(async () => {
+  if (!grantPick.value) throw new Error('Pilih atasan yang akan diberi akses.')
+  await lna.grantNonTraining(grantPick.value)
+  grantPick.value = ''
+  return 'Akses atasan diberikan.'
+})
+const revoke = (g: NonTrainingGrant) => act(async () => {
+  await lna.revokeNonTraining(g.supervisorId)
+  return `Akses ${g.supervisorName ?? g.supervisorEmail} dicabut.`
 })
 const setStatus = (id: string, status: string) => act(async () => {
   await lna.setPlanStatus(id, status)
@@ -198,7 +217,7 @@ const target = (f: Finding) => (f.metricName ? `${f.metricName}: target ${f.targ
 
     <section v-if="showNonTraining" class="mt-4 rounded-lg border bg-white p-4" data-testid="tna-non-training">
       <h2 class="font-medium">Temuan di luar pelatihan</h2>
-      <p class="text-xs text-slate-500">Hanya terlihat oleh HR. Bukan kebutuhan training, jadi tidak dibuatkan rencana aksi di ELGOS.</p>
+      <p class="text-xs text-slate-500">{{ isHr ? 'Terlihat oleh HR dan atasan yang Anda beri akses' : 'Akses diberikan HR untuk tim Anda' }}. Bukan kebutuhan training, jadi tidak dibuatkan rencana aksi di ELGOS.</p>
       <p v-if="!nonTraining.length" class="mt-2 text-sm text-slate-500">Belum ada temuan.</p>
       <ul class="mt-2 divide-y text-sm">
         <li v-for="f in nonTraining" :key="f.id" class="py-2">
@@ -208,6 +227,23 @@ const target = (f: Finding) => (f.metricName ? `${f.metricName}: target ${f.targ
           </div>
         </li>
       </ul>
+      <div v-if="isHr" class="mt-4 border-t pt-3 text-sm" data-testid="tna-non-training-access">
+        <h3 class="font-medium">Akses atasan</h3>
+        <ul class="mt-1 divide-y">
+          <li v-for="g in grants" :key="g.supervisorId" class="flex items-center justify-between py-1">
+            <span>{{ g.supervisorName ?? g.supervisorEmail }}</span>
+            <button class="text-red-700" @click="revoke(g)">Cabut akses</button>
+          </li>
+        </ul>
+        <p v-if="!grants.length" class="text-xs text-slate-500">Belum ada atasan yang diberi akses.</p>
+        <form v-if="ungranted.length" class="mt-2 flex gap-2" @submit.prevent="grant">
+          <select v-model="grantPick" class="rounded border px-2 py-1" aria-label="Atasan">
+            <option value="" disabled>Pilih atasan</option>
+            <option v-for="sp in ungranted" :key="sp.id" :value="sp.id">{{ sp.name ?? sp.email }}</option>
+          </select>
+          <button type="submit" class="rounded bg-slate-900 px-3 py-1 text-white">Beri akses</button>
+        </form>
+      </div>
     </section>
 
     <section v-if="plan.length" class="mt-4 rounded-lg border bg-white p-4">

@@ -240,12 +240,19 @@ test('PK-23 HR: perpanjang undangan, temuan di luar pelatihan, status rencana K-
   await page.route('**/api/tna/plan-items', (r) => r.fulfill({ json: { data: [{ id: 'pi1', userId: 'd', userName: 'Dimas', findingTitle: 'Kontrak proyek', origin: 'hr', status: 'new', catalogItemTitle: null, needsModule: true, note: null }] } }))
   await page.route('**/api/tna/plan-items/pi1', async (r) => { patched = r.request().postDataJSON(); await r.fulfill({ json: { data: { id: 'pi1', status: 'in_progress' } } }) })
   await page.route('**/api/tna/sessions', (r) => r.fulfill({ json: { data: [{ id: 's1', projectId: 'p1', intervieweeId: 'd', intervieweeName: 'Dimas', status: 'scheduled', triggerCount: 1, inviteExpiresAt: soon }] } }))
+  let granted: string | null = null
+  await page.route('**/api/tna/non-training-access', (r) => r.fulfill({ json: { data: [], supervisors: [{ id: 'spv-1', name: 'Rudi', email: 'rudi@demo.test' }] } }))
+  await page.route('**/api/tna/non-training-access/spv-1', async (r) => { granted = r.request().method(); await r.fulfill({ json: { data: { granted: true } } }) })
   await page.route('**/api/tna/sessions/s1/extend', async (r) => { extended = r.request().postDataJSON(); await r.fulfill({ json: { data: { inviteExpiresAt: soon } } }) })
 
   await loginAs(page, 'hr_admin', 'u-hr', { 'tna.non_training_hr': true })
   await page.goto('/m/tna')
   await expect(page.getByTestId('tna-non-training')).toContainText('Tools Pandu lambat')
-  await expect(page.getByTestId('tna-non-training').getByRole('button')).toHaveCount(0)
+  await expect(page.getByTestId('tna-non-training').locator('li button')).toHaveCount(0) // tanpa rencana aksi
+  await page.getByTestId('tna-non-training-access').getByLabel('Atasan').selectOption('spv-1')
+  await page.getByRole('button', { name: 'Beri akses' }).click()
+  await expect(page.getByRole('status')).toHaveText('Akses atasan diberikan.')
+  expect(granted).toBe('PUT')
   await expect(page.getByTestId('tna-plan')).toContainText('perlu modul baru')
   const status = page.getByLabel('Status pi1')
   await expect(status.locator('option')).toHaveText(['Baru', 'Berjalan', 'Ditolak'])
@@ -255,6 +262,22 @@ test('PK-23 HR: perpanjang undangan, temuan di luar pelatihan, status rencana K-
   await page.getByTestId('tna-invites').getByRole('button', { name: 'Perpanjang 7 hari' }).click()
   await expect(page.getByRole('status')).toContainText('Undangan Dimas diperpanjang sampai')
   expect(extended).toEqual({ days: 7 })
+})
+
+test('PM-6 atasan: temuan di luar pelatihan tampil hanya bila HR memberi akses', async ({ page }) => {
+  let access = false
+  await page.route('**/api/tna/dashboard', (r) => r.fulfill({ json: { data: { role: 'supervisor', people: 2, redTargets: 1, sessions: {}, trainingFindings: 0, planItems: {} } } }))
+  for (const path of ['findings', 'plan-items', 'sessions', 'pareto']) await page.route(`**/api/tna/${path}`, (r) => r.fulfill({ json: { data: [] } }))
+  await page.route('**/api/tna/non-training-access/me', (r) => r.fulfill({ json: { data: { granted: access } } }))
+  await page.route('**/api/tna/findings/non-training', (r) => r.fulfill({ json: { data: [{ id: 'n1', userId: 'd', userName: 'Dimas', title: 'Tools Pandu lambat', metricName: null, linkedTrainingTitle: null, createdAt: '' }] } }))
+  await loginAs(page, 'supervisor', 'spv-1', { 'tna.non_training_hr': true })
+  await page.goto('/m/tna')
+  await expect(page.getByTestId('tna-stats')).toBeVisible()
+  await expect(page.getByTestId('tna-non-training')).toHaveCount(0)
+  access = true
+  await page.reload()
+  await expect(page.getByTestId('tna-non-training')).toContainText('Tools Pandu lambat')
+  await expect(page.getByTestId('tna-non-training-access')).toHaveCount(0)
 })
 
 test('karyawan: minta link masuk lalu masuk dari link email (R3-2)', async ({ page }) => {

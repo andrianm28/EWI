@@ -373,7 +373,7 @@ function createLnaStores(sequelize, { cipher } = {}) {
       return open(tenantId, await select(`${sql} ORDER BY f.created_at DESC`, rep), ['title', 'detail']);
     },
     /** PM-6 B: daftar ringkas temuan non-training untuk HR (tanpa detail dan tanpa rencana aksi). */
-    async listNonTrainingSummary(tenantId, { projectId } = {}) {
+    async listNonTrainingSummary(tenantId, { projectId, userIds } = {}) {
       const rep = { tenantId };
       let sql = `SELECT f.id, f.project_id AS "projectId", f.user_id AS "userId", u.name AS "userName", f.title,
                         pr.name AS "metricName", lf.title AS "linkedTrainingTitle", f.created_at AS "createdAt"
@@ -382,8 +382,37 @@ function createLnaStores(sequelize, { cipher } = {}) {
                    LEFT JOIN lna_performance_records pr ON pr.id = f.performance_record_id
                    LEFT JOIN lna_findings lf ON lf.id = f.linked_finding_id
                   WHERE f.tenant_id = :tenantId AND f.category = 'non_training'`;
+      if (userIds) sql += scopeSql('f.user_id', { userIds }, rep);
       if (projectId) { sql += ' AND f.project_id = :projectId'; rep.projectId = projectId; }
       return open(tenantId, await select(`${sql} ORDER BY f.created_at DESC`, rep), ['title', 'linkedTrainingTitle']);
+    },
+    // PM-6: izin atasan melihat temuan non-training timnya, diberikan dan dicabut HR
+    async nonTrainingGrants(tenantId) {
+      return select(`SELECT g.supervisor_id AS "supervisorId", u.name AS "supervisorName", u.email AS "supervisorEmail",
+                            g.granted_at AS "grantedAt", gb.name AS "grantedByName"
+                       FROM lna_non_training_grants g
+                       JOIN users u ON u.id = g.supervisor_id
+                       LEFT JOIN users gb ON gb.id = g.granted_by
+                      WHERE g.tenant_id = :tenantId AND g.revoked_at IS NULL ORDER BY u.name NULLS LAST, u.email`, { tenantId });
+    },
+    async hasNonTrainingGrant(tenantId, supervisorId) {
+      return Boolean(await one(`SELECT 1 AS ok FROM lna_non_training_grants
+                                 WHERE tenant_id = :tenantId AND supervisor_id = :supervisorId AND revoked_at IS NULL`, { tenantId, supervisorId }));
+    },
+    /** Return true bila izin baru dibuat, false bila sudah aktif sebelumnya. */
+    async grantNonTraining(tenantId, supervisorId, grantedBy) {
+      const row = await insert(`INSERT INTO lna_non_training_grants (tenant_id, supervisor_id, granted_by)
+                                VALUES (:tenantId, :supervisorId, :grantedBy)
+                                ON CONFLICT (tenant_id, supervisor_id) WHERE revoked_at IS NULL DO NOTHING RETURNING id`,
+      { tenantId, supervisorId, grantedBy });
+      return Boolean(row);
+    },
+    /** Return true bila ada izin aktif yang dicabut. */
+    async revokeNonTraining(tenantId, supervisorId, revokedBy) {
+      const row = await insert(`UPDATE lna_non_training_grants SET revoked_at = now(), revoked_by = :revokedBy
+                                 WHERE tenant_id = :tenantId AND supervisor_id = :supervisorId AND revoked_at IS NULL RETURNING id`,
+      { tenantId, supervisorId, revokedBy });
+      return Boolean(row);
     },
     async getFinding(tenantId, id) {
       return open(tenantId, await one(`SELECT f.id, f.user_id AS "userId", f.category, f.title, f.competency_id AS "competencyId", f.status

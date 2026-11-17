@@ -27,7 +27,8 @@ export interface Turn { speaker: 'ai' | 'human'; text: string; at: string }
 export interface Finding { id: string; userId: string; userName: string | null; title: string; status: string; competencyName: string | null; metricName: string | null; target: number | null; actual: number | null }
 export interface ParetoRow { key: string; label: string; people: number; avgMiss: number; score: number; share: number; cumulativeShare: number }
 export interface PlanItem { id: string; userId: string; userName: string | null; findingTitle: string | null; origin: string; status: string; catalogItemTitle: string | null; needsModule?: boolean; note: string | null }
-// PM-6 B: ringkasan temuan di luar pelatihan untuk HR (tanpa detail, tanpa rencana aksi)
+// PM-6: ringkasan temuan di luar pelatihan untuk HR dan atasan yang diberi akses HR (tanpa detail, tanpa rencana aksi)
+export interface NonTrainingGrant { supervisorId: string; supervisorName: string | null; supervisorEmail: string; grantedAt: string; grantedByName: string | null }
 export interface NonTrainingFinding { id: string; userId: string; userName: string | null; title: string; metricName: string | null; linkedTrainingTitle: string | null; createdAt: string }
 export interface TnaDashboard { role: string; people: number | null; redTargets: number; sessions: Record<string, number>; trainingFindings: number; planItems: Record<string, number> }
 export interface Project { id: string; name: string; status: string }
@@ -53,6 +54,10 @@ export const lna = {
   planFinding: (id: string) => post<{ data: PlanItem }>(`/tna/findings/${id}/plan`, {}),
   requestTraining: (findingId: string, note: string) => post<{ data: PlanItem }>('/tna/training-requests', { findingId, note }),
   nonTrainingFindings: () => call<{ data: NonTrainingFinding[] }>('/tna/findings/non-training'),
+  nonTrainingAccessMe: () => call<{ data: { granted: boolean } }>('/tna/non-training-access/me'),
+  nonTrainingAccess: () => call<{ data: NonTrainingGrant[]; supervisors: { id: string; name: string | null; email: string }[] }>('/tna/non-training-access'),
+  grantNonTraining: (supervisorId: string) => call<{ data: { granted: boolean } }>(`/tna/non-training-access/${supervisorId}`, { method: 'PUT' }),
+  revokeNonTraining: (supervisorId: string) => call<{ data: { granted: boolean } }>(`/tna/non-training-access/${supervisorId}`, { method: 'DELETE' }),
   extendInvite: (id: string, days = 7) => post<{ data: { inviteExpiresAt: string } }>(`/tna/sessions/${id}/extend`, { days }),
   setPlanStatus: (id: string, status: string) => call<{ data: PlanItem }>(`/tna/plan-items/${id}`, { method: 'PATCH', body: JSON.stringify({ status }) }),
   // Cakupan sesuai kebutuhan perusahaan: hanya target merah (default) atau semua karyawan di job role tertentu
