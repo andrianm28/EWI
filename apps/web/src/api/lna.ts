@@ -51,8 +51,6 @@ export const lna = {
   planFinding: (id: string) => post<{ data: PlanItem }>(`/tna/findings/${id}/plan`, {}),
   requestTraining: (findingId: string, note: string) => post<{ data: PlanItem }>('/tna/training-requests', { findingId, note }),
   setPlanStatus: (id: string, status: string) => call<{ data: PlanItem }>(`/tna/plan-items/${id}`, { method: 'PATCH', body: JSON.stringify({ status }) }),
-  importPerformance: (period: string, rows: Record<string, string>[]) =>
-    post<{ data: { imported: number; red: number; rejected: { index: number; reason: string }[] } }>('/tna/performance/import', { period, rows }),
   // Cakupan sesuai kebutuhan perusahaan: hanya target merah (default) atau semua karyawan di job role tertentu
   tnaJobRoles: () => call<{
     data: { id: string; name: string; division: string | null }[]
@@ -62,22 +60,6 @@ export const lna = {
     post<{ data: { scope: string; scheduled: number; skipped: number } }>(`/tna/projects/${projectId}/interviews`, {
       scope: opts.scope, ...(opts.period ? { period: opts.period } : {}), ...(opts.jobRoleId ? { jobRoleId: opts.jobRoleId } : {}),
     }),
-  importDnaResults: (rows: Record<string, string>[], assessor: string, assessedAt: string) =>
-    post<{ data: { imported: number; rejected: { index: number; reason: string }[] } }>('/dna/assessments/import', {
-      rows, ...(assessor ? { assessor } : {}), ...(assessedAt ? { assessedAt } : {}),
-    }),
-}
-
-/** CSV sederhana (header di baris pertama, pemisah koma atau titik koma). */
-export function parseCsv(text: string): Record<string, string>[] {
-  const lines = text.split(/\r?\n/).map((l) => l.trim()).filter(Boolean)
-  if (lines.length < 2) return []
-  const sep = lines[0]!.includes(';') ? ';' : ','
-  const header = lines[0]!.split(sep).map((h) => h.trim())
-  return lines.slice(1).map((line) => {
-    const cells = line.split(sep)
-    return Object.fromEntries(header.map((h, i) => [h, (cells[i] ?? '').trim()]))
-  })
 }
 
 export const ROLE_LABEL: Record<string, string> = {

@@ -8,6 +8,8 @@ const FLAGS = Object.freeze({
   MODULE_INA: 'module.ina',
   // Cadence 11 Nov (C2): POC ELGOS memakai hasil wawancara DNA manual; wawancara AI DNA ditahan
   DNA_AI_INTERVIEW: 'dna.ai_interview',
+  // G2-A (13 Nov): rekomendasi promosi = modul terpisah, di luar POC DNA+TNA
+  PROMOTION_RECOMMENDATION: 'promotion.recommendation',
   VOICE_REALTIME: 'voice.realtime',
   VOICE_TTS: 'voice.tts',
   LANG_EN: 'lang.en',
@@ -15,24 +17,52 @@ const FLAGS = Object.freeze({
   GAPS_AUTOSEND: 'em.gaps_autosend',
   SSO_ELITEMENTOR: 'em.sso',
   WEBHOOK_SYNC: 'em.webhook_sync',
-  AUDIT_READ: 'audit.read',
   COST_PER_SESSION: 'cost.per_session',
   INA_DASHBOARD: 'ina.dashboard', // RG-4: ditahan dari POC Desember
 });
 
 const KNOWN = new Set(Object.values(FLAGS));
 
-/** store: { getTenantFlags(tenantId) -> Promise<Record<string, boolean>> } */
+/**
+ * store: {
+ *   getTenantFlags(tenantId) -> Promise<Record<string, boolean>>
+ *   getKillSwitches?() -> Promise<Record<string, boolean>>        // R2-1: saklar darurat global
+ *   setTenantFlag?(tenantId, key, enabled, userId) -> Promise<boolean|null>  // nilai sebelumnya
+ *   setKillSwitch?(key, active, reason, userId) -> Promise<boolean|null>
+ * }
+ * Flag efektif = flag tenant menyala DAN kill switch fitur itu tidak aktif.
+ */
 function createFlagService(store) {
+  const kills = async () => (store.getKillSwitches ? (await store.getKillSwitches()) || {} : {});
+  const assertKnown = (flag) => { if (!KNOWN.has(flag)) throw new Error(`Flag tidak dikenal: ${flag}`); };
   return {
+    known: () => [...KNOWN],
+    isKnown: (flag) => KNOWN.has(flag),
     async isEnabled(tenantId, flag) {
-      if (!KNOWN.has(flag)) throw new Error(`Flag tidak dikenal: ${flag}`);
-      const flags = (await store.getTenantFlags(tenantId)) || {};
-      return flags[flag] === true;
+      assertKnown(flag);
+      const [flags, killed] = await Promise.all([store.getTenantFlags(tenantId), kills()]);
+      return (flags || {})[flag] === true && killed[flag] !== true;
     },
     async all(tenantId) {
-      const flags = (await store.getTenantFlags(tenantId)) || {};
-      return Object.fromEntries([...KNOWN].map((f) => [f, flags[f] === true]));
+      const [flags, killed] = await Promise.all([store.getTenantFlags(tenantId), kills()]);
+      return Object.fromEntries([...KNOWN].map((f) => [f, (flags || {})[f] === true && killed[f] !== true]));
+    },
+    /** Rincian untuk panel Admin ETA: nilai tenant, kill switch, dan nilai efektif. */
+    async detail(tenantId) {
+      const [flags, killed] = await Promise.all([store.getTenantFlags(tenantId), kills()]);
+      return [...KNOWN].sort().map((key) => {
+        const tenantEnabled = (flags || {})[key] === true;
+        const killSwitch = killed[key] === true;
+        return { key, tenantEnabled, killSwitch, effective: tenantEnabled && !killSwitch };
+      });
+    },
+    async setTenantFlag(tenantId, flag, enabled, userId) {
+      assertKnown(flag);
+      return store.setTenantFlag(tenantId, flag, enabled, userId);
+    },
+    async setKillSwitch(flag, active, reason, userId) {
+      assertKnown(flag);
+      return store.setKillSwitch(flag, active, reason, userId);
     },
   };
 }

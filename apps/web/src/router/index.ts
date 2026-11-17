@@ -6,6 +6,7 @@ const router = createRouter({
   history: createWebHistory(),
   routes: [
     { path: '/login', name: 'login', component: () => import('@/views/LoginView.vue'), meta: { public: true } },
+    { path: '/masuk', name: 'email-link', component: () => import('@/views/EmailLinkView.vue'), meta: { public: true } },
     { path: '/', name: 'home', component: () => import('@/views/HomeView.vue') },
     { path: '/m/dna', name: 'dna', component: () => import('@/views/DnaView.vue'), meta: { submodule: 'dna' } },
     { path: '/m/tna', name: 'tna', component: () => import('@/views/TnaView.vue'), meta: { submodule: 'tna' } },

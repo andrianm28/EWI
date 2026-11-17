@@ -16,7 +16,11 @@ run('Postgres stores (schema ewi)', () => {
   });
 
   afterAll(async () => {
-    await db.query('DELETE FROM tenants WHERE id IN (:ids)', { replacements: { ids: [tenantA, tenantB] } });
+    // audit_logs append-only (R2-2): hapus tenant uji hanya lewat mode pemeliharaan DBA
+    await db.transaction(async (transaction) => {
+      await db.query("SET LOCAL ewi.audit_maintenance = 'on'", { transaction });
+      await db.query('DELETE FROM tenants WHERE id IN (:ids)', { replacements: { ids: [tenantA, tenantB] }, transaction });
+    });
     await db.close();
   });
 

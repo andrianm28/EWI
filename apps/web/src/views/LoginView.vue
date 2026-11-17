@@ -11,6 +11,7 @@ const email = ref('')
 const password = ref('')
 const error = ref('')
 const loading = ref(false)
+const linkNotice = ref('')
 // Daftar organisasi hanya tersedia bila API mengizinkan (LOGIN_TENANT_PICKER, dev/staging). Selain itu input teks.
 const tenants = ref<{ slug: string; name: string }[]>([])
 
@@ -29,6 +30,21 @@ async function submit() {
     await router.push({ name: 'home' })
   } catch (e) {
     error.value = e instanceof Error ? e.message : 'Gagal masuk'
+  } finally {
+    loading.value = false
+  }
+}
+
+// R3-2: karyawan masuk lewat link email (tanpa password)
+async function sendLink() {
+  error.value = ''; linkNotice.value = ''
+  if (!tenant.value.trim() || !email.value.trim()) { error.value = 'Isi organisasi dan email dulu.'; return }
+  loading.value = true
+  try {
+    const res = await api<{ message: string }>('/auth/email-link', { method: 'POST', body: JSON.stringify({ tenant: tenant.value.trim(), email: email.value.trim() }) })
+    linkNotice.value = res.message
+  } catch (e) {
+    error.value = e instanceof Error ? e.message : 'Gagal mengirim link'
   } finally {
     loading.value = false
   }
@@ -56,9 +72,14 @@ async function submit() {
         <input v-model="password" name="password" type="password" required class="mt-1 w-full rounded border px-3 py-2" />
       </label>
       <p v-if="error" role="alert" class="text-sm text-red-600">{{ error }}</p>
+      <p v-if="linkNotice" role="status" class="text-sm text-emerald-700">{{ linkNotice }}</p>
       <button type="submit" :disabled="loading" class="w-full rounded bg-slate-900 py-2 text-white disabled:opacity-60">
         {{ loading ? 'Memproses…' : 'Masuk' }}
       </button>
+      <div class="border-t pt-3 text-center text-sm">
+        <p class="text-slate-500">Karyawan tidak perlu password.</p>
+        <button type="button" :disabled="loading" class="mt-1 text-blue-700" @click="sendLink">Minta link lewat email</button>
+      </div>
     </form>
   </main>
 </template>

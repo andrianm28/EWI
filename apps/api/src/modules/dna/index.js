@@ -11,6 +11,9 @@ const { badRequest, notFound, HttpError } = require('../../core/errors');
 const { interviewRouter, wrap } = require('../interviews');
 const { computeGap } = require('./gap');
 const { careerStatus } = require('./career');
+const { importRouter } = require('../imports');
+const { getKind } = require('../imports/kinds');
+const { validateRows, commitRows } = require('../imports/engine');
 
 const TIERS = ['basic', 'intermediate', 'advanced'];
 const KINDS = ['core', 'job'];
@@ -57,10 +60,17 @@ async function profiles(stores, tenantId, people) {
   return out;
 }
 
+/** Saran kandidat promosi hanya bila modul promosi aktif (G2-A) dan peran diizinkan (RG-1e). */
+async function canSeePromotion(req, flags, settings) {
+  if (!(await flags.isEnabled(req.tenantId, FLAGS.PROMOTION_RECOMMENDATION))) return false;
+  if (req.user.role === ROLES.ETA_ADMIN) return true;
+  return (await settings.get(req.tenantId)).dna.promotionVisibleTo.includes(req.user.role);
+}
+
 module.exports = {
   key: 'dna',
   title: 'Development Need Analysis',
-  router({ stores, ai, settings, flags } = {}) {
+  router({ stores, ai, settings, flags, audit } = {}) {
     const r = express.Router();
     const hr = requireRole(ROLES.HR_ADMIN);
 
@@ -144,43 +154,24 @@ module.exports = {
       const { rows, assessor, assessedAt } = req.body || {};
       if (!Array.isArray(rows) || !rows.length || rows.length > 5000) throw badRequest('rows wajib berisi 1-5000 baris');
       if (assessedAt && Number.isNaN(Date.parse(assessedAt))) throw badRequest('assessedAt bukan tanggal yang valid');
-      const comps = await stores.dna.listCompetencies(req.tenantId);
-      const byName = new Map(comps.map((c) => [c.name.trim().toLowerCase(), c]));
-      const byId = new Map(comps.map((c) => [c.id, c]));
-      const users = await stores.people.resolve(req.tenantId, {
-        employeeIds: rows.map((r0) => r0 && r0.employeeId).filter(Boolean).map(String),
-        emails: rows.map((r0) => r0 && r0.email).filter(Boolean).map((e) => String(e).trim().toLowerCase()),
-      });
+      const kind = getKind('dna_results');
+      const ctx = { stores, tenantId: req.tenantId, options: { assessor, assessedAt } };
+      const { accepted, rejected } = await validateRows(kind, rows, ctx);
       const batchId = crypto.randomUUID();
-      const rejected = [];
-      let imported = 0;
-      for (const [index, raw] of rows.entries()) {
-        const row = raw || {};
-        const score = Number(row.score);
-        if (!Number.isInteger(score) || score < 0 || score > 4) { rejected.push({ index, reason: 'score harus bilangan bulat 0-4' }); continue; }
-        const comp = row.competencyId ? byId.get(row.competencyId) : byName.get(String(row.competency || '').trim().toLowerCase());
-        if (!comp) { rejected.push({ index, reason: 'Kompetensi tidak ada di kamus kompetensi organisasi ini' }); continue; }
-        const email = row.email ? String(row.email).trim().toLowerCase() : null;
-        const u = users.find((x) => (row.employeeId && x.employeeId === String(row.employeeId)) || (email && x.email === email));
-        if (!u) { rejected.push({ index, reason: 'Karyawan tidak ditemukan di organisasi ini' }); continue; }
-        const when = row.assessedAt || assessedAt;
-        await stores.dna.addAssessment(req.tenantId, {
-          userId: u.id, competencyId: comp.id, score, confidence: 1, source: 'manual_interview',
-          evidence: row.evidence ? String(row.evidence) : null, assessor: row.assessor || assessor || null,
-          assessedAt: when && !Number.isNaN(Date.parse(when)) ? new Date(when) : null, importBatchId: batchId,
-        });
-        imported += 1;
-      }
-      res.status(201).json({ data: { batchId, imported, rejected } });
+      await commitRows(kind, accepted, { ...ctx, batchId, user: req.user });
+      res.status(201).json({ data: { batchId, imported: accepted.length, rejected: rejected.map(({ index, reason }) => ({ index, reason })) } });
     }));
+
+    // R3-3: impor file XLSX/CSV dengan pemetaan kolom (karyawan, jenjang, kamus, status lulus, hasil DNA)
+    r.use('/imports', importRouter({ submodule: 'dna', stores, audit }));
 
     // --- Dashboard karier & gap (learner: dirinya, atasan: timnya, HR: semua) ---
     r.get('/employees', wrap(async (req, res) => {
       const scope = await scopeFor(req, stores.people);
       const people = await stores.people.list(req.tenantId, scope, { roles: ['learner', 'supervisor', 'role_leader', 'sme'], jobRoleId: req.query.jobRoleId });
-      const conf = await settings.get(req.tenantId);
-      const showPromotion = req.user.role === ROLES.ETA_ADMIN || conf.dna.promotionVisibleTo.includes(req.user.role);
+      const showPromotion = await canSeePromotion(req, flags, settings);
       const rows = await profiles(stores, req.tenantId, people);
+      await audit.readIndividual(req, 'dna.employee_results', { employeeIds: people.map((p) => p.id), objectType: 'dna_profile' });
       res.json({ data: rows.map((p) => (showPromotion ? p : { ...p, career: { ...p.career, promotionCandidate: undefined } })) });
     }));
 
@@ -195,25 +186,25 @@ module.exports = {
         person.jobRoleId ? stores.dna.listLevels(req.tenantId, person.jobRoleId) : [],
         stores.dna.completions(req.tenantId, [person.id]),
       ]);
-      const conf = await settings.get(req.tenantId);
       const career = careerStatus({ levels, currentLevelId: person.careerLevelId, completions });
-      if (!(req.user.role === ROLES.ETA_ADMIN || conf.dna.promotionVisibleTo.includes(req.user.role))) delete career.promotionCandidate;
+      if (!(await canSeePromotion(req, flags, settings))) delete career.promotionCandidate;
+      await audit.readIndividual(req, 'dna.employee_result', { employeeIds: [person.id], objectType: 'dna_profile', objectIds: assessments.map((a) => a.id) });
       res.json({ data: { person, gap: computeGap({ competencies, assessments }), career, completions, levels } });
     }));
 
-    r.get('/promotion-candidates', wrap(async (req, res) => {
-      const conf = await settings.get(req.tenantId);
-      if (!(req.user.role === ROLES.ETA_ADMIN || conf.dna.promotionVisibleTo.includes(req.user.role))) {
+    r.get('/promotion-candidates', requireFlag(flags, FLAGS.PROMOTION_RECOMMENDATION, 'Modul rekomendasi promosi belum diaktifkan'), wrap(async (req, res) => {
+      if (!(await canSeePromotion(req, flags, settings))) {
         throw new HttpError(403, 'ROLE_FORBIDDEN', 'Saran kandidat promosi hanya untuk HR');
       }
       const scope = await scopeFor(req, stores.people);
       const people = await stores.people.list(req.tenantId, scope, { roles: ['learner', 'supervisor', 'role_leader', 'sme'] });
-      const rows = await profiles(stores, req.tenantId, people);
-      res.json({ data: rows.filter((p) => p.career.promotionCandidate) });
+      const rows = (await profiles(stores, req.tenantId, people)).filter((p) => p.career.promotionCandidate);
+      await audit.readIndividual(req, 'dna.promotion_candidates', { employeeIds: rows.map((p) => p.id), objectType: 'dna_profile' });
+      res.json({ data: rows });
     }));
 
     r.use('/sessions', requireFlag(flags, FLAGS.DNA_AI_INTERVIEW, 'Wawancara AI DNA belum diaktifkan; gunakan impor hasil wawancara manual'),
-      interviewRouter({ submodule: 'dna', stores, ai }));
+      interviewRouter({ submodule: 'dna', stores, ai, audit }));
     return r;
   },
 };

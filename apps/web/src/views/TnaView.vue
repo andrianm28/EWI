@@ -3,7 +3,8 @@
 // HR wajib memilih siapa yang diwawancarai karena BT-29 belum diputuskan (tidak ada pilihan bawaan).
 import { computed, onMounted, ref } from 'vue'
 import AppShell from '@/components/AppShell.vue'
-import { lna, parseCsv, PLAN_STATUS_LABEL, type Finding, type ParetoRow, type PlanItem, type Project, type Session, type TnaDashboard } from '@/api/lna'
+import ImportPanel from '@/components/ImportPanel.vue'
+import { lna, PLAN_STATUS_LABEL, type Finding, type ParetoRow, type PlanItem, type Project, type Session, type TnaDashboard } from '@/api/lna'
 import { useSessionStore } from '@/stores/session'
 
 const session = useSessionStore()
@@ -22,7 +23,6 @@ const mySessions = computed(() => sessions.value.filter((s) => s.intervieweeId =
 
 // Impor & penjadwalan (HR)
 const period = ref('')
-const csv = ref('')
 const projectId = ref('')
 const scope = ref<'red_only' | 'all_members'>('red_only')
 const jobRoleId = ref('')
@@ -61,13 +61,6 @@ async function act(fn: () => Promise<string>) {
   try { notice.value = await fn(); await load() } catch (e) { error.value = (e as Error).message }
 }
 
-const importCsv = () => act(async () => {
-  const rows = parseCsv(csv.value)
-  if (!rows.length) throw new Error('CSV kosong. Baris pertama berisi header.')
-  const r = (await lna.importPerformance(period.value.trim(), rows)).data
-  csv.value = ''
-  return `${r.imported} baris diimpor (${r.red} target merah)${r.rejected.length ? `, ${r.rejected.length} ditolak: ${r.rejected.map((x) => `baris ${x.index + 2} ${x.reason}`).join('; ')}` : ''}.`
-})
 const schedule = () => act(async () => {
   if (scope.value === 'all_members' && !jobRoleId.value) throw new Error('Pilih job role yang semua karyawannya akan diwawancarai.')
   const r = (await lna.scheduleTna(projectId.value, { scope: scope.value, period: period.value.trim(), jobRoleId: jobRoleId.value || undefined })).data
@@ -110,16 +103,13 @@ const target = (f: Finding) => (f.metricName ? `${f.metricName}: target ${f.targ
       <div class="rounded-lg border bg-white p-4"><div class="text-2xl font-semibold">{{ plan.length }}</div><div class="text-sm text-slate-500">Item training plan</div></div>
     </section>
 
+    <!-- R3-3: data kinerja (mis. ekspor HappyFive) dan data karyawan lewat file XLSX/CSV -->
+    <ImportPanel v-if="isHr" submodule="tna" :projects="projects" class="mt-4" @imported="load" />
+
     <section v-if="isHr" class="mt-4 grid gap-4 md:grid-cols-2">
-      <form class="space-y-2 rounded-lg border bg-white p-4 text-sm" @submit.prevent="importCsv">
-        <h2 class="font-medium">Unggah data kinerja</h2>
-        <p class="text-xs text-slate-500">Kolom: employeeId atau email, metricType (okr/kpi/sla), name, target, actual, direction (higher/lower).</p>
-        <label class="block">Periode <input v-model="period" required class="mt-1 w-full rounded border px-2 py-1" placeholder="2026-11" /></label>
-        <label class="block">CSV <textarea v-model="csv" rows="4" class="mt-1 w-full rounded border px-2 py-1 font-mono text-xs" /></label>
-        <button type="submit" class="rounded bg-slate-900 px-3 py-1.5 text-white">Impor</button>
-      </form>
       <form class="space-y-2 rounded-lg border bg-white p-4 text-sm" @submit.prevent="schedule">
         <h2 class="font-medium">Jadwalkan wawancara TNA</h2>
+        <label class="block">Periode <input v-model="period" required class="mt-1 w-full rounded border px-2 py-1" placeholder="2026-11" /></label>
         <label class="block">Proyek
           <select v-model="projectId" required class="mt-1 w-full rounded border px-2 py-1">
             <option value="" disabled>Pilih proyek</option>

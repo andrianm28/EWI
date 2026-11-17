@@ -13,9 +13,12 @@
     "seed:dev": "node scripts/seed-dev.js"
   },
   "dependencies": {
+    "@aws-sdk/client-kms": "^3.1168.0",
+    "@aws-sdk/client-sesv2": "^3.1168.0",
     "bcryptjs": "^2.4.3",
     "cors": "^2.8.5",
     "dotenv": "^16.4.5",
+    "exceljs": "^4.4.0",
     "express": "^4.21.2",
     "helmet": "^7.1.0",
     "jsonwebtoken": "^9.0.2",

@@ -44,6 +44,18 @@ export const useSessionStore = defineStore('session', () => {
     await loadAccess()
   }
 
+  // R3-2: tukar token dari link email (sekali pakai) menjadi sesi
+  async function loginWithEmailLink(linkToken: string) {
+    const res = await api<{ token: string; user: SessionUser }>('/auth/email-link/verify', {
+      method: 'POST',
+      body: JSON.stringify({ token: linkToken }),
+    })
+    token.value = res.token
+    user.value = res.user
+    try { sessionStorage.setItem(STORAGE_KEY, res.token) } catch { /* abaikan */ }
+    await loadAccess()
+  }
+
   async function loadAccess() {
     access.value = await api<Access>('/me/access', {}, token.value)
     if (!user.value) {
@@ -61,5 +73,5 @@ export const useSessionStore = defineStore('session', () => {
     try { sessionStorage.removeItem(STORAGE_KEY) } catch { /* abaikan */ }
   }
 
-  return { token, user, role, access, isAuthenticated, canOpen, login, loadAccess, logout }
+  return { token, user, role, access, isAuthenticated, canOpen, login, loginWithEmailLink, loadAccess, logout }
 })

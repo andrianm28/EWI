@@ -48,7 +48,11 @@ run('POC DNA + TNA (Postgres)', () => {
   });
 
   afterAll(async () => {
-    await db.query('DELETE FROM tenants WHERE id IN (:ids)', { replacements: { ids: [tenant.id, otherTenant.id] } });
+    // audit_logs append-only (R2-2): hapus tenant uji hanya lewat mode pemeliharaan DBA
+    await db.transaction(async (transaction) => {
+      await db.query("SET LOCAL ewi.audit_maintenance = 'on'", { transaction });
+      await db.query('DELETE FROM tenants WHERE id IN (:ids)', { replacements: { ids: [tenant.id, otherTenant.id] }, transaction });
+    });
     await db.close();
   });
 
@@ -164,6 +168,15 @@ run('POC DNA + TNA (Postgres)', () => {
     expect(await names('hr')).toEqual(['budi', 'dimas', 'rina', 'spv']);
 
     expect((await request(app).get(`/api/dna/employees/${u.budi}`).set(as('spv'))).status).toBe(404);
+
+    // G2-A: rekomendasi promosi = modul terpisah, flag promotion.recommendation default mati
+    const off = await request(app).get('/api/dna/promotion-candidates').set(as('hr'));
+    expect(off.status).toBe(403);
+    expect(off.body.error.code).toBe('FEATURE_DISABLED');
+    const hrList = (await request(app).get('/api/dna/employees').set(as('hr'))).body.data;
+    expect(hrList.every((p) => p.career.promotionCandidate === undefined)).toBe(true);
+    await db.query(`INSERT INTO feature_flags (tenant_id, key, enabled) VALUES (:t, 'promotion.recommendation', true)`, { replacements: { t: tenant.id } });
+
     expect((await request(app).get('/api/dna/promotion-candidates').set(as('spv'))).status).toBe(403);
     const cand = await request(app).get('/api/dna/promotion-candidates').set(as('hr'));
     expect(cand.body.data.map((p) => p.name)).toEqual(['rina']);
@@ -309,5 +322,80 @@ run('POC DNA + TNA (Postgres)', () => {
     expect(finding).toMatchObject({ category: 'training', competencyId: null });
     const plan = await request(app).post(`/api/tna/findings/${finding.id}/plan`).set(as('hr')).send({});
     expect(plan.body.data.status).toBe('needs_module');
+  });
+  it('R2-2: baca data individu dicatat di audit log; agregat tidak; log append-only', async () => {
+    const auditRows = async (resource) => db.query(
+      `SELECT user_id AS "userId", action, meta FROM audit_logs WHERE tenant_id = :t AND resource = :resource ORDER BY id`,
+      { replacements: { t: tenant.id, resource }, type: 'SELECT' },
+    );
+    await request(app).get(`/api/dna/employees/${u.dimas}`).set(as('spv')).expect(200);
+    const row = (await auditRows('dna.employee_result')).filter((r) => r.userId === u.spv).pop();
+    expect(row).toMatchObject({ action: 'read', meta: { employeeIds: [u.dimas], self: false, role: 'supervisor', objectType: 'dna_profile' } });
+
+    await request(app).get('/api/tna/findings').set(as('eta')).expect(200);
+    const findings = (await auditRows('tna.findings')).filter((r) => r.userId === u.eta);
+    expect(findings.length).toBe(1);
+    expect(findings[0].meta.employeeIds.length).toBeGreaterThan(0);
+
+    const [[s]] = await db.query(`SELECT id FROM lna_interview_sessions WHERE tenant_id = :t AND submodule = 'tna' LIMIT 1`, { replacements: { t: tenant.id } });
+    await request(app).get(`/api/tna/sessions/${s.id}`).set(as('hr')).expect(200);
+    const [tr] = (await auditRows('tna.interview_transcript')).filter((r) => r.userId === u.hr);
+    expect(tr.meta).toMatchObject({ objectType: 'interview_session', objectIds: [s.id] });
+
+    const before = (await auditRows('tna.dashboard')).length;
+    await request(app).get('/api/tna/dashboard').set(as('hr')).expect(200);
+    expect((await auditRows('tna.dashboard')).length).toBe(before);
+
+    await expect(db.query('UPDATE audit_logs SET resource = \'x\' WHERE tenant_id = :t', { replacements: { t: tenant.id } })).rejects.toThrow(/append-only/);
+    await expect(db.query('DELETE FROM audit_logs WHERE tenant_id = :t', { replacements: { t: tenant.id } })).rejects.toThrow(/append-only/);
+  });
+
+  it('R2-1: flag hanya diubah Admin ETA, kill switch global, semua perubahan diaudit', async () => {
+    expect((await request(app).put('/api/admin/flags/dna.ai_interview').set(as('hr')).send({ enabled: true })).status).toBe(403);
+    expect((await request(app).get('/api/admin/flags').set(as('hr'))).status).toBe(403);
+
+    const on = await request(app).put('/api/admin/flags/dna.ai_interview').set(as('eta')).send({ enabled: true });
+    expect(on.status).toBe(200);
+    expect(on.body.data).toMatchObject({ key: 'dna.ai_interview', tenantEnabled: true, killSwitch: false, effective: true });
+    expect((await request(app).get('/api/dna/sessions').set(as('hr'))).status).toBe(200);
+    // flag tenant lain tidak berubah
+    expect((await request(app).get('/api/me/access').set(as('luar'))).body.flags['dna.ai_interview']).toBe(false);
+
+    expect((await request(app).put('/api/admin/kill-switches/dna.ai_interview').set(as('eta')).send({ active: true })).status).toBe(400);
+    try {
+      await request(app).put('/api/admin/kill-switches/dna.ai_interview').set(as('eta')).send({ active: true, reason: 'Biaya AI melonjak' }).expect(200);
+      expect((await request(app).get('/api/dna/sessions').set(as('hr'))).status).toBe(403);
+      expect((await request(app).get('/api/me/access').set(as('hr'))).body.flags['dna.ai_interview']).toBe(false);
+    } finally {
+      await request(app).put('/api/admin/kill-switches/dna.ai_interview').set(as('eta')).send({ active: false }).expect(200);
+    }
+    expect((await request(app).get('/api/dna/sessions').set(as('hr'))).status).toBe(200);
+    await request(app).put('/api/admin/flags/dna.ai_interview').set(as('eta')).send({ enabled: false }).expect(200);
+
+    const logs = await db.query(
+      `SELECT resource, meta FROM audit_logs WHERE tenant_id = :t AND resource IN ('feature_flag','kill_switch') ORDER BY id`,
+      { replacements: { t: tenant.id }, type: 'SELECT' },
+    );
+    expect(logs.map((l) => [l.resource, l.meta.to])).toEqual([
+      ['feature_flag', true], ['kill_switch', true], ['kill_switch', false], ['feature_flag', false],
+    ]);
+    expect(logs[1].meta).toMatchObject({ key: 'dna.ai_interview', reason: 'Biaya AI melonjak', global: true });
+  });
+  it('R2-3: transkrip, bukti, temuan, dan catatan tersimpan terenkripsi per tenant', async () => {
+    const one = async (sql) => (await db.query(sql, { replacements: { t: tenant.id }, type: 'SELECT' }))[0];
+    const turn = await one(`SELECT t.text FROM lna_interview_turns t JOIN lna_interview_sessions s ON s.id = t.session_id WHERE s.tenant_id = :t AND t.speaker = 'human' LIMIT 1`);
+    expect(turn.text).toMatch(/^enc:v1:/);
+    const ev = await one(`SELECT evidence FROM lna_assessments WHERE tenant_id = :t AND evidence IS NOT NULL AND source = 'manual_interview' LIMIT 1`);
+    expect(ev.evidence).toMatch(/^enc:v1:/);
+    const f = await one(`SELECT title, detail FROM lna_findings WHERE tenant_id = :t LIMIT 1`);
+    expect(f.title).toMatch(/^enc:v1:/);
+    const key = await one(`SELECT key_ref AS "keyRef", wrapped_key AS "wrappedKey" FROM tenant_keys WHERE tenant_id = :t`);
+    expect(key.keyRef).toBe('local');
+    // lewat API tetap terbaca
+    const [s] = (await db.query(`SELECT id FROM lna_interview_sessions WHERE tenant_id = :t AND submodule = 'tna' AND status = 'completed' LIMIT 1`, { replacements: { t: tenant.id }, type: 'SELECT' }));
+    const res = await request(app).get(`/api/tna/sessions/${s.id}`).set(as('hr'));
+    expect(res.body.data.turns.find((x) => x.speaker === 'human').text).not.toMatch(/^enc:/);
+    const findings = (await request(app).get('/api/tna/findings').set(as('hr'))).body.data;
+    expect(findings.every((x) => !x.title.startsWith('enc:'))).toBe(true);
   });
 });
