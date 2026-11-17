@@ -92,7 +92,9 @@ for ENV in staging prod; do
   DIR="/srv/elgos-$ENV"
   sudo install -d -o "$DEPLOY_USER" -g "$DEPLOY_USER" -m 750 "$DIR" "$DIR/backups"
   if ! sudo test -f "$DIR/db.env"; then
-    sed "s|^POSTGRES_PASSWORD=.*|POSTGRES_PASSWORD=$(openssl rand -hex 24)|" "$SRC/db.env.example" | write_secret_file "$DIR/db.env"
+    sed -e "s|^POSTGRES_PASSWORD=.*|POSTGRES_PASSWORD=$(openssl rand -hex 24)|" \
+        -e "s|^DB_MIGRATION_PASSWORD=.*|DB_MIGRATION_PASSWORD=$(openssl rand -hex 24)|" \
+        "$SRC/db.env.example" | write_secret_file "$DIR/db.env"
   fi
   if ! sudo test -f "$DIR/.env"; then
     if [ "$ENV" = prod ]; then URL=https://elgos.eliteacademy.id PORT=8180; else URL=https://stg-elgos.eliteacademy.id PORT=8181; fi

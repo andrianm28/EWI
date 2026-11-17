@@ -25,8 +25,9 @@ DIR="${ELGOS_DIR:-/srv/elgos-$ENV}"
 PREFIX="${IMAGE_PREFIX:-ghcr.io/andrianm28/ewi}"
 SEED="${SEED:-skip}"                 # hanya staging: auto = bila tenant demo belum ada; force; skip
 KEEP_DAYS="${KEEP_DAYS:-30}"         # retensi backup sebelum-deploy berdasarkan umur (PK-17)
-APP_DB_USER=elgos_app
-OWNER_DB_USER=elgos
+APP_DB_USER=elgos_app                # role aplikasi (DB_USER di .env)
+MIG_DB_USER=elgos_owner              # pemilik schema, migrasi (DB_MIGRATION_USER di db.env)
+SUPER_DB_USER=elgos                  # superuser bawaan container: bootstrap role, backup, restore
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 COMPOSE_FILE="$REPO_ROOT/deploy/vps/docker-compose.yml"
@@ -34,7 +35,7 @@ export ELGOS_ENV="$ENV" ELGOS_ENV_FILE="$DIR/.env" ELGOS_DB_ENV_FILE="$DIR/db.en
 
 log() { printf '[%s] [%s] %s\n' "$(date -u +%FT%TZ)" "$ENV" "$*" | tee -a "$DIR/deploy.log" >&2; }
 dc() { docker compose -f "$COMPOSE_FILE" --env-file "$ELGOS_ENV_FILE" "$@"; }
-psql_db() { dc exec -T db psql -U "$OWNER_DB_USER" -d elgos -v ON_ERROR_STOP=1 -tAc "$1"; }
+psql_db() { dc exec -T db psql -U "$SUPER_DB_USER" -d elgos -v ON_ERROR_STOP=1 -tAc "$1"; }
 fileval() { sed -n "s/^$2=//p" "$1" | tail -1 | sed 's/[[:space:]]*#.*$//' | tr -d '"'"'"'\r'; }
 envval() { fileval "$ELGOS_ENV_FILE" "$1"; }
 
@@ -45,15 +46,17 @@ mkdir -p "$DIR/backups"
 
 # Konfigurasi wajib. API di produksi menolak boot tanpa KMS/SES; gagal di sini lebih jelas.
 missing=()
-for v in PUBLIC_URL WEB_PORT DB_PASSWORD EWI_JWT_SECRET AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY KMS_KEY_ALIAS_PREFIX MAIL_FROM; do
+for v in PUBLIC_URL WEB_PORT DB_PASSWORD EWI_JWT_SECRET AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY KMS_KEY_ALIAS_PREFIX MAIL_FROM BEDROCK_MODEL_ID; do
   [ -n "$(envval "$v")" ] || missing+=("$v")
 done
 [ -n "$(envval TRUST_PROXY)" ] || missing+=("TRUST_PROXY (Caddy + nginx = 2)")
 [ "$ENV" != prod ] || [ -n "$(envval ETA_ADMIN_EMAILS)" ] || missing+=("ETA_ADMIN_EMAILS (tanpa ini tidak ada Admin ETA yang bisa masuk)")
 [ -n "$(fileval "$ELGOS_DB_ENV_FILE" POSTGRES_PASSWORD)" ] || missing+=("POSTGRES_PASSWORD (db.env)")
+[ -n "$(fileval "$ELGOS_DB_ENV_FILE" DB_MIGRATION_PASSWORD)" ] || missing+=("DB_MIGRATION_PASSWORD (db.env)")
+[ "$(envval DB_USER)" = "$APP_DB_USER" ] || missing+=("DB_USER=$APP_DB_USER")
 [ "${#missing[@]}" = 0 ] || { echo "::error::Kosong: ${missing[*]}"; exit 1; }
-if grep -q '^POSTGRES_PASSWORD=' "$ELGOS_ENV_FILE"; then
-  echo "::error::POSTGRES_PASSWORD harus di db.env, bukan .env (password pemilik tidak boleh masuk container API)"
+if grep -Eq '^(POSTGRES_PASSWORD|DB_MIGRATION_PASSWORD)=' "$ELGOS_ENV_FILE"; then
+  echo "::error::POSTGRES_PASSWORD dan DB_MIGRATION_PASSWORD harus di db.env, bukan .env (password superuser/pemilik tidak boleh masuk container API)"
   exit 1
 fi
 PUBLIC_URL="$(envval PUBLIC_URL)"; PUBLIC_URL="${PUBLIC_URL%/}"
@@ -96,16 +99,17 @@ verify_backup() {
   [ -s "$1" ] && dc exec -T db pg_restore --list < "$1" | grep -q 'TABLE ewi '
 }
 
-# Buat/perbarui role aplikasi dan haknya. Dijalankan sebagai pemilik setelah migrasi.
-apply_app_role() {
+# Buat/perbarui role pemilik + aplikasi, pindahkan kepemilikan objek ewi ke pemilik, pasang hak.
+# Dijalankan sebagai superuser sebelum migrasi, sesudah migrasi, dan sesudah restore.
+apply_db_roles() {
   local out
-  out="$({ printf '\\set app_user %s\n\\set app_password %s\n\\set db_name elgos\n' \
-             "$APP_DB_USER" "$(envval DB_PASSWORD)"
+  out="$({ printf '\\set owner_user %s\n\\set owner_password %s\n\\set app_user %s\n\\set app_password %s\n\\set db_name elgos\n' \
+             "$MIG_DB_USER" "$(fileval "$ELGOS_DB_ENV_FILE" DB_MIGRATION_PASSWORD)" "$APP_DB_USER" "$(envval DB_PASSWORD)"
            cat "$REPO_ROOT/deploy/vps/ops/app-role.sql"; } \
-         | dc exec -T db psql -U "$OWNER_DB_USER" -d elgos -q -tA -v ON_ERROR_STOP=1)"
-  # Baris terakhir: bisa_ddl|bisa_ubah_audit|bisa_hapus_audit, semuanya harus f.
-  [ "$(tail -1 <<<"$out")" = "f|f|f" ] || { echo "::error::Hak role $APP_DB_USER tidak sesuai: $out"; return 1; }
-  log "Role $APP_DB_USER diperbarui (tanpa DDL, audit_logs hanya INSERT/SELECT)"
+         | dc exec -T db psql -U "$SUPER_DB_USER" -d elgos -q -tA -v ON_ERROR_STOP=1)"
+  # Baris terakhir: bisa_ddl|bisa_ubah_audit|bisa_hapus_audit|ada_superuser|tabel_bukan_milik_owner = f.
+  [ "$(tail -1 <<<"$out")" = "f|f|f|f|f" ] || { echo "::error::Hak role database tidak sesuai: $out"; return 1; }
+  log "Role $MIG_DB_USER (pemilik) dan $APP_DB_USER (tanpa DDL, audit_logs hanya INSERT/SELECT) diperbarui"
 }
 
 rollback() {
@@ -120,10 +124,10 @@ rollback() {
     if [ "$BACKUP_OK" = 1 ] && verify_backup "$BACKUP"; then
       log "Migrasi sudah jalan: pulihkan schema ewi dari $BACKUP"
       dc stop api web || true
-      dc exec -T db psql -U "$OWNER_DB_USER" -d elgos -v ON_ERROR_STOP=1 -c 'DROP SCHEMA IF EXISTS ewi CASCADE' >&2 || true
-      dc exec -T db pg_restore -U "$OWNER_DB_USER" -d elgos --no-owner --no-privileges < "$BACKUP" >&2 \
+      dc exec -T db psql -U "$SUPER_DB_USER" -d elgos -v ON_ERROR_STOP=1 -c 'DROP SCHEMA IF EXISTS ewi CASCADE' >&2 || true
+      dc exec -T db pg_restore -U "$SUPER_DB_USER" -d elgos --no-owner --no-privileges < "$BACKUP" >&2 \
         || log "PERINGATAN: pg_restore melaporkan error, cek manual"
-      apply_app_role || log "PERINGATAN: role aplikasi gagal diperbarui setelah restore"
+      apply_db_roles || log "PERINGATAN: role database gagal diperbarui setelah restore"
     else
       log "Migrasi sudah jalan tetapi backup tidak ada/tidak terbaca: skema TIDAK dihapus. Image lama dipasang di atas skema baru (aturan migrasi tambah-dulu)."
     fi
@@ -152,7 +156,7 @@ export ELGOS_API_IMAGE="$NEW_API" ELGOS_WEB_IMAGE="$NEW_WEB"
 dc up -d --wait db
 if [ "$(psql_db "SELECT count(*) FROM pg_namespace WHERE nspname = 'ewi'")" = 1 ]; then
   BACKUP="$DIR/backups/elgos-$ENV-$(date -u +%Y%m%dT%H%M%SZ)-before-${TAG:0:12}.dump"
-  (umask 077 && dc exec -T db pg_dump -U "$OWNER_DB_USER" -d elgos -n ewi -Fc > "$BACKUP")
+  (umask 077 && dc exec -T db pg_dump -U "$SUPER_DB_USER" -d elgos -n ewi -Fc > "$BACKUP")
   verify_backup "$BACKUP" || { echo "::error::Backup $BACKUP tidak terbaca; deploy dibatalkan sebelum ada perubahan"; exit 1; }
   BACKUP_OK=1
   log "Backup DB terverifikasi: $BACKUP ($(du -h "$BACKUP" | cut -f1))"
@@ -163,19 +167,23 @@ find "$DIR/backups" -maxdepth 1 -name '*-before-*.dump' -mtime +"$KEEP_DAYS" -de
 
 trap rollback ERR
 
-# 3. Migrasi dengan image baru sebagai pemilik skema, sebelum container lama diganti (P1-7).
+# 3. Role + kepemilikan dulu (pemilik bukan superuser harus memiliki schema sebelum migrasi), lalu
+#    migrasi dengan image baru sebagai pemilik, sebelum container lama diganti (P1-7).
+#    Password pemilik hanya dari db.env, diberikan ke container migrasi sekali jalan, tidak ke API.
 #    DB_MIGRATION_* untuk API baru (PD-8), DB_USER/DB_PASSWORD untuk image lama.
-DB_PASSWORD="$(fileval "$ELGOS_DB_ENV_FILE" POSTGRES_PASSWORD)"
+apply_db_roles
+DB_PASSWORD="$(fileval "$ELGOS_DB_ENV_FILE" DB_MIGRATION_PASSWORD)"
 export DB_PASSWORD DB_MIGRATION_PASSWORD="$DB_PASSWORD"
 MIG_OUT="$(dc run --rm --no-deps -T \
-  -e DB_USER="$OWNER_DB_USER" -e DB_PASSWORD -e DB_MIGRATION_USER="$OWNER_DB_USER" -e DB_MIGRATION_PASSWORD \
+  -e DB_USER="$MIG_DB_USER" -e DB_PASSWORD -e DB_MIGRATION_USER="$MIG_DB_USER" -e DB_MIGRATION_PASSWORD \
+  -e DB_REQUIRE_NON_SUPERUSER=false \
   api npm run migrate 2>&1)" || { echo "$MIG_OUT" >&2; false; }
 unset DB_PASSWORD DB_MIGRATION_PASSWORD
 echo "$MIG_OUT" >&2
 if grep -q ': migrated' <<<"$MIG_OUT"; then MIGRATED=1; log "Migrasi baru diterapkan"; else log "Tidak ada migrasi baru"; fi
 
-# 4. Role aplikasi + hak untuk tabel baru.
-apply_app_role
+# 4. Hak aplikasi untuk tabel baru (default privileges sudah mencakup; diulang sebagai bukti di log).
+apply_db_roles
 
 # 5. Ganti container, tunggu healthcheck compose, lalu cek kesiapan lokal dan publik.
 dc up -d --wait --wait-timeout 180 api web

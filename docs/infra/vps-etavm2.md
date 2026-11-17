@@ -49,14 +49,18 @@ crash (rollback, data tetap, role dipasang ulang).
 
 ### Pemisahan kredensial DB (PD-8 A)
 
-| Berkas | Isi | Dipakai oleh |
-|---|---|---|
-| `/srv/elgos-<env>/.env` | config + secret aplikasi, `DB_PASSWORD` role `elgos_app` | container api |
-| `/srv/elgos-<env>/db.env` | `POSTGRES_PASSWORD` pemilik `elgos` | container db, langkah migrasi/backup/restore |
+| Role | Hak | Password di | Dipakai oleh |
+|---|---|---|---|
+| `elgos` (superuser bawaan container) | semua | `db.env` `POSTGRES_PASSWORD` | bootstrap role, backup, restore |
+| `elgos_owner` (bukan superuser) | pemilik database, schema `ewi`, semua objeknya | `db.env` `DB_MIGRATION_PASSWORD` | migrasi (`DB_MIGRATION_USER`), container sekali jalan |
+| `elgos_app` | DML di `ewi`, tanpa DDL; `audit_logs` hanya INSERT/SELECT; `sequelize_meta` SELECT | `.env` `DB_PASSWORD` | container api (`DB_USER`, `DB_REQUIRE_NON_SUPERUSER=true`) |
 
-`elgos_app` hanya DML di schema `ewi`, tanpa DDL; `audit_logs` hanya INSERT/SELECT (log audit tidak
-bisa diubah aplikasi); `sequelize_meta` hanya SELECT. Variabel aplikasi: `DB_USER`/`DB_PASSWORD`, migrasi:
-`DB_MIGRATION_USER`/`DB_MIGRATION_PASSWORD` (disepakati dengan thread aplikasi).
+`ops/app-role.sql` (dijalankan deploy.sh sebelum dan sesudah migrasi, dan setelah restore) membuat
+kedua role, memindahkan kepemilikan objek `ewi` ke `elgos_owner` (tanpa REASSIGN OWNED), memasang
+hak dan default privileges, lalu memeriksa tidak ada hak berbahaya. Password `elgos_owner` sengaja di
+`db.env`, bukan `.env`, supaya tidak masuk container API; deploy.sh memberikannya hanya ke container
+migrasi. Diuji lokal: tabel milik `elgos_owner`, `elgos_app` ditolak CREATE dan DELETE `audit_logs`,
+rollback v2 memulihkan schema dan kepemilikannya. Sesuai `docs/ewi/database-role-dan-migrasi.md` (PR #14).
 
 ### Job terjadwal (PD-15 A)
 

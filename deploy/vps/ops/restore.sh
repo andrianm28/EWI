@@ -75,7 +75,10 @@ case "$MODE" in
     env_compose "$ENV" exec -T db psql -U elgos -d elgos -v ON_ERROR_STOP=1 -c 'DROP SCHEMA IF EXISTS ewi CASCADE'
     env_compose "$ENV" exec -T db pg_restore -U elgos -d elgos --no-owner --no-privileges --exit-on-error < "$FILE"
     APP_PW="$(sed -n 's/^DB_PASSWORD=//p' "$DIR/.env" | tail -1)"
-    { printf '\\set app_user elgos_app\n\\set app_password %s\n\\set db_name elgos\n' "$APP_PW"; cat "$HERE/app-role.sql"; } \
+    OWNER_PW="$(sed -n 's/^DB_MIGRATION_PASSWORD=//p' "$DIR/db.env" | tail -1)"
+    # Hasil restore milik superuser: kepemilikan dipindah ke elgos_owner dan hak aplikasi dipasang ulang.
+    { printf '\\set owner_user elgos_owner\n\\set owner_password %s\n\\set app_user elgos_app\n\\set app_password %s\n\\set db_name elgos\n' "$OWNER_PW" "$APP_PW"
+      cat "$HERE/app-role.sql"; } \
       | env_compose "$ENV" exec -T db psql -U elgos -d elgos -q -tA -v ON_ERROR_STOP=1 >/dev/null
     env_compose "$ENV" up -d --wait --wait-timeout 180 api web
     echo "$(date -u +%FT%TZ) pemulihan env=$ENV sumber=$SRC total=$(elapsed)s" | tee -a "$DIR/deploy.log"
