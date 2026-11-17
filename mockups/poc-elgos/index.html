@@ -131,7 +131,7 @@ const V = {
 'hr-beranda':()=>`
 <div><div class="crumb">HR · Beranda</div><h1>Pilot Service Delivery L1</h1><p class="sub">24 karyawan · data kinerja Oktober 2026 dari HappyFive · POC live 2 Desember 2026 · semua anggota L1 ikut wawancara TNA</p></div>
 <div class="kpis">
- <div class="kpi"><b>24</b><span>Karyawan dengan hasil DNA</span></div>
+ <div class="kpi"><b>5 / 6</b><span>Karyawan dengan gap pelatihan yang sudah punya rencana</span></div>
  <div class="kpi"><b>9</b><span>Karyawan dengan target merah</span></div>
  <div class="kpi"><b>18 / 24</b><span>Wawancara TNA selesai</span></div>
  <div class="kpi"><b>4</b><span>Temuan AI menunggu review Anda</span></div>
@@ -141,7 +141,7 @@ const V = {
   <div class="list">
    <div class="item"><div><div class="t">Kebutuhan training "Memahami kontrak proyek" belum punya modul</div><div class="m">Muncul di 4 dari 18 wawancara TNA · belum ada di katalog materi</div></div><a class="lnk" href="#hr-plan">Buat training plan</a></div>
    <div class="item"><div><div class="t">4 temuan AI dari wawancara TNA menunggu review</div><div class="m">Temuan baru tampil ke atasan dan karyawan, dan baru dihitung di dashboard, setelah Anda setujui</div></div><a class="lnk" href="#hr-tna">Review</a></div>
-   <div class="item"><div><div class="t">6 karyawan belum mengikuti wawancara TNA</div><div class="m">Undangan terkirim 1 Des setelah pengumuman HR · pengingat email H-3 dan H-1 sebelum batas</div></div><a class="lnk" href="#hr-tna">Lihat</a></div>
+   <div class="item"><div><div class="t">6 karyawan belum mengikuti wawancara TNA</div><div class="m">Undangan terkirim 1 Des setelah pengumuman HR · pengingat email H-3 dan H-1 sebelum batas</div></div><a class="lnk" href="#hr-tna">Perpanjang undangan</a></div>
   </div></div>
  <div class="panel"><h2>Dua fungsi di POC ini</h2>
   <div class="list">
@@ -158,7 +158,7 @@ const V = {
 
 'hr-kamus':()=>`
 <div><div class="crumb">HR · DNA · Function 1</div><h1>Kamus kompetensi Service Delivery L1</h1><p class="sub">Hasil DACUM (wawancara DNA manual, diimpor 26 Nov 2026) · dipetakan ke jenjang karier ELGOS</p></div>
-<div class="note">Di POC, DNA menampilkan hasil yang sudah ada. Wawancara AI DNA belum diaktifkan.</div>
+<div class="note">Di POC, DNA menampilkan kamus dan hasil penilaian yang diimpor dari berkas HR, lalu disetujui HR. Jalur bangun kamus lewat wawancara AI dengan SME ada di produk tetapi dimatikan selama POC.</div>
 <div class="panel"><h2>Kompetensi per jenjang</h2><p>Level minimal yang harus dikuasai di setiap jenjang (1 = mengenal, 4 = mahir/mengajarkan).</p>
 <div class="tbl"><table>
 <thead><tr><th>Kompetensi</th><th>Kelompok</th><th class="num">Junior</th><th class="num">Senior</th><th class="num">Leader</th></tr></thead>
@@ -223,13 +223,13 @@ ${ANN('rekomendasi promosi adalah modul terpisah di luar POC ini (G2-A), jadi ti
  <div class="note">Terakhir diunggah 26 Nov 2026 · 24 karyawan · 61 target · 9 karyawan merah</div>
  <p class="sub" style="margin-top:8px;font-size:12.5px">Peserta: semua anggota satu Job Role (dipakai POC L1) atau hanya karyawan bertarget merah, dipilih saat menjadwalkan.</p>
  <div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap"><button class="btn">Unggah file baru</button><button class="btn pri">Kirim link wawancara</button></div>
- <p class="sub" style="margin-top:12px;font-size:12.5px">Link wawancara dikirim ke email karyawan, berlaku 7 hari, dengan pengingat H-3 dan H-1. Wawancara lewat teks, sekitar 30 menit.</p></div>
+ <p class="sub" style="margin-top:12px;font-size:12.5px">Link wawancara dikirim ke email karyawan, berlaku 7 hari dan bisa diperpanjang HR, dengan pengingat H-3 dan H-1. TNA diulang setiap data kinerja periode baru diunggah; riwayat disimpan. Wawancara lewat teks, sekitar 30 menit.</p></div>
 </div>
 <div class="panel"><h2>Review hasil AI</h2><p>Temuan AI baru tampil ke atasan dan karyawan, dan baru dihitung di dashboard, setelah Anda setujui. Target review 2 hari kerja. HR mereview temuan tanpa membuka transkrip: transkrip mentah hanya bisa dibuka karyawan itu sendiri (PO-6).</p>
  <div class="tbl"><table><thead><tr><th>Karyawan</th><th>Temuan AI</th><th>Jenis</th><th>Tindakan</th></tr></thead><tbody>
  <tr><td>Sari Wulandari</td><td>Belum pernah dilatih komunikasi saat insiden besar</td><td><span class="pill acc">Training</span></td><td><div style="display:flex;gap:6px;flex-wrap:wrap"><button class="btn">Ubah</button><button class="btn pri">Setujui</button></div></td></tr>
  <tr><td>Hendra Wijaya</td><td>Belum paham prioritas tiket per kontrak pelanggan</td><td><span class="pill acc">Training</span></td><td><div style="display:flex;gap:6px;flex-wrap:wrap"><button class="btn">Ubah</button><button class="btn pri">Setujui</button></div></td></tr>
- <tr><td>Hendra Wijaya</td><td>Akses VPN sering putus saat shift malam</td><td><span class="pill mute">Non-training</span></td><td><div style="display:flex;gap:6px;flex-wrap:wrap"><button class="btn">Ubah</button><button class="btn pri">Setujui</button></div></td></tr>
+ <tr><td>Hendra Wijaya</td><td>Akses VPN sering putus saat shift malam <span class="m" style="color:var(--muted);display:block;font-size:12px">Tertaut dengan temuan pelatihan di atas (satu jawaban, dua temuan)</span></td><td><span class="pill mute">Non-training</span></td><td><div style="display:flex;gap:6px;flex-wrap:wrap"><button class="btn">Ubah</button><button class="btn pri">Setujui</button></div></td></tr>
  <tr><td>Yoga Pratama</td><td>Belum menguasai format laporan bulanan baru</td><td><span class="pill acc">Training</span></td><td><div style="display:flex;gap:6px;flex-wrap:wrap"><button class="btn">Ubah</button><button class="btn pri">Setujui</button></div></td></tr>
  </tbody></table></div></div>
 <div class="split">
@@ -254,7 +254,7 @@ ${ANN('rekomendasi promosi adalah modul terpisah di luar POC ini (G2-A), jadi ti
 
 'hr-plan':()=>`
 <div><div class="crumb">HR · TNA</div><h1>Training plan</h1><p class="sub">Semua masalah training yang sudah direview menjadi training plan</p></div>
-<div class="panel"><h2>Prioritas kebutuhan training</h2><p>Urutan = seberapa jauh target meleset × jumlah orang. Status: Baru → Berjalan → Selesai / Ditolak.</p>
+<div class="panel"><h2>Prioritas kebutuhan training</h2><p>Urutan = seberapa jauh target meleset × jumlah orang × kepentingan kompetensi di kamus DNA. Status: Baru → Berjalan → Selesai / Ditolak.</p>
 <div class="tbl"><table><thead><tr><th>Kebutuhan</th><th class="num">Orang</th><th>Materi</th><th>Status</th><th>Tindakan</th></tr></thead><tbody>
 <tr><td>Memahami kontrak dan SLA proyek</td><td class="num">4</td><td><span class="pill bad">Belum ada</span></td><td><span class="pill mute">Baru</span></td><td><button class="btn pri">Buat modul / panggil vendor</button></td></tr>
 <tr><td>SOP L1 versi terbaru</td><td class="num">2</td><td><span class="pill ok">Course 1 · SOP L1</span></td><td><span class="pill warn">Berjalan</span></td><td><button class="btn">Tugaskan ke 2 orang</button></td></tr>
@@ -297,7 +297,7 @@ ${ANN('rekomendasi promosi adalah modul terpisah di luar POC ini (G2-A), jadi ti
 
 'emp-hasil':()=>`
 <div><div class="crumb">Untuk Anda · Hasil saya</div><h1>Hasil Anda</h1><p class="sub">Dimas Aditya · Junior Service Delivery L1 · hasil tampil setelah direview HR</p></div>
-<div class="note">Transkrip wawancara Anda hanya bisa dibuka oleh Anda sendiri. <a class="lnk" href="#emp-hasil">Lihat transkrip saya</a></div>
+<div class="note">Transkrip wawancara Anda hanya bisa dibuka oleh Anda sendiri. <a class="lnk" href="#emp-hasil">Lihat transkrip saya</a> · <a class="lnk" href="#emp-hasil">Minta ekspor atau hapus data</a> · <a class="lnk" href="#emp-hasil">Tarik persetujuan</a></div>
 <div class="panel"><h2>Jenjang karier</h2><p>Lulus program Intermediate untuk bisa naik ke senior.</p>
 <div class="ladder"><div class="step"><b>Probation</b><span>Selesai</span></div><div class="step cur"><b>Junior</b><span>Basic ✓ · posisi sekarang</span></div><div class="step"><b>Senior</b><span>Perlu Intermediate</span></div><div class="step"><b>Leader</b><span>Perlu Advance</span></div></div></div>
 <div class="split">
@@ -318,7 +318,7 @@ ${ANN('rekomendasi promosi adalah modul terpisah di luar POC ini (G2-A), jadi ti
   <div class="item"><div><div class="t">HR</div><div class="m">Login lewat link email · melihat semua karyawan</div></div><span class="pill ok">2 akun</span></div>
   <div class="item"><div><div class="t">Atasan langsung</div><div class="m">Melihat anggota timnya saja</div></div><span class="pill ok">3 akun</span></div>
   <div class="item"><div><div class="t">Karyawan</div><div class="m">Melihat hasilnya sendiri</div></div><span class="pill ok">24 akun</span></div>
-  <div class="item"><div><div class="t">Admin ETA</div><div class="m">Pengaturan tenant, fitur, impor data</div></div><span class="pill ok">2 akun</span></div>
+  <div class="item"><div><div class="t">Admin ETA</div><div class="m">Pengaturan tenant, fitur, impor data · data individu hanya atas permintaan HR, tercatat di log audit</div></div><span class="pill ok">2 akun</span></div>
  </div></div>
  <div class="panel"><h2>Fitur di tenant ini</h2><div class="list">
   <div class="item"><div><div class="t">DNA · tampilan hasil (impor)</div></div><span class="pill ok">Aktif</span></div>
@@ -331,7 +331,7 @@ ${ANN('rekomendasi promosi adalah modul terpisah di luar POC ini (G2-A), jadi ti
 </div>
 <div class="panel"><h2>Pemantauan kualitas AI</h2><p>Akurasi resmi diukur per temuan terhadap dua pelabel (HR dan atasan L1, dari 20 wawancara pilot pertama). Persetujuan HR saat review dipantau harian.</p>
 <div class="kpis"><div class="kpi"><b>–</b><span>Akurasi resmi (setelah pelabelan, target 85%)</span></div><div class="kpi"><b>86%</b><span>Temuan disetujui HR tanpa diubah (harian)</span></div><div class="kpi"><b>4</b><span>Temuan menunggu review</span></div><div class="kpi"><b>1,3 hari</b><span>Rata-rata waktu review</span></div></div></div>
-<div class="panel"><h2>Impor data</h2><p>Enam template: jenjang, karyawan, kompetensi, kelulusan program, hasil DNA, data kinerja.</p>
+<div class="panel"><h2>Impor data</h2><p>Enam template: jenjang dan program, karyawan, kamus kompetensi, kelulusan program, hasil DNA, data kinerja. Ada pemetaan kolom, pratinjau, dan alasan tolak per baris sebelum data disimpan.</p>
 <div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn">Unduh template</button><button class="btn pri">Unggah file</button></div></div>
 ${ANN('tiga persona lain, termasuk Role Leader dan Pimpinan, belum aktif di POC (PM-7). Pimpinan melihat hasil lewat presentasi HR.')}`,
 };
