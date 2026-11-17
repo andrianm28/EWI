@@ -48,6 +48,8 @@ missing=()
 for v in PUBLIC_URL WEB_PORT DB_PASSWORD EWI_JWT_SECRET AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY KMS_KEY_ALIAS_PREFIX MAIL_FROM; do
   [ -n "$(envval "$v")" ] || missing+=("$v")
 done
+[ -n "$(envval TRUST_PROXY)" ] || missing+=("TRUST_PROXY (Caddy + nginx = 2)")
+[ "$ENV" != prod ] || [ -n "$(envval ETA_ADMIN_EMAILS)" ] || missing+=("ETA_ADMIN_EMAILS (tanpa ini tidak ada Admin ETA yang bisa masuk)")
 [ -n "$(fileval "$ELGOS_DB_ENV_FILE" POSTGRES_PASSWORD)" ] || missing+=("POSTGRES_PASSWORD (db.env)")
 [ "${#missing[@]}" = 0 ] || { echo "::error::Kosong: ${missing[*]}"; exit 1; }
 if grep -q '^POSTGRES_PASSWORD=' "$ELGOS_ENV_FILE"; then

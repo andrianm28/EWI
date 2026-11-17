@@ -101,7 +101,7 @@ for ENV in staging prod; do
         -e "s|^EWI_JWT_SECRET=.*|EWI_JWT_SECRET=$(openssl rand -hex 48)|" \
         -e "s|^KMS_KEY_ALIAS_PREFIX=.*|KMS_KEY_ALIAS_PREFIX=elgos-$ENV-tenant|" \
         "$SRC/.env.example" | write_secret_file "$DIR/.env"
-    echo "$DIR/.env dibuat: isi AWS_ACCESS_KEY_ID/SECRET dan ELITEMENTOR_* sebelum deploy pertama."
+    echo "$DIR/.env dibuat: isi AWS_ACCESS_KEY_ID/SECRET, ELITEMENTOR_* dan ETA_ADMIN_EMAILS (wajib di prod) sebelum deploy pertama."
   fi
 done
 
@@ -172,6 +172,14 @@ sudo rm -f /etc/systemd/system/elgos-backup@prod.timer /etc/systemd/system/elgos
 sudo systemctl daemon-reload
 sudo systemctl enable --now elgos-backup@prod-hourly.timer elgos-backup@prod-nightly.timer \
   elgos-backup@staging-nightly.timer elgos-monitor.timer
+
+# Job aplikasi harian (PD-15 A), staging + prod: node scripts/run-job.js <nama> di image API aktif.
+#   interview-reminders     08.00 WIB (PK-23, PR #12)
+#   import-batches-cleanup  03.30 WIB, setelah backup malam (PK-15, PR #11; IMPORT_BATCH_TTL_DAYS bawaan 7)
+for ENV in staging prod; do
+  sudo "$SRC/ops/install-job.sh" "$ENV" interview-reminders '*-*-* 01:00:00 UTC' >/dev/null
+  sudo "$SRC/ops/install-job.sh" "$ENV" import-batches-cleanup '*-*-* 20:30:00 UTC' >/dev/null
+done
 
 # 9. Runner GitHub Actions (koneksi keluar saja).
 if [ ! -f "$RUNNER_DIR/.runner" ]; then

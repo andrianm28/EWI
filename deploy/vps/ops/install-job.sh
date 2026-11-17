@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
 # Pasang job terjadwal aplikasi sebagai timer systemd (PD-15 opsi A). Jalankan dengan sudo di etavm2:
-#   sudo deploy/vps/ops/install-job.sh <env> <npm-script> '<OnCalendar>'
-#   sudo deploy/vps/ops/install-job.sh prod job:analisis-wawancara '*-*-* *:0/10:00'
-#   sudo deploy/vps/ops/install-job.sh prod job:analisis-wawancara --hapus
+#   sudo deploy/vps/ops/install-job.sh <env> <nama-job> '<OnCalendar>'
+#   sudo deploy/vps/ops/install-job.sh prod interview-reminders '*-*-* 01:00:00 UTC'
+#   sudo deploy/vps/ops/install-job.sh prod interview-reminders --hapus
 # Membuat elgos-job-<env>-<nama>.{service,timer}; job berjalan sebagai elgos-deploy lewat
 # /srv/elgos-<env>/ops/run-job.sh (container sekali jalan, image yang sedang aktif).
 set -euo pipefail
-ENV="${1:?env}"; JOB="${2:?npm-script}"; WHEN="${3:?OnCalendar atau --hapus}"
+ENV="${1:?env}"; JOB="${2:?nama-job}"; WHEN="${3:?OnCalendar atau --hapus}"
 case "$ENV" in staging | prod) ;; *) echo "env harus staging atau prod"; exit 1 ;; esac
 [[ "$JOB" =~ ^[a-z0-9:_-]+$ ]] || { echo "Nama job tidak valid"; exit 1; }
 UNIT="elgos-job-$ENV-${JOB//:/-}"

@@ -60,9 +60,16 @@ bisa diubah aplikasi); `sequelize_meta` hanya SELECT. Variabel aplikasi: `DB_USE
 
 ### Job terjadwal (PD-15 A)
 
-`sudo deploy/vps/ops/install-job.sh <env> <nama> <npm-script> "<OnCalendar>"` membuat timer systemd
-`elgos-job-<env>-<nama>` yang menjalankan `ops/run-job.sh` (container sekali jalan, flock, peringatan
-bila gagal). Contoh: `install-job.sh prod pengingat jobs:reminders "Mon..Fri *-*-* 01:00:00 UTC"`.
+`sudo deploy/vps/ops/install-job.sh <env> <nama-job> "<OnCalendar>"` membuat timer systemd
+`elgos-job-<env>-<nama>` yang menjalankan `ops/run-job.sh`: container API sekali jalan
+`node scripts/run-job.js <nama-job>` dengan env API yang sama, flock, peringatan bila gagal (exit 1)
+atau nama job tidak dikenal image (exit 2). Dilewati bila lingkungan belum pernah dideploy.
+`setup-etavm2.sh` memasang untuk staging dan prod:
+
+| Job | Jadwal | Sumber |
+|---|---|---|
+| `interview-reminders` | harian 08.00 WIB | PK-23, PR #12 |
+| `import-batches-cleanup` | harian 03.30 WIB (setelah backup malam), `IMPORT_BATCH_TTL_DAYS` bawaan 7 | PK-15, PR #11 |
 
 ## Backup dan pemulihan (PD-20 A)
 
@@ -126,7 +133,9 @@ bila gagal). Contoh: `install-job.sh prod pengingat jobs:reminders "Mon..Fri *-*
    `RUNNER_TOKEN=<token> ACME_EMAIL=<email> deploy/vps/setup-etavm2.sh`. Skrip mengeraskan SSH
    (kunci saja, tanpa root), ufw, fail2ban, unattended-upgrades, rotasi log Docker, membuat secret DB/JWT
    acak, timer backup dan pemantauan.
-6. Isi access key `elgos-<env>-app` dan `ELITEMENTOR_*` di `/srv/elgos-<env>/.env`; isi access key
+6. Isi access key `elgos-<env>-app`, `ELITEMENTOR_*`, dan `ETA_ADMIN_EMAILS` (wajib di prod; tanpa ini
+   tidak ada Admin ETA yang bisa masuk) di `/srv/elgos-<env>/.env`. `TRUST_PROXY=2` (Caddy + nginx)
+   sudah terisi; staging boleh `AUTH_PASSWORD_LOGIN=false`. Lalu isi access key
    `elgos-ops-etavm2`, `BACKUP_BUCKET`, dan `ALERT_TOPIC_ARN` di `/etc/elgos/ops.env`. Catat di
    [akses-etavm2.md](akses-etavm2.md).
 7. Deploy pertama staging (Run workflow staging), lalu prod dengan SHA yang sama sebelum 25 Nov (R2-4).
