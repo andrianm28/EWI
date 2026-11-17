@@ -1,7 +1,8 @@
 name: CI
 
 # Gate merge (keputusan P2, 4 Nov): unit + lint + type-check + e2e Playwright di setiap PR.
-# Push ke main menjalankan CI lewat deploy.yml (workflow_call), sebelum deploy staging.
+# Push ke main menjalankan CI lewat deploy.yml dan push ke dev lewat deploy-dev.yml (workflow_call),
+# sebagai gate sebelum deploy. Karena itu tidak ada pemicu push di sini.
 on:
   pull_request:
   workflow_call:

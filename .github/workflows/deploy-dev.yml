@@ -1,0 +1,102 @@
+name: Deploy dev
+
+# Lingkungan dev publik https://dev-elgos.eliteacademy.id (dev-ewi redirect ke sini) di etavm1 (di luar AWS, keputusan user 11 Nov 2026).
+#
+# Alur: PR fitur -> merge ke branch `dev` -> workflow ini:
+#   1. gate CI penuh (ci.yml: lint, migrasi naik-turun-naik, jest, build, e2e, terraform validate)
+#   2. build image api + web, push ke GHCR (tag = SHA commit)
+#   3. job di runner self-hosted etavm1 (tanpa port masuk; runner menarik job dari GitHub):
+#      backup DB -> pull image -> migrasi -> ganti container -> health check -> seed (bila perlu)
+#      -> sinkron mockup. Gagal di tahap mana pun = rollback ke image sebelumnya (+ restore DB bila
+#      migrasi sudah jalan).
+# `main` tetap untuk staging dan prod di etavm2 (deploy.yml). Detail dan setup VM: deploy/dev-public/README.md.
+on:
+  push:
+    branches: [dev]
+  workflow_dispatch:
+    inputs:
+      seed:
+        description: Jalankan seed data demo (mereset data demo ke kondisi awal)
+        type: boolean
+        default: false
+      rollback_to:
+        description: SHA image di GHCR untuk rollback manual (kosong = deploy commit terpilih)
+        required: false
+        default: ''
+
+concurrency:
+  group: deploy-dev
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  packages: write
+
+env:
+  REGISTRY: ghcr.io
+  # nama image GHCR wajib huruf kecil
+  IMAGE_PREFIX: ghcr.io/andrianm28/ewi
+
+jobs:
+  ci:
+    if: inputs.rollback_to == ''
+    uses: ./.github/workflows/ci.yml
+
+  images:
+    needs: ci
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Build dan push image api
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: apps/api/Dockerfile
+          push: true
+          tags: ${{ env.IMAGE_PREFIX }}-api:${{ github.sha }},${{ env.IMAGE_PREFIX }}-api:dev
+          cache-from: type=gha,scope=api
+          cache-to: type=gha,scope=api,mode=max
+      - name: Build dan push image web
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: apps/web/Dockerfile
+          push: true
+          tags: ${{ env.IMAGE_PREFIX }}-web:${{ github.sha }},${{ env.IMAGE_PREFIX }}-web:dev
+          cache-from: type=gha,scope=web
+          cache-to: type=gha,scope=web,mode=max
+
+  deploy:
+    needs: [images]
+    # always(): tetap jalan saat rollback manual (ci + images di-skip), tapi tidak bila gagal
+    if: always() && (needs.images.result == 'success' || (inputs.rollback_to != '' && needs.images.result == 'skipped'))
+    runs-on: [self-hosted, etavm1, ewi-dev]
+    timeout-minutes: 20
+    environment:
+      name: dev
+      url: ${{ vars.DEV_PUBLIC_URL || 'https://dev-elgos.eliteacademy.id' }}
+    permissions:
+      contents: read
+      packages: read
+    env:
+      TAG: ${{ inputs.rollback_to || github.sha }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.rollback_to || github.sha }}
+      - name: Login GHCR
+        run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login "$REGISTRY" -u "${{ github.actor }}" --password-stdin
+      - name: Deploy ke etavm1
+        env:
+          EWI_DEV_DIR: /srv/ewi-dev
+          SEED: ${{ inputs.seed && 'force' || 'auto' }}
+        run: deploy/dev-public/deploy.sh "$TAG"
+      - name: Logout GHCR
+        if: always()
+        run: docker logout "$REGISTRY"

@@ -14,8 +14,16 @@ apps/api   Node 24 + Express + Sequelize + Postgres (schema `ewi`)
 apps/web   Vue 3 + Vite + TypeScript + Pinia + Tailwind, e2e Playwright
 docs/      ADR, arsitektur, spec tiket (docs/ewi/tickets/ELITMEN-xxx.md)
 infra/     Terraform: hanya KMS per tenant + SES di AWS (docs/infra/vps-etavm2.md)
-deploy/    vps/ = staging + prod di etavm2; dev-worktree/ = dev per worktree; dev-public/ = dev etavm1
+deploy/    vps/ = staging + prod di etavm2; dev-worktree/ = dev per worktree; dev-public/ = dev etavm1 + pipeline deploy
 ```
+
+## Branch dan lingkungan
+
+| Branch | Lingkungan | Workflow |
+|---|---|---|
+| PR ke mana pun | – | `ci.yml`: lint, migrasi naik-turun-naik, jest, build, e2e, terraform validate, cek skrip deploy |
+| `dev` | dev https://dev-elgos.eliteacademy.id (etavm1) | `deploy-dev.yml`: CI → image GHCR → deploy + health check + rollback |
+| `main` | staging di etavm2 (prod: dijalankan manual dengan SHA yang sama) | `deploy.yml` |
 
 Di dalam API:
 
