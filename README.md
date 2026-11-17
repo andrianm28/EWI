@@ -11,8 +11,8 @@ Integrasi ke EliteMentor hanya lewat API OAuth2 dan webhook bertanda tangan
 apps/api   Node 24 + Express + Sequelize + Postgres (schema `ewi`)
 apps/web   Vue 3 + Vite + TypeScript + Pinia + Tailwind, e2e Playwright
 docs/      ADR, arsitektur, spec tiket (docs/ewi/tickets/ELITMEN-xxx.md)
-infra/     Terraform: AWS staging + prod (docs/infra/aws-staging-prod.md)
-deploy/    dev publik di etavm1 (docker compose + Cloudflare Tunnel)
+infra/     Terraform: hanya KMS per tenant + SES di AWS (docs/infra/vps-etavm2.md)
+deploy/    vps/ = staging + prod di etavm2; dev-worktree/ = dev per worktree; dev-public/ = dev etavm1
 ```
 
 Di dalam API:

@@ -1,0 +1,71 @@
+# Dev ELGOS per git worktree (keputusan user 17 Nov 2026: "dev env per git worktree per thread").
+# Setiap worktree = project compose sendiri (elgos-dev-<slug>), DB sendiri, port sendiri, URL publik
+# sendiri lewat Cloudflare quick tunnel. Dijalankan lewat dev.sh, bukan langsung:
+#   deploy/dev-worktree/dev.sh up      # build dari worktree ini, migrasi, seed, cetak URL
+# Hanya data sintetis. Data karyawan nyata hanya di prod.
+services:
+  db:
+    image: pgvector/pgvector:pg16
+    restart: unless-stopped
+    env_file: ${DEV_ENV_FILE:?DEV_ENV_FILE wajib}
+    environment:
+      POSTGRES_USER: elgos
+      POSTGRES_DB: elgos_dev
+    volumes:
+      - db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U elgos -d elgos_dev"]
+      interval: 3s
+      timeout: 3s
+      retries: 30
+
+  api:
+    build:
+      context: ${WORKTREE:?WORKTREE wajib}
+      dockerfile: apps/api/Dockerfile
+    restart: unless-stopped
+    depends_on:
+      db: { condition: service_healthy }
+    env_file: ${DEV_ENV_FILE}
+    environment:
+      NODE_ENV: development
+      EWI_ENV: dev
+      PORT: 4100
+      DB_HOST: db
+      DB_PORT: 5432
+      DB_NAME: elgos_dev
+      DB_USER: elgos
+      DB_SSL: "false"
+      DB_SCHEMA: ewi
+      RUN_MIGRATIONS: "true"
+      EWI_JWT_AUDIENCE: ewi
+      EWI_JWT_ISSUER: elgos-api-dev
+      ENCRYPTION_PROVIDER: local
+      MAIL_PROVIDER: log
+      TENANT_KEY_PROVIDER: local
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:4100/api/health | grep -q '\"ok\"'"]
+      interval: 3s
+      timeout: 3s
+      retries: 40
+      start_period: 5s
+
+  web:
+    build:
+      context: ${WORKTREE}
+      dockerfile: apps/web/Dockerfile
+    restart: unless-stopped
+    depends_on:
+      api: { condition: service_healthy }
+    ports:
+      - "127.0.0.1:${WEB_PORT:?WEB_PORT wajib}:80"
+
+  tunnel:
+    profiles: [public]
+    image: cloudflare/cloudflared:2025.10.0
+    restart: unless-stopped
+    depends_on: [web]
+    command: tunnel --no-autoupdate --url http://web:80
+
+volumes:
+  db-data:
