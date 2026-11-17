@@ -4,7 +4,7 @@
 import { computed, onMounted, ref } from 'vue'
 import AppShell from '@/components/AppShell.vue'
 import ImportPanel from '@/components/ImportPanel.vue'
-import { lna, PLAN_STATUS_LABEL, type Finding, type ParetoRow, type PlanItem, type Project, type Session, type TnaDashboard } from '@/api/lna'
+import { lna, COURSE_STATUS_LABEL, PLAN_STATUS_LABEL, type Finding, type ParetoRow, type PlanItem, type Project, type Session, type TnaDashboard } from '@/api/lna'
 import { useSessionStore } from '@/stores/session'
 
 const session = useSessionStore()
@@ -164,8 +164,14 @@ const target = (f: Finding) => (f.metricName ? `${f.metricName}: target ${f.targ
       <ul class="mt-2 divide-y text-sm" data-testid="tna-plan">
         <li v-for="p in plan" :key="p.id" class="flex items-center justify-between gap-3 py-2">
           <div>
-            <div>{{ p.catalogItemTitle ?? p.findingTitle ?? p.note }}<span v-if="!isLearner" class="text-slate-500"> · {{ p.userName }}</span></div>
-            <div class="text-xs text-slate-500">{{ p.origin === 'learner_request' ? 'Diminta karyawan' : 'Usulan' }}</div>
+            <div>
+              <a v-if="p.catalogItemUrl" :href="p.catalogItemUrl" target="_blank" rel="noopener noreferrer" class="text-indigo-700 underline">{{ p.catalogItemTitle }}</a>
+              <template v-else>{{ p.catalogItemTitle ?? p.findingTitle ?? p.note }}</template>
+              <span v-if="!isLearner" class="text-slate-500"> · {{ p.userName }}</span>
+            </div>
+            <div class="text-xs text-slate-500">
+              {{ p.origin === 'learner_request' ? 'Diminta karyawan' : 'Usulan' }}<template v-if="p.courseStatus"> · Course: {{ COURSE_STATUS_LABEL[p.courseStatus] ?? p.courseStatus }}</template>
+            </div>
           </div>
           <select v-if="!isLearner" :value="p.status" class="rounded border px-2 py-1 text-xs" :aria-label="`Status ${p.id}`" @change="setStatus(p.id, ($event.target as HTMLSelectElement).value)">
             <option v-for="(label, k) in PLAN_STATUS_LABEL" :key="k" :value="k">{{ label }}</option>

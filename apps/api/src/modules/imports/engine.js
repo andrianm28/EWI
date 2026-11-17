@@ -23,9 +23,10 @@ async function validateRows(kind, rows, { stores, tenantId, options = {} }) {
   return { accepted, rejected };
 }
 
-async function commitRows(kind, accepted, { stores, tenantId, options = {}, batchId, user }) {
+/** audit (opsional): { record(action, resource, meta) } yang sudah terikat ke request; dipakai jenis impor yang wajib diaudit. */
+async function commitRows(kind, accepted, { stores, tenantId, options = {}, batchId, user, audit }) {
   if (!accepted.length) return {};
-  return kind.commit({ stores, tenantId, values: accepted.map((a) => a.value), options, batchId, user });
+  return kind.commit({ stores, tenantId, values: accepted.map((a) => a.value), options, batchId, user, audit });
 }
 
 module.exports = { validateRows, commitRows };

@@ -26,7 +26,7 @@ export interface Session { id: string; projectId: string; intervieweeId: string;
 export interface Turn { speaker: 'ai' | 'human'; text: string; at: string }
 export interface Finding { id: string; userId: string; userName: string | null; title: string; status: string; competencyName: string | null; metricName: string | null; target: number | null; actual: number | null }
 export interface ParetoRow { key: string; label: string; people: number; avgMiss: number; score: number; share: number; cumulativeShare: number }
-export interface PlanItem { id: string; userId: string; userName: string | null; findingTitle: string | null; origin: string; status: string; catalogItemTitle: string | null; note: string | null }
+export interface PlanItem { id: string; userId: string; userName: string | null; findingTitle: string | null; origin: string; status: string; catalogItemTitle: string | null; catalogItemUrl?: string | null; courseStatus?: string | null; note: string | null }
 export interface TnaDashboard { role: string; people: number | null; redTargets: number; sessions: Record<string, number>; trainingFindings: number; planItems: Record<string, number> }
 export interface Project { id: string; name: string; status: string }
 
@@ -65,6 +65,7 @@ export const lna = {
 export const ROLE_LABEL: Record<string, string> = {
   hr_admin: 'HR', supervisor: 'Atasan', learner: 'Karyawan', eta_admin: 'Admin ETA',
 }
+export const COURSE_STATUS_LABEL: Record<string, string> = { passed: 'Lulus', in_progress: 'Berjalan', failed: 'Tidak lulus' }
 export const PLAN_STATUS_LABEL: Record<string, string> = {
   proposed: 'Diusulkan', needs_module: 'Perlu modul baru', assigned: 'Ditugaskan', in_progress: 'Berjalan', completed: 'Selesai', cancelled: 'Dibatalkan',
 }

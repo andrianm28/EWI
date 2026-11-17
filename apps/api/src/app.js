@@ -43,7 +43,7 @@ function createApp({ config, stores, ai, catalog, mailer }) {
     audit,
     settings,
     ai: ai || createAiProvider(config.aiProvider),
-    catalog: catalog || createCatalogService({ elitementor: elitementorAdapter(), moodle: moodleAdapter() }),
+    catalog: catalog || createCatalogService({ elitementor: elitementorAdapter(), moodle: moodleAdapter(stores.catalog) }),
   };
 
   app.use(helmet());

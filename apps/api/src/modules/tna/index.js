@@ -5,6 +5,7 @@
 // Cadence 11 Nov: TNA bisa berjalan tanpa DACUM/DNA (C4). Cakupan wawancara per kebutuhan perusahaan:
 // hanya target merah (default, C3) atau semua karyawan di job role tertentu.
 // Terbuka: BT-30 (rumus Pareto), BT-31 (alur request training), K-1 (LMS), K-3 (status).
+// PK-18/PK-20 (17 Nov): katalog course statis (Moodle) + aturan toleransi KPI (PM-1 ★ B).
 const crypto = require('crypto');
 const express = require('express');
 const { requireRole, ROLES } = require('../../core/rbac');
@@ -13,7 +14,7 @@ const { INTERVIEW_SCOPES } = require('../../core/settings');
 const { FLAGS } = require('../../core/flags');
 const { badRequest, notFound, forbidden, HttpError } = require('../../core/errors');
 const { interviewRouter, wrap } = require('../interviews');
-const { evaluate } = require('./performance');
+const { evaluate, metricKey, METRIC_TYPES } = require('./performance');
 const { selectInterviewees } = require('./targeting');
 const { rankTrainingNeeds } = require('./pareto');
 const { importRouter } = require('../imports');
@@ -60,6 +61,33 @@ module.exports = {
         data: rows.map((jr) => ({ id: jr.id, name: jr.name, division: jr.division ?? null })),
         defaults: { scope: conf.tna.interviewScope, jobRoleId: conf.tna.interviewJobRoleId },
       });
+    }));
+
+    // --- PM-1 opsi B (★): aturan arah + toleransi per KPI. Mengubah aturan menghitung ulang status lama (C-8) ---
+    r.get('/kpi-rules', hr, wrap(async (req, res) => {
+      res.json({ data: await stores.tna.listKpiRules(req.tenantId) });
+    }));
+
+    r.put('/kpi-rules', hr, wrap(async (req, res) => {
+      const { metricType, name, direction = 'higher', tolerance = 0 } = req.body || {};
+      if (!METRIC_TYPES.includes(metricType)) throw badRequest(`metricType harus ${METRIC_TYPES.join(', ')}`);
+      if (!metricKey(name)) throw badRequest('name (nama metrik) wajib diisi');
+      if (!['higher', 'lower'].includes(direction)) throw badRequest('direction harus higher atau lower');
+      const tol = Number(tolerance);
+      if (!Number.isFinite(tol) || tol < 0) throw badRequest('tolerance harus angka 0 atau lebih');
+      const before = (await stores.tna.listKpiRules(req.tenantId)).find((x) => x.metricType === metricType && x.metricKey === metricKey(name)) || null;
+      const [rule] = await stores.tna.upsertKpiRules(req.tenantId, [{ metricType, metricKey: metricKey(name), name: String(name).trim(), direction, tolerance: tol }], req.user.id);
+      const recomputed = await stores.tna.recomputePerformance(req.tenantId, [rule]);
+      await audit.record(req, 'update', 'tna.kpi_rule', {
+        ruleId: rule.id, metricType, name: rule.name,
+        before: before ? { direction: before.direction, tolerance: before.tolerance } : null, after: { direction, tolerance: tol }, recomputed,
+      });
+      res.json({ data: { rule, recomputed } });
+    }));
+
+    // --- PK-18: katalog course statis (hasil impor) untuk HR ---
+    r.get('/catalog', hr, wrap(async (req, res) => {
+      res.json({ data: await stores.catalog.listItems(req.tenantId) });
     }));
 
     r.get('/performance', wrap(async (req, res) => {
@@ -114,7 +142,7 @@ module.exports = {
       const conf = await settings.get(req.tenantId);
       const findings = await stores.tna.listFindings(req.tenantId, scope, { projectId: req.query.projectId, categories: ['training'] });
       const rows = rankTrainingNeeds(findings.map((f) => ({
-        ...f, missRatio: f.target != null ? evaluate({ target: f.target, actual: f.actual, direction: f.direction }).missRatio : null,
+        ...f, missRatio: f.target != null ? evaluate({ target: f.target, actual: f.actual, direction: f.direction, tolerance: f.tolerance }).missRatio : null,
       })), conf.tna.pareto);
       res.json({ data: rows, formula: conf.tna.pareto });
     }));
@@ -132,7 +160,7 @@ module.exports = {
         note: req.body?.note || null,
       });
       await stores.tna.setFindingStatus(req.tenantId, f.id, 'planned');
-      res.status(201).json({ data: item });
+      res.status(201).json({ data: { ...item, catalogItemUrl: hit?.url || null } });
     }));
 
     // Request training oleh learner (RG-2). BT-31 terbuka: HR dan atasan sama-sama bisa memproses lewat PATCH.

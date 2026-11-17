@@ -70,21 +70,55 @@ describe('R3-3 pemetaan kolom', () => {
 
 describe('R3-3 kinerja: tipe nilai BT-26', () => {
   const kind = getKind('tna_performance');
-  const ctx = { find: () => ({ id: 'u1' }) };
+  // ctx baru per kasus: satu file tidak boleh memuat arah/toleransi berbeda untuk KPI yang sama (PK-20)
+  const c = () => ({ find: () => ({ id: 'u1' }) });
   const base = { employeeId: 'E-1', metricType: 'KPI', name: 'Resolusi tiket' };
   it('persen, biner, tenggat, dan arah', () => {
-    expect(kind.validate({ ...base, valueType: 'persen', target: '90%', actual: '72,5%' }, ctx, { period: '2026-11' }).value)
+    expect(kind.validate({ ...base, valueType: 'persen', target: '90%', actual: '72,5%' }, c(), { period: '2026-11' }).value)
       .toMatchObject({ target: 90, actual: 72.5, isMet: false, unit: '%', period: '2026-11', valueType: 'persen' });
-    expect(kind.validate({ ...base, valueType: 'biner', actual: 'ya' }, ctx, {}).value).toMatchObject({ target: 1, actual: 1, isMet: true });
-    const late = kind.validate({ ...base, valueType: 'tenggat', target: '30/11/2026', actual: '2026-12-02' }, ctx, {}).value;
+    expect(kind.validate({ ...base, valueType: 'biner', actual: 'ya' }, c(), {}).value).toMatchObject({ target: 1, actual: 1, isMet: true });
+    const late = kind.validate({ ...base, valueType: 'tenggat', target: '30/11/2026', actual: '2026-12-02' }, c(), {}).value;
     expect(late).toMatchObject({ direction: 'lower', isMet: false });
-    expect(kind.validate({ ...base, target: 15, actual: 10, direction: 'lebih rendah lebih baik' }, ctx, {}).value.isMet).toBe(true);
+    expect(kind.validate({ ...base, target: 15, actual: 10, direction: 'lebih rendah lebih baik' }, c(), {}).value.isMet).toBe(true);
   });
   it('alasan penolakan dalam bahasa Indonesia', () => {
-    expect(kind.validate({ ...base, metricType: 'nps', target: 1, actual: 1 }, ctx, {}).error).toMatch(/okr, kpi, atau sla/);
-    expect(kind.validate({ ...base, valueType: 'biner', actual: 'mungkin' }, ctx, {}).error).toMatch(/ya atau tidak/);
-    expect(kind.validate({ ...base, target: 'a', actual: 1 }, ctx, {}).error).toMatch(/harus angka/);
+    expect(kind.validate({ ...base, metricType: 'nps', target: 1, actual: 1 }, c(), {}).error).toMatch(/okr, kpi, atau sla/);
+    expect(kind.validate({ ...base, valueType: 'biner', actual: 'mungkin' }, c(), {}).error).toMatch(/ya atau tidak/);
+    expect(kind.validate({ ...base, target: 'a', actual: 1 }, c(), {}).error).toMatch(/harus angka/);
     expect(kind.validate({ ...base, target: 1, actual: 1 }, { find: () => null }, {}).error).toMatch(/tidak ditemukan/);
+  });
+});
+
+describe('PK-20 toleransi per KPI (PM-1 opsi B)', () => {
+  const kind = getKind('tna_performance');
+  const base = { employeeId: 'E-1', metricType: 'kpi', name: 'Resolusi tiket < 4 jam', valueType: 'persen', target: '90%' };
+  const ctxWith = (rules = []) => ({ find: () => ({ id: 'u1' }), rules: new Map(rules.map((r) => [`${r.metricType}|${r.metricKey}`, r])) });
+
+  it('toleransi kosong = 0 (sama dengan arah saja)', () => {
+    const r = kind.validate({ ...base, actual: '88%' }, ctxWith(), { period: '2026-11' }).value;
+    expect(r).toMatchObject({ tolerance: 0, isMet: false, ruleChanged: false });
+  });
+  it('realisasi di dalam toleransi dianggap tercapai, di luar toleransi meleset', () => {
+    expect(kind.validate({ ...base, actual: '86%', tolerance: '5' }, ctxWith(), {}).value).toMatchObject({ tolerance: 5, isMet: true, ruleChanged: true });
+    expect(kind.validate({ ...base, actual: '84%', tolerance: '5%' }, ctxWith(), {}).value).toMatchObject({ tolerance: 5, isMet: false });
+    const lower = kind.validate({ ...base, valueType: 'angka', target: 4, actual: 4.5, direction: 'lebih rendah lebih baik', tolerance: '0,5' }, ctxWith(), {}).value;
+    expect(lower).toMatchObject({ direction: 'lower', tolerance: 0.5, isMet: true });
+    const late = kind.validate({ ...base, valueType: 'tenggat', target: '2026-11-30', actual: '2026-12-02', tolerance: 2 }, ctxWith(), {}).value;
+    expect(late).toMatchObject({ direction: 'lower', tolerance: 2, isMet: true });
+  });
+  it('kolom kosong memakai aturan KPI tersimpan; nilai sama dengan aturan bukan perubahan', () => {
+    const saved = [{ metricType: 'kpi', metricKey: 'resolusi tiket < 4 jam', direction: 'higher', tolerance: 3 }];
+    expect(kind.validate({ ...base, name: '  Resolusi  tiket < 4 JAM ', actual: '88%' }, ctxWith(saved), {}).value).toMatchObject({ tolerance: 3, isMet: true, ruleChanged: false });
+    expect(kind.validate({ ...base, actual: '88%', tolerance: 3 }, ctxWith(saved), {}).value.ruleChanged).toBe(false);
+    expect(kind.validate({ ...base, actual: '88%', tolerance: 1 }, ctxWith(saved), {}).value).toMatchObject({ isMet: false, ruleChanged: true });
+  });
+  it('menolak toleransi negatif, biner bertoleransi, dan aturan berbeda untuk KPI yang sama dalam satu file', () => {
+    expect(kind.validate({ ...base, actual: '80%', tolerance: '-1' }, ctxWith(), {}).error).toMatch(/Toleransi harus angka 0 atau lebih/);
+    expect(kind.validate({ ...base, valueType: 'biner', target: 'ya', actual: 'tidak', tolerance: 1 }, ctxWith(), {}).error).toMatch(/biner tidak memakai toleransi/);
+    const ctx = ctxWith();
+    expect(kind.validate({ ...base, actual: '80%', tolerance: 5 }, ctx, {}).value).toBeTruthy();
+    expect(kind.validate({ ...base, employeeId: 'E-2', actual: '80%' }, ctx, {}).value.tolerance).toBe(5);
+    expect(kind.validate({ ...base, employeeId: 'E-3', actual: '80%', tolerance: 2 }, ctx, {}).error).toMatch(/berbeda dengan baris sebelumnya/);
   });
 });
 
