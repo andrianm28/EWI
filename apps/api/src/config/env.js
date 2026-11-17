@@ -74,8 +74,8 @@ function loadConfig(env = process.env) {
       region: env.MAIL_REGION || env.AWS_REGION || 'ap-southeast-3',
     }),
     auth: Object.freeze({
-      // Login password: mati di produksi, nyala di dev/staging kecuali AUTH_PASSWORD_LOGIN=false
-      passwordLogin: !isProd && env.AUTH_PASSWORD_LOGIN !== 'false',
+      // Login password: mati di produksi, nyala di dev/staging kecuali variabel AUTH_PASSWORD_LOGIN diisi false
+      passwordLogin: !isProd && envFlag(env.AUTH_PASSWORD_LOGIN, true),
       // Admin ETA hanya boleh masuk bila emailnya ada di daftar ini. Di produksi daftar kosong = tidak ada Admin ETA.
       etaAdminEmails: Object.freeze(etaAdminEmails),
       etaAdminRequireList: isProd || etaAdminEmails.length > 0,
@@ -89,6 +89,13 @@ function loadConfig(env = process.env) {
       ttl: env.EWI_JWT_TTL || '8h',
     }),
   });
+}
+
+/** Nilai boolean dari env: 'true' / 'false', selain itu nilai bawaan. */
+function envFlag(raw, fallback) {
+  if (raw === 'true') return true;
+  if (raw === 'false') return false;
+  return fallback;
 }
 
 /** TRUST_PROXY: kosong/false = mati, true, angka hop, atau daftar alamat/subnet. undefined = tidak valid. */

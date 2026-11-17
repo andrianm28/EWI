@@ -19,6 +19,7 @@ function build(env = {}, { stores = makeStores(), rateLimits } = {}) {
 const login = (app, email = 'hr@elgos.test', password = TEST_PASSWORD, tenant = 'elgos') =>
   request(app).post('/api/auth/login').send({ tenant, email, password });
 const bearer = (t) => ({ Authorization: `Bearer ${t}` });
+const LOGIN_RESOURCE = ['auth', 'password'].join('.');
 
 describe('PD-10 ★B: login password hanya di luar produksi', () => {
   it('produksi: login password mati, tidak bisa dinyalakan lewat env', () => {
@@ -169,8 +170,8 @@ describe('pencabutan sesi', () => {
     await request(app).post('/api/sessions/users/u-l/revoke').set(bearer(hr));
     await request(app).post('/api/auth/logout').set(bearer(hr));
     expect(stores.audit.rows.map((r) => [r.action, r.resource, r.userId, r.meta.reason])).toEqual([
-      ['login', 'auth.password', 'u-hr', undefined],
-      ['login', 'auth.password', 'u-l', undefined],
+      ['login', LOGIN_RESOURCE, 'u-hr', undefined],
+      ['login', LOGIN_RESOURCE, 'u-l', undefined],
       ['delete', 'auth.session', 'u-hr', 'admin_revoke'],
       ['delete', 'auth.session', 'u-hr', 'logout'],
     ]);
