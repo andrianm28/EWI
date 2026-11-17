@@ -23,13 +23,13 @@ const LOGIN_RESOURCE = ['auth', 'password'].join('.');
 
 describe('PD-10 ★B: login password hanya di luar produksi', () => {
   it('produksi: login password mati, tidak bisa dinyalakan lewat env', () => {
-    expect(loadConfig(PROD_ENV).auth.passwordLogin).toBe(false);
+    expect(loadConfig(PROD_ENV).auth.localLogin).toBe(false);
     expect(() => loadConfig({ ...PROD_ENV, AUTH_PASSWORD_LOGIN: 'true' })).toThrow(/AUTH_PASSWORD_LOGIN=true tidak diizinkan di produksi/);
   });
 
   it('dev/staging: nyala secara default, bisa dimatikan', () => {
-    expect(makeConfig().auth.passwordLogin).toBe(true);
-    expect(makeConfig({ AUTH_PASSWORD_LOGIN: 'false' }).auth.passwordLogin).toBe(false);
+    expect(makeConfig().auth.localLogin).toBe(true);
+    expect(makeConfig({ AUTH_PASSWORD_LOGIN: 'false' }).auth.localLogin).toBe(false);
   });
 
   it('saat mati: POST /login 404 dan /methods memberi tahu web', async () => {

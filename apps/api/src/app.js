@@ -69,7 +69,7 @@ function createApp({ config, stores, ai, catalog, mailer, rateLimits }) {
   if (stores.loginLinks) app.use('/api/auth/email-link', emailLinkRoutes({ users: stores.users, links, sessions, policy, audit, limits }));
   app.use('/api/auth', authRoutes({
     users: stores.users, sessions, policy, audit, requireAuth: auth, limits,
-    tenantPicker: config.loginTenantPicker, passwordLogin: authConfig.passwordLogin,
+    tenantPicker: config.loginTenantPicker, localLogin: authConfig.localLogin,
   }));
 
   const api = express.Router();

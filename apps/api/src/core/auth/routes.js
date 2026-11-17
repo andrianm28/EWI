@@ -11,10 +11,10 @@ const DUMMY_HASH = bcrypt.hashSync('elgos-dummy-password', 10);
 /**
  * Rute auth umum: metode login, login password (dev/staging saja), profil, keluar.
  * `users`: { findByEmail(tenantSlug, email), listActiveTenants? }.
- * PK-16 / PD-10 ★B: `passwordLogin` false di produksi; login password lalu menjawab 404.
+ * PK-16 / PD-10 ★B: `localLogin` false di produksi; login password lalu menjawab 404.
  * `limits`: { passwordIp, passwordAccount } dari createRateLimiter.
  */
-function authRoutes({ users, sessions, policy, audit, requireAuth, limits, tenantPicker = false, passwordLogin = false }) {
+function authRoutes({ users, sessions, policy, audit, requireAuth, limits, tenantPicker = false, localLogin = false }) {
   const r = express.Router();
 
   // Pilihan organisasi di halaman login (LOGIN_TENANT_PICKER, dev/staging saja). Mati -> 404, web memakai input teks.
@@ -24,9 +24,9 @@ function authRoutes({ users, sessions, policy, audit, requireAuth, limits, tenan
   }));
 
   // Web menampilkan form password hanya bila API mengizinkan.
-  r.get('/methods', (_req, res) => res.json({ password: passwordLogin, emailLink: true }));
+  r.get('/methods', (_req, res) => res.json({ password: localLogin, emailLink: true }));
 
-  if (passwordLogin) {
+  if (localLogin) {
     r.post('/login', limitByIp(limits.passwordIp, 'password'), wrap(async (req, res) => {
       const { tenant, email, password } = req.body || {};
       if (!tenant || !email || !password) throw badRequest('tenant, email, dan password wajib diisi');
