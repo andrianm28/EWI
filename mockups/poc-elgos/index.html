@@ -107,6 +107,7 @@ td.mid,th.mid{text-align:center}
 .item .m,.m{color:var(--muted);font-size:12.5px}
 .btn{font:500 13px var(--f-body);border-radius:2px;padding:8px 14px;min-height:36px;cursor:pointer;border:1px solid var(--line-strong);background:var(--surface);color:var(--ink)}
 .btn:hover{background:var(--surface-2)}
+a.btn{display:inline-flex;align-items:center}
 .btn.pri{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
 .btn.danger{color:var(--bad);border-color:var(--bad)}
 .btn[disabled]{opacity:.55;cursor:not-allowed}
@@ -154,6 +155,20 @@ th.sort::after{content:" ↕";color:var(--line-strong)}
 .hint{display:block;color:var(--muted);font-size:12.5px;margin-top:2px}
 .chk input[disabled]{opacity:1}
 .ref{display:inline-block;font-size:11px;padding:1px 6px;border-radius:2px;background:var(--accent-soft);color:var(--accent);font-weight:600;margin:1px 2px 1px 0;white-space:nowrap}
+.stepper{list-style:none;margin:0;padding:0;display:flex;gap:0;flex-wrap:wrap;border-bottom:1px solid var(--line)}
+.stepper li{display:flex;align-items:center;gap:8px;padding:8px 16px 10px 0;margin-right:16px;color:var(--muted);font-size:13px;border-bottom:2px solid transparent;margin-bottom:-1px}
+.stepper li b{width:22px;height:22px;border-radius:50%;display:inline-grid;place-items:center;font-size:12px;border:1px solid var(--line-strong);background:var(--surface)}
+.stepper li.done{color:var(--ink)} .stepper li.done b{background:var(--ok);border-color:var(--ok);color:var(--surface)}
+.stepper li.cur{color:var(--accent);font-weight:600;border-bottom-color:var(--accent)} .stepper li.cur b{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+.iv{display:grid;grid-template-columns:260px 1fr;gap:16px}
+.topics{margin:4px 0 0;padding-left:20px;font-size:13px;color:var(--muted)} .topics li{padding:3px 0}
+.topics li.done{color:var(--ok)} .topics li.done::marker{content:"✓  "} .topics li.cur{color:var(--accent);font-weight:600}
+.composer{display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;margin-top:16px;padding:10px 12px;border:1px solid var(--line-strong);border-bottom:2px solid var(--accent);background:var(--surface-2)}
+.typing{display:flex;gap:4px;align-self:flex-end;padding:10px 12px;border:1px solid var(--line);border-radius:10px;background:var(--surface-2)}
+.typing i{width:6px;height:6px;border-radius:50%;background:var(--muted);opacity:.5}
+.seg-in{display:flex;gap:4px}
+.iv-main .chat{max-width:none}
+@media (max-width:900px){.iv{grid-template-columns:1fr}}
 @media (max-width:900px){.shell{grid-template-columns:1fr}.nav{flex-direction:row;flex-wrap:wrap}.nav .grp{width:100%;margin:6px 4px 0}.nav a{border-left:0}.grid2,.grid3,.split{grid-template-columns:1fr}.kpis{grid-template-columns:repeat(2,1fr)}.ladder{grid-template-columns:repeat(2,1fr)}}
 @media (prefers-reduced-motion:reduce){*{transition:none!important}}
 </style>
@@ -189,6 +204,7 @@ const ANN = t => `<div class="ann">Catatan mockup: ${t}</div>`;
 const SOON = '<span class="soon">Menyusul saat pilot</span>';
 const META = (...x) => `<div class="meta">${x.map(s=>`<span>${s}</span>`).join('')}</div>`;
 const ST = {ok:t=>`<span class="pill ok">✓ ${t}</span>`, warn:t=>`<span class="pill warn">! ${t}</span>`, bad:t=>`<span class="pill bad">✕ ${t}</span>`, mute:t=>`<span class="pill mute">○ ${t}</span>`, acc:t=>`<span class="pill acc">${t}</span>`};
+const STEPS = (a,cur) => `<ol class="stepper" aria-label="Langkah">${a.map((t,i)=>`<li class="${i+1<cur?'done':i+1===cur?'cur':''}" ${i+1===cur?'aria-current="step"':''}><b>${i+1<cur?'✓':i+1}</b>${t}</li>`).join('')}</ol>`;
 const heatClass = (v,max)=>{const r=v/max;return r<.15?'l1':r<.35?'l2':r<.6?'l3':r<.85?'l4':'l5'};
 
 const V = {
@@ -290,7 +306,7 @@ ${ANN('rekomendasi promosi adalah modul terpisah di luar POC ini (G2-A), jadi ti
  <div class="panel"><h2>Unggah data kinerja</h2><p>File CSV/XLSX ekspor HappyFive: karyawan, KPI, target, realisasi, arah (lebih tinggi/lebih rendah lebih baik), dan toleransi per KPI (kosong = nol). Merah = melewati toleransi ke arah yang buruk.</p>
  <div class="note">Terakhir diunggah 26 Nov 2026 · 24 karyawan · 61 target · 9 karyawan merah</div>
  <p class="sub" style="margin-top:8px;font-size:12.5px">Peserta: semua anggota satu Job Role (dipakai POC L1) atau hanya karyawan bertarget merah, dipilih saat menjadwalkan.</p>
- <div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap"><button class="btn">Unggah file baru</button><button class="btn pri">Kirim link wawancara</button></div>
+ <div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap"><button class="btn">Unggah file baru</button><a class="btn pri" href="#hr-tugaskan" style="text-decoration:none">Tugaskan wawancara</a></div>
  <p class="sub" style="margin-top:12px;font-size:12.5px">Link wawancara dikirim ke email karyawan, berlaku 7 hari dan bisa diperpanjang HR, dengan pengingat H-3 dan H-1. TNA diulang setiap data kinerja periode baru diunggah; riwayat disimpan. Wawancara lewat teks, sekitar 30 menit.</p></div>
 </div>
 <div class="panel"><h2>Review hasil AI</h2><p>Temuan AI baru tampil ke atasan dan karyawan, dan baru dihitung di dashboard, setelah Anda setujui. Target review 2 hari kerja. HR mereview temuan tanpa membuka transkrip: transkrip mentah hanya bisa dibuka karyawan itu sendiri (PO-6).</p>
@@ -333,6 +349,133 @@ ${META('Perubahan terakhir: <b>3 Des 2026 10.24 WIB</b>, Mas Abdan memberi akses
 </tbody></table></div></div>
 <div class="panel"><h2>Permintaan training dari karyawan ${SOON}</h2><p>Sudah diputus (BT-31): permintaan dari karyawan dicek dulu lewat TNA sebelum masuk plan. Selama POC tombolnya disembunyikan, karena semua anggota L1 sudah ikut TNA.</p></div>`,
 
+'hr-tugaskan':()=>`
+<div><div class="crumb">HR · TNA · Tugaskan wawancara</div><h1>Tugaskan wawancara AI</h1><p class="sub">Pilih masalah KPI/OKR, pilih karyawan terkait, atur tenggat dan durasi, lalu kirim undangan</p></div>
+${STEPS(['Pilih masalah','Pilih karyawan','Tenggat & durasi','Tinjau & kirim'],4)}
+<div class="grid2">
+ <div class="panel"><h2>1 · Masalah KPI/OKR yang dibahas</h2><p>Dari data kinerja Oktober 2026 (HappyFive). Pilih satu atau beberapa masalah.</p>
+ <div class="list">
+  <label class="chk"><input type="checkbox" checked disabled><span><b>SLA respons tiket P2 meleset</b><span class="hint">Target 30 menit (toleransi +3) · 4 karyawan merah · rata-rata 40 menit</span></span></label>
+  <label class="chk" style="margin-top:8px"><input type="checkbox" checked disabled><span><b>Tiket selesai tanpa eskalasi di bawah target</b><span class="hint">Target 80% (toleransi −5) · 2 karyawan merah</span></span></label>
+  <label class="chk" style="margin-top:8px"><input type="checkbox" disabled><span><b>Laporan bulanan tidak tepat waktu</b><span class="hint">Target 100% · 2 karyawan merah</span></span></label>
+  <label class="chk" style="margin-top:8px"><input type="checkbox" disabled><span><b>CSAT insiden di bawah target</b><span class="hint">Target 4,5 (toleransi −0,2) · 1 karyawan merah</span></span></label>
+ </div></div>
+ <div class="panel"><h2>2 · Peserta</h2><p>Karyawan terkait terisi otomatis dari masalah yang dipilih. Bisa ditambah atau dikurangi.</p>
+  <div class="list">
+   <div class="item"><div><div class="t">Hanya karyawan bertarget merah</div><div class="m">6 orang dari masalah terpilih</div></div><span class="pill acc">Dipilih</span></div>
+   <div class="item"><div><div class="t">Semua anggota Job Role</div><div class="m">24 orang Service Delivery L1 (mode POC, BT-19)</div></div><button class="btn">Pilih</button></div>
+  </div></div>
+</div>
+<div class="panel"><h2>Karyawan yang ditugaskan</h2><p>Agent hanya membahas KPI milik masing-masing karyawan.</p>
+ <div class="tbar"><span class="search">Tambah karyawan</span><span class="m">6 dipilih</span></div>
+ <div class="tbl"><table><thead><tr><th>Karyawan</th><th>Atasan</th><th>KPI yang dibahas</th><th class="num">Realisasi</th><th></th></tr></thead><tbody>
+ <tr><td>Dimas Aditya</td><td>Team Lead Shift B</td><td>SLA respons tiket P2</td><td class="num">47 mnt</td><td><a class="lnk" href="#hr-tugaskan">Hapus</a></td></tr>
+ <tr><td>Budi Hartono</td><td>Team Lead Shift B</td><td>SLA respons tiket P2</td><td class="num">41 mnt</td><td><a class="lnk" href="#hr-tugaskan">Hapus</a></td></tr>
+ <tr><td>Andi Saputra</td><td>Team Lead Shift A</td><td>SLA respons tiket P2</td><td class="num">38 mnt</td><td><a class="lnk" href="#hr-tugaskan">Hapus</a></td></tr>
+ <tr><td>Hendra Wijaya</td><td>Team Lead Shift C</td><td>SLA respons tiket P2</td><td class="num">35 mnt</td><td><a class="lnk" href="#hr-tugaskan">Hapus</a></td></tr>
+ <tr><td>Rina Putri</td><td>Team Lead Shift B</td><td>Tiket tanpa eskalasi</td><td class="num">62%</td><td><a class="lnk" href="#hr-tugaskan">Hapus</a></td></tr>
+ <tr><td>Bayu Kurniawan</td><td>Team Lead Shift A</td><td>Tiket tanpa eskalasi</td><td class="num">71%</td><td><a class="lnk" href="#hr-tugaskan">Hapus</a></td></tr>
+ </tbody></table></div></div>
+<div class="split">
+ <div class="panel"><h2>3 · Tenggat dan durasi</h2><p>Berlaku untuk semua peserta di penugasan ini.</p>
+  <div class="list">
+   <div class="item"><div><div class="t">Tenggat selesai</div><div class="m">Link berlaku 7 hari sejak dikirim, bisa diperpanjang HR</div></div><span class="pill mute">8 Des 2026, 23.59 WIB</span></div>
+   <div class="item"><div><div class="t">Perkiraan durasi</div><div class="m">Ditampilkan ke karyawan; agent menutup wawancara dengan sopan bila waktu habis</div></div><div class="seg-in"><button class="btn">20 mnt</button><button class="btn pri">30 mnt</button><button class="btn">45 mnt</button></div></div>
+   <div class="item"><div><div class="t">Pengingat email</div><div class="m">Hanya ke yang belum selesai</div></div><span class="pill mute">H-3 dan H-1</span></div>
+   <div class="item"><div><div class="t">Cara menjawab</div></div><span>${ST.ok('Teks')} ${SOON}</span></div>
+  </div></div>
+ <div class="panel"><h2>4 · Tinjau dan kirim</h2><p>Undangan dikirim ke email karyawan. Atasan masing-masing mendapat salinan pemberitahuan tanpa isi wawancara.</p>
+  <div class="note">6 karyawan · 2 masalah KPI · tenggat 8 Des 2026 · ±30 menit · teks</div>
+  <div class="acts" style="margin-top:12px"><a class="btn" href="#emp-undangan" style="text-decoration:none">Pratinjau undangan</a><button class="btn pri">Kirim 6 undangan</button></div>
+  ${META('Penugasan tercatat di log audit: siapa yang menugaskan, kapan, dan siapa saja pesertanya')}</div>
+</div>`,
+
+'spv-tugaskan':()=>`
+<div><div class="crumb">Atasan · Tugaskan wawancara</div><h1>Usulkan wawancara untuk tim Anda</h1><p class="sub">Tim Shift B · Anda hanya bisa memilih anggota tim sendiri</p></div>
+${STEPS(['Pilih masalah','Pilih anggota','Tenggat & durasi','Kirim'],2)}
+<div class="panel"><h2>Masalah KPI di tim Anda</h2><p>Data kinerja Oktober 2026.</p>
+ <div class="tbl"><table><thead><tr><th></th><th>Masalah</th><th>Anggota terkait</th><th>Status wawancara</th></tr></thead><tbody>
+ <tr><td><input type="checkbox" checked disabled aria-label="Pilih"></td><td>SLA respons tiket P2 meleset</td><td>Dimas, Budi</td><td>${ST.ok('Selesai')}</td></tr>
+ <tr><td><input type="checkbox" checked disabled aria-label="Pilih"></td><td>Tiket selesai tanpa eskalasi di bawah target</td><td>Rina</td><td>${ST.mute('Belum ditugaskan')}</td></tr>
+ </tbody></table></div>
+ <div class="acts" style="margin-top:12px"><button class="btn">Tenggat: 8 Des 2026</button><button class="btn">Durasi: ±30 menit</button><button class="btn pri">Kirim ke Rina</button></div>
+ ${META('HR mendapat pemberitahuan setiap penugasan dari atasan dan bisa membatalkannya')}</div>
+${ANN('cadence 18 Nov: atasan atau HR bisa memilih masalah KPI/OKR dan menugaskan wawancara. Hak atasan menugaskan perlu dikonfirmasi Pak Eji (selama ini undangan dikirim HR).')}`,
+
+'emp-undangan':()=>`
+<div><div class="crumb">Untuk Anda · Undangan</div><h1>Undangan wawancara</h1><p class="sub">Email yang diterima karyawan · bisa dibuka di ponsel</p></div>
+${STEPS(['Undangan','Persetujuan','Wawancara','Ringkasan','Selesai'],1)}
+<div class="panel" style="max-width:640px"><div class="m">Dari: ELGOS &lt;no-reply&gt; · Untuk: Dimas Aditya</div><h2 style="margin-top:6px">Ngobrol 30 menit soal target Oktober Anda</h2>
+ <p>Halo Dimas,</p>
+ <p>HR Elitery mengajak Anda ngobrol dengan Asisten ELGOS tentang target <b>SLA respons tiket P2</b> bulan Oktober. Tujuannya mencari bantuan yang Anda butuhkan, misalnya pelatihan atau perbaikan alat kerja. Ini bukan penilaian kinerja.</p>
+ <div class="list">
+  <div class="item"><span class="m">Tenggat</span><b>8 Des 2026, 23.59 WIB</b></div>
+  <div class="item"><span class="m">Durasi</span><b>Sekitar 30 menit, bisa dijeda</b></div>
+  <div class="item"><span class="m">Cara</span><b>Mengetik jawaban di browser</b></div>
+ </div>
+ <div class="acts" style="margin-top:12px"><a class="btn pri" href="#emp-wawancara" style="text-decoration:none">Mulai wawancara</a></div>
+ <p class="m" style="margin-top:12px">Link ini khusus untuk Anda, berlaku sampai tenggat. Pertanyaan: hubungi HR (Mas Abdan).</p></div>`,
+
+'emp-wawancara':()=>`
+<div><div class="crumb">Untuk Anda · Wawancara</div><h1>Ngobrol soal target Oktober</h1><p class="sub">Sekitar 30 menit · bisa dijeda dan dilanjutkan sampai 8 Des 2026</p></div>
+${STEPS(['Undangan','Persetujuan','Wawancara','Ringkasan','Selesai'],3)}
+<div class="note">Wawancara ini untuk mencari bantuan yang Anda butuhkan, bukan untuk menilai Anda.</div>
+<div class="panel"><h2>Persetujuan wawancara</h2><p>Ditampilkan sebelum wawancara dimulai. Teks final disusun tim, dicek legal, dan disetujui Pak Eji paling lambat 24 Nov.</p>
+<label class="chk"><input type="checkbox" checked disabled><span><b>Saya sudah membaca dan menyetujui ketentuan wawancara</b><span class="hint">Tujuan wawancara · siapa melihat apa (hasil direview HR; transkrip mentah hanya Anda) · masa simpan data · hak menarik persetujuan dan caranya · pemrosesan oleh penyedia AI</span></span></label>
+<div style="margin-top:8px"><span class="pill ok">✓ Disetujui 2 Des</span></div>
+${META('Persetujuan versi <b>1.0</b>','Disetujui <b>2 Des 2026 09.05 WIB</b>','Bisa ditarik kapan saja dari halaman Hasil saya')}</div>
+<div class="iv">
+ <div class="panel iv-side">
+  <div class="avatar"><div class="face" aria-hidden="true"></div><div><b>Asisten ELGOS</b><div class="m">Agent wawancara TNA</div></div></div>
+  <div class="m" style="margin-top:14px">Waktu berjalan</div><b class="mono" style="font-size:18px">12:40</b> <span class="m">/ ±30 menit</span>
+  <div class="bar" style="margin-top:6px"><i style="width:42%"></i></div>
+  <h3 style="margin-top:16px">Topik</h3>
+  <ol class="topics">
+   <li class="done">Pekerjaan sehari-hari</li>
+   <li class="cur">Target SLA respons P2</li>
+   <li>Kendala dan penyebab</li>
+   <li>Bantuan yang dibutuhkan</li>
+  </ol>
+  <div class="acts" style="margin-top:12px"><button class="btn">Jeda, lanjut nanti</button></div>
+  <p class="m" style="margin-top:8px">Jawaban tersimpan otomatis.</p>
+ </div>
+ <div class="panel iv-main">
+  <div class="chat">
+   <div class="msg ai">Halo Dimas. Bulan Oktober rata-rata respons tiket P2 Anda 47 menit, targetnya 30 menit. Boleh ceritakan tiket P2 terakhir yang terasa lama?</div>
+   <div class="msg me">Biasanya saya bingung tiket itu masuk prioritas berapa, karena tiap pelanggan kontraknya beda.</div>
+   <div class="msg ai">Kalau sedang bingung, Anda biasanya cek ke mana dulu?</div>
+   <div class="msg me">Tanya senior di grup. Kadang SOP di wiki juga beda dengan yang dipakai tim.</div>
+   <div class="msg ai">Terima kasih, itu membantu. Apakah pernah ada pelatihan tentang cara membaca prioritas di kontrak pelanggan?</div>
+   <div class="typing" aria-label="Dimas sedang mengetik"><i></i><i></i><i></i></div>
+  </div>
+  <div class="composer"><span class="m">Ketik jawaban Anda…</span><div class="acts"><button class="btn" disabled aria-disabled="true">🎙 Suara</button>${SOON}<button class="btn pri">Kirim</button></div></div>
+ </div>
+</div>
+<div class="acts"><a class="lnk" href="#emp-ringkasan">Lanjut ke contoh ringkasan akhir →</a></div>`,
+
+'emp-ringkasan':()=>`
+<div><div class="crumb">Untuk Anda · Ringkasan</div><h1>Ringkasan wawancara Anda</h1><p class="sub">Dibuat Asisten ELGOS di akhir wawancara · Anda bisa membetulkan sebelum dikirim</p></div>
+${STEPS(['Undangan','Persetujuan','Wawancara','Ringkasan','Selesai'],4)}
+<div class="panel" style="max-width:760px"><h2>Yang kami tangkap dari jawaban Anda</h2><p>Periksa apakah sudah sesuai dengan maksud Anda.</p>
+ <div class="list">
+  <div class="item"><div><div class="t">Belum paham cara membaca prioritas tiket di kontrak tiap pelanggan</div><div class="m">"Biasanya saya bingung tiket itu masuk prioritas berapa"</div></div><span class="pill acc">Kemungkinan butuh pelatihan</span></div>
+  <div class="item"><div><div class="t">SOP di wiki berbeda dengan yang dipakai tim</div><div class="m">"Kadang SOP di wiki juga beda"</div></div><span class="pill mute">○ Bukan soal pelatihan</span></div>
+  <div class="item"><div><div class="t">Belum pernah ikut pelatihan kontrak dan SLA pelanggan</div><div class="m">Dari jawaban topik 3</div></div><span class="pill acc">Kemungkinan butuh pelatihan</span></div>
+ </div>
+ <div class="acts" style="margin-top:14px"><button class="btn">Ada yang perlu dibetulkan</button><a class="btn pri" href="#emp-selesai" style="text-decoration:none">Sudah sesuai, kirim</a></div>
+ ${META('Ringkasan ini belum final: HR mereview dulu sebelum hasil tampil ke Anda dan atasan')}</div>`,
+
+'emp-selesai':()=>`
+<div><div class="crumb">Untuk Anda · Selesai</div><h1>Terima kasih, Dimas</h1><p class="sub">Wawancara selesai 3 Des 2026, 10.12 WIB · 27 menit</p></div>
+${STEPS(['Undangan','Persetujuan','Wawancara','Ringkasan','Selesai'],5)}
+<div class="panel" style="max-width:760px"><h2>Apa yang terjadi selanjutnya</h2>
+ <div class="list">
+  <div class="item"><div><div class="t">HR mereview hasil wawancara</div><div class="m">Target 2 hari kerja</div></div>${ST.warn('Menunggu review')}</div>
+  <div class="item"><div><div class="t">Hasil tampil di halaman Hasil saya</div><div class="m">Beserta materi yang disarankan</div></div>${ST.mute('Setelah review')}</div>
+  <div class="item"><div><div class="t">Atasan melihat kebutuhan pelatihan tim</div><div class="m">Tanpa isi percakapan Anda</div></div>${ST.mute('Setelah review')}</div>
+ </div>
+ <div class="acts" style="margin-top:12px"><a class="btn" href="#emp-hasil" style="text-decoration:none">Ke Hasil saya</a><a class="lnk" href="#emp-hasil">Lihat transkrip saya</a></div></div>`,
+
 /* ============ ATASAN ============ */
 'spv-tim':()=>`
 <div><div class="crumb">Atasan · Tim saya</div><h1>Tim Shift B · 8 orang</h1><p class="sub">Anda melihat anggota tim sendiri saja</p></div>
@@ -352,22 +495,6 @@ ${META('Perubahan terakhir: <b>3 Des 2026 10.24 WIB</b>, Mas Abdan memberi akses
 <div class="note">Anda melihat kebutuhan training tim yang sudah direview HR. Atasan yang belum diberi akses oleh HR tidak melihat panel non-training.</div>`,
 
 /* ============ KARYAWAN ============ */
-'emp-wawancara':()=>`
-<div><div class="crumb">Untuk Anda · Wawancara</div><h1>Ngobrol soal target Oktober</h1><p class="sub">Sekitar 30 menit · bisa dijeda dan dilanjutkan</p></div>
-<div class="note">Wawancara ini untuk mencari bantuan yang Anda butuhkan, bukan untuk menilai Anda.</div>
-<div class="panel"><h2>Persetujuan wawancara</h2><p>Ditampilkan sebelum wawancara dimulai. Teks final disusun tim, dicek legal, dan disetujui Pak Eji paling lambat 24 Nov.</p>
-<label class="chk"><input type="checkbox" checked disabled><span><b>Saya sudah membaca dan menyetujui ketentuan wawancara</b><span class="hint">Tujuan wawancara · siapa melihat apa (hasil direview HR; transkrip mentah hanya Anda) · masa simpan data · hak menarik persetujuan dan caranya · pemrosesan oleh penyedia AI</span></span></label>
-<div style="margin-top:8px"><span class="pill ok">✓ Disetujui 2 Des</span></div>
-${META('Persetujuan versi <b>1.0</b>','Disetujui <b>2 Des 2026 09.05 WIB</b>','Bisa ditarik kapan saja dari halaman Hasil saya')}</div>
-<div class="panel"><div class="avatar" style="margin-bottom:14px"><div class="face" aria-hidden="true"></div><div><b>Asisten ELGOS</b><div class="m" style="color:var(--muted)">Membahas 1 target yang belum tercapai: SLA respons tiket P2</div></div></div>
-<div class="chat">
- <div class="msg ai">Halo Dimas. Bulan Oktober rata-rata respons tiket P2 Anda 47 menit, targetnya 30 menit. Boleh ceritakan tiket P2 terakhir yang terasa lama?</div>
- <div class="msg me">Biasanya saya bingung tiket itu masuk prioritas berapa, karena tiap pelanggan kontraknya beda.</div>
- <div class="msg ai">Kalau sedang bingung, Anda biasanya cek ke mana dulu?</div>
- <div class="msg me">Tanya senior di grup. Kadang SOP di wiki juga beda dengan yang dipakai tim.</div>
-</div>
-<div style="display:flex;gap:8px;margin-top:14px;flex-wrap:wrap;align-items:center"><button class="btn pri">Ketik jawaban</button><button class="btn" disabled aria-disabled="true">🎙 Jawab dengan suara</button>${SOON}</div></div>`,
-
 'emp-hasil':()=>`
 <div><div class="crumb">Untuk Anda · Hasil saya</div><h1>Hasil Anda</h1><p class="sub">Dimas Aditya · Junior Service Delivery L1 · hasil tampil setelah direview HR</p></div>
 <div class="note">Transkrip wawancara Anda hanya bisa dibuka oleh Anda sendiri. <a class="lnk" href="#emp-hasil">Lihat transkrip saya</a> · <a class="lnk" href="#emp-hasil">Minta ekspor atau hapus data</a> · <a class="lnk" href="#emp-hasil">Tarik persetujuan</a></div>
@@ -490,9 +617,9 @@ ${ANN('tiga persona lain, termasuk Role Leader dan Pimpinan, belum aktif di POC 
 };
 
 const NAV = {
- hr:[['Ringkasan'],['hr-beranda','Beranda'],['DNA · hasil'],['hr-kamus','Kamus kompetensi'],['hr-library','Katalog materi'],['hr-program','Learning program'],['hr-karier','Gap per jenjang'],['TNA · AI'],['hr-tna','Target & wawancara'],['hr-plan','Training plan']],
- spv:[['Tim'],['spv-tim','Tim saya']],
- emp:[['Untuk Anda'],['emp-wawancara','Wawancara saya'],['emp-hasil','Hasil saya']],
+ hr:[['Ringkasan'],['hr-beranda','Beranda'],['DNA · hasil'],['hr-kamus','Kamus kompetensi'],['hr-library','Katalog materi'],['hr-program','Learning program'],['hr-karier','Gap per jenjang'],['TNA · AI'],['hr-tna','Target & wawancara'],['hr-tugaskan','Tugaskan wawancara'],['hr-plan','Training plan']],
+ spv:[['Tim'],['spv-tim','Tim saya'],['spv-tugaskan','Tugaskan wawancara']],
+ emp:[['Wawancara'],['emp-undangan','1 · Undangan'],['emp-wawancara','2 · Persetujuan & wawancara'],['emp-ringkasan','3 · Ringkasan'],['emp-selesai','4 · Selesai'],['Untuk Anda'],['emp-hasil','Hasil saya']],
  adm:[['Admin ETA'],['adm-tenant','Tenant & fitur']],
  ds:[['Design system'],['ds-panduan','Panduan v1.1']],
 };
