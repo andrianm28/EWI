@@ -22,7 +22,8 @@
   --ok:#0e7a4e; --ok-soft:#e1f3ea; --warn:#995a00; --warn-soft:#fcefd8; --bad:#b42318; --bad-soft:#fde7e5;
   --info-soft:#e9f0fa;
   --f-body:"IBM Plex Sans",system-ui,sans-serif; --f-mono:"IBM Plex Mono",ui-monospace,monospace;
-  --r:8px; --shadow:0 1px 2px rgba(15,27,45,.06),0 1px 1px rgba(15,27,45,.04);
+  --shell:#0b2240; --shell-ink:#ffffff; --shell-muted:#a9bad3; --shell-line:#22406a;
+  --r:4px; --shadow:0 1px 2px rgba(15,27,45,.06),0 1px 1px rgba(15,27,45,.04);
 }
 @media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
   --bg:#0c1420; --surface:#131c2a; --surface-2:#172131; --ink:#e6ecf4; --muted:#9aa8ba; --line:#253246; --line-strong:#34445c;
@@ -30,6 +31,7 @@
   --gold:#e3bd62; --gold-soft:#33290f;
   --h1:#152238; --h2:#1d3a63; --h3:#2c5c9b; --h4:#5d91d8; --h5:#a9c9f4; --h-strong-ink:#0c1420;
   --ok:#62d39e; --ok-soft:#123326; --warn:#f0b65c; --warn-soft:#3a2b10; --bad:#ff8f84; --bad-soft:#3d1a17; --info-soft:#15233a;
+  --shell:#08101b; --shell-ink:#e6ecf4; --shell-muted:#9aa8ba; --shell-line:#253246;
   --shadow:none; color-scheme:dark}}
 :root[data-theme="dark"]{
   --bg:#0c1420; --surface:#131c2a; --surface-2:#172131; --ink:#e6ecf4; --muted:#9aa8ba; --line:#253246; --line-strong:#34445c;
@@ -37,20 +39,22 @@
   --gold:#e3bd62; --gold-soft:#33290f;
   --h1:#152238; --h2:#1d3a63; --h3:#2c5c9b; --h4:#5d91d8; --h5:#a9c9f4; --h-strong-ink:#0c1420;
   --ok:#62d39e; --ok-soft:#123326; --warn:#f0b65c; --warn-soft:#3a2b10; --bad:#ff8f84; --bad-soft:#3d1a17; --info-soft:#15233a;
+  --shell:#08101b; --shell-ink:#e6ecf4; --shell-muted:#9aa8ba; --shell-line:#253246;
   --shadow:none; color-scheme:dark}
 *{box-sizing:border-box}
 body{background:var(--bg);color:var(--ink);font-family:var(--f-body);font-size:14px;line-height:1.55;-webkit-font-smoothing:antialiased}
-.top{position:sticky;top:env(safe-area-inset-top,0px);z-index:5;background:var(--surface);border-bottom:1px solid var(--line);padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:10px;display:flex;flex-wrap:wrap;gap:12px;align-items:center;justify-content:space-between}
-body::before{content:"";position:fixed;inset:0 0 auto;height:env(safe-area-inset-top,0px);z-index:10;background:var(--surface)}
+.top{position:sticky;top:env(safe-area-inset-top,0px);z-index:5;background:var(--shell);color:var(--shell-ink);border-bottom:1px solid var(--shell-line);padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:10px;display:flex;flex-wrap:wrap;gap:12px;align-items:center;justify-content:space-between}
+body::before{content:"";position:fixed;inset:0 0 auto;height:env(safe-area-inset-top,0px);z-index:10;background:var(--shell)}
 .brand{display:flex;gap:10px;align-items:center;min-width:0}
 .brand svg{flex:none}
 .brand b{display:block;font-weight:700;font-size:15px;letter-spacing:.02em}
-.brand small{display:block;font-weight:400;font-size:12px;color:var(--muted)}
+.brand small{display:block;font-weight:400;font-size:12px;color:var(--shell-muted)}
 .ctrls{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
-.seg{display:flex;gap:2px;background:var(--bg);border:1px solid var(--line);border-radius:var(--r);padding:3px;flex-wrap:wrap}
-.seg button{border:0;background:transparent;color:var(--muted);font:500 13px var(--f-body);padding:6px 11px;border-radius:6px;cursor:pointer}
-.seg button[aria-pressed="true"]{background:var(--surface);color:var(--ink);box-shadow:var(--shadow);outline:1px solid var(--line)}
-.seg.tenant button[aria-pressed="true"]{background:var(--accent);color:var(--accent-ink);outline:0}
+.seg{display:flex;gap:2px;background:transparent;border:1px solid var(--shell-line);border-radius:var(--r);padding:3px;flex-wrap:wrap}
+.seg button{border:0;background:transparent;color:var(--shell-muted);font:500 13px var(--f-body);padding:6px 11px;border-radius:6px;cursor:pointer}
+.seg button[aria-pressed="true"]{background:var(--shell-line);color:var(--shell-ink)}
+.seg button:hover{color:var(--shell-ink)}
+.seg.tenant button[aria-pressed="true"]{background:var(--shell-ink);color:var(--shell)}
 .seg button:focus-visible,.nav a:focus-visible,.btn:focus-visible,a:focus-visible{outline:2px solid var(--focus);outline-offset:2px}
 .scope{display:flex;gap:10px;align-items:center;flex-wrap:wrap;font-size:12.5px;color:var(--muted);padding:8px max(16px,env(safe-area-inset-left,0px));border-bottom:1px solid var(--line);background:var(--surface-2)}
 .trust{display:flex;gap:14px;flex-wrap:wrap;font-size:12px;color:var(--muted)}
@@ -67,17 +71,18 @@ h2{font-size:15px;font-weight:600;margin:0}
 h3{font-size:13px;font-weight:600;margin:0 0 6px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted)}
 .sub{color:var(--muted);margin:2px 0 0}
 .crumb{font-size:12px;color:var(--muted);letter-spacing:.02em}
-.panel{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:18px;min-width:0;box-shadow:var(--shadow)}
+.panel{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:18px;min-width:0;box-shadow:var(--shadow)}
 .panel>h2+p{margin:4px 0 12px;color:var(--muted);font-size:13px}
 .grid2{display:grid;grid-template-columns:2fr 1fr;gap:16px}
 .grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:16px}
 .kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}
-.kpi{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:14px;box-shadow:var(--shadow);border-top:3px solid var(--accent)}
+.kpi{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:14px;box-shadow:var(--shadow);border-top:3px solid var(--accent)}
 .kpi.ok{border-top-color:var(--ok)} .kpi.warn{border-top-color:var(--warn)} .kpi.bad{border-top-color:var(--bad)}
 .kpi b{display:block;font-size:26px;font-weight:600;font-variant-numeric:tabular-nums;letter-spacing:-.01em}
 .kpi span{color:var(--muted);font-size:13px}
-.note{border-radius:var(--r);padding:10px 12px;font-size:13px;background:var(--info-soft);border-left:3px solid var(--link)}
-.note.warn{background:var(--warn-soft);border-left-color:var(--warn)}
+.note{position:relative;border-radius:var(--r);padding:10px 12px 10px 38px;font-size:13px;background:var(--info-soft);border-left:3px solid var(--link)}
+.note::before{content:"i";position:absolute;left:12px;top:11px;width:17px;height:17px;border-radius:50%;background:var(--link);color:var(--surface);font:700 11px/17px var(--f-mono);text-align:center}
+.note.warn{background:var(--warn-soft);border-left-color:var(--warn)} .note.warn::before{content:"!";background:var(--warn)}
 .pill{display:inline-flex;align-items:center;gap:4px;font-size:12px;font-weight:500;padding:2px 8px;border-radius:999px;white-space:nowrap;border:1px solid transparent}
 .pill.ok{background:var(--ok-soft);color:var(--ok)} .pill.bad{background:var(--bad-soft);color:var(--bad)} .pill.warn{background:var(--warn-soft);color:var(--warn)} .pill.mute{background:var(--surface-2);color:var(--muted);border-color:var(--line)} .pill.acc{background:var(--accent-soft);color:var(--accent)}
 .tbl{overflow-x:auto}
@@ -100,7 +105,7 @@ td.mid,th.mid{text-align:center}
 .item:last-child{border-bottom:0}
 .item .t{font-weight:500}
 .item .m,.m{color:var(--muted);font-size:12.5px}
-.btn{font:500 13px var(--f-body);border-radius:7px;padding:7px 12px;cursor:pointer;border:1px solid var(--line-strong);background:var(--surface);color:var(--ink)}
+.btn{font:500 13px var(--f-body);border-radius:2px;padding:8px 14px;min-height:36px;cursor:pointer;border:1px solid var(--line-strong);background:var(--surface);color:var(--ink)}
 .btn:hover{background:var(--surface-2)}
 .btn.pri{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
 .btn.danger{color:var(--bad);border-color:var(--bad)}
@@ -119,7 +124,7 @@ a.lnk{color:var(--link);text-decoration:none;font-size:13px;font-weight:500} a.l
 .avatar{display:flex;gap:12px;align-items:center}
 .avatar .face{width:56px;height:56px;border-radius:50%;background:radial-gradient(circle at 50% 38%,var(--h3) 0 22%,var(--h2) 23% 100%);flex:none;border:2px solid var(--accent-soft)}
 .split{display:grid;grid-template-columns:1fr 1fr;gap:16px}
-.ann{font-size:12px;color:var(--warn);background:var(--warn-soft);border-radius:6px;padding:6px 10px}
+.ann{font-size:12px;border-left:3px solid var(--warn);color:var(--warn);background:var(--warn-soft);border-radius:6px;padding:6px 10px}
 .soon{display:inline-flex;align-items:center;font-size:11.5px;font-weight:600;padding:2px 8px;border-radius:999px;border:1px dashed var(--warn);color:var(--warn);background:var(--warn-soft);white-space:nowrap}
 .meta{display:flex;gap:6px 14px;flex-wrap:wrap;font-size:12px;color:var(--muted);border-top:1px dashed var(--line);padding-top:10px}
 .meta b{font-weight:500;color:var(--ink)}
@@ -137,13 +142,26 @@ a.lnk{color:var(--link);text-decoration:none;font-size:13px;font-weight:500} a.l
 .sw span{display:block;padding:6px 8px}
 .sw code{font-family:var(--f-mono);font-size:11px;color:var(--muted)}
 .type p{margin:6px 0}
+.skip{position:absolute;left:-9999px;top:8px;z-index:20;background:var(--surface);color:var(--link);padding:8px 12px;border:2px solid var(--focus);font-weight:600}
+.skip:focus{left:16px}
+.tbar{display:flex;gap:8px;justify-content:space-between;align-items:center;flex-wrap:wrap;margin:0 0 10px}
+.search{flex:1 1 200px;max-width:320px;display:flex;align-items:center;gap:6px;border:0;border-bottom:1px solid var(--line-strong);background:var(--surface-2);padding:7px 10px;color:var(--muted);font-size:13px}
+.search::before{content:"⌕";font-size:15px;line-height:1}
+th.sort::after{content:" ↕";color:var(--line-strong)}
+.errsum{border:3px solid var(--bad);padding:14px 16px;background:var(--surface)}
+.errsum h2{margin-bottom:6px}
+.errsum ul{margin:6px 0 0;padding-left:18px} .errsum a{color:var(--bad);font-weight:600;font-size:13px}
+.hint{display:block;color:var(--muted);font-size:12.5px;margin-top:2px}
+.chk input[disabled]{opacity:1}
+.ref{display:inline-block;font-size:11px;padding:1px 6px;border-radius:2px;background:var(--accent-soft);color:var(--accent);font-weight:600;margin:1px 2px 1px 0;white-space:nowrap}
 @media (max-width:900px){.shell{grid-template-columns:1fr}.nav{flex-direction:row;flex-wrap:wrap}.nav .grp{width:100%;margin:6px 4px 0}.nav a{border-left:0}.grid2,.grid3,.split{grid-template-columns:1fr}.kpis{grid-template-columns:repeat(2,1fr)}.ladder{grid-template-columns:repeat(2,1fr)}}
 @media (prefers-reduced-motion:reduce){*{transition:none!important}}
 </style>
 
+<a class="skip" href="#main" onclick="event.preventDefault();document.getElementById('main').focus()">Lewati ke konten utama</a>
 <header class="top">
   <div class="brand">
-    <svg width="30" height="30" viewBox="0 0 32 32" aria-hidden="true"><path d="M16 2 4 6.5v8.2C4 22.3 9.1 28.2 16 30c6.9-1.8 12-7.7 12-15.3V6.5L16 2Z" fill="var(--accent)"/><path d="m10.5 16.2 3.8 3.8 7.4-7.6" fill="none" stroke="var(--accent-ink)" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    <svg width="30" height="30" viewBox="0 0 32 32" aria-hidden="true"><path d="M16 2 4 6.5v8.2C4 22.3 9.1 28.2 16 30c6.9-1.8 12-7.7 12-15.3V6.5L16 2Z" fill="var(--shell-ink)"/><path d="m10.5 16.2 3.8 3.8 7.4-7.6" fill="none" stroke="var(--shell)" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
     <div><b>ELGOS</b><small>Elite Learning & Growth Operating System · Pilot HR Elitery · Service Delivery L1 · Desember 2026 · data contoh</small></div>
   </div>
   <div class="ctrls">
@@ -163,7 +181,7 @@ a.lnk{color:var(--link);text-decoration:none;font-size:13px;font-weight:500} a.l
 
 <div class="shell">
   <nav class="nav" id="nav" aria-label="Menu"></nav>
-  <main id="main"></main>
+  <main id="main" tabindex="-1"></main>
 </div>
 
 <script>
@@ -209,7 +227,7 @@ ${META('Sumber kinerja: <b>HappyFive, unggahan file 26 Nov 2026 09.12 WIB</b> ol
 <div class="note">Di POC, DNA menampilkan kamus dan hasil penilaian yang diimpor dari berkas HR, lalu disetujui HR. Jalur bangun kamus lewat wawancara AI dengan SME ada di produk tetapi dimatikan selama POC.</div>
 <div class="panel"><h2>Kompetensi per jenjang</h2><p>Level minimal yang harus dikuasai di setiap jenjang (1 = mengenal, 4 = mahir/mengajarkan).</p>
 <div class="tbl"><table>
-<thead><tr><th>Kompetensi</th><th>Kelompok</th><th class="num">Junior</th><th class="num">Senior</th><th class="num">Leader</th></tr></thead>
+<thead><tr><th class="sort">Kompetensi</th><th class="sort">Kelompok</th><th class="num">Junior</th><th class="num">Senior</th><th class="num">Leader</th></tr></thead>
 <tbody>
 <tr><td>Menangani tiket insiden sesuai SOP L1</td><td>Operasional</td><td class="num">2</td><td class="num">3</td><td class="num">4</td></tr>
 <tr><td>Memahami kontrak dan SLA proyek pelanggan</td><td>Operasional</td><td class="num">2</td><td class="num">3</td><td class="num">4</td></tr>
@@ -257,7 +275,8 @@ ${ANN('rekomendasi promosi adalah modul terpisah di luar POC ini (G2-A), jadi ti
 <div><div class="crumb">HR · TNA</div><h1>TNA dari target kinerja</h1><p class="sub">Periode Oktober 2026 · sumber HappyFive (unggah file) · mode semua anggota Service Delivery L1</p></div>
 <div class="grid2">
  <div class="panel"><h2>Target yang meleset</h2><p>Semua 24 anggota L1 diundang wawancara (18 selesai). Di bawah ini 9 karyawan yang targetnya merah; agent membahas target itu.</p>
- <div class="tbl"><table><thead><tr><th>Karyawan</th><th>KPI</th><th class="num">Target</th><th class="num">Toleransi</th><th class="num">Realisasi</th><th>Wawancara</th></tr></thead><tbody>
+ <div class="tbar"><span class="search">Cari karyawan atau KPI</span><div class="acts"><button class="btn">Filter: semua status</button><button class="btn">Unduh CSV</button></div></div>
+ <div class="tbl"><table><thead><tr><th class="sort">Karyawan</th><th>KPI</th><th class="num">Target</th><th class="num">Toleransi</th><th class="num sort">Realisasi</th><th class="sort">Wawancara</th></tr></thead><tbody>
  <tr><td>Dimas Aditya</td><td>SLA respons tiket P2 (menit)</td><td class="num">30</td><td class="num">+3</td><td class="num">47</td><td><span class="pill ok">✓ Selesai</span></td></tr>
  <tr><td>Budi Hartono</td><td>SLA respons tiket P2 (menit)</td><td class="num">30</td><td class="num">+3</td><td class="num">41</td><td><span class="pill ok">✓ Selesai</span></td></tr>
  <tr><td>Rina Putri</td><td>Tiket selesai tanpa eskalasi (%)</td><td class="num">80</td><td class="num">−5</td><td class="num">62</td><td><span class="pill ok">✓ Selesai</span></td></tr>
@@ -275,6 +294,7 @@ ${ANN('rekomendasi promosi adalah modul terpisah di luar POC ini (G2-A), jadi ti
  <p class="sub" style="margin-top:12px;font-size:12.5px">Link wawancara dikirim ke email karyawan, berlaku 7 hari dan bisa diperpanjang HR, dengan pengingat H-3 dan H-1. TNA diulang setiap data kinerja periode baru diunggah; riwayat disimpan. Wawancara lewat teks, sekitar 30 menit.</p></div>
 </div>
 <div class="panel"><h2>Review hasil AI</h2><p>Temuan AI baru tampil ke atasan dan karyawan, dan baru dihitung di dashboard, setelah Anda setujui. Target review 2 hari kerja. HR mereview temuan tanpa membuka transkrip: transkrip mentah hanya bisa dibuka karyawan itu sendiri (PO-6).</p>
+ <div class="tbar"><span class="search">Cari temuan</span><div class="acts"><span class="m">4 menunggu · 0 dipilih</span><button class="btn" disabled aria-disabled="true">Setujui yang dipilih</button></div></div>
  <div class="tbl"><table><thead><tr><th>Karyawan</th><th>Temuan AI</th><th>Jenis</th><th>Tindakan</th></tr></thead><tbody>
  <tr><td>Sari Wulandari</td><td>Belum pernah dilatih komunikasi saat insiden besar</td><td><span class="pill acc">Training</span></td><td><div style="display:flex;gap:6px;flex-wrap:wrap"><button class="btn">Ubah</button><button class="btn pri">Setujui</button></div></td></tr>
  <tr><td>Hendra Wijaya</td><td>Belum paham prioritas tiket per kontrak pelanggan</td><td><span class="pill acc">Training</span></td><td><div style="display:flex;gap:6px;flex-wrap:wrap"><button class="btn">Ubah</button><button class="btn pri">Setujui</button></div></td></tr>
@@ -336,7 +356,8 @@ ${META('Perubahan terakhir: <b>3 Des 2026 10.24 WIB</b>, Mas Abdan memberi akses
 <div><div class="crumb">Untuk Anda · Wawancara</div><h1>Ngobrol soal target Oktober</h1><p class="sub">Sekitar 30 menit · bisa dijeda dan dilanjutkan</p></div>
 <div class="note">Wawancara ini untuk mencari bantuan yang Anda butuhkan, bukan untuk menilai Anda.</div>
 <div class="panel"><h2>Persetujuan wawancara</h2><p>Ditampilkan sebelum wawancara dimulai. Teks final disusun tim, dicek legal, dan disetujui Pak Eji paling lambat 24 Nov.</p>
-<div class="list"><div class="item"><div class="m">Tujuan wawancara · siapa melihat apa (hasil direview HR; transkrip mentah hanya Anda) · masa simpan data · hak menarik persetujuan dan caranya · pemrosesan oleh penyedia AI</div><span class="pill ok">✓ Disetujui 2 Des</span></div></div>
+<label class="chk"><input type="checkbox" checked disabled><span><b>Saya sudah membaca dan menyetujui ketentuan wawancara</b><span class="hint">Tujuan wawancara · siapa melihat apa (hasil direview HR; transkrip mentah hanya Anda) · masa simpan data · hak menarik persetujuan dan caranya · pemrosesan oleh penyedia AI</span></span></label>
+<div style="margin-top:8px"><span class="pill ok">✓ Disetujui 2 Des</span></div>
 ${META('Persetujuan versi <b>1.0</b>','Disetujui <b>2 Des 2026 09.05 WIB</b>','Bisa ditarik kapan saja dari halaman Hasil saya')}</div>
 <div class="panel"><div class="avatar" style="margin-bottom:14px"><div class="face" aria-hidden="true"></div><div><b>Asisten ELGOS</b><div class="m" style="color:var(--muted)">Membahas 1 target yang belum tercapai: SLA respons tiket P2</div></div></div>
 <div class="chat">
@@ -384,19 +405,21 @@ ${META('Persetujuan versi <b>1.0</b>','Disetujui <b>2 Des 2026 09.05 WIB</b>','B
 <div class="panel"><h2>Pemantauan kualitas AI</h2><p>Akurasi resmi diukur per temuan terhadap dua pelabel (HR dan atasan L1, dari 20 wawancara pilot pertama). Persetujuan HR saat review dipantau harian.</p>
 <div class="kpis"><div class="kpi"><b>–</b><span>Akurasi resmi (setelah pelabelan, target 85%)</span></div><div class="kpi"><b>86%</b><span>Temuan disetujui HR tanpa diubah (harian)</span></div><div class="kpi"><b>4</b><span>Temuan menunggu review</span></div><div class="kpi"><b>1,3 hari</b><span>Rata-rata waktu review</span></div></div></div>
 <div class="panel"><h2>Impor data</h2><p>Enam template: jenjang dan program, karyawan, kamus kompetensi, kelulusan program, hasil DNA, data kinerja. Ada pemetaan kolom, pratinjau, dan alasan tolak per baris sebelum data disimpan.</p>
-<div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn">Unduh template</button><button class="btn pri">Unggah file</button></div></div>
+<div class="errsum" role="alert" style="margin-bottom:12px"><h2>Contoh: 2 baris belum bisa disimpan</h2><p class="m" style="margin:0">File data kinerja Oktober · 61 baris · 59 siap disimpan</p>
+<ul><li><a href="#adm-tenant">Baris 12: kolom Target kosong</a></li><li><a href="#adm-tenant">Baris 37: email karyawan tidak ada di daftar karyawan</a></li></ul></div>
+<div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn">Unduh template</button><button class="btn">Perbaiki file</button><button class="btn pri">Simpan 59 baris</button></div></div>
 ${ANN('tiga persona lain, termasuk Role Leader dan Pimpinan, belum aktif di POC (PM-7). Pimpinan melihat hasil lewat presentasi HR.')}`,
 
 /* ============ DESIGN SYSTEM ============ */
 'ds-panduan':()=>`
-<div><div class="crumb">Design system · v1 · 18 Nov 2026</div><h1>ELGOS "Trust"</h1><p class="sub">Arah visual dari Pak Eji (cadence 11 Nov): clean dan trust. Pasar utama ELGOS adalah perbankan, yang wajib membuktikan pelatihan karyawan ke regulator, jadi tampilan harus tenang, teliti, dan bisa diaudit.</p></div>
+<div><div class="crumb">Design system · v1.1 · 18 Nov 2026 · berbasis IBM Carbon, GOV.UK, Legion</div><h1>ELGOS "Trust"</h1><p class="sub">Arah visual dari Pak Eji (cadence 11 Nov): clean dan trust. Pasar utama ELGOS adalah perbankan, yang wajib membuktikan pelatihan karyawan ke regulator, jadi tampilan harus tenang, teliti, dan bisa diaudit.</p></div>
 <div class="grid3">
- <div class="panel"><h3>1 · Tenang</h3><h2>Clean, satu fokus per layar</h2><p class="sub">Latar netral, satu tombol utama per panel, tidak ada dekorasi yang mengalihkan dari data.</p></div>
- <div class="panel"><h3>2 · Bisa dipercaya</h3><h2>Setiap angka punya sumber</h2><p class="sub">Angka selalu disertai sumber data, waktu unggah, dan siapa yang mengunggah atau menyetujui.</p></div>
- <div class="panel"><h3>3 · Bisa diaudit</h3><h2>Tindakan penting tercatat</h2><p class="sub">Persetujuan temuan AI, pemberian akses, dan ekspor data tercatat di log audit dan terlihat di layar.</p></div>
- <div class="panel"><h3>4 · Menjaga privasi</h3><h2>Tampilkan seperlunya</h2><p class="sub">Sesuai peran (HR, atasan, karyawan). Transkrip hanya untuk karyawan itu sendiri. Persetujuan karyawan sebelum wawancara.</p></div>
- <div class="panel"><h3>5 · Inklusif</h3><h2>Target WCAG 2.1 AA</h2><p class="sub">Kontras teks minimal 4,5:1, status tidak pernah hanya dengan warna (selalu ikon + teks), bisa dipakai dengan keyboard.</p></div>
- <div class="panel"><h3>6 · Bahasa</h3><h2>Indonesia formal yang ramah</h2><p class="sub">Kalimat lengkap, tanpa jargon teknis. Antarmuka siap dwibahasa Indonesia dan Inggris (Q18).</p></div>
+ <div class="panel"><h3>1 · Tenang</h3><h2>Clean, satu fokus per layar</h2><p class="sub">Latar netral, satu tombol utama per panel, tidak ada dekorasi yang mengalihkan dari data.</p><div style="margin-top:8px"><span class="ref">IBM Carbon</span><span class="ref">GOV.UK</span></div></div>
+ <div class="panel"><h3>2 · Bisa dipercaya</h3><h2>Setiap angka punya sumber</h2><p class="sub">Angka selalu disertai sumber data, waktu unggah, dan siapa yang mengunggah atau menyetujui.</p><div style="margin-top:8px"><span class="ref">IBM Carbon · dashboard</span></div></div>
+ <div class="panel"><h3>3 · Bisa diaudit</h3><h2>Tindakan penting tercatat</h2><p class="sub">Persetujuan temuan AI, pemberian akses, dan ekspor data tercatat di log audit dan terlihat di layar.</p><div style="margin-top:8px"><span class="ref">NAB Elevate</span><span class="ref">Salesforce Lightning</span></div></div>
+ <div class="panel"><h3>4 · Menjaga privasi</h3><h2>Tampilkan seperlunya</h2><p class="sub">Sesuai peran (HR, atasan, karyawan). Transkrip hanya untuk karyawan itu sendiri. Persetujuan karyawan sebelum wawancara.</p><div style="margin-top:8px"><span class="ref">GOV.UK · consent</span></div></div>
+ <div class="panel"><h3>5 · Inklusif</h3><h2>Target WCAG 2.1 AA</h2><p class="sub">Kontras teks minimal 4,5:1, status tidak pernah hanya dengan warna (selalu ikon + teks), bisa dipakai dengan keyboard.</p><div style="margin-top:8px"><span class="ref">IBM Carbon</span><span class="ref">USWDS</span></div></div>
+ <div class="panel"><h3>6 · Bahasa</h3><h2>Indonesia formal yang ramah</h2><p class="sub">Kalimat lengkap, tanpa jargon teknis. Antarmuka siap dwibahasa Indonesia dan Inggris (Q18).</p><div style="margin-top:8px"><span class="ref">Legion Telkom</span><span class="ref">GOV.UK · content</span></div></div>
 </div>
 <div class="panel"><h2>Warna</h2><p>Navy sebagai warna utama (kepercayaan, lazim di perbankan), netral slate, dan tiga warna status. Mode gelap memakai token yang sama.</p>
 <div class="sw">
@@ -441,6 +464,22 @@ ${ANN('tiga persona lain, termasuk Role Leader dan Pimpinan, belum aktif di POC 
   <div class="note">Transkrip wawancara hanya bisa dibuka karyawan itu sendiri.</div>
   <div class="note warn" style="margin-top:8px">Data kinerja periode ini belum diunggah.</div></div>
 </div>
+<div class="panel"><h2>Asal setiap pola</h2><p>Pola diambil dari design system publik yang sudah teruji, lalu disesuaikan untuk ELGOS. Tidak ada aset atau merek pihak lain yang dipakai.</p>
+<div class="tbl"><table><thead><tr><th>Pola di ELGOS</th><th>Referensi</th><th>Dipakai di layar</th></tr></thead><tbody>
+<tr><td>Header gelap, navigasi kiri, sudut 4 px, tombol persegi</td><td><a class="lnk" href="https://carbondesignsystem.com/" target="_blank" rel="noopener">IBM Carbon · UI shell</a></td><td>Semua layar</td></tr>
+<tr><td>Tabel data dengan pencarian, filter, unduh, urutkan kolom, aksi massal</td><td><a class="lnk" href="https://carbondesignsystem.com/" target="_blank" rel="noopener">IBM Carbon · data table</a></td><td>Target & wawancara, Review hasil AI, Kamus kompetensi</td></tr>
+<tr><td>Kartu KPI dan sumber data di bawah angka</td><td><a class="lnk" href="https://carbondesignsystem.com/data-visualization/dashboards" target="_blank" rel="noopener">IBM Carbon · dashboards</a></td><td>Beranda HR, Tim saya, Admin ETA</td></tr>
+<tr><td>Skala warna peta gap yang aksesibel</td><td><a class="lnk" href="https://carbondesignsystem.com/data-visualization/color-palettes" target="_blank" rel="noopener">IBM Carbon · color palettes</a></td><td>Gap per jenjang</td></tr>
+<tr><td>Notifikasi dengan ikon dan garis kiri</td><td><a class="lnk" href="https://carbondesignsystem.com/" target="_blank" rel="noopener">IBM Carbon · inline notification</a></td><td>Semua catatan</td></tr>
+<tr><td>Persetujuan dengan checkbox dan teks petunjuk</td><td><a class="lnk" href="https://design-system.service.gov.uk/" target="_blank" rel="noopener">GOV.UK · checkboxes, hint</a></td><td>Wawancara saya</td></tr>
+<tr><td>Ringkasan error di atas form, tautan ke baris bermasalah</td><td><a class="lnk" href="https://design-system.service.gov.uk/" target="_blank" rel="noopener">GOV.UK · error summary</a></td><td>Admin ETA · impor data</td></tr>
+<tr><td>Tautan "Lewati ke konten utama"</td><td><a class="lnk" href="https://design-system.service.gov.uk/" target="_blank" rel="noopener">GOV.UK · skip link</a>, <a class="lnk" href="https://designsystem.digital.gov/" target="_blank" rel="noopener">USWDS</a></td><td>Semua layar (tekan Tab)</td></tr>
+<tr><td>Aturan menulis Bahasa Indonesia dan dokumentasi komponen</td><td><a class="lnk" href="https://legion-dev.vercel.app/about-legion" target="_blank" rel="noopener">Legion · Telkom Indonesia</a></td><td>Aturan menulis, panduan ini</td></tr>
+<tr><td>Komponen standar yang disetujui dan bisa diaudit</td><td><a class="lnk" href="https://www.figma.com/customers/design-once-reuse-everywhere-how-nab-unified-design-at-enterprise-scale-with-figma/" target="_blank" rel="noopener">NAB Elevate (studi kasus bank)</a></td><td>Jejak audit, status, tombol</td></tr>
+</tbody></table></div></div>
+<div class="panel"><h2>Contoh komponen baru</h2><p>Tabel dengan toolbar dan ringkasan error.</p>
+ <div class="tbar"><span class="search">Cari karyawan atau KPI</span><div class="acts"><button class="btn">Filter</button><button class="btn">Unduh CSV</button></div></div>
+ <div class="errsum" role="note"><h2>2 baris belum bisa disimpan</h2><ul><li><a href="#ds-panduan">Baris 12: kolom Target kosong</a></li><li><a href="#ds-panduan">Baris 37: email karyawan tidak ada di daftar karyawan</a></li></ul></div></div>
 <div class="panel"><h2>Aturan menulis</h2><p>Untuk teks di layar, email undangan, dan pesan error.</p>
  <div class="tbl"><table><thead><tr><th>Lakukan</th><th>Hindari</th></tr></thead><tbody>
  <tr><td>"Wawancara ini untuk mencari bantuan yang Anda butuhkan, bukan untuk menilai Anda."</td><td>"Assessment kinerja karyawan"</td></tr>
@@ -455,7 +494,7 @@ const NAV = {
  spv:[['Tim'],['spv-tim','Tim saya']],
  emp:[['Untuk Anda'],['emp-wawancara','Wawancara saya'],['emp-hasil','Hasil saya']],
  adm:[['Admin ETA'],['adm-tenant','Tenant & fitur']],
- ds:[['Design system'],['ds-panduan','Panduan v1']],
+ ds:[['Design system'],['ds-panduan','Panduan v1.1']],
 };
 const roleOf = v => v.split('-')[0];
 let lastRole = 'hr';
