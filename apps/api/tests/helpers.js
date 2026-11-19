@@ -9,7 +9,8 @@ const SECRET = crypto.randomBytes(32).toString('hex');
 const TEST_PASSWORD = crypto.randomBytes(12).toString('hex');
 
 function makeConfig(overrides = {}) {
-  return loadConfig({ NODE_ENV: 'test', EWI_JWT_SECRET: SECRET, ...overrides });
+  // Test unit memakai login sandi lokal untuk membuat sesi; produk memakai OTP link (lihat session-auth.test.js)
+  return loadConfig({ NODE_ENV: 'test', EWI_JWT_SECRET: SECRET, AUTH_PASSWORD_LOGIN: 'true', ...overrides });
 }
 
 /** Store in-memory untuk test tanpa database. */

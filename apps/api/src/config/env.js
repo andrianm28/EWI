@@ -34,7 +34,8 @@ function loadConfig(env = process.env) {
   // PK-16 / PD-10 ★B: di produksi semua login lewat link email. Login password hanya untuk dev/staging.
   const isProd = env.NODE_ENV === 'production';
   if (isProd && env.AUTH_PASSWORD_LOGIN === 'true') errors.push('AUTH_PASSWORD_LOGIN=true tidak diizinkan di produksi (PD-10)');
-  const allowLocalLogin = !isProd && envFlag(env.AUTH_PASSWORD_LOGIN, true);
+  // Keputusan user 19 Nov (PD-10 B): login lewat OTP link email. Sandi lokal hanya bila dinyalakan eksplisit di dev/uji.
+  const allowLocalLogin = !isProd && envFlag(env.AUTH_PASSWORD_LOGIN, false);
   const etaAdminEmails = (env.ETA_ADMIN_EMAILS || '').split(',').map((e) => e.trim().toLowerCase()).filter(Boolean);
   if (etaAdminEmails.some((e) => !/^[^@\s]+@[^@\s]+$/.test(e))) errors.push('ETA_ADMIN_EMAILS berisi alamat email yang tidak valid');
   const trustProxy = parseTrustProxy(env.TRUST_PROXY);
@@ -75,7 +76,7 @@ function loadConfig(env = process.env) {
       region: env.MAIL_REGION || env.AWS_REGION || 'ap-southeast-3',
     }),
     auth: Object.freeze({
-      // Login dengan sandi lokal: selalu mati di produksi; di dev/staging bisa dimatikan lewat env
+      // Login dengan sandi lokal: selalu mati di produksi; di luar produksi mati kecuali AUTH_PASSWORD_LOGIN diisi true
       localLogin: allowLocalLogin,
       // Admin ETA hanya boleh masuk bila emailnya ada di daftar ini. Di produksi daftar kosong = tidak ada Admin ETA.
       etaAdminEmails: Object.freeze(etaAdminEmails),
