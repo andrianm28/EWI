@@ -19,14 +19,16 @@ const { webhookRouter } = require('./integrations/elitementor/webhook');
 const { createSettingsService } = require('./core/settings');
 const { createAiProvider } = require('./ai');
 const { createCatalogService, elitementorAdapter, moodleAdapter } = require('./integrations/catalog');
-const SUBMODULE_MODULES = ['cca', 'dna', 'tna', 'ina', 'li'].map((k) => require(`./modules/${k}`));
+const { createStorage } = require('./integrations/storage');
+const { createLdSync } = require('./modules/ld/sync');
+const SUBMODULE_MODULES = ['cca', 'dna', 'tna', 'ina', 'li', 'ld'].map((k) => require(`./modules/${k}`));
 
 /**
  * Bangun aplikasi Express. Semua akses data lewat `stores` agar bisa diganti di test.
  * stores: { users, flags, audit, entitlements, projects, people, settings, dna, interviews, tna, projectsExtra }
- * ai / catalog bisa diganti di test; default mengikuti config (T3 dan K-1 masih terbuka).
+ * ai / catalog / storage bisa diganti di test; default mengikuti config (T3 dan K-1 masih terbuka).
  */
-function createApp({ config, stores, ai, catalog, mailer }) {
+function createApp({ config, stores, ai, catalog, mailer, storage }) {
   const app = express();
   const tokens = createTokenService(config.jwt);
   const flags = createFlagService(stores.flags);
@@ -36,7 +38,8 @@ function createApp({ config, stores, ai, catalog, mailer }) {
   // R2-2: store audit wajib di luar test; in-memory hanya untuk test yang tidak menyediakannya.
   if (!stores.audit && config.nodeEnv !== 'test') throw new Error('stores.audit wajib (R2-2)');
   const audit = createAuditService(stores.audit || memoryAuditStore());
-  const links = createEmailLinkService({ stores, mailer: mailer || createMailer(config.mail || {}), appBaseUrl: config.appBaseUrl });
+  const mail = mailer || createMailer(config.mail || {});
+  const links = createEmailLinkService({ stores, mailer: mail, appBaseUrl: config.appBaseUrl });
   const deps = {
     stores,
     flags,
@@ -44,13 +47,20 @@ function createApp({ config, stores, ai, catalog, mailer }) {
     settings,
     ai: ai || createAiProvider(config.aiProvider),
     catalog: catalog || createCatalogService({ elitementor: elitementorAdapter(), moodle: moodleAdapter(stores.catalog) }),
+    // B14: dokumentasi pelatihan. null = EWI_UPLOAD_DIR belum diisi, unggah menjawab 501.
+    storage: storage === undefined ? createStorage(config.uploads || {}) : storage,
+    mailer: mail,
+    uploads: config.uploads || {},
+    appBaseUrl: config.appBaseUrl,
   };
 
   app.use(helmet());
   app.use(cors({ origin: config.corsOrigin.length ? config.corsOrigin : false }));
   // Webhook EliteMentor butuh raw body untuk verifikasi HMAC, jadi dipasang sebelum express.json().
   if (config.elitementor && config.elitementor.webhookSecret) {
-    app.use('/api/integrations/elitementor/webhook', webhookRouter({ secret: config.elitementor.webhookSecret, handler: stores.elitementorEvents?.handle }));
+    // B14: event progres/skor diteruskan ke Learning Delivery (cek entitlement + flag em.webhook_sync ada di sana).
+    const handler = stores.elitementorEvents?.handle || (stores.ld ? createLdSync({ stores, flags, entitlements }) : undefined);
+    app.use('/api/integrations/elitementor/webhook', webhookRouter({ secret: config.elitementor.webhookSecret, handler }));
   }
   app.use(express.json({ limit: '1mb' }));
 

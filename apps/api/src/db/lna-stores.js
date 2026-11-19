@@ -3,6 +3,7 @@
 // dan query data karyawan menerima `scope` dari visibleEmployeeScope() (RG-3).
 const { QueryTypes } = require('sequelize');
 const { createLiStores } = require('./li-stores');
+const { createLdStores } = require('./ld-stores');
 const { evaluate, effectiveRule, metricKey } = require('../modules/tna/performance');
 
 /** scope: { all: true } | { userIds: [...] } -> potongan SQL untuk kolom user id. */
@@ -582,7 +583,7 @@ function createLnaStores(sequelize, { cipher } = {}) {
     },
   };
 
-  return { people, settings, dna, interviews, tna, catalog, projectsExtra, imports, ...createLiStores(sequelize) };
+  return { people, settings, dna, interviews, tna, catalog, projectsExtra, imports, ...createLiStores(sequelize), ...createLdStores(sequelize) };
 }
 
 module.exports = { createLnaStores, scopeSql };
