@@ -117,11 +117,11 @@ function gapRouter({ stores, flags, audit }) {
     }
     if (q.kind === 'okr') {
       if (!METRIC_TYPES.includes(q.metricType) || typeof q.name !== 'string' || !q.name.trim() || typeof q.period !== 'string' || !q.period) {
-        throw badRequest('metricType, name, dan period wajib diisi untuk gap OKR');
+        throw badRequest('Jenis metrik, nama target, dan periode wajib diisi untuk gap OKR');
       }
       return { kind: 'okr', metricType: q.metricType, name: q.name, period: q.period };
     }
-    throw badRequest('kind harus competency atau okr');
+    throw badRequest('Jenis gap tidak dikenal; pilih gap kompetensi atau gap OKR');
   }
 
   // R9: memuat data per orang, jadi setiap pembacaan dicatat

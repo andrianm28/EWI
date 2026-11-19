@@ -1,10 +1,10 @@
 // B5 Training Needs: papan gap dan penugasan wawancara (docs/designs/b5-training-needs.md).
 const {
   toPct, latestScores, competencyGaps, okrGaps, withPareto, gapKeyOf, linkSessions, findingsByGap,
-  visibility, classify, summarize, evidenceFor, HYPOTHESES,
+  visibility, classify, summarize, evidenceFor, HYPOTHESES, isOpen,
 } = require('../../src/modules/tna/gaps');
 const {
-  parseDueDate, validateAssignment, eligibleEmployees, planAssignments, isOpenSession,
+  parseDueDate, validateAssignment, eligibleEmployees, planAssignments,
 } = require('../../src/modules/tna/assignment');
 
 const C1 = '11111111-1111-4111-8111-111111111111';
@@ -273,10 +273,10 @@ describe('penugasan wawancara (R10, R11)', () => {
 
   it('rencana: sesi terbuka dilewati, sesi kedaluwarsa digantikan, sesi selesai tidak menghalangi', () => {
     const t = new Date('2026-11-20T00:00:00Z');
-    expect(isOpenSession({ status: 'scheduled', inviteExpiresAt: '2026-11-21T00:00:00Z' }, t)).toBe(true);
-    expect(isOpenSession({ status: 'scheduled', inviteExpiresAt: '2026-11-19T00:00:00Z' }, t)).toBe(false);
-    expect(isOpenSession({ status: 'in_progress', inviteExpiresAt: '2026-11-19T00:00:00Z' }, t)).toBe(true);
-    expect(isOpenSession({ status: 'completed' }, t)).toBe(false);
+    expect(isOpen({ status: 'scheduled', inviteExpiresAt: '2026-11-21T00:00:00Z' }, t)).toBe(true);
+    expect(isOpen({ status: 'scheduled', inviteExpiresAt: '2026-11-19T00:00:00Z' }, t)).toBe(false);
+    expect(isOpen({ status: 'in_progress', inviteExpiresAt: '2026-11-19T00:00:00Z' }, t)).toBe(true);
+    expect(isOpen({ status: 'completed' }, t)).toBe(false);
     const plan = planAssignments({
       now: t,
       eligible: [{ userId: 'a' }, { userId: 'b' }, { userId: 'c' }, { userId: 'd' }],

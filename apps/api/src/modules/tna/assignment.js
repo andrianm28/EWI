@@ -4,8 +4,7 @@ const { HttpError, badRequest } = require('../../core/errors');
 const { METRIC_TYPES, metricKey } = require('./performance');
 const { isOpen } = require('./gaps');
 
-const DAY_MS = 24 * 60 * 60 * 1000;
-const WIB_OFFSET_MS = 7 * 60 * 60 * 1000;
+const { WIB_OFFSET_MS, wibDay } = require('../interviews/invitation');
 const DUE_MAX_DAYS = 30;
 const DURATIONS = Object.freeze([15, 30]);
 const MODES = Object.freeze(['affected', 'all_job_role']);
@@ -13,7 +12,6 @@ const MAX_EMPLOYEES = 200;
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 const isUuid = (v) => typeof v === 'string' && UUID_RE.test(v);
-const wibDay = (d) => Math.floor((new Date(d).getTime() + WIB_OFFSET_MS) / DAY_MS);
 
 /** Tenggat tanggal WIB -> akhir hari itu (23.59.59 WIB). Paling cepat besok, paling lama 30 hari. */
 function parseDueDate(value, now = new Date()) {
@@ -41,7 +39,7 @@ function parseGap(gap) {
     if (typeof gap.period !== 'string' || !gap.period.trim() || gap.period.length > 32) throw badRequest('Periode target wajib diisi');
     return { kind: 'okr', metricType: gap.metricType, name: gap.name.trim().replace(/\s+/g, ' '), period: gap.period };
   }
-  throw badRequest('Jenis gap harus okr atau competency');
+  throw badRequest('Jenis gap tidak dikenal; pilih gap kompetensi atau gap OKR');
 }
 
 /** Validasi bentuk permintaan penugasan. Keberadaan ID di tenant dicek di router. */
@@ -89,9 +87,6 @@ function eligibleEmployees({ mode, gap, members, records = [], latest = new Map(
     .map((m) => ({ userId: m.id, jobRoleId: m.jobRoleId ?? null, triggerRecordIds: missed.get(m.id) || [] }));
 }
 
-/** Sesi masih menghalangi penugasan baru? Sedang berjalan, atau terjadwal dengan undangan yang belum lewat. */
-const isOpenSession = (s, now = new Date()) => isOpen(s, now);
-
 /**
  * Satu sesi TNA terbuka per orang per proyek. existing: sesi 'scheduled'/'in_progress' proyek itu.
  * Sesi terjadwal yang undangannya sudah lewat digantikan (ditandai abandoned oleh store).
@@ -103,12 +98,12 @@ function planAssignments({ eligible, existing, now = new Date() }) {
   for (const e of eligible) {
     const mine = byUser.get(e.userId) || [];
     if (mine.some((s) => s.status === 'in_progress')) { skipped.push({ employeeId: e.userId, reason: 'in_progress' }); continue; }
-    if (mine.some((s) => isOpenSession(s, now))) { skipped.push({ employeeId: e.userId, reason: 'open_session' }); continue; }
+    if (mine.some((s) => isOpen(s, now))) { skipped.push({ employeeId: e.userId, reason: 'open_session' }); continue; }
     assign.push({ ...e, replaceSessionIds: mine.filter((s) => s.status === 'scheduled').map((s) => s.id) });
   }
   return { assign, skipped };
 }
 
 module.exports = {
-  DURATIONS, MODES, DUE_MAX_DAYS, MAX_EMPLOYEES, isUuid, parseDueDate, validateAssignment, eligibleEmployees, isOpenSession, planAssignments,
+  DURATIONS, MODES, DUE_MAX_DAYS, MAX_EMPLOYEES, isUuid, parseDueDate, validateAssignment, eligibleEmployees, planAssignments,
 };

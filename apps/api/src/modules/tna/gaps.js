@@ -4,7 +4,7 @@
 const { metricKey } = require('./performance');
 
 const SCORE_MAX = 4;
-const REVIEWED = ['approved', 'edited'];
+const { REVIEWED } = require('./review-status');
 const HR_ROLES = ['hr_admin', 'eta_admin'];
 const NUMERIC_TYPES = ['angka', 'persen'];
 // Teks tetap dari mockup Pak Eji (layar detail gap)

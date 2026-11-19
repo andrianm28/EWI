@@ -27,7 +27,7 @@ const { PLAN_STATUSES, PLAN_STATUS_LABEL, initialStatus, canTransition } = requi
 const { gapRouter } = require('./gap-routes');
 
 const REVIEW_DECISIONS = { approve: 'approved', edit: 'edited', reject: 'rejected' };
-const REVIEWED = ['approved', 'edited'];
+const { REVIEWED } = require('./review-status');
 const CATEGORIES = ['training', 'non_training'];
 
 module.exports = {

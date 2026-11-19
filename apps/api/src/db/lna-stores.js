@@ -23,7 +23,7 @@ const PLAN_COLS = `p.id, p.user_id AS "userId", u.name AS "userName", p.finding_
   p.updated_at AS "updatedAt"`;
 
 // PK-14: hanya temuan yang sudah direview yang boleh dipakai di luar antrean review
-const REVIEWED = ['approved', 'edited'];
+const { REVIEWED } = require('../modules/tna/review-status');
 const REVIEW_COLS = `f.id, f.project_id AS "projectId", f.session_id AS "sessionId", f.user_id AS "userId", u.name AS "userName",
   f.category, f.title, f.detail, f.competency_id AS "competencyId", c.name AS "competencyName",
   f.performance_record_id AS "performanceRecordId", pr.name AS "metricName", pr.target::float AS target, pr.actual::float AS actual,
@@ -443,7 +443,7 @@ function createLnaStores(sequelize, { cipher } = {}) {
       return open(tenantId, rows, ['text']);
     },
     /**
-     * Satu pintu penyimpanan giliran (teks sekarang; paket suara B19 memakai fungsi yang sama dengan opts.mode).
+     * Satu pintu penyimpanan giliran.
      * opts.guard = { restartCount }: giliran hanya tersimpan bila sesi masih berjalan, belum punya ringkasan, dan
      * belum diulang sejak permintaan dimulai (B6 A4). null bila tidak tersimpan.
      */

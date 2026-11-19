@@ -72,6 +72,6 @@ function reminderMessage({ kind, name, tenantName, submodule, inviteExpiresAt, a
 }
 
 module.exports = {
-  DAY_MS, INVITE_DAYS, EXTEND_DEFAULT_DAYS, EXTEND_MAX_DAYS, OPEN_STATUSES,
+  DAY_MS, WIB_OFFSET_MS, wibDay, INVITE_DAYS, EXTEND_DEFAULT_DAYS, EXTEND_MAX_DAYS, OPEN_STATUSES,
   inviteExpiry, isExpired, extendedExpiry, parseExtendDays, daysLeft, dueReminder, reminderMessage,
 };

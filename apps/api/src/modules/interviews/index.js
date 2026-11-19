@@ -144,7 +144,7 @@ function interviewRouter({ submodule, stores, ai, aiConfig = {}, audit, analysis
     const q = await nextQuestion(req.tenantId, s, [...turns, { speaker: 'human', text: answer }]);
     // Penjaga di store: bila ringkasan dibuat atau sesi diulang saat AI masih bekerja, giliran ini tidak tersimpan.
     // `mode` diteruskan untuk paket suara (B19); wawancara teks tidak mengisinya.
-    const opts = { guard: { restartCount: s.restartCount }, mode: (req.body || {}).mode };
+    const opts = { guard: { restartCount: s.restartCount } };
     const saved = await stores.interviews.addTurn(req.tenantId, s.id, 'human', answer, opts);
     if (!saved) throw new HttpError(409, 'INVALID_STATE', 'Sesi sudah berubah. Muat ulang halaman ini.');
     const turn = q ? await stores.interviews.addTurn(req.tenantId, s.id, 'ai', q, opts) : null;
