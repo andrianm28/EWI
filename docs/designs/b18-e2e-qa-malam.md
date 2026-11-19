@@ -118,6 +118,9 @@ apps/api/tests/
 | Rekomendasi promosi | Atasan merekomendasi → HR setuju; nama dan waktu tercatat | B16 | thread B16 |
 | Modul mati | Dengan `module.ina` mati: tindakan perbaikan dari tinjauan HR tidak bisa dibuat dan API Improvement Needs mengembalikan 404/403; modul lain tetap jalan. Diulang untuk modul yang ditahan Go/No-Go | B7, B9 | thread integrasi |
 | Entitlement vs flag | Flag menyala tetapi tenant tidak punya entitlement submodul: rute ditolak | sekarang ada | thread integrasi |
+| Tinjauan HR versi mockup | HR mengklasifikasi tiga tombol → temuan pelatihan masuk solusi dengan course usulan → HR menugaskan ke EliteMentor (adapter tiruan) atau, bila `lms.delivery = lms_export`, mengekspor CSV gap; temuan non-pelatihan diserahkan ke Improvement Needs dan tidak bisa diklasifikasi ulang | B7 | thread T5 (B7), `alur-tinjauan-hr.test.js` setelah `driver.js` rilis |
+| Tarik persetujuan dan permintaan data | Karyawan menarik persetujuan → wawancara berhenti, sesi ditandai, draf temuannya keluar dari antrean HR, data tetap ada → HR menutup permintaan dengan `erase: true` → transkrip dan temuan terhapus, audit tercatat sebelum hapus; karyawan meminta hapus data (tenggat 3x24 jam) | B8 | thread T5 (B8), `alur-permintaan-data.test.js` |
+| Asisten ELGOS per peran | Karyawan bertanya tentang rencananya → jawaban dari data sendiri; bertanya tentang karyawan lain → ditolak tanpa panggilan model; atasan → model hanya menerima kode samaran timnya, jawaban memuat nama asli, audit berisi anggota tim; HR → angka tinjauan/gap/rencana cocok; tenant lain tidak ikut; pertanyaan ke-21 dalam 10 menit → 429 | B17 | thread T5 (B17), `alur-asisten.test.js` |
 
 Baris milik paket ditulis oleh thread paket itu di PR-nya, memakai `driver.js`. Thread integrasi memeriksanya saat menggabung (bagian dari review "Spec").
 
