@@ -6,7 +6,7 @@ const SUBMODULES = ['cca', 'dna', 'tna', 'ina']
 const FLAGS: Record<string, boolean> = { 'module.dna': true, 'module.tna': true, 'module.cca': false, 'module.ina': false }
 
 interface TestRoute { name: string; views?: string[]; flag?: string; submodule?: string; menuKey?: string; roles?: string[]; entitlement?: string }
-interface Opts { role?: string; roles?: string[]; flags?: Record<string, boolean>; routes?: TestRoute[]; tenantName?: string; products?: string[] }
+interface Opts { role?: string; roles?: string[]; flags?: Record<string, boolean>; routes?: TestRoute[]; tenantName?: string; products?: string[] | null }
 
 async function loginAs(page: Page, o: Opts = {}) {
   const role = o.role ?? 'hr_admin'
@@ -15,7 +15,7 @@ async function loginAs(page: Page, o: Opts = {}) {
   await page.route('**/api/auth/tenants', (r) => r.fulfill({ json: { data: [] } }))
   await page.route('**/api/auth/login', (r) => r.fulfill({ json: { token: 't', user } }))
   await page.route('**/api/auth/me', (r) => r.fulfill({ json: { user } }))
-  await page.route('**/api/me/access', (r) => r.fulfill({ json: { submodules: SUBMODULES, products: o.products ?? ['full_suite'], flags: { ...FLAGS, ...o.flags } } }))
+  await page.route('**/api/me/access', (r) => r.fulfill({ json: { submodules: SUBMODULES, ...(o.products === null ? {} : { products: o.products ?? ['full_suite'] }), flags: { ...FLAGS, ...o.flags } } }))
   await page.route(/\/api\/(dna|tna)\//, (r) => r.fulfill({ json: { data: [] } }))
   await page.goto('/login')
   await page.getByLabel('Organisasi').fill('demo')
@@ -155,6 +155,19 @@ test('meta.entitlement: modul 2–5 tanpa produk yang dibutuhkan tidak tampil di
   await expect(nav(page).getByRole('link', { name: 'Library' })).toHaveCount(0)
   await page.goto('/uji/lib')
   await expect(page).toHaveURL(/\/$/)
+})
+
+test('meta.entitlement: gagal-tertutup bila /me/access tidak mengirim products', async ({ page }) => {
+  await loginAs(page, { products: null, flags: { 'module.li': true }, routes: [{ name: 'lib', flag: 'module.li', entitlement: 'full_suite' }] })
+  await expect(nav(page).getByRole('link', { name: 'Library' })).toHaveCount(0)
+  await page.goto('/uji/lib')
+  await expect(page).toHaveURL(/\/$/)
+})
+
+test('Admin Tenant yang juga HR: tetap melihat DNA/TNA lama selama layar Pengguna (B11) belum ada', async ({ page }) => {
+  await loginAs(page, { role: 'tenant_admin', roles: ['tenant_admin', 'hr_admin'] })
+  await expect(page.getByTestId('identitas')).toContainText('Admin Tenant')
+  await expect(nav(page).getByRole('link')).toHaveText(['Beranda', 'Developmental Needs', 'Training Needs'])
 })
 
 test('meta.entitlement: tenant full_suite melihat modulnya', async ({ page }) => {
