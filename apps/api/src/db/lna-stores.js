@@ -1026,7 +1026,86 @@ function createLnaStores(sequelize, { cipher } = {}) {
     return { deletedUploaded: (delMeta && delMeta.rowCount) || 0, clearedCommitted: (clrMeta && clrMeta.rowCount) || 0 };
   };
 
-  return { people, settings, dna, interviews, tna, catalog, projectsExtra, imports, aiUsage, analysis };
+  // --- B16 Career & Promotion (docs/designs/b16-career-promotion.md) ---
+  const PROMOTION_COLS = `d.id, d.user_id AS "userId", d.from_level_id AS "fromLevelId", d.to_level_id AS "toLevelId",
+    d.okr_achievement::float AS "okrAchievement", d.supervisor_decision AS "supervisorDecision", d.supervisor_by AS "supervisorBy",
+    sb.name AS "supervisorByName", d.supervisor_at AS "supervisorAt", d.supervisor_note AS "supervisorNote",
+    d.hr_decision AS "hrDecision", d.hr_by AS "hrBy", hb.name AS "hrByName", d.hr_at AS "hrAt", d.hr_note AS "hrNote", d.created_at AS "createdAt"`;
+  const insertAudit = (tenantId, a, transaction) => sequelize.query(
+    `INSERT INTO audit_logs (tenant_id, user_id, action, resource, meta, at) VALUES (:tenantId, :userId, 'update', 'dna.promotion_decision', CAST(:meta AS jsonb), now())`,
+    { replacements: { tenantId, userId: a.userId, meta: JSON.stringify(a.meta) }, transaction });
+  const promotion = {
+    /** Populasi promosi dalam scope: karyawan aktif (bukan HR/pimpinan/admin), dengan divisi dan peran atasannya. */
+    async people(tenantId, scope) {
+      const rep = { tenantId, roles: ['learner', 'supervisor', 'role_leader', 'sme'] };
+      let sql = `SELECT u.id, u.name, u.role, u.supervisor_id AS "supervisorId", s.role AS "supervisorRole",
+                        u.job_role_id AS "jobRoleId", u.career_level_id AS "careerLevelId", jr.name AS "jobRoleName", jr.division
+                   FROM users u
+                   LEFT JOIN lna_job_roles jr ON jr.id = u.job_role_id AND jr.tenant_id = u.tenant_id
+                   LEFT JOIN users s ON s.id = u.supervisor_id AND s.tenant_id = u.tenant_id AND s.status <> 'disabled'
+                  WHERE u.tenant_id = :tenantId AND u.status <> 'disabled' AND u.role IN (:roles)`;
+      sql += scopeSql('u.id', scope, rep);
+      return select(`${sql} ORDER BY u.name NULLS LAST, u.email`, rep);
+    },
+    /** Baris kinerja untuk hitung pencapaian OKR (C2), dari semua proyek. */
+    async okrRecords(tenantId, userIds, metricTypes) {
+      if (!userIds.length || !metricTypes.length) return [];
+      return select(`SELECT user_id AS "userId", metric_type AS "metricType", name, target::float AS target, actual::float AS actual,
+                            is_met AS "isMet", period, direction, value_type AS "valueType", created_at AS "createdAt"
+                       FROM lna_performance_records WHERE tenant_id = :tenantId AND user_id IN (:userIds) AND metric_type IN (:metricTypes)`,
+      { tenantId, userIds, metricTypes });
+    },
+    async decisionsFor(tenantId, userIds) {
+      if (!userIds.length) return [];
+      const rows = await select(`SELECT ${PROMOTION_COLS} FROM lna_promotion_decisions d
+                                   LEFT JOIN users sb ON sb.id = d.supervisor_by AND sb.tenant_id = d.tenant_id
+                                   LEFT JOIN users hb ON hb.id = d.hr_by AND hb.tenant_id = d.tenant_id
+                                  WHERE d.tenant_id = :tenantId AND d.user_id IN (:userIds) ORDER BY d.created_at DESC`, { tenantId, userIds });
+      return open(tenantId, rows, ['supervisorNote', 'hrNote']);
+    },
+    /**
+     * C6: keputusan atasan. Satu siklus terbuka per (karyawan, jenjang tujuan): klik ganda atau penggantian keputusan
+     * memperbarui baris yang sama. Baris audit ditulis dalam transaksi yang sama (C12).
+     * Mengembalikan null bila jenjang tujuan itu sudah disetujui HR.
+     */
+    async supervisorDecide(tenantId, d, audit) {
+      const note = d.note ? await enc(tenantId, d.note) : null;
+      return sequelize.transaction(async (transaction) => {
+        const rep = { tenantId, ...d, note, okr: d.okrAchievement ?? null };
+        const [done] = await sequelize.query(
+          `SELECT 1 FROM lna_promotion_decisions WHERE tenant_id = :tenantId AND user_id = :userId AND to_level_id = :toLevelId AND hr_decision = 'approved' LIMIT 1`,
+          { replacements: rep, transaction });
+        if (done.length) return null;
+        const [[row]] = await sequelize.query(
+          `INSERT INTO lna_promotion_decisions (tenant_id, user_id, from_level_id, to_level_id, okr_achievement, supervisor_decision, supervisor_by, supervisor_at, supervisor_note)
+           VALUES (:tenantId, :userId, :fromLevelId, :toLevelId, :okr, :decision, :by, now(), :note)
+           ON CONFLICT (tenant_id, user_id, to_level_id) WHERE hr_decision IS NULL DO UPDATE
+             SET from_level_id = EXCLUDED.from_level_id, okr_achievement = EXCLUDED.okr_achievement, supervisor_decision = EXCLUDED.supervisor_decision,
+                 supervisor_by = EXCLUDED.supervisor_by, supervisor_at = EXCLUDED.supervisor_at, supervisor_note = EXCLUDED.supervisor_note, updated_at = now()
+           RETURNING id`, { replacements: rep, transaction });
+        await insertAudit(tenantId, { userId: d.by, meta: { ...audit, decisionId: row.id } }, transaction);
+        return row.id;
+      });
+    },
+    /**
+     * C7: keputusan HR, aman terhadap balapan: hanya siklus yang masih terbuka, dan `approved` hanya bila atasan masih merekomendasi.
+     * Mengembalikan false bila tidak ada baris yang berubah (pemanggil membaca ulang untuk menentukan sebabnya).
+     */
+    async hrDecide(tenantId, d, audit) {
+      const note = d.note ? await enc(tenantId, d.note) : null;
+      return sequelize.transaction(async (transaction) => {
+        const [rows] = await sequelize.query(
+          `UPDATE lna_promotion_decisions SET hr_decision = :decision, hr_by = :by, hr_at = now(), hr_note = :note, updated_at = now()
+            WHERE tenant_id = :tenantId AND id = :id AND hr_decision IS NULL${d.decision === 'approved' ? " AND supervisor_decision = 'recommend'" : ''}
+            RETURNING id`, { replacements: { tenantId, id: d.id, decision: d.decision, by: d.by, note }, transaction });
+        if (!rows.length) return false;
+        await insertAudit(tenantId, { userId: d.by, meta: { ...audit, decisionId: d.id } }, transaction);
+        return true;
+      });
+    },
+  };
+
+  return { people, settings, dna, interviews, tna, catalog, projectsExtra, imports, aiUsage, analysis, promotion };
 }
 
 module.exports = { createLnaStores, scopeSql };

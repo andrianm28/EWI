@@ -14,8 +14,11 @@ const DEFAULTS = Object.freeze({
     pareto: { useMiss: true, useImportance: true },
   },
   dna: {
-    // RG-1e terbuka untuk atasan; default paling sempit: hanya HR yang melihat saran kandidat promosi
-    promotionVisibleTo: ['hr_admin'],
+    // B16 (mockup final 19 Nov): HR dan atasan melihat modul promosi; atasan hanya bawahan langsungnya.
+    // Tenant yang mengisi ['hr_admin'] menutup modul ini untuk atasan (RG-1e lama).
+    promotionVisibleTo: ['hr_admin', 'supervisor'],
+    // B16 C2: ambang pencapaian OKR (persen) dan jenis metrik yang dihitung sebagai OKR
+    promotion: { okrMin: 80, metricTypes: ['okr'] },
   },
   lms: {
     // K-1 terbuka: EliteMentor jalur default (adapter masih kosong). PK-18: katalog statis 'moodle' (hasil impor

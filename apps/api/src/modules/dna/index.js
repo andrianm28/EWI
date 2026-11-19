@@ -11,6 +11,7 @@ const { badRequest, notFound, conflict, HttpError } = require('../../core/errors
 const { interviewRouter, wrap } = require('../interviews');
 const { computeGap } = require('./gap');
 const { careerStatus } = require('./career');
+const { careerRoutes } = require('./career-routes');
 const { importRouter } = require('../imports');
 const { getKind } = require('../imports/kinds');
 const { validateRows, commitRows } = require('../imports/engine');
@@ -249,7 +250,8 @@ module.exports = {
       const showPromotion = await canSeePromotion(req, flags, settings);
       const rows = await profiles(stores, req.tenantId, people);
       await audit.readIndividual(req, 'dna.employee_results', { employeeIds: people.map((p) => p.id), objectType: 'dna_profile' });
-      res.json({ data: rows.map((p) => (showPromotion ? p : { ...p, career: { ...p.career, promotionCandidate: undefined } })) });
+      // C14: saran promosi untuk baris diri sendiri selalu disembunyikan
+      res.json({ data: rows.map((p) => (showPromotion && p.id !== req.user.id ? p : { ...p, career: { ...p.career, promotionCandidate: undefined } })) });
     }));
 
     r.get('/employees/:userId', wrap(async (req, res) => {
@@ -264,18 +266,21 @@ module.exports = {
         stores.dna.completions(req.tenantId, [person.id]),
       ]);
       const career = careerStatus({ levels, currentLevelId: person.careerLevelId, completions });
-      if (!(await canSeePromotion(req, flags, settings))) delete career.promotionCandidate;
+      if (person.id === req.user.id || !(await canSeePromotion(req, flags, settings))) delete career.promotionCandidate;
       await audit.readIndividual(req, 'dna.employee_result', { employeeIds: [person.id], objectType: 'dna_profile', objectIds: assessments.map((a) => a.id) });
       res.json({ data: { person, gap: computeGap({ competencies, assessments }), career, completions, levels } });
     }));
 
+    // B16 Career & Promotion (flag promotion.recommendation)
+    r.use('/career', careerRoutes({ stores, settings, flags, audit }));
+
     r.get('/promotion-candidates', requireFlag(flags, FLAGS.PROMOTION_RECOMMENDATION, 'Modul rekomendasi promosi belum diaktifkan'), wrap(async (req, res) => {
       if (!(await canSeePromotion(req, flags, settings))) {
-        throw new HttpError(403, 'ROLE_FORBIDDEN', 'Saran kandidat promosi hanya untuk HR');
+        throw new HttpError(403, 'ROLE_FORBIDDEN', 'Saran kandidat promosi tidak dibuka untuk peran Anda');
       }
       const scope = await scopeFor(req, stores.people);
       const people = await stores.people.list(req.tenantId, scope, { roles: ['learner', 'supervisor', 'role_leader', 'sme'] });
-      const rows = (await profiles(stores, req.tenantId, people)).filter((p) => p.career.promotionCandidate);
+      const rows = (await profiles(stores, req.tenantId, people)).filter((p) => p.career.promotionCandidate && p.id !== req.user.id);
       await audit.readIndividual(req, 'dna.promotion_candidates', { employeeIds: rows.map((p) => p.id), objectType: 'dna_profile' });
       res.json({ data: rows });
     }));
