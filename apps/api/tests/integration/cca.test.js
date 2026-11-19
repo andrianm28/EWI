@@ -113,6 +113,8 @@ run('B10 Core Competencies (Postgres)', () => {
       expect((await send('patch', `/sources/${s.id}`, { status: 'archived' })).body.data.status).toBe('archived');
       expect((await get('/overview?group=vm')).body.data.groups.map((g) => g.title)).toEqual(['Corporate Vision']);
       expect((await get('/sources?archived=1')).body.data.map((x) => x.title)).toContain('Misi lama');
+      // visi selalu sebelum misi, apa pun urutan abjad kind-nya
+      expect((await get('/sources?archived=1')).body.data.map((x) => x.kind)).toEqual(['vision', 'mission', 'value']);
       expect((await send('post', `/sources/${s.id}/requirements`, { name: 'x', targetScore: 50 })).status).toBe(404);
     });
 
@@ -190,7 +192,12 @@ run('B10 Core Competencies (Postgres)', () => {
       const prev = await send('post', `/imports/batches/${id}/preview`, { options: { programKey: 'dna-5c', cutoffDate: '2026-11-15' }, mapping });
       expect(prev.body.data).toMatchObject({ valid: 3, rejectedCount: 3 });
       expect(prev.body.data.rejected.map((r) => r.reason).join('|')).toMatch(/Skor Akhir atau skor komponen.*tidak ditemukan.*tidak ditemukan/);
-      const done = await send('post', `/imports/batches/${id}/commit`, {});
+      // impor ini mengganti seluruh hasil lama, jadi baris yang ditolak menahan penyimpanan
+      const blocked = await send('post', `/imports/batches/${id}/commit`, {});
+      expect(blocked.status).toBe(400);
+      expect(blocked.body.error.message).toMatch(/semua baris harus valid.*3 baris/);
+      const clean = await upload(csv.split('\n').slice(0, 4).join('\n'));
+      const done = await send('post', `/imports/batches/${clean.body.data.id}/commit`, { options: { programKey: 'dna-5c', cutoffDate: '2026-11-15' } });
       expect(done.body.data.result).toMatchObject({ imported: 3, participants: 3, removed: 0 });
 
       const rep = (await get('/programs/dna-5c/report')).body.data;
@@ -211,6 +218,34 @@ run('B10 Core Competencies (Postgres)', () => {
       const rep = (await get('/programs/dna-5c/report')).body.data;
       expect(rep.kpis).toMatchObject({ registered: 1, passed: 1 });
       expect(rep.program.cutoffDate).toBe('2026-11-15');
+    });
+
+    it('template lengkap bisa diunggah apa adanya; kolom di luar jumlah program harus kosong', async () => {
+      const tpl = await request(app).get('/api/cca/imports/templates/cca_program_results.csv').set(as('hr'));
+      const head = tpl.text.replace(/^\uFEFF/, '').split(/\r?\n/)[0];
+      const cols = head.split(',');
+      const row = (fill) => cols.map((c) => fill[c.replace(/^"|"$/g, '')] ?? '').join(',');
+      const base = { 'ID Karyawan': 'E-a', 'Kegiatan Selesai': 2, 'Skor Akhir': 95, 'Skor Nilai 1': 90, 'Skor Nilai 2': 100, 'Skor Komponen 1': 90, 'Skor Komponen 2': 100 };
+      const ok = await upload([head, row(base)].join('\n'));
+      const prev = await send('post', `/imports/batches/${ok.body.data.id}/preview`, { options: { programKey: 'dna-5c' } });
+      expect(prev.body.data).toMatchObject({ valid: 1, rejectedCount: 0 });
+      const extra = await upload([head, row({ ...base, 'Skor Nilai 3': 80 })].join('\n'));
+      const bad = await send('post', `/imports/batches/${extra.body.data.id}/preview`, { options: { programKey: 'dna-5c' } });
+      expect(bad.status).toBe(400);
+      expect(bad.body.error.message).toMatch(/Kolom Skor Nilai lain harus kosong/);
+      const long = await upload([HEAD, `E-a,${'x'.repeat(300)},2,95,90,100,90,100`].join('\n'));
+      const longPrev = await send('post', `/imports/batches/${long.body.data.id}/preview`, { options: { programKey: 'dna-5c' } });
+      expect(longPrev.body.data.rejected[0].reason).toMatch(/Divisi maksimal 255/);
+    });
+
+    it('mengubah program tanpa mengirim field opsional mempertahankan nilai lama; menukar urutan min band diterima', async () => {
+      const swapped = { ...config, passScore: 60, bands: [{ key: 'strong', label: 'Strong', min: 60 }, { key: 'baseline', label: 'Baseline', min: 70 }] };
+      const res = await send('put', '/programs/dna-5c', { name: "Elitery's DNA 5C", config: swapped });
+      expect(res.status).toBe(200);
+      expect(res.body.data).toMatchObject({ cutoffDate: '2026-11-15', provider: 'Elite Academy', insight: 'Skor akhir tertahan kuis.' });
+      expect(res.body.data.recommendations).toHaveLength(1);
+      const back = await send('put', '/programs/dna-5c', { name: "Elitery's DNA 5C", config, insight: null });
+      expect(back.body.data).toMatchObject({ insight: null, cutoffDate: '2026-11-15' });
     });
 
     it('laporan dan impor hanya untuk HR, dan tertutup bagi tenant lain', async () => {
@@ -277,8 +312,9 @@ run('B10 Core Competencies (Postgres)', () => {
       expect(res.body.data.assigned.map((a) => a.assigneeId).sort()).toEqual([u.a, u.b].sort());
       expect(res.body.data.rejected.sort()).toEqual([u.c, u.spv].sort());
 
-      const dir = await send('post', '/assignments', { assigneeIds: [u.c], dueDate: future }, 'dir');
+      const dir = await send('post', '/assignments', { assigneeIds: [u.c, u.a], dueDate: future }, 'dir');
       expect(dir.body.data.assigned.map((a) => a.assigneeId)).toEqual([u.c]);
+      expect(dir.body.data.rejected).toEqual([u.a]);
       expect((await get('/assignments', 'dir')).body.data.team.map((m) => [m.name, m.status])).toEqual([['c', 'assigned']]);
     });
 

@@ -162,32 +162,34 @@ module.exports = {
       if (!KEY_RE.test(key)) throw badRequest('Key program hanya huruf kecil, angka, dan tanda hubung (maksimal 32 karakter)');
       const cfg = validateProgramConfig(body.config);
       if (cfg.error) throw badRequest(cfg.error);
-      let cutoffDate = null;
+      const existing = await stores.cca.getProgram(req.tenantId, key);
+      // Field opsional yang tidak dikirim mempertahankan nilai lama (mis. tanggal cut off yang diisi impor); null mengosongkan.
+      let cutoffDate = has(body, 'cutoffDate') || !existing ? null : existing.cutoffDate;
       if (has(body, 'cutoffDate') && body.cutoffDate !== null && body.cutoffDate !== '') {
         const d = v.date(body.cutoffDate);
         if (!d) throw badRequest('Tanggal cut off tidak valid');
         cutoffDate = v.isoDate(d);
       }
-      const recs = body.recommendations === undefined || body.recommendations === null ? [] : body.recommendations;
+      const recs = body.recommendations === undefined ? (existing ? existing.recommendations : []) : body.recommendations === null ? [] : body.recommendations;
       if (!Array.isArray(recs) || recs.length > 20) throw badRequest('Rekomendasi harus daftar, maksimal 20 butir');
       const recommendations = recs.map((x) => ({
         title: textField(x || {}, 'title', 'Judul rekomendasi', { required: true }),
         detail: textField(x || {}, 'detail', 'Isi rekomendasi', { max: 1000 }) ?? null,
       }));
-      const existing = await stores.cca.getProgram(req.tenantId, key);
       const reshaped = existing && (existing.config.values.length !== cfg.value.values.length || existing.config.components.length !== cfg.value.components.length
-        || existing.config.bands.map((b) => b.key).join() !== cfg.value.bands.map((b) => b.key).join());
+        || existing.config.bands.map((b) => b.key).sort().join() !== cfg.value.bands.map((b) => b.key).sort().join());
       if (reshaped && (existing.manualReport || (await stores.cca.countProgramResults(req.tenantId, existing.id)) > 0)) {
         // skor tersimpan berurut menurut nilai/komponen; mengubah jumlahnya membuat hasil lama salah kolom
         throw new HttpError(409, 'PROGRAM_HAS_RESULTS', 'Jumlah nilai, komponen, atau status tidak bisa diubah setelah hasil diimpor atau diisi. Buat program baru dengan key lain.');
       }
+      const keep = (field, value) => (value === undefined ? (existing ? existing[field] : null) : value);
       const row = await stores.cca.upsertProgram(req.tenantId, {
         key,
         name: textField(body, 'name', 'Nama program', { required: true }),
-        provider: textField(body, 'provider', 'Penyelenggara'),
+        provider: keep('provider', textField(body, 'provider', 'Penyelenggara')),
         cutoffDate,
         config: cfg.value,
-        insight: textField(body, 'insight', 'Temuan', { max: 4000 }),
+        insight: keep('insight', textField(body, 'insight', 'Temuan', { max: 4000 })),
         recommendations,
         updatedBy: req.user.id,
       });
@@ -253,7 +255,8 @@ module.exports = {
         const byAssignee = new Map(leaders.map((a) => [a.assigneeId, a]));
         const rows = eligible.map((u) => {
           const a = byAssignee.get(u.id);
-          const team = a ? employees.filter((e) => e.parentId === a.id) : [];
+          // Dihitung per penugas, bukan per putaran penugasan pimpinan, supaya cocok dengan KPI employeesAssigned
+          const team = employees.filter((e) => e.assignedBy === u.id);
           return {
             userId: u.id, name: u.name, division: u.division ?? null, jobRoleName: u.jobRoleName ?? null,
             assignmentId: a ? a.id : null, status: a ? a.status : 'none', dueDate: a ? a.dueDate : null,

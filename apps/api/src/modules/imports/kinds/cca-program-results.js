@@ -11,7 +11,7 @@ const slots = (prefix, header, n, alias) => Array.from({ length: n }, (_, i) => 
   header: `${header} ${i + 1}`,
   aliases: [`${alias} ${i + 1}`, `${alias}${i + 1}`],
   example: i === 0 ? 90 : '',
-  help: `Angka 0-100. Urutan ke-${i + 1} di konfigurasi program; kosongkan bila belum dikerjakan atau tidak dipakai.`,
+  help: `Angka 0-100. Urutan ke-${i + 1} di konfigurasi program; kosongkan bila belum dikerjakan. Kolom di luar jumlah nilai atau komponen program harus kosong.`,
 }));
 
 const SCORE_ERROR = 'Skor harus angka 0-100';
@@ -28,6 +28,8 @@ module.exports = {
   label: 'Hasil program nilai korporasi',
   description: 'Hasil per karyawan dari laporan program nilai (kegiatan selesai, skor akhir, skor per nilai, skor per komponen). Halaman Core Competencies hanya menampilkan agregatnya.',
   submodules: ['cca'],
+  // Menyimpan impor mengganti seluruh hasil program, jadi baris yang ditolak tidak boleh diam-diam menghapus karyawannya.
+  allOrNothing: true,
   fields: [
     ...EMPLOYEE_FIELDS,
     { key: 'division', header: 'Divisi', aliases: ['division', 'departemen', 'unit', 'unit kerja'], example: 'IT Service Delivery', help: 'Kosong = divisi job role karyawan.' },
@@ -51,12 +53,15 @@ module.exports = {
     // Kolom nilai dan komponen dipetakan menurut urutan konfigurasi. Jumlah kolom terpetakan harus pas,
     // supaya kolom yang terlewat tidak diam-diam dihitung kosong dan urutannya terlihat oleh HR.
     const mapped = new Set(rows.flatMap((r) => Object.keys(r || {})));
+    const filled = new Set(rows.flatMap((r) => Object.keys(r || {}).filter((k) => !v.blank(r[k]))));
     for (const [prefix, list, label] of [['value', program.config.values, 'Skor Nilai'], ['component', program.config.components, 'Skor Komponen']]) {
-      const got = Array.from({ length: prefix === 'value' ? MAX_VALUES : MAX_COMPONENTS }, (_, i) => i + 1).filter((i) => mapped.has(`${prefix}${i}`));
-      const want = list.map((_, i) => i + 1);
-      if (rows.length && got.join(',') !== want.join(',')) {
+      const all = Array.from({ length: prefix === 'value' ? MAX_VALUES : MAX_COMPONENTS }, (_, i) => i + 1);
+      // Template memuat semua slot. Slot di atas jumlah program boleh ikut terpetakan selama seluruh selnya kosong.
+      const missing = list.some((_, i) => !mapped.has(`${prefix}${i + 1}`));
+      const extra = all.some((i) => i > list.length && filled.has(`${prefix}${i}`));
+      if (rows.length && (missing || extra)) {
         const pairs = list.map((x, i) => `${label} ${i + 1} = ${x.name}`).join('; ');
-        return { fatal: `Petakan tepat ${list.length} kolom ${label} sesuai urutan program: ${pairs || 'tidak ada'}` };
+        return { fatal: `Petakan tepat ${list.length} kolom ${label} sesuai urutan program: ${pairs || 'tidak ada'}. Kolom ${label} lain harus kosong.` };
       }
     }
     const roles = await stores.dna.listJobRoles(tenantId);
@@ -75,11 +80,13 @@ module.exports = {
     if (done >= config.totalActivities && finalScore === null && !componentScores.some((x) => x !== null)) {
       return { error: 'Peserta yang selesai butuh Skor Akhir atau skor komponen' };
     }
+    const division = v.text(row.division);
+    if (division && division.length > 255) return { error: 'Divisi maksimal 255 karakter' };
     const u = ctx.find(row);
     if (!u) return { error: NOT_FOUND };
     return {
       value: {
-        programId: ctx.program.id, userId: u.id, division: v.text(row.division) || ctx.divisionOf(u) || 'Tanpa divisi',
+        programId: ctx.program.id, userId: u.id, division: division || ctx.divisionOf(u) || 'Tanpa divisi',
         activitiesDone: done, finalScore, valueScores, componentScores,
       },
     };

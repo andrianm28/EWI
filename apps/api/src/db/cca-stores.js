@@ -32,7 +32,7 @@ function createCcaStores(sequelize, { cipher } = {}) {
     async listSources(tenantId, { includeArchived = false } = {}) {
       const sources = await select(
         `SELECT ${SOURCE_COLS} FROM cca_sources s WHERE s.tenant_id = :tenantId ${includeArchived ? '' : "AND s.status = 'active'"}
-          ORDER BY s.kind, s.position, s.created_at`, { tenantId });
+          ORDER BY CASE s.kind WHEN 'vision' THEN 0 WHEN 'mission' THEN 1 ELSE 2 END, s.position, s.created_at`, { tenantId });
       const reqs = await select(
         `SELECT ${REQ_COLS} FROM cca_requirements r WHERE r.tenant_id = :tenantId ORDER BY r.created_at, r.name`, { tenantId });
       return sources.map((s) => ({ ...s, requirements: reqs.filter((r) => r.sourceId === s.id) }));
