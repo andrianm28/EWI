@@ -1,6 +1,6 @@
 # B0 · Fondasi UI ELGOS
 
-Status: spek setelah review egm dan implementasi, 19 Nov 2026. Paket B0 dari rencana bangun penuh mockup Pak Eji (5 modul, live 2 Des). Hanya menyentuh `apps/web`. Tidak ada perubahan API, migrasi, atau flag baru.
+Status: spek setelah review egm dan implementasi, 19 Nov 2026. Paket B0 dari rencana bangun penuh mockup Pak Eji (5 modul, live 2 Des). Hampir seluruhnya `apps/web`. Tidak ada perubahan API, migrasi, atau flag baru.
 
 Sumber acuan:
 
@@ -171,6 +171,7 @@ Supaya thread-thread paralel tidak mengedit berkas router yang sama:
   - `views?: ViewKey[]` tampilan yang boleh membuka. Bila tampilan aktif tidak termasuk tetapi pengguna punya tampilan lain yang termasuk, tampilan aktif diganti ke tampilan itu (tautan langsung tetap bekerja). Bila tidak punya, diarahkan ke beranda tampilannya;
   - `flag?: string` dan `submodule?: SubmoduleKey` sama seperti aturan menu; gagal → beranda;
   - `roles?: string[]` peran asli dari API yang boleh membuka (cocok dengan salah satu `session.roles`), untuk layar yang lebih sempit dari tampilannya (misalnya tinjauan hasil AI: `['hr_admin', 'eta_admin']`); gagal → beranda. Ini hanya penjaga UI, otorisasi tetap di API;
+  - `entitlement?: string` untuk modul 2–5: produk entitlement yang harus dimiliki tenant (mis. `'full_suite'`), sama dengan pemeriksaan API modulnya. Dibandingkan dengan `access.products` dari `GET /me/access` (ditambahkan PR ini). Bila `products` tidak dikirim, rute dianggap tertutup (gagal-tertutup). Butir menu ikut tersembunyi lewat `routeOpen`;
   - `submoduleParam?: boolean` khusus rute lama `/m/:key`: param `key` diperlakukan sebagai submodul. Paket baru memakai `submodule`; param bernama `key` di rute baru tidak punya arti khusus;
   - `menuKey?: string` butir menu yang menyala.
 - Halaman yang memakai kerangka membungkus isinya dengan `<AppShell>`, seperti halaman lama. Layar penuh (login) cukup tidak memakainya.
@@ -305,7 +306,7 @@ Gerbang: `npm run lint`, `npm test` (API tidak berubah), `npm run build`, `npm r
 - [x] `apps/web/e2e/shell.spec.ts`, `ui-kit.spec.ts`, `__snapshots__/`
 - [x] `README.md` bagian web: menunjuk ke spek ini
 
-Tidak diubah: `LoginView.vue`, `EmailLinkView.vue` (milik B1), halaman lama lain, dan seluruh `apps/api`.
+Tidak diubah: `LoginView.vue`, `EmailLinkView.vue` (milik B1), halaman lama lain, dan `apps/api` kecuali `products` di `GET /me/access` (`app.js`, `core/entitlement/index.js`, `tests/unit/gating.test.js`).
 
 ## 10. Asumsi dan risiko yang tersisa
 
@@ -392,5 +393,7 @@ Dijalankan setelah review diff, terhadap `2048e21...HEAD`, dengan dua subagent t
 | Spek | Menu tidak memeriksa `meta.views` rute | **Perbaiki**: `routeOpen(name, view)` + test |
 | Spek | Fokus ke tombol menu yang tersembunyi di layar lebar | **Perbaiki**: fokus dikembalikan hanya di layar sempit |
 | Spek | Aturan butir aktif rute `interview`, prop `UiStatus.icon`, `homeReady` di checklist | **Perbaiki**: dicatat di 5.2, bagian 4, dan bagian 9 |
+
+**Temuan lintas thread (T8, 19 Nov):** API modul `li`/`ld` memeriksa entitlement `full_suite`, sedangkan menu hanya memeriksa flag, sehingga tenant tanpa `full_suite` melihat menu lalu kena 403. **Perbaiki**: `GET /me/access` mengirim `products` (`entitlements.products()`), rute memakai `meta.entitlement`. Satu-satunya perubahan `apps/api` di B0. Test: `gating.test.js` + dua e2e `meta.entitlement`.
 
 Catatan TDD (`mattpocock-skills:tdd`): skill ini baru diminta setelah implementasi awal B0 (commit `bc0577e` memuat test dan kode bersama). Perbaikan setelah review mengikuti siklus merah ke hijau per perilaku: test e2e ditulis dan dijalankan merah dulu (gerbang beranda di balik flag, `meta.roles`, scrim dan `inert`, `meta.views` pada menu), lalu kodenya. Seam yang diuji: layar lewat browser dengan API di-mock (`page.route`); tidak ada test terhadap fungsi internal router.

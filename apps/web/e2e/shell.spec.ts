@@ -5,8 +5,8 @@ import { test, expect, type Page } from '@playwright/test'
 const SUBMODULES = ['cca', 'dna', 'tna', 'ina']
 const FLAGS: Record<string, boolean> = { 'module.dna': true, 'module.tna': true, 'module.cca': false, 'module.ina': false }
 
-interface TestRoute { name: string; views?: string[]; flag?: string; submodule?: string; menuKey?: string; roles?: string[] }
-interface Opts { role?: string; roles?: string[]; flags?: Record<string, boolean>; routes?: TestRoute[]; tenantName?: string }
+interface TestRoute { name: string; views?: string[]; flag?: string; submodule?: string; menuKey?: string; roles?: string[]; entitlement?: string }
+interface Opts { role?: string; roles?: string[]; flags?: Record<string, boolean>; routes?: TestRoute[]; tenantName?: string; products?: string[] }
 
 async function loginAs(page: Page, o: Opts = {}) {
   const role = o.role ?? 'hr_admin'
@@ -15,7 +15,7 @@ async function loginAs(page: Page, o: Opts = {}) {
   await page.route('**/api/auth/tenants', (r) => r.fulfill({ json: { data: [] } }))
   await page.route('**/api/auth/login', (r) => r.fulfill({ json: { token: 't', user } }))
   await page.route('**/api/auth/me', (r) => r.fulfill({ json: { user } }))
-  await page.route('**/api/me/access', (r) => r.fulfill({ json: { submodules: SUBMODULES, flags: { ...FLAGS, ...o.flags } } }))
+  await page.route('**/api/me/access', (r) => r.fulfill({ json: { submodules: SUBMODULES, products: o.products ?? ['full_suite'], flags: { ...FLAGS, ...o.flags } } }))
   await page.route(/\/api\/(dna|tna)\//, (r) => r.fulfill({ json: { data: [] } }))
   await page.goto('/login')
   await page.getByLabel('Organisasi').fill('demo')
@@ -147,6 +147,19 @@ test('meta.roles: peran asli di luar daftar tidak mendapat butir menu dan tidak 
   await expect(nav(page).getByRole('link')).toHaveText(['Beranda', 'Developmental Needs', 'Training Needs'])
   await page.goto('/uji/dash')
   await expect(page).toHaveURL(/\/$/)
+})
+
+test('meta.entitlement: modul 2–5 tanpa produk yang dibutuhkan tidak tampil di menu dan tidak bisa dibuka', async ({ page }) => {
+  const routes = [{ name: 'lib', flag: 'module.li', entitlement: 'full_suite' }]
+  await loginAs(page, { products: ['dna', 'tna'], flags: { 'module.li': true }, routes })
+  await expect(nav(page).getByRole('link', { name: 'Library' })).toHaveCount(0)
+  await page.goto('/uji/lib')
+  await expect(page).toHaveURL(/\/$/)
+})
+
+test('meta.entitlement: tenant full_suite melihat modulnya', async ({ page }) => {
+  await loginAs(page, { products: ['full_suite'], flags: { 'module.li': true }, routes: [{ name: 'lib', flag: 'module.li', entitlement: 'full_suite' }] })
+  await expect(nav(page).getByRole('link', { name: 'Library' })).toBeVisible()
 })
 
 test('tinjauan hasil AI lama: atasan dikembalikan ke beranda', async ({ page }) => {
