@@ -2,7 +2,7 @@
 
 - Submodul: DNA
 - Paket: B4 (brief bangun penuh 19 Nov, thread T3)
-- Flag: `module.dna` (sudah ada, lewat `requireSubmodule('dna')`) **dan flag baru `dna.development`** (default mati). Semua endpoint B4 di §6 memakai `requireFlag(flags, FLAGS.DNA_DEVELOPMENT)`; flag mati → 403 `FEATURE_DISABLED`, endpoint POC DNA tetap jalan. Layar `/dna` mengalihkan ke halaman POC `/m/dna` bila flag mati (§11).
+- Flag: `module.dna` (sudah ada, lewat `requireSubmodule('dna')`) **dan flag baru `dna.development`** (default mati). Semua endpoint B4 di §6 (termasuk `PATCH /competencies/:id` yang dipasang di `dna/index.js`) memakai `requireFlag(flags, FLAGS.DNA_DEVELOPMENT)` lewat `b4Flag()`; kolom opsional baru di `POST /competencies` dan `/competencies/bulk` serta impor tidak di balik flag karena aditif (perilaku lama tidak berubah); flag mati → 403 `FEATURE_DISABLED`, endpoint POC DNA tetap jalan. Layar `/dna` mengalihkan ke halaman POC `/m/dna` bila flag mati (§11).
 - Migrasi: blok 04 → `20261119000400-dna-developmental-needs.js`
 - Cakupan: API, domain, store, impor, test, dan layar Vue di atas B0 (`apps/web/src/screens/b4-dna`, rute `dna` di `/dna`). Sesi thread ini hanya boleh push ke satu branch, jadi B4, B16, dan layarnya berada di satu PR (#22) dengan commit terpisah.
 - Reviewer wajib: Andrian (migrasi, `core/errors`, `core/flags`, kode impor bersama).

@@ -85,7 +85,7 @@ dna: {
      - `direction = 'lower'`: `actual` ≤ 0 → 100; selain itu `target / actual × 100`.
      - selain itu (`higher`): `target` ≤ 0 → baris dilewati; selain itu `actual / target × 100`.
      - hasil dibatasi 0–100.
-  5. Pencapaian = rata-rata sederhana baris yang tidak dilewati, dibulatkan **dua desimal**. Ambang dibandingkan dengan nilai dua desimal itu (79,50 tidak lolos 80); layar membulatkan ke bawah untuk tampilan supaya tidak menyeberangi ambang.
+  5. Pencapaian = rata-rata sederhana baris yang tidak dilewati, dibulatkan **dua desimal**. Ambang dibandingkan dengan nilai dua desimal itu (79,50 tidak lolos 80); layar membulatkan biasa untuk tampilan, kecuali bila pembulatan menyeberangi ambang (79,5 → 79%, bukan 80%).
   6. Tidak ada baris yang terhitung → `null`.
   - `[⚠️ BELUM TERVERIFIKASI]` Rumus, pemilihan periode, format periode campuran, dan batas umur periode (OKR lama tetap dipakai bila tidak ada yang baru) adalah asumsi sampai format OKR Mas Abdan (26 Nov) diketahui. Mockup hanya menampilkan satu persen OKR tanpa rumus.
 - **C3 Memenuhi syarat** (`eligible`) = ada jenjang berikutnya, `currentTierPassed !== false`, `nextTierPassed === true`, dan pencapaian OKR ≥ `okrMin`. OKR `null` tidak memenuhi.
@@ -227,7 +227,7 @@ Satu-satunya daftar status terbuka spek ini.
 
 - Rute `cp` (`/cp`, `meta.views` hr/atasan/super, `meta.roles` `hr_admin`/`supervisor`/`eta_admin`, flag `promotion.recommendation`, submodul `dna`). `meta.roles` menutup layar untuk peran tampilan `atasan` lain (pimpinan, `role_leader`) yang API-nya menolak.
 - Tiga tab mockup: Karyawan per divisi (KPI, filter divisi termasuk "Tanpa divisi", tabel, kartu bukti), Jalur jenjang (kartu per jenjang dengan kalimat aturan, "Cara kerja kenaikan jabatan" mengikuti teks mockup), Keputusan promosi (tabel, catatan opsional, tombol dari `actions`, alasan dari `blockedReason`, termasuk "Anda yang merekomendasi" untuk `self_recommended`).
-- Persen OKR dibulatkan ke bawah untuk tampilan tanpa menyeberangi ambang (79,5 tampil 79%).
+- Persen OKR dibulatkan biasa untuk tampilan; bila pembulatan menyeberangi ambang dipakai pembulatan ke bawah (79,5 tampil 79%).
 - Teks cakupan atasan memakai "bawahan langsung" (§2).
 
 ## 12. Perubahan file
