@@ -19,3 +19,19 @@ Nama produk: **ELGOS** (Elite Learning & Growth Operating System). EWI adalah na
 5. JWT ELGOS memakai `EWI_JWT_SECRET` dan audience `ewi`. Tidak ada fallback secret.
 6. Migrasi baru: raw SQL di `apps/api/migrations`, wajib punya `down`, CI menjalankan naik-turun-naik.
 7. Reviewer wajib Andrian untuk auth, kode bersama, dan migrasi.
+
+## Agent skills
+
+Konfigurasi untuk skill engineering Matt Pocock (`mattpocock-skills`). Skill ini melengkapi alur spek di `docs/designs/` dan Prinsip egm, tidak menggantikannya.
+
+### Issue tracker
+
+GitHub Issues di `andrianm28/EWI` untuk isu skill agen; status tiket `ELITMEN-xxx` tetap di Asana. See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+Lima label bawaan: `needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-human`, `wontfix`. See `docs/agents/triage-labels.md`.
+
+### Domain docs
+
+Single-context: `CONTEXT.md` di root dan ADR di `docs/adr/`; spek paket di `docs/designs/`. See `docs/agents/domain.md`.
