@@ -11,7 +11,7 @@ const run = process.env.DATABASE_URL ? describe : describe.skip;
 
 run('Learning Intervention (Postgres)', () => {
   let db; let app; let stores; let tenant; let other; const u = {}; const tok = {};
-  let role; let comp; let project; let catalogItem; let otherCatalogItem;
+  let role; let comp; let project; let catalogItem; let otherCatalogItem; let inactiveCatalogItem;
   const as = (who) => ({ Authorization: `Bearer ${tok[who]}` });
   const get = (path, who = 'hr') => request(app).get(`/api/li${path}`).set(as(who));
   const post = (path, body, who = 'hr') => request(app).post(`/api/li${path}`).set(as(who)).send(body || {});
@@ -54,6 +54,7 @@ run('Learning Intervention (Postgres)', () => {
     comp = await stores.dna.createCompetency(tenant.id, { jobRoleId: role.id, careerLevelId: null, kind: 'job', name: 'Root Cause Analysis', definition: null, indicators: [], source: 'dacum', requiredScore: 3, importance: 5 });
     [[project]] = await db.query(`INSERT INTO lna_projects (tenant_id, name) VALUES (:t, 'Pilot') RETURNING id`, { replacements: { t: tenant.id } });
     [[catalogItem]] = await db.query(`INSERT INTO lna_catalog_items (tenant_id, source, external_ref, title) VALUES (:t, 'moodle', 'C-1', 'Course RCA') RETURNING id`, { replacements: { t: tenant.id } });
+    [[inactiveCatalogItem]] = await db.query(`INSERT INTO lna_catalog_items (tenant_id, source, external_ref, title, active) VALUES (:t, 'moodle', 'C-OFF', 'Course lama', false) RETURNING id`, { replacements: { t: tenant.id } });
     [[otherCatalogItem]] = await db.query(`INSERT INTO lna_catalog_items (tenant_id, source, external_ref, title) VALUES (:t, 'moodle', 'C-X', 'Course lain') RETURNING id`, { replacements: { t: other.id } });
   });
 
@@ -153,10 +154,12 @@ run('Learning Intervention (Postgres)', () => {
 
     const rid = made.body.data.id;
     expect((await patch(`/requests/${rid}`, { status: 'installed' })).body.error.code).toBe('INVALID_TRANSITION');
+    for (const body of [{}, { status: 'apa' }]) expect((await patch(`/requests/${rid}`, body)).status).toBe(400); // status kosong/tidak dikenal: salah isi, bukan konflik
     expect((await patch(`/requests/${rid}`, { status: 'confirmed', catalogItemId: catalogItem.id })).status).toBe(400);
     expect((await patch(`/requests/${rid}`, { status: 'confirmed' })).body.data.status).toBe('confirmed');
     expect((await patch(`/requests/${rid}`, { status: 'delivered' })).body.data.status).toBe('delivered');
     expect((await patch(`/requests/${rid}`, { status: 'installed', catalogItemId: otherCatalogItem.id })).status).toBe(400); // course tenant lain
+    expect((await patch(`/requests/${rid}`, { status: 'installed', catalogItemId: inactiveCatalogItem.id })).status).toBe(400); // course nonaktif
     const installed = await patch(`/requests/${rid}`, { status: 'installed', catalogItemId: catalogItem.id });
     expect(installed.body.data).toMatchObject({ status: 'installed' });
     expect(installed.body.data.installedAt).toBeTruthy();
@@ -226,18 +229,21 @@ run('Learning Intervention (Postgres)', () => {
     // rancangan disetujui belum berarti modul tersedia
     expect((await byCode('ST-A2')).status).toEqual({ key: 'dev_approved', via: 'elgos' });
     expect((await patch(`/modules/${m.id}`, { catalogItemId: otherCatalogItem.id })).status).toBe(400);
+    expect((await patch(`/modules/${m.id}`, { catalogItemId: inactiveCatalogItem.id })).status).toBe(400); // tidak ada di /catalog
     expect((await patch(`/modules/${m.id}`, {})).status).toBe(400);
     expect((await patch(`/modules/${m.id}`, { catalogItemId: catalogItem.id })).body.data.status).toEqual({ key: 'available', via: 'catalog' });
     expect((await patch(`/modules/${m.id}`, { catalogItemId: null })).body.data.status.key).toBe('dev_approved');
     const log = await audits('li.module_draft');
-    expect(log.map((a) => a.meta.to || a.action)).toEqual(['create', 'sme_review', 'returned', 'sme_review', 'approved']);
-    expect(log[4].meta).toMatchObject({ reviewerName: 'Pak Budi (SME)', recordedByHr: true });
+    expect(log.map((a) => a.meta.to || a.action)).toEqual(['create', 'update', 'update', 'sme_review', 'returned', 'sme_review', 'approved']);
+    expect(log[1].meta).toMatchObject({ draftId: d.id, fields: ['objectives'] });
+    expect(log[6].meta).toMatchObject({ reviewerName: 'Pak Budi (SME)', recordedByHr: true });
   });
 
   it('katalog course untuk menautkan modul hanya milik tenant ini', async () => {
     const list = (await get('/catalog')).body.data;
     expect(list.map((c) => c.id)).toContain(catalogItem.id);
     expect(list.map((c) => c.id)).not.toContain(otherCatalogItem.id);
+    expect(list.map((c) => c.id)).not.toContain(inactiveCatalogItem.id);
     expect((await get('/catalog', 'dimas')).status).toBe(403);
   });
 

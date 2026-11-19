@@ -141,7 +141,7 @@ function createLiStores(sequelize) {
         if (to === 'installed' && catalogItemId) {
           await write(`UPDATE li_modules SET catalog_item_id = :catalogItemId, updated_at = now()
                         WHERE tenant_id = :tenantId AND id = :moduleId
-                          AND EXISTS (SELECT 1 FROM lna_catalog_items ci WHERE ci.tenant_id = :tenantId AND ci.id = :catalogItemId)`,
+                          AND EXISTS (SELECT 1 FROM lna_catalog_items ci WHERE ci.tenant_id = :tenantId AND ci.id = :catalogItemId AND ci.active)`,
           { tenantId, moduleId: rows[0].module_id, catalogItemId }, t);
         }
         return li.getRequest(tenantId, id, t);
@@ -173,12 +173,13 @@ function createLiStores(sequelize) {
       const rows = await write(
         `UPDATE li_modules SET catalog_item_id = :catalogItemId, updated_at = now()
           WHERE tenant_id = :tenantId AND id = :moduleId
-            AND (CAST(:catalogItemId AS uuid) IS NULL OR EXISTS (SELECT 1 FROM lna_catalog_items ci WHERE ci.tenant_id = :tenantId AND ci.id = :catalogItemId))
+            AND (CAST(:catalogItemId AS uuid) IS NULL OR EXISTS (SELECT 1 FROM lna_catalog_items ci WHERE ci.tenant_id = :tenantId AND ci.id = :catalogItemId AND ci.active))
           RETURNING id`, { tenantId, moduleId, catalogItemId: catalogItemId || null });
       return rows.length > 0;
     },
+    /** Course aktif milik tenant (sama dengan pilihan di /catalog). */
     async catalogItemExists(tenantId, id) {
-      return !!(await one('SELECT 1 AS x FROM lna_catalog_items WHERE tenant_id = :tenantId AND id = :id', { tenantId, id }));
+      return !!(await one('SELECT 1 AS x FROM lna_catalog_items WHERE tenant_id = :tenantId AND id = :id AND active', { tenantId, id }));
     },
 
     // --- Draf pengembangan ---
