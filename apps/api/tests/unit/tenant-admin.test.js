@@ -47,7 +47,8 @@ describe('Akses Admin Tenant (B11)', () => {
     expect(isTenantAdmin({ role: 'tenant_admin' })).toBe(true);
     expect(isTenantAdmin({ role: 'hr_admin' })).toBe(true); // ⏳ dicabut setelah B2 (spek 4.2)
     for (const role of ['learner', 'supervisor', 'pimpinan', 'role_leader', 'sme']) expect(isTenantAdmin({ role })).toBe(false);
-    expect(isTenantAdmin({ role: 'learner', roles: ['learner', 'tenant_admin'] })).toBe(true);
+    // kontrak B2: hanya peran aktif yang dihitung, bukan daftar peran yang boleh dipilih
+    expect(isTenantAdmin({ role: 'learner', roles: ['learner', 'tenant_admin'] })).toBe(false);
     expect(isTenantAdmin(null)).toBe(false);
   });
 

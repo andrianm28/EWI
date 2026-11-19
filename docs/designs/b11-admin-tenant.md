@@ -50,7 +50,7 @@ Satu fungsi `isTenantAdmin(user)` di `src/modules/tenant-admin/access.js` menjad
 - `eta_admin` lolos (Super Admin, konsisten dengan `requireRole`);
 - peran `tenant_admin` lolos (peran ini belum ada di `ROLES` dan belum diizinkan CHECK kolom `users.role`; B2 yang menambahkannya);
 - `hr_admin` lolos **sementara**. `[⏳ DITERIMA]` Alasan: sampai B2 masuk, tidak ada akun yang bisa berperan `tenant_admin`, sedangkan PK-13 membuat pengelola tenant sebagai `hr_admin`, dan mockup menyebut Admin Tenant "juga HR". Setelah B2 masuk, `hr_admin` dicabut dari fungsi ini (satu baris) kecuali user memutuskan lain. Test yang dijadwalkan: `tenant-admin.test.js › hr_admin lolos sementara` diubah menjadi menolak pada PR lanjutan B2.
-- bila B2 memakai daftar `user.roles`, fungsi ini juga membaca daftar itu. `[⚠️ BELUM TERVERIFIKASI]` Nama peran `tenant_admin` dan bentuk multi-peran adalah usulan ke thread T2 (B2), belum disepakati.
+- Kontrak B2 (dikonfirmasi T2, 19 Nov, `docs/designs/b2-peran.md` di branch `claude/project-thread-4dlxoy`): nama peran `tenant_admin`; `req.user.role` adalah peran aktif bernilai tunggal dan satu-satunya dasar otorisasi; `req.user.roles` (peran yang boleh dipilih) tidak pernah meloloskan akses. Pemberian banyak peran per akun adalah rute B2 (`GET/PUT /api/users/:id/roles`, flag `auth.multi_role`); layar Pengguna & peran memanggilnya setelah B2 masuk, sedangkan `PATCH /users/:id` paket ini tetap mengatur peran utama.
 
 Gerbang `requireTenantAdmin(store)` **membaca ulang peran dan status pelaku dari DB di setiap request** (`tenantAdmin.actor`), bukan hanya dari klaim token. Alasannya: token berlaku sampai 8 jam dan layar ini memberi peran, jadi admin yang diturunkan atau dinonaktifkan harus langsung kehilangan akses ke sini. Pelaku harus `active` dan lolos `isTenantAdmin` baik menurut token maupun menurut DB.
 
@@ -242,7 +242,7 @@ Review oleh subagent baru tanpa riwayat percakapan, 19 Nov 2026. 15 temuan (3 be
 | 3 | Aturan opsi `jobRoleId`/`source` belum terdefinisi | **Perbaiki.** Tabel aturan di 6.3, tiap baris punya test unit |
 | 4 | Arti `invited` tidak cocok dengan akun hasil impor | **Perbaiki.** `pendingLogin` dan tabel transisi (6.1) |
 | 5 | Impor admin melewati flag modul dan kill switch | **Perbaiki sebagian.** Kill switch dihormati; flag tenant sengaja tidak, ditandai ⏳ untuk Andrian |
-| 6 | Bergantung pada bentuk B2 | **Tunda.** Ditandai ⚠️; usulan nama `tenant_admin` dikirim ke T2. Peran yang bisa diberikan tetap 7 persona yang ada di kode dikurangi `eta_admin`, karena membatasinya ke 5 peran mockup adalah keputusan B2 |
+| 6 | Bergantung pada bentuk B2 | **Perbaiki.** T2 mengonfirmasi kontrak (4.2): nama `tenant_admin`, otorisasi hanya dari peran aktif. Peran yang bisa diberikan tetap 7 persona yang ada di kode dikurangi `eta_admin`, karena membatasinya ke 5 peran mockup adalah keputusan B2 |
 | 7 | Eskalasi lewat pemberian `hr_admin`; lockout | **Tolak sebagian.** Memberi `hr_admin` adalah fungsi layar (diaudit). `LAST_ADMIN` tidak perlu karena `SELF_CHANGE` + gerbang DB menjamin pelaku tetap admin aktif. Kasus `eta_admin` terhadap `eta_admin` ditulis di 4.3 |
 | 8 | Chip SSO memakai `em.sso` | **Perbaiki.** Memakai `auth.sso` bila ada, selain itu `false` |
 | 9 | Pencocokan batch lewat `options.period` tidak andal | **Perbaiki.** Lewat `import_batch_id` |

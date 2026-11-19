@@ -20,15 +20,13 @@ const ROLE_LABELS = Object.freeze({
   [ROLES.SME]: 'Narasumber (SME)',
 });
 
-/** Semua peran user: `role` tunggal hari ini, ditambah `roles` bila B2 memakai daftar. */
-function rolesOf(user) {
-  if (!user) return [];
-  return [user.role, ...(Array.isArray(user.roles) ? user.roles : [])].filter(Boolean);
-}
-
+/**
+ * Kontrak B2 (docs/designs/b2-peran.md): otorisasi hanya dari peran AKTIF (`user.role`). Daftar `user.roles`
+ * (peran yang boleh dipilih lewat ganti peran) tidak pernah meloloskan akses.
+ */
 function isTenantAdmin(user) {
-  const roles = rolesOf(user);
-  return roles.includes(ROLES.ETA_ADMIN) || roles.includes(TENANT_ADMIN) || roles.some((r) => INTERIM_ADMIN_ROLES.includes(r));
+  const role = user && user.role;
+  return role === ROLES.ETA_ADMIN || role === TENANT_ADMIN || INTERIM_ADMIN_ROLES.includes(role);
 }
 
 const denied = () => forbidden('ROLE_FORBIDDEN', 'Layar ini hanya untuk Admin Tenant');
