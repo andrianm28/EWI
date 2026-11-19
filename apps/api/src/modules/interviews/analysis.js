@@ -72,6 +72,11 @@ function createAnalysisRunner({ stores, ai, aiConfig = {}, logger = console, max
     try {
       const session = await stores.interviews.get(tenantId, job.sessionId);
       if (!session) throw Object.assign(new Error('Sesi tidak ditemukan'), { code: 'SESSION_MISSING' });
+      // B8: persetujuan ditarik -> transkrip tidak dikirim ke model dan job tidak diulang.
+      if (session.consentWithdrawnAt) {
+        await stores.analysis.fail(tenantId, job, { code: 'CONSENT_WITHDRAWN', retryInSeconds: 0, final: true });
+        return { skipped: true, code: 'CONSENT_WITHDRAWN' };
+      }
       const saved = await analyze(job, session);
       return saved || { skipped: true };
     } catch (e) {

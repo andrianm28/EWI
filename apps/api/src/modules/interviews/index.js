@@ -100,8 +100,9 @@ function interviewRouter({ submodule, stores, ai, aiConfig = {}, audit, analysis
     }
     // Pertanyaan dibuat dulu: bila AI gagal, sesi tetap 'scheduled' dan persetujuan bisa diulang.
     const q = await nextQuestion(req.tenantId, s, []);
-    const now = new Date();
-    await stores.interviews.update(req.tenantId, s.id, { consentAt: now, consentVersion, startedAt: now, status: 'in_progress' });
+    // B8: mulai bersyarat, supaya penarikan persetujuan atau permintaan ganda yang tiba bersamaan tidak tertimpa.
+    const started = await stores.interviews.start(req.tenantId, s.id, { consentAt: new Date(), consentVersion });
+    if (!started) throw new HttpError(409, 'INVALID_STATE', 'Sesi sudah dimulai, selesai, atau dihentikan');
     await audit.record(req, 'create', `${submodule}.interview_consent`, { employeeIds: [s.intervieweeId], objectType: 'interview_session', objectIds: [s.id], consentVersion });
     const turn = q ? await stores.interviews.addTurn(req.tenantId, s.id, 'ai', q) : null;
     res.json({ data: { status: 'in_progress', consentVersion, question: turn } });
@@ -133,9 +134,11 @@ function interviewRouter({ submodule, stores, ai, aiConfig = {}, audit, analysis
     // Pertanyaan dibuat sebelum jawaban disimpan: bila AI gagal, tidak ada yang tersimpan dan jawaban bisa dikirim ulang.
     const turns = await stores.interviews.turns(req.tenantId, s.id);
     const q = await nextQuestion(req.tenantId, s, [...turns, { speaker: 'human', text: answer }]);
-    await stores.interviews.addTurn(req.tenantId, s.id, 'human', answer);
+    // B8: giliran hanya tersimpan selama sesi masih berjalan (sesi bisa dihentikan saat AI menyusun pertanyaan).
+    const saved = await stores.interviews.addTurn(req.tenantId, s.id, 'human', answer);
+    if (!saved) throw new HttpError(409, 'INVALID_STATE', 'Sesi belum dimulai atau sudah selesai');
     const turn = q ? await stores.interviews.addTurn(req.tenantId, s.id, 'ai', q) : null;
-    res.json({ data: { question: turn, done: !q } });
+    res.json({ data: { question: turn, done: !q || !turn } });
   }));
 
   r.post('/:id/complete', wrap(async (req, res) => {

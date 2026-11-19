@@ -16,6 +16,7 @@ const { requireSubmodule } = require('./core/entitlement/guard');
 const { errorHandler, notFound } = require('./core/errors');
 const projects = require('./modules/projects');
 const { employeeRouter } = require('./modules/employees');
+const { myRouter } = require('./modules/my');
 const { webhookRouter } = require('./integrations/elitementor/webhook');
 const { createElitementorClient } = require('./integrations/elitementor/client');
 const { createAssignmentService } = require('./integrations/elitementor/assignments');
@@ -81,6 +82,8 @@ function createApp({ config, stores, ai, catalog, mailer, assignments }) {
   api.use('/projects', projects.router({ projects: stores.projects }));
   api.use('/admin', flagAdminRouter({ flags, audit }));
   if (stores.people && stores.interviews) api.use('/employees', employeeRouter({ stores, flags, audit }));
+  // B8: beranda karyawan. Bukan submodul; tiap bagian memeriksa modulnya sendiri (flag learner.home).
+  if (stores.people && stores.dataRequests) api.use('/my', myRouter({ stores, flags, entitlements, settings, audit }));
   if (stores.loginLinks) api.use('/invitations', invitationRoutes({ users: stores.users, links, audit }));
   for (const m of SUBMODULE_MODULES) {
     api.use(`/${m.key}`, requireSubmodule(m.key, { entitlements, flags }), m.router(deps));

@@ -16,4 +16,9 @@ function requireSubmodule(submodule, { entitlements, flags }) {
   };
 }
 
-module.exports = { requireSubmodule };
+/** Sama dengan requireSubmodule, sebagai fungsi: dipakai layar gabungan (beranda karyawan) yang memuat beberapa modul. */
+async function submoduleActive({ entitlements, flags }, tenantId, submodule) {
+  return (await entitlements.has(tenantId, submodule)) && (await flags.isEnabled(tenantId, `module.${submodule}`));
+}
+
+module.exports = { requireSubmodule, submoduleActive };

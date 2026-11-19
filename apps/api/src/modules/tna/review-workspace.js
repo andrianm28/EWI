@@ -59,6 +59,8 @@ function reviewWorkspaceRouter({ stores, settings, catalog, flags, audit, assign
     let out; let decision;
 
     if (current.reviewStatus === 'draft') {
+      // B8: draf dari wawancara yang persetujuannya ditarik tidak diteruskan
+      if (current.consentWithdrawnAt) throw conflict('CONSENT_WITHDRAWN', 'Karyawan menarik persetujuan wawancara ini, temuannya tidak bisa direview');
       if (classification === 'needs_review') {
         out = await stores.tna.holdFinding(req.tenantId, current.id, { note: cleanNote, reviewerId: base.reviewerId });
         decision = 'hold';

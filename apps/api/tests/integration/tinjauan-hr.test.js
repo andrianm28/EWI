@@ -65,8 +65,9 @@ run('B7 tinjauan HR (Postgres)', () => {
     competencyId = c.id;
     const s = await stores.interviews.create(tenant.id, { projectId, submodule: 'tna', intervieweeId: u.ani });
     sessionId = s.id;
-    await db.query(`UPDATE lna_interview_sessions SET status = 'completed', ended_at = now() WHERE id = :id`, { replacements: { id: sessionId } });
+    await db.query(`UPDATE lna_interview_sessions SET status = 'in_progress' WHERE id = :id`, { replacements: { id: sessionId } });
     await stores.interviews.addTurn(tenant.id, sessionId, 'human', 'RAHASIA-TRANSKRIP');
+    await db.query(`UPDATE lna_interview_sessions SET status = 'completed', ended_at = now() WHERE id = :id`, { replacements: { id: sessionId } });
     const [[xp]] = await db.query(`INSERT INTO lna_projects (tenant_id, name) VALUES (:t, 'X') RETURNING id`, { replacements: { t: other.id } });
     f.x = (await stores.tna.insertFinding(other.id, { projectId: xp.id, userId: u.xl, category: 'non_training', title: 'Milik tenant lain', reviewStatus: 'approved' })).id;
   });

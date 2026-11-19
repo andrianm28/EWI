@@ -182,6 +182,8 @@ module.exports = {
       const current = await stores.tna.getReviewItem(req.tenantId, req.params.id);
       if (!current) throw notFound('Temuan tidak ditemukan');
       if (current.reviewStatus !== 'draft') throw new HttpError(409, 'ALREADY_REVIEWED', 'Temuan ini sudah direview');
+      // B8: draf dari wawancara yang persetujuannya ditarik tidak diteruskan
+      if (current.consentWithdrawnAt) throw new HttpError(409, 'CONSENT_WITHDRAWN', 'Karyawan menarik persetujuan wawancara ini, temuannya tidak bisa direview');
       const out = await stores.tna.reviewFinding(req.tenantId, current.id, {
         decision: status, title: patch.title, detail: patch.detail, category: decision === 'edit' ? category : undefined, note: patch.note, reviewerId: req.user.id,
       });
