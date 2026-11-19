@@ -192,6 +192,7 @@ run('B5 Training Needs: gap dan penugasan (Postgres)', () => {
     expect(d.employees.map((e) => e.id).sort()).toEqual([u.a, u.b, u.spv].sort());
     expect(d.employees.find((e) => e.id === u.spv)).toMatchObject({ self: true, assignable: false, value: 2, gap: 1 });
     expect(d.employees.find((e) => e.id === u.a)).toMatchObject({ self: false, assignable: true, value: 1, target: 3, gap: 2, session: null });
+    expect(d.employees.find((e) => e.id === u.a).jobRoleId).toEqual(expect.any(String)); // kontrak layar: mode all_job_role
     const [audit] = await q(`SELECT meta FROM audit_logs WHERE tenant_id = :t AND resource = 'tna.gap_detail' AND user_id = :userId`, { t: T.main.id, userId: u.spv });
     expect(audit.meta.employeeIds.sort()).toEqual([u.a, u.b, u.spv].sort());
 

@@ -32,7 +32,7 @@ test('POC Desember: DNA dan TNA terbuka, INA belum aktif', async ({ page }) => {
   await expect(page.getByTestId('card-ina')).toContainText('Belum aktif')
 
   await page.getByTestId('card-tna').getByRole('link', { name: 'Buka' }).click()
-  await expect(page.getByRole('heading', { level: 1, name: /TNA/ })).toBeVisible()
+  await expect(page.getByRole('heading', { level: 1, name: 'Training Needs' })).toBeVisible() // B5: judul mengikuti mockup
 
   await page.goto('/m/ina')
   await expect(page).toHaveURL(/\/$/)

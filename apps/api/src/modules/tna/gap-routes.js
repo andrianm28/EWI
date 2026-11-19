@@ -133,7 +133,7 @@ function gapRouter({ stores, flags, audit }) {
     if (!row) throw notFound('Gap tidak ditemukan');
     const link = b.links.get(key);
     const session = (id) => (link && link.byUser.get(id)) || null;
-    const base = (m) => ({ id: m.id, name: m.name, jobRoleName: m.jobRoleName ?? null, self: m.id === req.user.id, assignable: m.id !== req.user.id, session: session(m.id) });
+    const base = (m) => ({ id: m.id, name: m.name, jobRoleId: m.jobRoleId ?? null, jobRoleName: m.jobRoleName ?? null, self: m.id === req.user.id, assignable: m.id !== req.user.id, session: session(m.id) });
     let employees; let jobRoles = [];
     if (gap.kind === 'competency') {
       const latest = latestScores(b.assessments);

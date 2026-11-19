@@ -213,7 +213,7 @@ Semua Ubah kecuali yang bertanda Buat. Andrian wajib mereview migrasi, `lna-stor
 - [x] Buat `apps/api/tests/unit/interview-summary.test.js`
 - [x] Buat `apps/api/tests/integration/interview-summary.test.js`
 - [x] `docs/ewi/ai-teks.md` (alur ringkasan)
-- [ ] Layar web `apps/web/src/screens/iv/` (menyusul, di atas B0; kontrak di bagian "Kontrak layar web" yang ditulis sebelum PR layar)
+- [x] Layar web `apps/web/src/screens/b6-iv/` (bagian 15) dan `apps/web/e2e/iv.spec.ts`
 
 ## 11. Review egm atas spek (19 Nov)
 
@@ -314,20 +314,38 @@ Ditulis sebelum PR layar. Dasar: B0 bagian 4 dan 5.3, mockup layar `iv`. Folder 
 - Tanpa `meta.flag`: alur lama (tanpa langkah ringkasan) tetap berjalan saat `tna.interview_summary` mati; flag diperiksa di layar.
 - `screens/legacy-interview/` dipersempit ke DNA: path `/m/:key(dna)/sessions/:id`, nama `interview` tetap. `views/InterviewView.vue` tetap untuk DNA; teks persetujuan TNA dipindah ke `screens/b6-iv/PersetujuanTna.vue` dan tidak lagi ada di `InterviewView`.
 
-**Layar `iv`** (`IvListView.vue`): `<h1>` "Wawancara akar masalah"; daftar sesi TNA milik pengguna (`GET /tna/sessions`, disaring `intervieweeId === user.id`): Topik (`focusLabel`, atau "Target kerja yang belum tercapai"), Durasi, Tenggat WIB, status ("Belum mulai", "Berjalan", "Menunggu konfirmasi ringkasan", "Selesai", "Berakhir"). Sesi terbuka di atas, riwayat di bawah. Kosong: "Belum ada wawancara untuk Anda."
+**Layar `iv`** (`IvListView.vue`): `<h1>` "Wawancara akar masalah"; daftar sesi TNA milik pengguna (`GET /tna/sessions`, disaring `intervieweeId === user.id`): Topik (`focusLabel`, atau "Target kerja yang belum tercapai"), Durasi ("n menit" atau "sekitar 30 menit"), Tenggat WIB, status dari `status` + `inviteExpiresAt`: "Belum mulai" (`scheduled`), "Berakhir" (`scheduled` lewat tenggat), "Berjalan" (`in_progress`), "Selesai" (`completed`), "Dibatalkan" (`abandoned`). Daftar tidak membawa kolom ringkasan (B5 R14), jadi status "menunggu konfirmasi" hanya tampil di layar sesi. Sesi terbuka (`data-testid="iv-open"`) di atas, riwayat (`iv-history`) di bawah. Kosong: "Belum ada wawancara untuk Anda." `[⏳ DITERIMA]` daftar memuat semua sesi dalam cakupan pemanggil lalu disaring di peramban; untuk HR dan atasan isinya sama dengan yang sudah mereka lihat di Training Needs.
 
 **Layar `iv-session`** (`IvSessionView.vue`, `GET /tna/sessions/:id`):
 - Bila `transcriptVisible === false` (bukan orang yang diwawancarai): hanya catatan `data-testid="transcript-private"` "Percakapan wawancara hanya bisa dibaca karyawan yang bersangkutan." dan status `step`.
-- `UiStepper` lima langkah (Undangan, Persetujuan, Wawancara, Ringkasan, Selesai), `current` dari `step` (`consent` → Persetujuan, `chat` → Wawancara, `summary` → Ringkasan, `done`/`closed` → Selesai, `expired` → Undangan). Bila flag ringkasan mati, langkah Ringkasan tidak ditampilkan.
+- `UiStepper` `label="Langkah wawancara"`, lima langkah dengan kunci `undangan`, `persetujuan`, `wawancara`, `ringkasan`, `selesai`; `current` dari `step` (`expired` → `undangan`, `consent` → `persetujuan`, `chat` → `wawancara`, `summary` → `ringkasan`, `done`/`closed` → `selesai`). Bila respons tanpa `step` (mock lama), `step` diturunkan dari `status` seperti `stepOf`. Bila flag ringkasan mati, langkah Ringkasan tidak ditampilkan, kecuali sesi sudah di `step = summary`.
 - Baris "Topik: <focusLabel>" bila ada.
 - **Persetujuan** (`PersetujuanTna.vue`): teks legal v1.0 (sama dengan teks lama), satu checkbox, tombol "Lanjut ke wawancara". Menekan tombol tanpa centang menampilkan `UiErrorSummary` "Ada masalah" dengan "Centang persetujuan untuk melanjutkan" dan fokus ke checkbox (mockup). Mengirim `consentVersion` dari `consentVersionRequired`.
-- **Wawancara** (`Percakapan.vue`): label "Pertanyaan n, paling banyak N" (`n` = jumlah giliran AI, `N` = `questionLimit`), giliran AI dan karyawan (`data-testid="turn-ai"`/`turn-human`), kotak jawaban + "Kirim". Slot bernama `masukan-suara` di samping kotak jawaban untuk B19 (kosong di B6). Jawaban gagal dikembalikan ke kotak teks (perilaku lama).
-  - Flag nyala: "Lihat ringkasan temuan" (tombol utama) setelah AI menyatakan selesai; sebelum itu tautan sekunder setelah minimal satu jawaban. 409 `SUMMARY_PENDING`/`INVALID_STATE` memuat ulang sesi.
+- **Wawancara** (`PercakapanWawancara.vue`): label "Pertanyaan n, paling banyak N" (`n` = jumlah giliran AI, `N` = `questionLimit`), giliran AI dan karyawan (`data-testid="turn-ai"`/`turn-human`), kotak jawaban + "Kirim". Slot bernama `masukan-suara` di samping kotak jawaban untuk B19 (kosong di B6). Jawaban gagal dikembalikan ke kotak teks (perilaku lama).
+  - "AI sudah selesai bertanya" = `done: true` dari `/turns`, atau setelah muat ulang: giliran terakhir milik karyawan (server tidak memberi pertanyaan lanjutan) atau jumlah giliran AI ≥ `questionLimit`. Saat itu kotak jawaban disembunyikan.
+  - Flag nyala: "Lihat ringkasan temuan" (tombol utama) setelah AI selesai; sebelum itu tombol sekunder setelah minimal satu jawaban. Saat `POST /summary` berjalan: tombol nonaktif dan `UiStatus` "AI sedang menyusun ringkasan…"; bila gagal, pesan galat API di `UiErrorSummary` dan tombol bisa ditekan lagi. 409 `SUMMARY_PENDING`/`INVALID_STATE` memuat ulang sesi.
   - Flag mati: tombol lama "Selesai dan kirim"/"Akhiri wawancara" (`/complete`).
-- **Ringkasan**: `<h2>` "Ringkasan temuan AI", kalimat mockup "Periksa apakah ringkasan ini sesuai dengan yang Anda maksud sebelum dikirim ke HR."; tiap temuan: judul, rincian, chip kategori ("Training Needs"/"Improvement Needs"), "Keyakinan AI sementara: n%" (tanpa baris bila `null`), chip "Perlu ditinjau HR" bila keyakinan < 0,5 atau `null`. Kosong: "Tidak ditemukan hambatan yang jelas." Tombol "Sesuai, kirim ke HR" dan "Ulangi wawancara" (dengan sisa "n kali lagi"; dinonaktifkan bila `restartsLeft = 0`). Bila `restartsLeft = 0`: tombol "Kirim dengan catatan" membuka isian catatan 10-1000 karakter (R-2; disembunyikan bila user menolak A5b).
-- **Selesai**: `summaryState` `confirmed`/`disputed` → "Ringkasan sudah dikirim ke HR untuk ditinjau."; `unchecked` → "Sesi ditutup HR."; `closed` → "Sesi dibatalkan."; `expired` → "Undangan sudah berakhir. Minta HR memperpanjang undangan Anda."
+- **Ringkasan**: `<h2>` "Ringkasan temuan AI", kalimat mockup "Periksa apakah ringkasan ini sesuai dengan yang Anda maksud sebelum dikirim ke HR."; tiap temuan: judul, rincian, chip kategori ("Training Needs"/"Improvement Needs"), "Keyakinan AI sementara: n%" (tanpa baris bila `null`), chip "Perlu ditinjau HR" bila keyakinan < 0,5 atau `null`. Kosong: "Tidak ditemukan hambatan yang jelas." Tombol "Sesuai, kirim ke HR" dan "Ulangi wawancara" (dengan sisa "n kali lagi"; dinonaktifkan bila `restartsLeft = 0`). Bila `restartsLeft = 0`: tombol "Kirim dengan catatan" membuka isian "Catatan untuk HR" (10-1000 karakter) dan tombol "Kirim ringkasan dengan catatan" (R-2; disembunyikan bila user menolak A5b). Galat `/restart` (mis. 409 `INVITATION_EXPIRED`) dan `/confirm` ditampilkan apa adanya.
+- **Flag dimatikan saat sesi di langkah ringkasan** (A1): `GET /summary` dan `/confirm` ditolak 403, jadi layar menampilkan catatan "Langkah ringkasan sedang dinonaktifkan. Kirim wawancara ke HR tanpa ringkasan." dan tombol "Selesai dan kirim" (`/complete`).
+- **Selesai** (`step = done`): `summaryState` `confirmed`/`disputed` → "Ringkasan sudah dikirim ke HR untuk ditinjau."; selain itu "Wawancara ini sudah selesai." (`unchecked` juga mencakup alur lama, jadi tidak ditulis "ditutup HR"). `step = closed` → "Sesi ini dibatalkan."
+- **Undangan berakhir** (`step = expired`, stepper di Undangan): "Undangan sudah berakhir. Minta HR memperpanjang undangan Anda."
 - Footer `UiAuditLine`: `sessionCode` · `aiLabel` · "log audit: persetujuan tercatat · n jawaban" (`answerCount`).
 
 **Klien API** `screens/b6-iv/api.ts`: `session`, `consent`, `answer`, `complete`, `summary` (POST), `getSummary`, `confirm`, `restart`.
 
+Perubahan pada `e2e/poc-dna-tna.spec.ts` (test learner): tombol persetujuan menjadi "Lanjut ke wawancara" yang selalu aktif (mockup), dan setelah "Selesai dan kirim" (flag mati) layar kembali ke `/iv`. Test HR `transcript-private` tidak diubah (dialihkan).
+
 **Test e2e lebih dulu** (`apps/web/e2e/iv.spec.ts`, `page.route`): persetujuan tanpa centang → ringkasan galat; alur flag nyala: persetujuan → jawaban → "Lihat ringkasan temuan" → temuan dengan "Keyakinan AI sementara" → "Sesuai, kirim ke HR" mengirim `{}` → langkah Selesai; "Ulangi wawancara" kembali ke Persetujuan; jatah habis → "Kirim dengan catatan" mengirim `{ accurate: false, note }`; flag mati → tombol lama `/complete`; HR membuka sesi orang lain → `transcript-private`; `/m/tna/sessions/s1` dialihkan ke `/iv/s1`; daftar `/iv` menampilkan topik dan tenggat.
+
+### 15.1 Review kontrak layar (19 Nov)
+
+Ikan mas yang sama dengan B5 bagian 16.1. Triase:
+
+| Temuan | Keputusan |
+| --- | --- |
+| Persetujuan dan URL sesudah kirim mematahkan `poc-dna-tna.spec.ts` | **Perbaiki**: test learner diubah dan perubahannya ditulis di bagian 15 (mockup menang atas POC) |
+| Kunci stepper, `step` hilang di mock, `expired` vs Selesai | **Perbaiki**: kunci langkah, turunan dari `status`, panel `expired` sendiri |
+| "Menunggu konfirmasi ringkasan" di daftar tidak punya data | **Perbaiki**: label daftar hanya dari `status` + tenggat |
+| "Sesi ditutup HR" salah untuk alur lama | **Perbaiki**: "Wawancara ini sudah selesai." |
+| Keadaan hilang: menunggu/gagal `/summary`, flag dimatikan di langkah ringkasan, `INVITATION_EXPIRED`, AI selesai setelah muat ulang | **Perbaiki**: semuanya ditulis di bagian 15 |
+| Daftar `/iv` memuat semua sesi dalam cakupan lalu disaring di peramban | **Terima** (⏳): isinya sama dengan yang sudah dilihat HR/atasan |

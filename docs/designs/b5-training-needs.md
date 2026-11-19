@@ -243,7 +243,7 @@ Integrasi (`tests/integration/tna-gaps.test.js`, Postgres). Suite ini hanya jala
 - [x] Buat `apps/api/tests/unit/tna-gaps.test.js`
 - [x] Buat `apps/api/tests/integration/tna-gaps.test.js`
 - [x] Ubah `docs/ewi/poc-dna-tna.md` (catatan flag baru)
-- [ ] Kontrak layar web (bagian baru di dokumen ini), lalu layar di `apps/web/src/screens/tna/` di atas B0
+- [x] Kontrak layar web (bagian 16), layar di `apps/web/src/screens/b5-tna/`, `apps/web/e2e/tna-gap.spec.ts`; `gaps.js`/`gap-routes.js` menambah `session.projectId`, `assignedBy`, `open` dan `jobRoleId` di detail
 
 ## 12. Review egm atas spek (19 Nov)
 
@@ -352,7 +352,7 @@ Ditulis sebelum PR layar (aturan 11 langkah 1). Dasar: B0 bagian 4 dan 5.3, mock
 | Nama | Path | `meta` |
 | --- | --- | --- |
 | `tna` | `/tna` | `views: ['hr','atasan','karyawan','admin','super']`, `submodule: 'tna'`, `menuKey: 'tna'`, `title: 'Training Needs'` |
-| `tna-gap` | `/tna/gap` (query `kind`, `competencyId` atau `metricType`, `name`, `period`) | gerbang `tna` diulang (views, submodule) + `flag: 'tna.gap_board'`, `menuKey: 'tna'`, `title: 'Detail gap'` |
+| `tna-gap` | `/tna/gap` (query `kind`, `competencyId` atau `metricType`, `name`, `period`, ditambah `tab` asal) | `views: ['hr','atasan','admin','super']` (tanpa `karyawan`: API menolak learner), `submodule: 'tna'`, `flag: 'tna.gap_board'`, `roles: ['hr_admin','eta_admin','supervisor']` (peran R1), `menuKey: 'tna'`, `title: 'Detail gap'` |
 | `tna-lama` | `/m/tna` | `redirect: { name: 'tna' }` |
 
 - Daftar `views` lima tampilan sampai B8 (`my`), B11, dan B12 memasang beranda masing-masing (aturan 6 koordinator); otorisasi tetap di API. Rute anak mengulang gerbang induknya (aturan 2).
@@ -361,27 +361,41 @@ Ditulis sebelum PR layar (aturan 11 langkah 1). Dasar: B0 bagian 4 dan 5.3, mock
 - Jalur penugasan (R-1): saat `tna.interview_assignment` menyala, formulir "Jadwalkan wawancara TNA" lama disembunyikan dan penugasan hanya lewat detail gap. Bila user memilih mempertahankan dua alur, formulir lama tetap tampil (satu `v-if`).
 
 **Layar `tna`** (`TnaScreen.vue`): breadcrumb "Learning Needs Analysis › Training Needs", `<h1>` "Training Needs".
-- Bila `tna.gap_board` menyala dan tampilan bukan `karyawan`: `UiTabs` "Ringkasan", "Gap kompetensi", "Gap OKR" (kunci `ringkasan`, `kompetensi`, `okr`; tab disimpan di query `tab`).
-  - Ringkasan: empat `UiKpiCard` dari `GET /gaps/summary`: "GAP KOMPETENSI", "GAP OKR", "SUDAH DIWAWANCARAI" (`interviewed` / `totalGaps`), "KONTRIBUSI 4 GAP TERBESAR" (`top4Share` sebagai persen, "–" bila `null`); kartu "Klasifikasi gap" (empat nilai `classification` dengan `UiProgressBar`); kartu "Alur dari gap ke solusi" (teks mockup). Bila `unapprovedCompetencies > 0`: `UiNote` "n kompetensi menunggu pengesahan HR sebelum dipakai sebagai target".
-  - Gap kompetensi: `UiDataTable` dari `GET /gaps/competencies`: Kompetensi, Target (`targetPct`), Aktual (`actualPct`), Gap (`gapPct` + bar), Orang (`peopleWithGap` dari `assessed`), Status wawancara, Klasifikasi. Kolom Kode mockup ditunda (B4). Baris yang bisa diklik membuka `tna-gap`.
-  - Gap OKR: pemilih periode (`periods`, nilai awal `period`), tabel dari `GET /gaps/okr`: Key result, Target, Aktual, Selisih (`diff` + `unit`), Orang (`peopleMissed` dari `peopleTotal`), Status wawancara, Klasifikasi.
+- Papan tampil bila `tna.gap_board` menyala, tampilan aktif bukan `karyawan`, **dan** `session.roles` memuat `hr_admin`, `eta_admin`, atau `supervisor` (peran yang diterima R1; `pimpinan`, `role_leader`, `tenant_admin` akan mendapat 403 `ROLE_FORBIDDEN`). Bila tidak, layar tidak memanggil `/gaps/*` sama sekali (tidak ada galat tambahan). `UiTabs` `id="tna-tab"`, `label="Bagian Training Needs"`: "Ringkasan", "Gap kompetensi", "Gap OKR" (kunci `ringkasan`, `kompetensi`, `okr`; tab disimpan di query `tab`).
+  - Ringkasan: empat `UiKpiCard` dari `GET /gaps/summary`: "GAP KOMPETENSI", "GAP OKR", "SUDAH DIWAWANCARAI" (`interviewed` / `totalGaps`), "KONTRIBUSI 4 GAP TERBESAR" (`top4Share` sebagai persen; "–" bila `totalGaps = 0`, karena API mengirim 0); kartu "Klasifikasi gap" (empat nilai `classification`, `UiProgressBar` bernilai jumlah / `totalGaps` × 100); ringkasan memakai periode yang sama dengan tab OKR (ganti periode memuat ulang ringkasan dan tab OKR); kartu "Alur dari gap ke solusi" (teks mockup). Bila `unapprovedCompetencies > 0`: `UiNote` "n kompetensi menunggu pengesahan HR sebelum dipakai sebagai target".
+  - Gap kompetensi: `UiDataTable` dari `GET /gaps/competencies`: Kompetensi, Target (`targetPct`), Aktual (`actualPct`), Gap (`gapPct` + bar), Orang (`peopleWithGap` dari `assessed`), Status wawancara, Klasifikasi. Kolom Kode mockup ditunda (B4). Nama kompetensi adalah tautan (slot `#cell-name` `UiDataTable`, yang tidak punya klik baris) ke `tna-gap`.
+  - Gap OKR: pemilih periode (`periods`, nilai awal `period`), tabel dari `GET /gaps/okr`: Key result, Target, Aktual, Selisih (`diff` + `unit`), Orang (`peopleMissed` dari `peopleTotal`), Status wawancara, Klasifikasi. Nama key result adalah tautan ke `tna-gap`.
   - Label klasifikasi (`labels.ts`, satu peta bersama): `training` "Training Needs", `non_training` "Improvement Needs", `review` "Perlu ditinjau HR", `pending` "Belum diwawancarai", `ok` "Dalam batas". Status wawancara: "n selesai · n berjalan" dari `interviewedCount`/`assignedCount`.
   - Galat API tampil di `UiErrorSummary`; tabel kosong memakai `emptyText` "Belum ada gap. Impor data asesmen atau kinerja lebih dulu."
 - Di bawahnya selalu `TnaPengelolaan` (judul `<h2>` "Pengelolaan TNA" bila papan tampil).
 
-**Layar `tna-gap`** (`TnaGapView.vue`, `GET /gaps/detail`): breadcrumb "Training Needs › Detail gap" (kembali ke tab asal), chip jenis ("Gap kompetensi"/"Gap OKR"), `<h1>` nama, chip klasifikasi; tiga `UiKpiCard` TARGET, AKTUAL, GAP; kartu "Bukti yang terdeteksi" (`evidence`) dan "Hipotesis awal (belum terverifikasi)" (`hypotheses`) dengan kalimat mockup "Gap hanya menunjukkan adanya masalah. Penyebabnya dicari lewat wawancara."; tabel karyawan (Nama, Jabatan, Nilai, Target, Gap/Tercapai, Wawancara: status sesi + tenggat WIB; "(Anda)" bila `self`).
+**Layar `tna-gap`** (`TnaGapView.vue`, `GET /gaps/detail`): breadcrumb "Training Needs › Detail gap" (kembali ke tab asal), chip jenis ("Gap kompetensi"/"Gap OKR"), `<h1>` nama, chip klasifikasi; tiga `UiKpiCard` TARGET, AKTUAL, GAP (kompetensi: `targetPct`, `actualPct`, `gapPct` dengan "%"; OKR: `target`, `actual`, `diff` dengan `unit`; "–" bila `null`); kartu "Bukti yang terdeteksi" (`evidence`) dan "Hipotesis awal (belum terverifikasi)" (`hypotheses`) dengan kalimat mockup "Gap hanya menunjukkan adanya masalah. Penyebabnya dicari lewat wawancara."; tabel karyawan (Nama, Jabatan, Nilai "n / target" atau "Belum dinilai" bila `value` `null`, lalu untuk OKR "Tercapai"/"Belum tercapai" dari `isMet`; Wawancara: status sesi + tenggat WIB; "(Anda)" bila `self`). `employees[].session` memuat `{ id, status, inviteExpiresAt, projectId, assignedBy, open }` dan `employees[]` memuat `jobRoleId` (ditambahkan untuk layar ini; `open` memakai definisi `isOpen` server).
 - Kartu "Cari akar masalah" (tampil bila `tna.interview_assignment` menyala): formulir penugasan.
-  - Proyek (`GET /api/projects`, hanya yang tidak `closed`; bila satu, terpilih otomatis);
+  - Proyek (`GET /api/projects`, `data[].status`, hanya yang bukan `closed`; bila satu, terpilih otomatis);
   - "Siapa yang diwawancarai": "Karyawan yang terdampak gap ini" (`affected`) atau "Semua karyawan di jabatan" (`all_job_role`, lalu pilih jabatan dari `GET /tna/job-roles`, nilai awal dari `defaults`). `GET /tna/job-roles` hanya untuk HR, jadi pilihan `all_job_role` hanya tampil untuk `hr_admin`/`eta_admin`; atasan memakai `affected` `[⏳ DITERIMA]`;
-  - daftar centang karyawan dari `employees` yang `assignable` dan tanpa sesi terbuka (opsional; kosong = semua hasil mode, `employeeIds` tidak dikirim);
+  - mode `affected`: daftar centang karyawan yang memenuhi R10 (`assignable`, dan kompetensi `gap > 0` atau OKR `isMet === false`), tanpa yang punya sesi `open` di proyek terpilih (opsional; kosong = semua hasil mode, `employeeIds` tidak dikirim). Mode `all_job_role`: tanpa daftar centang, `employeeIds` tidak dikirim; jabatan awal dari `defaults` (di tingkat atas respons `/tna/job-roles`, di samping `data`);
   - Tenggat (`<input type="date">`, min besok, max +30 hari WIB) dan Durasi ("15 menit", "30 menit");
   - tombol "Tugaskan wawancara". Hasil: `UiStatus` "n wawancara ditugaskan, n dilewati (sudah punya sesi terbuka)". Galat 400/409 dipetakan ke pesan API apa adanya di `UiErrorSummary`, field terkait ditandai.
-  - Baris karyawan dengan sesi `scheduled` hasil penugasan menampilkan tombol "Batalkan" (`POST /assignments/:id/cancel`); 403 `NOT_ASSIGNER` ditampilkan sebagai galat.
+  - Tombol "Batalkan" (nama aksesibel "Batalkan penugasan <nama>", `POST /assignments/:id/cancel`) hanya pada sesi `scheduled` dan `open` yang punya `assignedBy`, dan hanya bila pemanggil HR/Admin ETA atau `assignedBy === user.id`. 403/409 dari API tetap ditampilkan sebagai galat.
   - Tombol "Langsung ke tinjauan HR" (`/m/tna/review`) hanya untuk peran `hr_admin`/`eta_admin`.
 - Detail dimuat ulang setelah penugasan dan pembatalan.
 
 **Klien API** `screens/b5-tna/api.ts` (tidak mengubah `api/lna.ts`): `gapSummary`, `gapCompetencies`, `gapOkr`, `gapDetail`, `assign`, `cancelAssignment`, `projects`, `jobRoles`. Tipe mengikuti bagian 6.
 
-**Test e2e lebih dulu** (`apps/web/e2e/tna-gap.spec.ts`, `page.route`): flag papan mati → tab tidak ada, `tna-findings` tetap; flag nyala (HR) → KPI, tab kompetensi dengan label klasifikasi, klik baris → detail dengan bukti dan karyawan; penugasan mengirim body yang benar (mode, employeeIds terpilih, dueDate, durationMinutes) dan menampilkan hasil; `NOT_ASSIGNER` tampil; `/m/tna` dialihkan ke `/tna`; atasan tidak melihat tombol tinjauan HR. `e2e/poc-dna-tna.spec.ts` tetap lulus tanpa diubah, kecuali tautan sesi `/m/tna/sessions/:id` yang kini dialihkan ke `/iv/:id`.
+**Test e2e lebih dulu** (`apps/web/e2e/tna-gap.spec.ts`, `page.route`): flag papan mati → tab tidak ada, `tna-findings` tetap; flag nyala (HR) → KPI, tab kompetensi dengan label klasifikasi, klik baris → detail dengan bukti dan karyawan; penugasan mengirim body yang benar (mode, employeeIds terpilih, dueDate, durationMinutes) dan menampilkan hasil; `NOT_ASSIGNER` tampil; `/m/tna` dialihkan ke `/tna`; atasan tidak melihat tombol tinjauan HR. `e2e/poc-dna-tna.spec.ts` tetap lulus untuk halaman TNA tanpa diubah (testid sama, `/m/tna` dialihkan). Yang diubah hanya langkah wawancara di test learner, karena layar wawancara diganti B6: tombol "Lanjut ke wawancara" (bukan "Setuju dan mulai" yang nonaktif), dan setelah "Selesai dan kirim" URL menjadi `/iv` (bukan `/m/tna`).
 
-Asumsi: `[⚠️ BELUM TERVERIFIKASI]` R-1 (formulir lama disembunyikan); `[⏳ DITERIMA]` papan dihitung tiga kali per halaman (R-4); kolom Kode mockup menunggu B4.
+Asumsi: `[⚠️ BELUM TERVERIFIKASI]` R-1 (formulir lama disembunyikan); `[⏳ DITERIMA]` papan dihitung tiga kali per halaman (R-4); kolom Kode mockup menunggu B4; `TnaPengelolaan` memilih isi dari peran asli, jadi saat B8 memasang ganti tampilan, HR di tampilan "Karyawan (saya)" masih melihat data HR di `/tna` (sama dengan B0 5.1) sampai B8 punya halaman sendiri.
+
+### 16.1 Review kontrak layar (19 Nov)
+
+Ikan mas `egm:egm-design` dan `egm:egm-implementation-readiness`, konteks hanya bagian 16, B0 bagian 4–5, kode web/API yang dirujuk, mockup, dan e2e lama. Triase (`egm-resolve`):
+
+| Temuan | Keputusan |
+| --- | --- |
+| Langkah wawancara di `poc-dna-tna.spec.ts` tidak bisa lulus tanpa diubah (tombol persetujuan, URL sesudah kirim, mock tanpa `step`) | **Perbaiki**: perubahan test disebut terang di bagian 16 dan B6 bagian 15; `step` diturunkan dari `status` bila tidak ada |
+| Tombol "Batalkan" tidak bisa diputuskan dari data | **Perbaiki** di API (test merah lebih dulu): `employees[].session` membawa `projectId`, `assignedBy`, `open`; `employees[]` membawa `jobRoleId` |
+| Daftar centang menawarkan orang yang tidak memenuhi; "terbuka" tidak didefinisikan; sesi di proyek lain menyembunyikan orang | **Perbaiki**: kelayakan R10 dan `open` per proyek terpilih |
+| Peran `pimpinan`/`role_leader`/`tenant_admin` mendapat 403; learner bisa membuka detail | **Perbaiki**: papan berdasarkan peran R1; `tna-gap` tanpa `karyawan` + `meta.roles` |
+| `UiDataTable` tanpa klik baris; satuan KPI detail; nilai `null`; id/label `UiTabs`; penyebut `UiProgressBar`; `top4Share` tidak pernah `null`; periode ringkasan vs tab OKR; `tab` di query; `status` proyek dan `defaults` | **Perbaiki** teks bagian 16 |
+| HR di tampilan "Karyawan (saya)" masih melihat data HR di `/tna` | **Terima** (⏳), sama dengan B0 5.1 sampai B8 |
+| Atasan tidak bisa memilih jabatan (`/tna/job-roles` hanya HR) | **Terima** (⏳): atasan memakai `affected` |
