@@ -1268,6 +1268,10 @@ function createLnaStores(sequelize, { cipher } = {}) {
         const [turns] = await q('DELETE FROM lna_interview_turns WHERE session_id IN (:ids) RETURNING id', { ids });
         const [findings] = await q('DELETE FROM lna_findings WHERE tenant_id = :tenantId AND session_id IN (:ids) RETURNING id', { tenantId, ids });
         await q('UPDATE lna_analysis_jobs SET result = NULL WHERE tenant_id = :tenantId AND session_id IN (:ids)', { tenantId, ids });
+        // B6: ringkasan temuan dan catatan karyawan disimpan di baris sesi, jadi ikut dikosongkan
+        await q(`UPDATE lna_interview_sessions SET summary_findings = NULL, summary_note = NULL, summary_at = NULL,
+                        summary_confirmed_at = NULL, summary_disputed = false
+                  WHERE tenant_id = :tenantId AND id IN (:ids)`, { tenantId, ids });
         return { erased: true, deletedTurns: turns.length, deletedFindings: findings.length, deletedPlanItems };
       });
     },

@@ -321,10 +321,16 @@ run('B8 karyawan (Postgres)', () => {
       // permintaan baru, lalu HR menghapus manual
       const next = await dataReq(a, 'citra', { type: 'withdraw_consent' });
       expect(next.status).toBe(201);
+      // B6: ringkasan temuan dan catatan karyawan di baris sesi ikut terhapus
+      await sql1(`UPDATE lna_interview_sessions SET summary_findings = '{"x":1}'::jsonb, summary_at = now(), summary_note = 'catatan',
+                         summary_disputed = true, summary_confirmed_at = now()
+                   WHERE interviewee_id = :u AND consent_withdrawn_at IS NOT NULL RETURNING 1 AS n`, { u: u.citra });
       const erase = await request(a).post(`/api/employees/data-requests/${next.body.data.id}/fulfill`).set(as('hr2')).send({ erase: true });
       expect(erase.body.data).toEqual({ erased: true, deletedTurns: turnsBefore, deletedFindings: 2, deletedPlanItems: 1 });
       expect((await sql1('SELECT count(*)::int AS n FROM lna_findings WHERE user_id = :u', { u: u.citra })).n).toBe(0);
       expect((await sql1('SELECT count(*)::int AS n FROM lna_training_plan_items WHERE id = :id', { id: planId })).n).toBe(0);
+      expect((await sql1(`SELECT count(*)::int AS n FROM lna_interview_sessions WHERE interviewee_id = :u AND consent_withdrawn_at IS NOT NULL
+                            AND (summary_findings IS NOT NULL OR summary_note IS NOT NULL OR summary_disputed OR summary_at IS NOT NULL)`, { u: u.citra })).n).toBe(0);
       // akun dan baris sesi tetap ada
       expect((await sql1('SELECT count(*)::int AS n FROM users WHERE id = :u', { u: u.citra })).n).toBe(1);
       expect((await sql1('SELECT count(*)::int AS n FROM lna_interview_sessions WHERE interviewee_id = :u AND consent_withdrawn_at IS NOT NULL', { u: u.citra })).n).toBeGreaterThanOrEqual(4);
