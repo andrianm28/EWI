@@ -2,6 +2,8 @@
 // Store Postgres untuk DNA, TNA, dan wawancara (POC Desember). Setiap query memfilter tenant_id,
 // dan query data karyawan menerima `scope` dari visibleEmployeeScope() (RG-3).
 const { QueryTypes } = require('sequelize');
+const { createLiStores } = require('./li-stores');
+const { createLdStores } = require('./ld-stores');
 const { evaluate, effectiveRule, metricKey } = require('../modules/tna/performance');
 const { planAssignments } = require('../modules/tna/assignment');
 const { summaryStateOf, MAX_RESTARTS } = require('../modules/interviews/summary');
@@ -1120,7 +1122,7 @@ function createLnaStores(sequelize, { cipher } = {}) {
     return { deletedUploaded: (delMeta && delMeta.rowCount) || 0, clearedCommitted: (clrMeta && clrMeta.rowCount) || 0 };
   };
 
-  return { people, settings, dna, interviews, tna, catalog, projectsExtra, imports, aiUsage, analysis };
+  return { people, settings, dna, interviews, tna, catalog, projectsExtra, imports, aiUsage, analysis, ...createLiStores(sequelize), ...createLdStores(sequelize)  };
 }
 
 module.exports = { createLnaStores, scopeSql };
