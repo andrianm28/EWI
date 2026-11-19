@@ -217,6 +217,11 @@ run('B17 Asisten ELGOS (Postgres)', () => {
     const ai2 = recorder();
     await ask(app(ai2), 'ani', 'apa rencana Dodi Luar?');
     expect(ai2.calls[0].question).toBe('apa rencana [[ORANG_LAIN]]?');
+
+    // nama penanya sendiri bukan "orang lain"
+    const ai3 = recorder();
+    await ask(app(ai3), 'ani', 'Saya Ani Lestari, apa rencana saya?');
+    expect(ai3.calls[0].question).toBe('Saya (penanya), apa rencana saya?');
   });
 
   it('penolakan dari model: kode dipulihkan ke nama, tanpa tombol halaman', async () => {

@@ -147,6 +147,7 @@ function reviewWorkspaceRouter({ stores, settings, catalog, flags, audit, assign
       console.error(`Penugasan EliteMentor gagal (rencana ${plan.id}): ${e.name || 'Error'}`);
       const closed = await stores.tna.finishPlanAssignment(req.tenantId, plan.id, { status: 'failed', ref: null, userId: req.user.id, claimedAt });
       await audit.record(req, 'update', 'tna.plan_assignment', { ...meta, result: closed ? 'failed' : 'superseded' });
+      if (!closed) throw conflict('ASSIGN_IN_PROGRESS', 'Penugasan rencana ini sudah diproses permintaan lain. Muat ulang untuk melihat hasilnya.');
       throw new HttpError(502, 'EM_ASSIGN_FAILED', 'EliteMentor tidak menerima penugasan. Coba lagi.');
     }
     const saved = await stores.tna.finishPlanAssignment(req.tenantId, plan.id, { status: 'sent', ref, userId: req.user.id, claimedAt });

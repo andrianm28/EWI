@@ -16,7 +16,7 @@ Fakta yang disusun server tidak pernah memuat data di luar hak penanya, dan mode
 
 1. Server menyusun **fakta** per tampilan peran dari store yang ada, dengan `tenant_id` dari `req.tenantId` dan cakupan karyawan dari `visibleEmployeeScope()` (`scopeFor`).
 2. Fakta berisi angka, nama kompetensi, judul course, dan, bila perlu menyebut orang, **kode samaran** `[[ORANG_1]]`, `[[ORANG_2]]`, ... yang dibuat per pertanyaan. Nama, email, id, dan employee id tidak pernah masuk fakta. Bentuk kode sengaja tidak mungkin muncul alami, supaya istilah seperti "K3" (Keselamatan dan Kesehatan Kerja) tidak tertukar dengan orang.
-3. **Teks pertanyaan juga disamarkan** sebelum dikirim. Nama lengkap pengguna tenant (huruf besar/kecil bebas) dan nama depan berhuruf kapital minimal 4 huruf diganti dengan kode anggota tim (tampilan atasan) atau `[[ORANG_LAIN]]`.
+3. **Teks pertanyaan juga disamarkan** sebelum dikirim. Nama lengkap pengguna tenant (huruf besar/kecil bebas) dan nama depan berhuruf kapital minimal 4 huruf diganti dengan kode anggota tim (tampilan atasan), `(penanya)` untuk nama penanya sendiri, atau `[[ORANG_LAIN]]`. Nama kurang dari 3 huruf dilewati.
 4. Setelah model menjawab, server mengganti kode samaran dengan nama orang itu, hanya untuk orang dalam cakupan penanya. `[[ORANG_LAIN]]` menjadi "orang lain"; kode yang tidak dikenal dibiarkan.
 5. Transkrip wawancara, bukti asesmen, rincian temuan, dan catatan review tidak pernah masuk fakta (PO-6 A).
 6. Fakta untuk tampilan `karyawan` hanya data dirinya sendiri (tanpa kode samaran).
@@ -199,7 +199,7 @@ assistantReply({ view, roleLabel, facts, pages: [{ key, label }], question })
 4. Penolakan pasti: tanpa panggilan model, tetap tercatat.
 5. Atasan: fakta hanya tim sendiri; model menerima kode samaran; jawaban berisi nama asli; audit `employeeIds` = anggota tim; tombol `tna`.
 6. HR: angka tinjauan, wawancara, gap, rencana, permintaan data cocok dengan data uji dan tidak terpengaruh tenant lain; `module.ina` mati → `perbaikan` dan halaman `ina` hilang; HR di tampilan karyawan hanya melihat datanya sendiri.
-7. Nama di pertanyaan disamarkan (anggota tim → kodenya, orang lain → `[[ORANG_LAIN]]`), juga di tampilan karyawan.
+7. Nama di pertanyaan disamarkan (anggota tim → kodenya, penanya → `(penanya)`, orang lain → `[[ORANG_LAIN]]`), juga di tampilan karyawan.
 8. Penolakan dari model: kode dipulihkan ke nama, tanpa tombol.
 9. `pimpinan` → atasan dengan tim kosong; Admin ETA → `super` dengan fakta hr, audit mencatat penanya.
 10. `answer: null` → teks pengganti, `no_answer`.

@@ -14,6 +14,7 @@ const { resolveView, factView, mentionsOthers, createAliases, restoreNames, mask
 const { activeBuilders, buildFacts } = require('./facts');
 
 const wrap = (fn) => (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
+const SELF_ALIAS = '(penanya)';
 const RATE_LIMIT = 20;
 const RATE_WINDOW_MINUTES = 10;
 const MAX_QUESTION = 500;
@@ -99,10 +100,13 @@ function assistantRouter({ stores, flags, entitlements, settings, audit, ai, aiC
       } else {
         const active = await builders(req, v.view);
         const conf = await settings.get(req.tenantId);
-        // Nama orang di teks pertanyaan diganti kode (anggota tim) atau [[ORANG_LAIN]] sebelum ke model.
+        // Nama orang di teks pertanyaan diganti kode (anggota tim), "(penanya)" (dirinya), atau [[ORANG_LAIN]] sebelum ke model.
         const teamIds = new Set(team.map((m) => m.id));
         const people = await stores.people.list(req.tenantId, { all: true });
-        const maskedQuestion = maskNames(question, people, (p) => (teamIds.has(p.id) ? aliases.alias(p) : null));
+        const maskedQuestion = maskNames(question, people, (p) => {
+          if (p.id === req.user.id) return SELF_ALIAS;
+          return teamIds.has(p.id) ? aliases.alias(p) : null;
+        });
         const { facts, factKeys, pages } = await buildFacts(active, {
           stores, flags, settings, tenantId: req.tenantId, user: req.user, scope, conf, team, alias: aliases.alias,
         });
