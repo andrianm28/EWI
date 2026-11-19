@@ -17,7 +17,7 @@ const SECRET = 'rahasia-webhook-uji';
 const day = (offset) => new Date(Date.now() + 7 * 3600e3 + offset * 86400e3).toISOString().slice(0, 10);
 
 run('Learning Delivery (Postgres)', () => {
-  let db; let app; let appNoStorage; let stores; let tenant; let other; const u = {}; const tok = {};
+  let db; let app; let appNoStorage; let appSmall; let stores; let tenant; let other; const u = {}; const tok = {};
   let role; let mailer; let storage; let orgId; let training;
   const as = (who) => ({ Authorization: `Bearer ${tok[who]}` });
   const get = (path, who = 'hr') => request(app).get(`/api/ld${path}`).set(as(who));
@@ -41,6 +41,7 @@ run('Learning Delivery (Postgres)', () => {
     mailer = memoryMailer(); storage = memoryStorage();
     app = createApp({ config, stores, mailer, storage });
     appNoStorage = createApp({ config, stores, mailer, storage: null });
+    appSmall = createApp({ config: { ...config, uploads: { maxBytes: 16 } }, stores, mailer, storage });
     const tokens = createTokenService(config.jwt);
     const slug = `ld-${Date.now()}`;
     orgId = Math.floor(Date.now() / 1000) % 2000000000;
@@ -87,6 +88,7 @@ run('Learning Delivery (Postgres)', () => {
     expect((await send('post', '/trainings', { title: 'X', startsOn: '2026-02-31' })).status).toBe(400);
     expect((await send('post', '/trainings', { title: 'X', startsOn: day(5), endsOn: day(4) })).status).toBe(400);
     expect((await send('post', '/trainings', { title: 'X', startsOn: day(5), moduleId: '11111111-1111-4111-8111-111111111111' })).status).toBe(400);
+    expect((await send('post', '/trainings', { title: 'X', startsOn: day(5), sessionCount: '2' })).status).toBe(400); // sama dengan PATCH: harus bilangan bulat
     const res = await send('post', '/trainings', { title: 'Workshop RCA', startsOn: day(5) });
     expect(res.status).toBe(201);
     training = res.body.data;
@@ -158,6 +160,11 @@ run('Learning Delivery (Postgres)', () => {
     const noStore = await upload(id, PNG, 'kind=photo', 'hr', appNoStorage);
     expect(noStore.status).toBe(501);
     expect(noStore.body.error.code).toBe('STORAGE_NOT_CONFIGURED');
+    // berkas melebihi batas: 413 dengan kode dan pesan sendiri; tidak ada yang tersimpan
+    const big = await upload(id, PNG, 'kind=photo', 'hr', appSmall);
+    expect(big.status).toBe(413);
+    expect(big.body.error).toMatchObject({ code: 'FILE_TOO_LARGE', message: expect.stringMatching(/melebihi batas/) });
+    expect(storage.files.size).toBe(0);
     const up = await upload(id, PNG, 'kind=photo&filename=..%2F..%2Fsesi%201.png');
     expect(up.status).toBe(201);
     expect(up.body.data).toMatchObject({ kind: 'photo', filename: 'sesi 1.png', mime: 'image/png', sizeBytes: PNG.length });
@@ -180,6 +187,14 @@ run('Learning Delivery (Postgres)', () => {
     expect((await send('delete', `/documents/${docId}`)).status).toBe(204);
     expect(storage.files.size).toBe(1);
     expect((await get(`/documents/${docId}/content`)).status).toBe(404);
+    // batas 60 berkas per pelatihan
+    await db.query(`INSERT INTO ld_documents (tenant_id, training_id, kind, filename, mime, size_bytes, storage_key)
+                    SELECT :t, :id, 'photo', 'f.png', 'image/png', 1, 'kunci-' || g FROM generate_series(1, 59) g`, { replacements: { t: tenant.id, id } });
+    const full = await upload(id, PNG);
+    expect(full.status).toBe(409);
+    expect(full.body.error.code).toBe('LIMIT_REACHED');
+    expect(storage.files.size).toBe(1);
+    await db.query("DELETE FROM ld_documents WHERE tenant_id = :t AND storage_key LIKE 'kunci-%'", { replacements: { t: tenant.id } });
   });
 
   it('pengingat: ke semua peserta offline, sekali per 24 jam, tercatat di audit', async () => {

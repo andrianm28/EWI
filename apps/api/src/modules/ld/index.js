@@ -87,7 +87,7 @@ module.exports = {
       if (!title || !b.startsOn) throw badRequest('Isi judul dan tanggal');
       if (!validDate(b.startsOn) || (b.endsOn && !validDate(b.endsOn))) throw badRequest('Tanggal harus berformat YYYY-MM-DD');
       if (b.endsOn && b.endsOn < b.startsOn) throw badRequest('Tanggal selesai tidak boleh sebelum tanggal mulai');
-      const sessionCount = b.sessionCount === undefined ? 1 : Number(b.sessionCount);
+      const sessionCount = b.sessionCount === undefined ? 1 : b.sessionCount;
       if (!Number.isInteger(sessionCount) || sessionCount < 1 || sessionCount > 100) throw badRequest('Jumlah sesi harus 1 sampai 100');
       if (b.moduleId && (!UUID.test(String(b.moduleId)) || !(await stores.ld.moduleExists(req.tenantId, b.moduleId)))) throw badRequest('Modul tidak ditemukan');
       const conf = await settings.get(req.tenantId);
@@ -199,21 +199,38 @@ module.exports = {
     }));
 
     // --- Dokumentasi (foto/video/materi). Berkas hanya keluar lewat endpoint unduh di bawah. ---
-    r.post('/trainings/:id/documents', idParam, express.raw({ type: () => true, limit: maxBytes }), wrap(async (req, res) => {
+    // Semua pemeriksaan yang tidak butuh isi berkas dijalankan sebelum body dibaca ke memori.
+    const tooLarge = () => new HttpError(413, 'FILE_TOO_LARGE', `Berkas melebihi batas ${Math.floor(maxBytes / (1024 * 1024)) || 1} MB`);
+    const docLimit = () => conflict('LIMIT_REACHED', `Paling banyak ${MAX_DOCS} berkas per pelatihan`);
+    const beforeUpload = wrap(async (req, _res, next) => {
       const t = await loadOne(req); manualOnly(t);
       if (!storage) throw new HttpError(501, 'STORAGE_NOT_CONFIGURED', 'Penyimpanan berkas belum dikonfigurasi di server ini');
+      if (!DOC_KINDS.includes(String(req.query.kind || 'photo'))) throw badRequest('Jenis dokumen harus material, photo, atau video');
+      if (t.photoDocs + t.materialDocs >= MAX_DOCS) throw docLimit();
+      if (Number(req.headers['content-length']) > maxBytes) throw tooLarge();
+      req.training = t;
+      next();
+    });
+    const readBody = express.raw({ type: () => true, limit: maxBytes });
+    const bodyErrors = (err, _req, _res, next) => next(err && err.type === 'entity.too.large' ? tooLarge() : err);
+
+    r.post('/trainings/:id/documents', idParam, beforeUpload, readBody, bodyErrors, wrap(async (req, res) => {
+      const t = req.training;
       const kind = String(req.query.kind || 'photo');
-      if (!DOC_KINDS.includes(kind)) throw badRequest('Jenis dokumen harus material, photo, atau video');
       if (!Buffer.isBuffer(req.body) || !req.body.length) throw badRequest('Kirim isi berkas sebagai body dengan ?filename=nama.jpg');
       const type = detectType(req.body);
       if (!allowedFor(kind, type)) throw badRequest(kind === 'material' ? 'Materi harus PDF, JPEG, PNG, WebP, atau MP4' : 'Dokumentasi harus foto (JPEG, PNG, WebP) atau video (MP4)');
-      if (t.photoDocs + t.materialDocs >= MAX_DOCS) throw conflict('LIMIT_REACHED', `Paling banyak ${MAX_DOCS} berkas per pelatihan`);
       const key = newKey(req.tenantId);
       await storage.put(key, req.body);
       let doc;
       try {
-        doc = await stores.ld.insertDocument(req.tenantId, t.id, { kind, filename: safeFilename(req.query.filename, `berkas.${type.ext}`), mime: type.mime, sizeBytes: req.body.length, storageKey: key, userId: req.user.id });
+        doc = await stores.ld.insertDocument(req.tenantId, t.id, { kind, filename: safeFilename(req.query.filename, `berkas.${type.ext}`), mime: type.mime, sizeBytes: req.body.length, storageKey: key, userId: req.user.id }, { maxDocs: MAX_DOCS });
       } catch (e) { await storage.remove(key); throw e; }
+      if (!doc || doc.limitReached) {
+        // pelatihan terhapus atau batas tercapai oleh unggahan lain di antara pemeriksaan dan penyimpanan
+        await storage.remove(key);
+        throw doc ? docLimit() : notFound('Pelatihan tidak ditemukan');
+      }
       await audit.record(req, 'create', 'ld.document', { trainingId: t.id, documentId: doc.id, kind, sizeBytes: doc.sizeBytes });
       res.status(201).json({ data: doc });
     }));

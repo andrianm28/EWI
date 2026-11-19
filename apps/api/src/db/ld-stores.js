@@ -197,14 +197,24 @@ function createLdStores(sequelize) {
       return one(`SELECT id, training_id AS "trainingId", kind, filename, mime, size_bytes AS "sizeBytes", storage_key AS "storageKey"
                     FROM ld_documents WHERE tenant_id = :tenantId AND id = :id`, { tenantId, id });
     },
-    async insertDocument(tenantId, trainingId, d) {
-      const [row] = await write(
-        `INSERT INTO ld_documents (tenant_id, training_id, kind, filename, mime, size_bytes, storage_key, uploaded_by)
-         SELECT :tenantId, t.id, :kind, :filename, :mime, :sizeBytes, :storageKey, :userId FROM ld_trainings t WHERE t.tenant_id = :tenantId AND t.id = :trainingId
-         RETURNING id, kind, filename, mime, size_bytes AS "sizeBytes", created_at AS "createdAt"`,
-        { tenantId, trainingId, ...d, userId: d.userId || null },
-      );
-      return row || null;
+    /**
+     * Sisipkan dokumen. Baris pelatihan dikunci (FOR UPDATE) lalu jumlah dokumen dihitung, sehingga unggahan bersamaan
+     * tidak melewati maxDocs. Return baris dokumen, { limitReached: true }, atau null (pelatihan tidak ada).
+     */
+    async insertDocument(tenantId, trainingId, d, { maxDocs = Infinity } = {}) {
+      return tx(async (t) => {
+        const training = await one('SELECT id FROM ld_trainings WHERE tenant_id = :tenantId AND id = :trainingId FOR UPDATE', { tenantId, trainingId }, t);
+        if (!training) return null;
+        const { n } = await one('SELECT count(*)::int AS n FROM ld_documents WHERE tenant_id = :tenantId AND training_id = :trainingId', { tenantId, trainingId }, t);
+        if (n >= maxDocs) return { limitReached: true };
+        const [row] = await write(
+          `INSERT INTO ld_documents (tenant_id, training_id, kind, filename, mime, size_bytes, storage_key, uploaded_by)
+           VALUES (:tenantId, :trainingId, :kind, :filename, :mime, :sizeBytes, :storageKey, :userId)
+           RETURNING id, kind, filename, mime, size_bytes AS "sizeBytes", created_at AS "createdAt"`,
+          { tenantId, trainingId, ...d, userId: d.userId || null }, t,
+        );
+        return row;
+      });
     },
     async deleteDocument(tenantId, id) {
       const rows = await write('DELETE FROM ld_documents WHERE tenant_id = :tenantId AND id = :id RETURNING storage_key', { tenantId, id });
