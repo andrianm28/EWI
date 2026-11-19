@@ -20,6 +20,8 @@
 #     terpisah dari daemon staging/prod, dibatasi slice systemd (SETUP_DEV=0 untuk melewati)
 # Idempoten: aman dijalankan ulang. Daftar pemegang akses: docs/infra/akses-etavm2.md.
 set -euo pipefail
+# umask admin etavm2 0027 membuat /usr/local/aws-cli 750 (installer meniru izin hasil ekstrak).
+umask 022
 
 REPO="${REPO:-andrianm28/EWI}"
 DEPLOY_USER="${DEPLOY_USER:-elgos-deploy}"

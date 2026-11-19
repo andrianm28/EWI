@@ -124,6 +124,14 @@ atau nama job tidak dikenal image (exit 2). Dilewati bila lingkungan belum perna
 - Biaya: US$1 per kunci per bulan (tenant + backup) + permintaan KMS, SES US$0,10 per 1.000 email,
   S3 backup beberapa sen per GB, health check Route 53 ±US$1–2 per bulan, Bedrock sesuai pemakaian.
 
+## Status etavm2 (19 Nov 2026)
+
+`setup-etavm2.sh` sudah dijalankan (tanpa `ACME_EMAIL`/`RUNNER_TOKEN`): SSH kunci saja, root login
+mati, ufw 22/80/443, fail2ban, Docker 29 + rotasi log, AWS CLI 2, user `elgos-deploy` dan `elgos-dev`
+(Docker rootless, terisolasi dari daemon utama, `/srv/elgos-*`, dan `/etc/elgos`), 9 timer aktif.
+Catatan server: `/tmp` di-mount noexec dan umask admin 0027 (skrip sudah menanganinya). Belum: Caddy
+(DNS + `ACME_EMAIL`), runner (`RUNNER_TOKEN`), isi `.env`/`ops.env` (menunggu akun AWS ELGOS).
+
 ## QA malam dengan AI sungguhan (B18)
 
 Keputusan user 19 Nov: akun Bedrock siap 24 Nov, QA malam 24–26 Nov untuk Go/No-Go 27 Nov.
