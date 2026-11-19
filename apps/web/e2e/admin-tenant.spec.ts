@@ -99,7 +99,7 @@ test('Jabatan & kamus: daftar, nama kembar ditolak, lihat kamus', async ({ page 
   await nav(page).getByRole('link', { name: 'Jabatan & kamus kompetensi' }).click()
   const row = (name: string) => page.getByRole('row').filter({ hasText: name })
   await expect(row('Engineer Service Delivery')).toContainText('Tersedia')
-  await expect(row('Engineer Service Delivery')).toContainText('DACUM')
+  await expect(row('Engineer Service Delivery')).toContainText('DACUM · DACUM_SD_v2.1.xlsx')
   await expect(row('Sales')).toContainText('Belum tersedia')
   await expect(row('Sales').getByRole('button', { name: 'Lihat kamus' })).toHaveCount(0)
 
@@ -128,6 +128,16 @@ test('Impor data & integrasi: kamus per jabatan dengan sumber DACUM, ringkasan K
         integrations: { elitementor: { status: 'tersambung', organizationMapped: true, sso: true, webhookSync: true }, lms: { targets: ['elitementor', 'moodle'], gapExport: true } },
       } })
     }
+    if (path === '/imports/tna/templates') {
+      return json(r, { data: [{ key: 'tna_performance', label: 'Kinerja', description: '', options: [], fields: [{ key: 'target', header: 'Target', required: true, oneOf: null, help: null, example: null }] }] })
+    }
+    if (path === '/imports/tna/tna_performance' && method === 'POST') {
+      return json(r, { data: { id: 'b-8', kind: 'tna_performance', filename: 'kpi.csv', status: 'uploaded', rowCount: 1, headers: ['Target'], mapping: { target: 'Target' }, options: {}, result: null, createdAt: '', committedAt: null, createdByName: null } }, 201)
+    }
+    if (path === '/imports/tna/batches/b-8/preview') {
+      previews.push(r.request().postDataJSON())
+      return json(r, { data: { valid: 1, rejectedCount: 0, rejected: [], sample: [] } })
+    }
     if (path === '/imports/dna/templates') {
       return json(r, { data: [{ key: 'dna_competencies', label: 'Kamus', description: '', options: [], fields: [{ key: 'name', header: 'Nama Kompetensi', required: true, oneOf: null, help: null, example: null }] }] })
     }
@@ -143,11 +153,13 @@ test('Impor data & integrasi: kamus per jabatan dengan sumber DACUM, ringkasan K
   await login(page)
   await nav(page).getByRole('link', { name: 'Impor data & integrasi' }).click()
   const kamus = page.getByTestId('cfg-kamus')
-  await expect(kamus).toContainText('DACUM_SD_v2.1.xlsx')
+  await expect(kamus).toContainText('DACUM · DACUM_SD_v2.1.xlsx')
   await expect(kamus).toContainText('Terimpor · 12 kompetensi')
   await expect(kamus).toContainText('Belum diimpor')
   await expect(page.getByTestId('cfg-kpi')).toContainText('3 target · 2 belum tercapai')
-  await expect(page.getByTestId('cfg-integrasi')).toContainText('EliteMentor: tersambung (SSO · deep link · sync-back)')
+  await expect(page.getByTestId('cfg-kpi')).toContainText('Berkas · okr_q4_2026.csv')
+  await expect(page.getByTestId('cfg-integrasi')).toContainText('EliteMentor: Terkonfigurasi (SSO · sync-back)')
+  await expect(page.getByTestId('cfg-integrasi')).not.toContainText('deep link')
   await expect(page.getByTestId('cfg-integrasi')).toContainText('EliteMentor, Moodle')
 
   await page.getByLabel('Impor kamus untuk jabatan').selectOption('j-2')
@@ -157,6 +169,15 @@ test('Impor data & integrasi: kamus per jabatan dengan sumber DACUM, ringkasan K
   await expect(page.getByTestId('impor-pratinjau-dna')).toContainText('2 baris valid')
   await expect(kamus.getByRole('button', { name: 'Simpan 2 baris' })).toBeVisible()
   expect(previews[0]).toEqual({ mapping: { name: 'Nama Kompetensi' }, options: { jobRoleId: 'j-2', source: 'dacum' } })
+
+  // sumber data kinerja dipilih admin, bukan ditetapkan layar
+  const kpi = page.getByTestId('cfg-kpi')
+  await page.getByLabel('Periode').fill('2026-Q4')
+  await page.getByLabel('Sumber data kinerja').selectOption('hris')
+  await kpi.getByLabel('Berkas (.xlsx atau .csv)').setInputFiles({ name: 'kpi.csv', mimeType: 'text/csv', buffer: Buffer.from('Target\nSLA\n') })
+  await kpi.getByRole('button', { name: 'Periksa' }).click()
+  await expect(page.getByTestId('impor-pratinjau-tna')).toContainText('1 baris valid')
+  expect(previews[1]).toEqual({ mapping: { target: 'Target' }, options: { period: '2026-Q4', source: 'hris' } })
 })
 
 test('flag admin.tenant mati: layar tidak bisa dibuka', async ({ page }) => {

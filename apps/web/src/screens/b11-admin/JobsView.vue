@@ -32,7 +32,11 @@ const COLUMNS: UiColumn[] = [
 ]
 const rows = computed(() => jobs.value as unknown as Record<string, unknown>[])
 const asJob = (row: Record<string, unknown>) => row as unknown as JobRole
-const sourceText = (j: JobRole) => (j.sources.length ? j.sources.map((s) => SOURCE_LABEL[s] ?? s).join(', ') : 'Belum ada kamus')
+const sourceText = (j: JobRole) => {
+  if (!j.sources.length) return 'Belum ada kamus'
+  const labels = j.sources.map((s) => SOURCE_LABEL[s] ?? s).join(', ')
+  return j.lastImport ? `${labels} · ${j.lastImport.filename}` : labels
+}
 
 const formOpen = ref(false)
 const editing = ref<JobRole | null>(null)

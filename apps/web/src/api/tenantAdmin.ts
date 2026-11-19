@@ -32,7 +32,7 @@ export interface ImportSummary {
 export type ImportArea = 'dna' | 'tna'
 /** Jenis impor yang dibuka layar admin (sama dengan IMPORT_KINDS di API). */
 export const ADMIN_IMPORT_KIND: Record<ImportArea, string> = { dna: 'dna_competencies', tna: 'tna_performance' }
-export const SOURCE_LABEL: Record<string, string> = { dacum: 'DACUM', hr_rule: 'Aturan HR', cca: 'Core Competencies', both: 'DACUM dan Core Competencies' }
+export const SOURCE_LABEL: Record<string, string> = { berkas: 'Berkas', hris: 'HRIS', okr: 'Sistem OKR', dacum: 'DACUM', hr_rule: 'Aturan HR', cca: 'Core Competencies', both: 'DACUM dan Core Competencies' }
 
 const token = () => useSessionStore().token
 const call = <T>(path: string, init: RequestInit = {}) => api<T>(`${ROOT}${path}`, init, token())

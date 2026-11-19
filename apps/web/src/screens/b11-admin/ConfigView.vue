@@ -3,7 +3,7 @@
 import { computed, onMounted, ref } from 'vue'
 import AppShell from '@/components/AppShell.vue'
 import { ApiError } from '@/api/client'
-import { tenantAdmin, type ImportSummary, type LastImport } from '@/api/tenantAdmin'
+import { tenantAdmin, SOURCE_LABEL, type ImportSummary, type LastImport } from '@/api/tenantAdmin'
 import { UiCard, UiChip, UiField, UiNote } from '@/ui'
 import AdminNav from './AdminNav.vue'
 import ImportFlow from './ImportFlow.vue'
@@ -13,6 +13,8 @@ const loading = ref(true)
 const loadError = ref('')
 const jobRoleId = ref('')
 const period = ref('')
+const kpiSource = ref('berkas')
+const KPI_SOURCES = ['berkas', 'hris', 'okr']
 
 async function load() {
   loadError.value = ''
@@ -29,16 +31,18 @@ onMounted(load)
 
 // kamus dari layar ini selalu untuk satu jabatan, dengan sumber DACUM (spek 6.3)
 const dnaOptions = computed(() => ({ jobRoleId: jobRoleId.value, source: 'dacum' }))
-const tnaOptions = computed(() => ({ period: period.value.trim(), source: 'berkas' }))
+const tnaOptions = computed(() => ({ period: period.value.trim(), source: kpiSource.value }))
 const when = (s: string) => new Date(s).toLocaleString('id-ID', { dateStyle: 'medium', timeStyle: 'short' })
-const fileLine = (i: LastImport) => `${i.filename} · ${when(i.uploadedAt)}${i.uploadedByName ? ` · ${i.uploadedByName}` : ''}`
+const fileLine = (i: LastImport) => `${i.source ? `${SOURCE_LABEL[i.source] ?? i.source} · ` : ''}${i.filename} · ${when(i.uploadedAt)}${i.uploadedByName ? ` · ${i.uploadedByName}` : ''}`
 const LMS_LABEL: Record<string, string> = { elitementor: 'EliteMentor', moodle: 'Moodle' }
 const em = computed(() => summary.value?.integrations.elitementor)
 const emDetail = computed(() => {
   const e = em.value
   if (!e) return ''
-  const parts = [e.sso ? 'SSO' : '', 'deep link', e.webhookSync ? 'sync-back' : ''].filter(Boolean)
-  return e.status === 'tersambung' ? `tersambung (${parts.join(' · ')})` : 'belum dikonfigurasi'
+  // status ini hanya berarti konfigurasi lengkap, bukan uji koneksi langsung
+  const parts = [e.sso ? 'SSO' : '', e.webhookSync ? 'sync-back' : ''].filter(Boolean)
+  if (e.status !== 'tersambung') return 'Belum dikonfigurasi'
+  return parts.length ? `Terkonfigurasi (${parts.join(' · ')})` : 'Terkonfigurasi'
 })
 </script>
 
@@ -84,6 +88,11 @@ const emDetail = computed(() => {
           <p v-if="!summary.performance.length" class="el-muted">Belum ada data kinerja.</p>
           <UiField id="cfg-periode" v-slot="{ attrs }" label="Periode" hint="Misalnya 2026-Q4. Dipakai untuk baris yang kolom Periode-nya kosong." class="adm__section">
             <input v-bind="attrs" v-model="period" class="el-input" type="text" maxlength="32" />
+          </UiField>
+          <UiField id="cfg-sumber-kpi" v-slot="{ attrs }" label="Sumber data kinerja" class="adm__section">
+            <select v-bind="attrs" v-model="kpiSource" class="el-input">
+              <option v-for="k in KPI_SOURCES" :key="k" :value="k">{{ SOURCE_LABEL[k] }}</option>
+            </select>
           </UiField>
           <ImportFlow area="tna" :options="tnaOptions" @imported="load" />
         </UiCard>
