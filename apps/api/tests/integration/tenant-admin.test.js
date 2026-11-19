@@ -218,6 +218,8 @@ run('Admin Tenant B11 (Postgres)', () => {
     // belum pernah masuk -> kembali "diundang"; sudah pernah masuk -> aktif
     expect((await patch(`/users/${id.spv}`, { status: 'active' })).body.data.status).toBe('invited');
     expect((await patch(`/users/${id.spv}`, { status: 'active' })).status).toBe(400);
+    // akun aktif hasil impor yang belum pernah masuk tidak berubah bila form mengirim status yang sama
+    expect((await patch(`/users/${id.staf}`, { status: 'active', name: 'staf' })).body.data.status).toBe('active');
     await patch(`/users/${id.baru}`, { status: 'disabled' });
     expect((await patch(`/users/${id.baru}`, { status: 'active' })).body.data).toMatchObject({ status: 'active', pendingLogin: false });
   });
@@ -278,11 +280,43 @@ run('Admin Tenant B11 (Postgres)', () => {
     const a = (await get('/imports/summary')).body;
     expect(a.data.integrations).toEqual({
       elitementor: { status: 'tersambung', organizationMapped: true, sso: false, webhookSync: false },
-      lms: { targets: ['elitementor'], gapExport: true },
+      lms: { targets: ['elitementor', 'moodle'], gapExport: true },
     });
     expect(JSON.stringify(a)).not.toMatch(/rahasia-klien|em\.test|organizationId|clientId/);
     const b = (await get('/imports/summary', 'adminB')).body.data.integrations;
     expect(b.elitementor).toMatchObject({ status: 'belum_dikonfigurasi', organizationMapped: false });
+  });
+
+  it('riwayat batch: jenis di luar daftar dan unggahan orang lain yang belum disimpan tidak terlihat', async () => {
+    const mk = async (kind, submodule, by) => {
+      const [[row]] = await db.query(
+        `INSERT INTO import_batches (id, tenant_id, submodule, kind, filename, row_count, headers, rows, mapping, created_by)
+         VALUES (gen_random_uuid(), :t, :submodule, :kind, 'x.csv', 0, '[]', '[]', '{}', :by) RETURNING id`,
+        { replacements: { t: A.id, submodule, kind, by } });
+      return row.id;
+    };
+    const hasil = await mk('dna_results', 'dna', id.admin);
+    const milikEta = await mk('dna_competencies', 'dna', id.eta);
+    const milikSendiri = await mk('dna_competencies', 'dna', id.admin);
+    const ids = (await get('/imports/dna/batches')).body.data.map((b) => b.id);
+    expect(ids).toContain(milikSendiri);
+    expect(ids).not.toContain(hasil);
+    expect(ids).not.toContain(milikEta);
+    expect((await get(`/imports/dna/batches/${hasil}`)).status).toBe(404);
+    expect((await get(`/imports/dna/batches/${milikEta}`)).status).toBe(404);
+    expect((await post(`/imports/dna/batches/${milikEta}/commit`, {})).status).toBe(404);
+    expect((await get(`/imports/dna/batches/${milikSendiri}`)).status).toBe(200);
+    // rute HR lama tetap melihat semuanya (perilaku lama)
+    await db.query(`INSERT INTO feature_flags (tenant_id, key, enabled) VALUES (:a, 'module.dna', true)`, { replacements: { a: A.id } });
+    expect((await request(app).get(`/api/dna/imports/batches/${milikEta}`).set(as('admin'))).status).toBe(200);
+  });
+
+  it('atasan: dua akun tidak boleh saling menjadi atasan; kirim ulang undangan ke Super Admin ditolak', async () => {
+    expect((await patch(`/users/${id.staf}`, { supervisorId: id.pim })).status).toBe(200);
+    const res = await patch(`/users/${id.pim}`, { supervisorId: id.staf });
+    expect(res.status).toBe(400);
+    expect((await patch(`/users/${id.staf}`, { supervisorId: id.stafB })).status).toBe(400);
+    expect((await post(`/users/${id.eta}/invite`, {})).status).toBe(403);
   });
 
   it('regresi: rute impor lama tetap hanya untuk HR dan tetap lewat gerbang submodul', async () => {

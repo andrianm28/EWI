@@ -65,6 +65,7 @@ export const useSessionStore = defineStore('session', () => {
   }
 
   const role = computed(() => user.value?.role ?? '')
+  const hasFlag = (key: string) => access.value?.flags[key] === true
 
   function logout() {
     token.value = null
@@ -73,5 +74,5 @@ export const useSessionStore = defineStore('session', () => {
     try { sessionStorage.removeItem(STORAGE_KEY) } catch { /* abaikan */ }
   }
 
-  return { token, user, role, access, isAuthenticated, canOpen, login, loginWithEmailLink, loadAccess, logout }
+  return { token, user, role, access, isAuthenticated, canOpen, hasFlag, login, loginWithEmailLink, loadAccess, logout }
 })

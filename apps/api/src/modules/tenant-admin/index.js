@@ -160,7 +160,7 @@ module.exports = {
         if (!['active', 'disabled'].includes(body.status)) throw badRequest('status harus active atau disabled');
         if (body.status === 'active' && current.status === 'invited') throw badRequest('Akun yang belum menerima undangan menjadi aktif lewat link undangan');
         // akun yang dinonaktifkan sebelum pernah masuk kembali ke "diundang", agar undangan bisa dikirim ulang
-        patch.status = body.status === 'active' && !current.lastLoginAt ? 'invited' : body.status;
+        patch.status = body.status === 'active' && current.status === 'disabled' && !current.lastLoginAt ? 'invited' : body.status;
       }
       Object.assign(patch, await resolvePosition(req, body, current));
       if (!Object.keys(patch).length) throw badRequest('Tidak ada perubahan yang dikirim');
@@ -179,6 +179,7 @@ module.exports = {
 
     r.post('/users/:id/invite', wrap(async (req, res) => {
       const user = await loadUser(req);
+      if (user.role === ROLES.ETA_ADMIN) throw forbidden('ROLE_FORBIDDEN', 'Akun Super Admin tidak dikelola dari layar Admin Tenant');
       if (!pendingLogin(user)) throw conflict('INVALID_STATE', 'Undangan hanya bisa dikirim ulang ke akun yang belum pernah masuk');
       if ((await links.recentCount({ id: user.id, tenantId: req.tenantId })) >= RATE.max) {
         throw new HttpError(429, 'RATE_LIMITED', 'Undangan untuk akun ini baru saja dikirim. Coba lagi 15 menit lagi.');
@@ -292,6 +293,8 @@ module.exports = {
 
     // Alur impor yang sama dengan /api/{dna,tna}/imports, dengan gerbang Admin Tenant. Yang disyaratkan
     // entitlement submodulnya (bukan flag modul): admin menyiapkan data sebelum modul dinyalakan saat Go/No-Go.
+    // gerbang Admin Tenant sudah dipasang untuk seluruh router ini (r.use di atas), jadi tidak diulang di importRouter
+    const passThrough = (_req, _res, next) => next();
     for (const [sm, only] of Object.entries(IMPORT_KINDS)) {
       r.use(`/imports/${sm}`, wrap(async (req, _res, next) => {
         if (!(await entitlements.has(req.tenantId, sm))) throw forbidden('NOT_ENTITLED', `Organisasi Anda belum berlangganan ${sm.toUpperCase()}`);
@@ -299,7 +302,7 @@ module.exports = {
         const flag = (await flags.detail(req.tenantId)).find((f) => f.key === `module.${sm}`);
         if (flag && flag.killSwitch) throw forbidden('FEATURE_DISABLED', `${sm.toUpperCase()} sedang dimatikan sementara oleh ETA`);
         next();
-      }), importRouter({ submodule: sm, stores, audit, guard: adminOnly, only }));
+      }), importRouter({ submodule: sm, stores, audit, guard: passThrough, only, ownDrafts: true }));
     }
 
     return r;

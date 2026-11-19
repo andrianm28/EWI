@@ -123,6 +123,7 @@ Audit: `create user` (meta `assignedRole`), `update user` (meta `changes: { kolo
 - Kolom "Sumber" di layar: nama berkas `lastImport` bila ada; bila tidak, label dari `sources` (mis. "DACUM"); bila kamus kosong, "Belum ada kamus".
 - Jabatan adalah data organisasi inti, jadi rute jabatan tidak mensyaratkan entitlement submodul tertentu.
 - Nama jabatan dibandingkan tanpa beda huruf besar/kecil pada `POST` dan `PATCH`.
+- `POST /job-roles` menjawab jabatan beserta `levels`; `PATCH /job-roles/:id` menjawab `{ id, name, division, description }` saja. Layar memuat ulang daftar untuk hitungan.
 - Menghapus jabatan tidak disediakan (menghapus akan ikut menghapus kamus lewat `ON DELETE CASCADE`).
 
 Audit: `create`/`update` resource `tenant_admin.job_role`.
@@ -172,7 +173,7 @@ Perubahan pada modul impor (kode bersama, perlu review Andrian):
 
 Gerbang tambahan untuk rute impor admin: jenis impor sebuah submodul (`dna`, `tna`) hanya terbuka bila tenant punya **entitlement** submodul itu (tanpa itu 403 `NOT_ENTITLED`) dan **kill switch global** modul itu tidak aktif (403 `FEATURE_DISABLED`). `[⏳ DITERIMA]` Flag tenant `module.dna`/`module.tna` sengaja tidak disyaratkan, karena admin menyiapkan data sebelum modul dinyalakan saat Go/No-Go. Ini penyimpangan sadar dari aturan arsitektur 3 untuk rute admin dan perlu persetujuan Andrian saat review.
 
-Admin yang mengunggah berkas KPI melihat pratinjau barisnya (data per karyawan dari berkas yang ia unggah sendiri) dan riwayat batch jenis yang sama, termasuk unggahan HR (tanpa baris, karena baris mentah dihapus setelah disimpan).
+Admin yang mengunggah berkas KPI melihat pratinjau barisnya (data per karyawan dari berkas yang ia unggah sendiri). Unggahan orang lain yang **belum disimpan** tidak terlihat dan tidak bisa dipratinjau atau disimpan olehnya (`importRouter` parameter `ownDrafts`, 404). Riwayat batch yang sudah disimpan terlihat tanpa baris, karena baris mentah dihapus setelah disimpan. Opsi teks dirapikan (trim) sebelum disimpan.
 
 `[⚠️ BELUM TERVERIFIKASI]` Bentuk berkas DACUM Tool 1–3 yang asli belum pernah dilihat (data Mas Abdan masuk 26 Nov). Paket ini memakai template kamus kompetensi ELGOS yang ada; langkah "petakan kolom" menangani judul kolom yang berbeda. Parser khusus DACUM (bila bentuknya bukan tabel datar) menjadi lingkup B4 (thread T3).
 
@@ -252,3 +253,18 @@ Review oleh subagent baru tanpa riwayat percakapan, 19 Nov 2026. 15 temuan (3 be
 | 13 | Bentuk jawaban dan kode galat | **Perbaiki (dokumen).** Daftar kode galat di 6.1. `invited` tetap di luar `data` karena bukan bagian dari akun |
 | 14 | Selisih teks dengan mockup ("Belum ada lokakarya DACUM", "—") | **Tunda** ke bagian web (teks layar mengikuti mockup) |
 | 15 | Cara flag menyala, penamaan | **Perbaiki (dokumen).** Ditulis di 4.2 |
+
+## 12. Review egm (diff)
+
+Review diff backend oleh subagent baru, 19 Nov 2026. Tidak ada temuan berat; 2 sedang, 6 ringan.
+
+| # | Temuan | Keputusan |
+| --- | --- | --- |
+| 1 | `PATCH {status:'active'}` pada akun aktif yang belum pernah masuk mengubahnya jadi `invited` | **Perbaiki.** Hanya `disabled` yang kembali ke `invited`; ada test |
+| 2 | Unggahan HR yang belum disimpan (baris KPI per karyawan) terbuka bagi admin tenant | **Perbaiki.** `ownDrafts`; ada test |
+| 3 | `only` terhadap riwayat batch tidak diuji | **Perbaiki.** Test ditambah |
+| 4 | Dua admin yang saling menonaktifkan pada saat yang sama bisa meninggalkan tenant tanpa admin | **Tunda.** `[⚠️ BELUM TERVERIFIKASI]` Jaminan di 4.3 tidak berlaku untuk dua request bersamaan. Pemulihan lewat Super Admin (B12). Kunci baris dikerjakan bila B2 menambah aturan admin terakhir |
+| 5 | Bentuk jawaban `POST` dan `PATCH` jabatan berbeda | **Perbaiki (dokumen).** Ditulis di 6.2 |
+| 6 | `options.jobRoleId` disimpan tanpa dirapikan | **Perbaiki.** Opsi teks di-trim sebelum disimpan |
+| 7 | Kirim ulang undangan ke akun `eta_admin` tidak ditolak | **Perbaiki.** 403, ada test |
+| 8 | Gerbang dijalankan dua kali di rute impor; aturan atasan timbal balik tanpa test | **Perbaiki.** Gerbang sekali; test ditambah |

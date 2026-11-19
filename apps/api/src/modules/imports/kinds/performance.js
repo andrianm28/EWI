@@ -1,8 +1,11 @@
 'use strict';
 // Kinerja OKR/KPI/SLA (RG-2, mis. ekspor HappyFive). Target merah = pemicu TNA.
 // BT-26: tipe nilai angka, persen, rating, biner (ya/tidak), dan tenggat (tanggal; lebih awal lebih baik).
+// PM-1 opsi B (★): kolom Arah + Toleransi per KPI. Nilai yang diisi menjadi aturan KPI tersimpan (lna_kpi_rules);
+// kolom kosong memakai aturan tersimpan, lalu bawaan (lebih tinggi lebih baik, toleransi 0). Bila aturan
+// berubah, status baris lama KPI itu dihitung ulang (C-8).
 const v = require('../values');
-const { evaluate } = require('../../tna/performance');
+const { evaluate, effectiveRule, metricKey } = require('../../tna/performance');
 const { EMPLOYEE_FIELDS, employeeFinder, employeeError, NOT_FOUND } = require('./common');
 
 const METRIC_CHOICES = { okr: ['objective', 'key result', 'kr'], kpi: ['key performance indicator'], sla: ['service level', 'service level agreement'] };
@@ -43,6 +46,7 @@ module.exports = {
     { key: 'target', header: 'Target', required: true, aliases: ['target nilai', 'goal'], example: '90%' },
     { key: 'actual', header: 'Realisasi', required: true, aliases: ['aktual', 'actual', 'pencapaian', 'capaian'], example: '72%' },
     { key: 'direction', header: 'Arah', aliases: ['arah target', 'direction', 'polaritas'], example: 'lebih tinggi lebih baik', help: 'lebih tinggi lebih baik (default) atau lebih rendah lebih baik. Tenggat selalu lebih awal lebih baik.' },
+    { key: 'tolerance', header: 'Toleransi', aliases: ['batas toleransi', 'tolerance', 'deviasi', 'toleransi meleset'], example: 5, help: 'Selisih dari target yang masih dianggap tercapai, dalam satuan target (persen-poin untuk persen, hari untuk tenggat). Contoh: target 90%, toleransi 5 -> 85% masih tercapai. Kosong = aturan KPI tersimpan atau 0. Biner tidak memakai toleransi.' },
     { key: 'unit', header: 'Satuan', aliases: ['unit', 'satuan ukur'], example: '%' },
     { key: 'period', header: 'Periode', aliases: ['period', 'bulan', 'kuartal'], example: '2026-11', help: 'Kosong = memakai periode di layar impor.' },
   ],
@@ -59,7 +63,8 @@ module.exports = {
   },
   async context({ stores, tenantId, rows, options }) {
     if (options.projectId && !(await stores.projectsExtra.exists(tenantId, options.projectId))) return { fatal: 'Proyek tidak ditemukan' };
-    return { find: await employeeFinder(stores, tenantId, rows) };
+    const rules = new Map((await stores.tna.listKpiRules(tenantId)).map((r) => [`${r.metricType}|${r.metricKey}`, r]));
+    return { find: await employeeFinder(stores, tenantId, rows), rules, fileRules: new Map() };
   },
   validate(row, ctx, options = {}) {
     const e = employeeError(row); if (e) return { error: e };
@@ -69,26 +74,50 @@ module.exports = {
     if (!name) return { error: 'Nama Metrik wajib diisi' };
     const valueType = v.blank(row.valueType) ? 'angka' : v.choice(row.valueType, VALUE_TYPES);
     if (!valueType) return { error: 'Tipe Nilai harus angka, persen, rating, biner, atau tenggat' };
-    const dir = v.blank(row.direction) ? 'higher' : v.choice(row.direction, DIRECTION_CHOICES);
-    if (!dir) return { error: 'Arah harus lebih tinggi lebih baik atau lebih rendah lebih baik' };
-    const val = values(valueType, row.target, row.actual, dir);
+    const dirGiven = !v.blank(row.direction);
+    const parsedDir = dirGiven ? v.choice(row.direction, DIRECTION_CHOICES) : null;
+    if (dirGiven && !parsedDir) return { error: 'Arah harus lebih tinggi lebih baik atau lebih rendah lebih baik' };
+    const tolGiven = !v.blank(row.tolerance);
+    const parsedTol = tolGiven ? v.number(row.tolerance) : null;
+    if (tolGiven && !(Number.isFinite(parsedTol) && parsedTol >= 0)) return { error: 'Toleransi harus angka 0 atau lebih' };
+    if (tolGiven && valueType === 'biner' && parsedTol !== 0) return { error: 'KPI biner tidak memakai toleransi (kosongkan atau isi 0)' };
+    const key = metricKey(name); const rk = `${metricType}|${key}`;
+    if (!ctx.fileRules) ctx.fileRules = new Map();
+    const saved = ctx.rules ? ctx.rules.get(rk) : null; const inFile = ctx.fileRules.get(rk);
+    const base = inFile || saved || { direction: valueType === 'tenggat' ? 'lower' : 'higher', tolerance: 0 };
+    const rule = effectiveRule(valueType, { direction: parsedDir || base.direction, tolerance: tolGiven ? parsedTol : Number(base.tolerance) });
+    if (inFile && (inFile.direction !== rule.direction || inFile.tolerance !== rule.tolerance)) {
+      return { error: `Arah/Toleransi KPI "${name}" berbeda dengan baris sebelumnya di file` };
+    }
+    const val = values(valueType, row.target, row.actual, rule.direction);
     if (val.error) return { error: val.error };
     const u = ctx.find(row); if (!u) return { error: NOT_FOUND };
-    const { isMet } = evaluate(val);
+    if (!inFile) ctx.fileRules.set(rk, { direction: rule.direction, tolerance: rule.tolerance });
+    const ruleChanged = (dirGiven || tolGiven) && (!saved || saved.direction !== rule.direction || Number(saved.tolerance) !== rule.tolerance);
+    const { isMet } = evaluate({ ...val, tolerance: rule.tolerance });
     return {
       value: {
-        userId: u.id, metricType, name, valueType, target: val.target, actual: val.actual, direction: val.direction, isMet,
+        userId: u.id, metricType, name, metricKey: key, valueType, target: val.target, actual: val.actual, direction: val.direction,
+        tolerance: rule.tolerance, isMet, ruleChanged,
         unit: v.text(row.unit) || (valueType === 'persen' ? '%' : null), period: v.text(row.period) || v.text(options.period),
       },
     };
   },
-  async commit({ stores, tenantId, values: rows, options, batchId }) {
+  async commit({ stores, tenantId, values: rows, options, batchId, user }) {
+    // Aturan KPI yang baru/berubah disimpan dulu, lalu baris lama KPI itu dihitung ulang (C-8).
+    const changed = new Map();
+    for (const r of rows) {
+      const k = `${r.metricType}|${r.metricKey}`;
+      if (r.ruleChanged && !changed.has(k)) changed.set(k, { metricType: r.metricType, metricKey: r.metricKey, name: r.name, direction: r.direction, tolerance: r.tolerance });
+    }
+    if (changed.size) await stores.tna.upsertKpiRules(tenantId, [...changed.values()], user ? user.id : null);
     // dikelompokkan per periode karena store menyimpan periode per panggilan
     const byPeriod = new Map();
     for (const r of rows) { if (!byPeriod.has(r.period)) byPeriod.set(r.period, []); byPeriod.get(r.period).push(r); }
     for (const [period, list] of byPeriod) {
       await stores.tna.insertPerformance(tenantId, list, { projectId: options.projectId || null, period, batchId });
     }
-    return { records: rows.length, red: rows.filter((r) => r.isMet === false).length };
+    const recomputed = changed.size ? await stores.tna.recomputePerformance(tenantId, [...changed.values()]) : { changed: 0, toMet: 0, toMissed: 0 };
+    return { records: rows.length, red: rows.filter((r) => r.isMet === false).length, rulesChanged: changed.size, recomputed };
   },
 };

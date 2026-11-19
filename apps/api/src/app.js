@@ -15,9 +15,11 @@ const { createEntitlementService } = require('./core/entitlement');
 const { requireSubmodule } = require('./core/entitlement/guard');
 const { errorHandler, notFound } = require('./core/errors');
 const projects = require('./modules/projects');
+const { employeeRouter } = require('./modules/employees');
 const { webhookRouter } = require('./integrations/elitementor/webhook');
 const { createSettingsService } = require('./core/settings');
 const { createAiProvider } = require('./ai');
+const { createAnalysisRunner } = require('./modules/interviews/analysis');
 const { createCatalogService, elitementorAdapter, moodleAdapter } = require('./integrations/catalog');
 const tenantAdmin = require('./modules/tenant-admin');
 const SUBMODULE_MODULES = ['cca', 'dna', 'tna', 'ina'].map((k) => require(`./modules/${k}`));
@@ -25,7 +27,7 @@ const SUBMODULE_MODULES = ['cca', 'dna', 'tna', 'ina'].map((k) => require(`./mod
 /**
  * Bangun aplikasi Express. Semua akses data lewat `stores` agar bisa diganti di test.
  * stores: { users, flags, audit, entitlements, projects, people, settings, dna, interviews, tna, projectsExtra }
- * ai / catalog bisa diganti di test; default mengikuti config (T3 dan K-1 masih terbuka).
+ * ai / catalog bisa diganti di test; default mengikuti config (AI_PROVIDER, PK-06; K-1 masih terbuka).
  */
 function createApp({ config, stores, ai, catalog, mailer }) {
   const app = express();
@@ -43,9 +45,13 @@ function createApp({ config, stores, ai, catalog, mailer }) {
     flags,
     audit,
     settings,
-    ai: ai || createAiProvider(config.aiProvider),
-    catalog: catalog || createCatalogService({ elitementor: elitementorAdapter(), moodle: moodleAdapter() }),
+    ai: ai || createAiProvider(config.ai || config.aiProvider),
+    aiConfig: config.ai || {},
+    catalog: catalog || createCatalogService({ elitementor: elitementorAdapter(), moodle: moodleAdapter(stores.catalog) }),
   };
+  // PK-14: analisis wawancara berjalan di latar. app.locals.analysis dipakai server (penyapu) dan test (drain).
+  deps.analysis = createAnalysisRunner({ stores, ai: deps.ai, aiConfig: deps.aiConfig });
+  app.locals.analysis = deps.analysis;
 
   app.use(helmet());
   app.use(cors({ origin: config.corsOrigin.length ? config.corsOrigin : false }));
@@ -57,7 +63,7 @@ function createApp({ config, stores, ai, catalog, mailer }) {
 
   app.get('/api/health', (_req, res) => res.json({ status: 'ok', service: 'ewi-api' }));
   if (stores.loginLinks) app.use('/api/auth/email-link', emailLinkRoutes({ users: stores.users, links, tokens, audit }));
-  app.use('/api/auth', authRoutes({ users: stores.users, tokens, requireAuth: auth, tenantPicker: config.loginTenantPicker }));
+  app.use('/api/auth', authRoutes({ users: stores.users, tokens, requireAuth: auth, audit, tenantPicker: config.loginTenantPicker }));
 
   const api = express.Router();
   api.use(auth, tenantContext());
@@ -68,6 +74,7 @@ function createApp({ config, stores, ai, catalog, mailer }) {
   });
   api.use('/projects', projects.router({ projects: stores.projects }));
   api.use('/admin', flagAdminRouter({ flags, audit }));
+  if (stores.people && stores.interviews) api.use('/employees', employeeRouter({ stores, flags, audit }));
   if (stores.loginLinks) api.use('/invitations', invitationRoutes({ users: stores.users, links, audit }));
   // B11: layar Admin Tenant, di balik flag admin.tenant (bukan submodul berbayar)
   api.use('/tenant-admin', tenantAdmin.router({ ...deps, entitlements, links, elitementor: config.elitementor }));
