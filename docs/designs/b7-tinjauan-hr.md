@@ -77,7 +77,7 @@ Semua di router `tna`, jadi lewat `requireSubmodule('tna')`. Semua hanya HR (`re
 Aturan CLAUDE.md nomor 3: klasifikasi, tahan, solusi, penugasan, ekspor, dan serah ke Improvement Needs adalah perilaku baru, jadi semuanya di balik satu flag. Flag mati → `403 FEATURE_DISABLED`.
 
 2. `POST /api/tna/findings/:id/classify` body `{ classification: 'training' | 'improvement' | 'needs_review', note? }`.
-   - Temuan `draft` dari sesi yang persetujuannya ditarik (B8) → `409 CONSENT_WITHDRAWN`. Temuan yang sudah disetujui sebelum penarikan belum dibekukan; `[⚠️]` menunggu keputusan UU PDP (B8 "Aturan baca").
+   - Temuan dari sesi yang persetujuannya ditarik (B8), draf maupun sudah diputus → `409 CONSENT_WITHDRAWN` (dibekukan, keputusan user 19 Nov; B8 "Aturan baca").
    - Temuan `draft`: `training`/`improvement` memakai `stores.tna.reviewFinding` (bersyarat `review_status = 'draft'`, dua HR bersamaan tidak saling timpa; yang kalah `409 ALREADY_REVIEWED`); `needs_review` memakai `stores.tna.holdFinding` (bersyarat `draft`).
    - Temuan `approved`/`edited`: hanya `training`/`improvement`, lewat `stores.tna.reclassifyFinding` (satu `UPDATE` bersyarat: `status = 'open'`, belum ada baris rencana untuk temuan itu, dan `improvement_handoff_at IS NULL`; `original_category` diisi bila belum terisi; `review_status` menjadi `edited`). Tidak memenuhi syarat → `409 ALREADY_ACTIONED`. Kategori sama → `200` tanpa perubahan. `needs_review` → `409 ALREADY_REVIEWED`.
    - Temuan `rejected` → `409 ALREADY_REVIEWED`. `classification` lain → `400`. `note` maks 2000 karakter.
@@ -170,7 +170,7 @@ B7 tidak membuat tabel tindakan perbaikan. B9 membaca temuan yang diteruskan lew
 
 | Risiko | Mitigasi | Status |
 | --- | --- | --- |
-| Temuan yang sudah disetujui dari sesi yang persetujuannya ditarik tetap diproses (rencana, ekspor, penugasan, serah terima) | Kartu keputusan ke user (rekomendasi: bekukan pemrosesan, simpan data) | `[⚠️ BELUM TERVERIFIKASI]` menunggu user |
+| Temuan yang sudah disetujui dari sesi yang persetujuannya ditarik tetap diproses (rencana, ekspor, penugasan, serah terima) | Dibekukan: rencana/penugasan `409 CONSENT_WITHDRAWN`, solusi dan ekspor disaring, serah ke INA `skipped` | Dibangun (keputusan user 19 Nov) |
 | Rencana ganda karena klik ulang | `planFromFinding` mensyaratkan `status = 'open'` | Dibangun |
 | Laporan "terkirim" palsu dari permintaan yang macet | Penutupan klaim per pemilik; `409` + audit `superseded` | Dibangun |
 | Penugasan tergantung kontrak FR-EM yang belum final | Adapter hanya dipasang bila `ELITEMENTOR_ASSIGNMENTS_ENABLED=true`; tenant pilot memakai ekspor | `[⚠️ BELUM TERVERIFIKASI]` |
@@ -191,7 +191,8 @@ B7 tidak membuat tabel tindakan perbaikan. B9 membaca temuan yang diteruskan lew
 4. Penugasan: tiap baris tabel keputusan; rencana kedua untuk temuan yang sama → `ALREADY_ACTIONED`; sukses dengan adapter tiruan; dua permintaan paralel → adapter dipanggil sekali; gagal → 502 + `failed`, coba lagi sukses; `sent` lalu `lms_export` tetap 200; PATCH course terkunci; `sending` basi bisa diklaim ulang; permintaan yang klaimnya diambil alih → 409 dan audit `superseded`, baik saat EliteMentor sukses maupun gagal.
 5. Ekspor CSV: kolom, hanya tenant sendiri, awalan `'`, tanpa baris ganda, tidak mengubah data, audit `export`, `projectId` tidak valid → 400.
 6. Serah ke Improvement Needs: `INA_DISABLED`; sukses; `already`; `skipped`; terkunci dari klasifikasi ulang; `listImprovementHandoffs` tanpa data individu.
-7. Migrasi naik-turun-naik dijalankan CI (`.github/workflows/ci.yml`).
+7. Pembekuan setelah tarik persetujuan: klasifikasi ulang, rencana, penugasan → `409 CONSENT_WITHDRAWN`; solusi, ekspor, `listImprovementHandoffs` tanpa temuan itu; serah → `skipped`; data dan status rencana tetap.
+8. Migrasi naik-turun-naik dijalankan CI (`.github/workflows/ci.yml`).
 
 ## Daftar perubahan file
 

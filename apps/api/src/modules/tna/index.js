@@ -24,7 +24,7 @@ const { importRouter } = require('../imports');
 const { getKind } = require('../imports/kinds');
 const { validateRows, commitRows } = require('../imports/engine');
 const { PLAN_STATUSES, PLAN_STATUS_LABEL, initialStatus, canTransition } = require('./plan-status');
-const { reviewWorkspaceRouter, toReviewItem, assertNotWithdrawn } = require('./review-workspace');
+const { reviewWorkspaceRouter, toReviewItem, assertNotWithdrawn, frozenError } = require('./review-workspace');
 const { gapRouter } = require('./gap-routes');
 
 const REVIEW_DECISIONS = { approve: 'approved', edit: 'edited', reject: 'rejected' };
@@ -218,7 +218,7 @@ module.exports = {
       } else if (![ROLES.HR_ADMIN, ROLES.ETA_ADMIN].includes(role)) {
         throw forbidden('ROLE_FORBIDDEN', 'Temuan di luar pelatihan hanya untuk HR dan atasan yang diberi akses');
       }
-      const rows = await stores.tna.listNonTrainingSummary(req.tenantId, { projectId: req.query.projectId, userIds });
+      const rows = await stores.tna.listNonTrainingSummary(req.tenantId, { projectId: req.query.projectId, userIds, excludeFrozen: true });
       await audit.readIndividual(req, 'tna.findings_non_training', { employeeIds: rows.map((f) => f.userId), objectType: 'tna_finding', objectIds: rows.map((f) => f.id) });
       res.json({ data: rows });
     }));
@@ -271,7 +271,7 @@ module.exports = {
       if (req.user.role === ROLES.LEARNER) throw forbidden('ROLE_FORBIDDEN', 'Prioritas tim hanya untuk HR dan atasan');
       const scope = await scopeFor(req, stores.people);
       const conf = await settings.get(req.tenantId);
-      const findings = await stores.tna.listFindings(req.tenantId, scope, { projectId: req.query.projectId, categories: ['training'] });
+      const findings = await stores.tna.listFindings(req.tenantId, scope, { projectId: req.query.projectId, categories: ['training'], excludeFrozen: true });
       const rows = rankFindings(findings, conf.tna.pareto);
       res.json({ data: rows, formula: conf.tna.pareto });
     }));
@@ -290,7 +290,11 @@ module.exports = {
         programTier: req.body?.programTier || null, catalogSource: hit?.source, catalogItemRef: hit?.ref, catalogItemTitle: hit?.title,
         note: req.body?.note || null,
       });
-      if (!item) throw new HttpError(409, 'ALREADY_ACTIONED', 'Klasifikasi temuan ini baru saja berubah. Muat ulang lalu coba lagi.');
+      if (!item) {
+        // planFromFinding juga menolak temuan beku (keputusan user 19 Nov); bedakan alasannya untuk pesan
+        assertNotWithdrawn(await stores.tna.getReviewItem(req.tenantId, f.id));
+        throw new HttpError(409, 'ALREADY_ACTIONED', 'Klasifikasi temuan ini baru saja berubah. Muat ulang lalu coba lagi.');
+      }
       // PK-15: perubahan temuan dan rencana dicatat
       await audit.record(req, 'create', 'tna.plan_item', { employeeIds: [f.userId], objectType: 'tna_plan_item', objectIds: [item.id], findingId: f.id, status: item.status });
       await audit.record(req, 'update', 'tna.finding', { employeeIds: [f.userId], objectType: 'tna_finding', objectIds: [f.id], from: f.status, to: 'planned' });
@@ -305,6 +309,7 @@ module.exports = {
       if (findingId) {
         const f = await stores.tna.getFinding(req.tenantId, findingId);
         if (!f || f.userId !== req.user.id || !REVIEWED.includes(f.reviewStatus)) throw notFound('Temuan tidak ditemukan');
+        assertNotWithdrawn(await stores.tna.getReviewItem(req.tenantId, f.id));
       }
       const item = await stores.tna.insertPlanItem(req.tenantId, {
         findingId: findingId || null, userId: req.user.id, origin: 'learner_request', status: initialStatus('learner_request'), note: note || null, requestedBy: req.user.id,
@@ -327,6 +332,7 @@ module.exports = {
       if (!item || !inScope(scope, item.userId)) throw notFound('Item training plan tidak ditemukan');
       const { status, catalogItemRef, catalogItemTitle, catalogSource } = req.body || {};
       if (status && !PLAN_STATUSES.includes(status)) throw badRequest(`status harus salah satu: ${PLAN_STATUSES.join(', ')}`);
+      if (await stores.tna.isPlanFrozen(req.tenantId, item.id)) throw frozenError();
       if (status && status !== item.status && !canTransition(item.status, status)) {
         throw new HttpError(409, 'INVALID_TRANSITION', `Status "${PLAN_STATUS_LABEL[item.status]}" tidak bisa diubah menjadi "${PLAN_STATUS_LABEL[status]}"`);
       }
@@ -343,8 +349,8 @@ module.exports = {
       const scope = await scopeFor(req, stores.people);
       const [sessions, findings, plan, perf] = await Promise.all([
         stores.interviews.list(req.tenantId, 'tna', scope, { projectId: req.query.projectId }),
-        stores.tna.listFindings(req.tenantId, scope, { projectId: req.query.projectId, categories: ['training'] }),
-        stores.tna.listPlanItems(req.tenantId, scope),
+        stores.tna.listFindings(req.tenantId, scope, { projectId: req.query.projectId, categories: ['training'], excludeFrozen: true }),
+        stores.tna.listPlanItems(req.tenantId, scope, { excludeFrozen: true }),
         stores.tna.listPerformance(req.tenantId, scope, { projectId: req.query.projectId }),
       ]);
       // HR melihat jumlah temuan yang menunggu review; peran lain tidak tahu ada draf (PM-5 ★A)
