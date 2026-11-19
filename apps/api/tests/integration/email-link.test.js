@@ -62,8 +62,12 @@ run('Login link email R3-2 (Postgres)', () => {
     const again = await request(app).post('/api/auth/email-link/verify').send({ token });
     expect(again.status).toBe(401);
     expect(again.body.error.message).toMatch(/Minta link baru/);
-    const [[audit]] = await db.query(`SELECT action, resource FROM audit_logs WHERE tenant_id = :t AND user_id = :u`, { replacements: { t: tenant.id, u: u.dimas } });
-    expect(audit).toEqual({ action: 'login', resource: 'auth.email_link' });
+    // B1: permintaan link dan keberhasilan masuk sama-sama tercatat
+    const [audit] = await db.query(`SELECT action, resource, meta->>'outcome' AS outcome FROM audit_logs WHERE tenant_id = :t AND user_id = :u ORDER BY id`, { replacements: { t: tenant.id, u: u.dimas } });
+    expect(audit).toEqual([
+      { action: 'login', resource: 'auth.attempt', outcome: 'link_sent' },
+      { action: 'login', resource: 'auth.email_link', outcome: null },
+    ]);
   });
 
   it('link kedaluwarsa ditolak; permintaan dibatasi 3 per 15 menit', async () => {

@@ -3,6 +3,9 @@ const express = require('express');
 const bcrypt = require('bcryptjs');
 const { unauthorized, badRequest, notFound, forbidden } = require('../errors');
 const { limitByIp } = require('./rate-limit');
+const { finishFirstFactor } = require('./mfa');
+const { FLAGS } = require('../flags');
+const { HttpError } = require('../errors');
 
 const wrap = (fn) => (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
 const publicUser = (u) => ({ id: u.id, tenantId: u.tenantId, email: u.email, name: u.name, role: u.role });
@@ -14,8 +17,14 @@ const DUMMY_HASH = bcrypt.hashSync('elgos-dummy-password', 10);
  * PK-16 / PD-10 ★B: `localLogin` false di produksi; login password lalu menjawab 404.
  * `limits`: { passwordIp, passwordAccount } dari createRateLimiter.
  */
-function authRoutes({ users, sessions, policy, audit, requireAuth, limits, tenantPicker = false, localLogin = false }) {
+function authRoutes({ users, sessions, policy, audit, requireAuth, limits, mfa, attempts, flags, tenantPicker = false, localLogin = false }) {
   const r = express.Router();
+  // B1: SSO perusahaan hanya ditawarkan bila organisasi dikenal, aktif, dan flag auth.sso menyala
+  const ssoTenant = async (slug) => {
+    if (!slug || !flags || !users.findTenantBySlug) return null;
+    const tenant = await users.findTenantBySlug(String(slug).trim());
+    return tenant && (await flags.isEnabled(tenant.id, FLAGS.AUTH_SSO)) ? tenant : null;
+  };
 
   // Pilihan organisasi di halaman login (LOGIN_TENANT_PICKER, dev/staging saja). Mati -> 404, web memakai input teks.
   r.get('/tenants', wrap(async (_req, res) => {
@@ -24,7 +33,17 @@ function authRoutes({ users, sessions, policy, audit, requireAuth, limits, tenan
   }));
 
   // Web menampilkan form password hanya bila API mengizinkan.
-  r.get('/methods', (_req, res) => res.json({ password: localLogin, emailLink: true }));
+  r.get('/methods', wrap(async (req, res) => {
+    res.json({ password: localLogin, emailLink: true, sso: !!(await ssoTenant(req.query.tenant)) });
+  }));
+
+  // B1: kerangka SSO. IdP belum ada, jadi organisasi yang flag-nya menyala mendapat 501 (tercatat di audit).
+  r.post('/sso/start', limitByIp(limits.passwordIp, 'sso'), wrap(async (req) => {
+    const tenant = await ssoTenant((req.body || {}).tenant);
+    if (!tenant) throw Object.assign(notFound('SSO belum tersedia untuk organisasi ini. Masuk lewat link email.'), { code: 'SSO_UNAVAILABLE' });
+    await attempts.record({ tenantId: tenant.id }, { method: 'sso', outcome: 'not_configured' });
+    throw new HttpError(501, 'SSO_NOT_CONFIGURED', 'SSO perusahaan belum dihubungkan. Masuk lewat link email.');
+  }));
 
   if (localLogin) {
     r.post('/login', limitByIp(limits.passwordIp, 'password'), wrap(async (req, res) => {
@@ -40,13 +59,17 @@ function authRoutes({ users, sessions, policy, audit, requireAuth, limits, tenan
       const ok = await bcrypt.compare(String(password), (user && user.passwordHash) || DUMMY_HASH);
       if (!user || !user.passwordHash || !ok) {
         limits.passwordAccount.record(accountKey);
+        // Hanya akun yang dikenal yang masuk audit tenant (lihat attempts.js)
+        if (user) await attempts.record(user, { method: 'password', outcome: 'failed' });
         throw unauthorized('Email atau password salah');
       }
-      if (!policy.allows(user)) throw forbidden('LOGIN_NOT_ALLOWED', 'Akun ini tidak diizinkan masuk');
+      if (!policy.allows(user)) {
+        await attempts.record(user, { method: 'password', outcome: 'blocked', reason: 'policy' });
+        throw forbidden('LOGIN_NOT_ALLOWED', 'Akun ini tidak diizinkan masuk');
+      }
       limits.passwordAccount.reset(accountKey);
-      const { token } = await sessions.issue(user, { method: 'password', ip: req.ip, userAgent: req.get('user-agent') });
-      await audit.record({ tenantId: user.tenantId, user }, 'login', 'auth.password', {});
-      res.json({ token, user: publicUser(user) });
+      const done = await finishFirstFactor({ user, method: 'password', req, sessions, mfa, audit, attempts });
+      res.json(done.mfaRequired ? done : { token: done.token, user: publicUser(user) });
     }));
   } else {
     r.post('/login', (_req, _res, next) => next(notFound('Login password tidak tersedia. Masuk lewat link email.')));

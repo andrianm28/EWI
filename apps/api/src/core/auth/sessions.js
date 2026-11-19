@@ -7,7 +7,7 @@ const crypto = require('crypto');
 
 /**
  * store: {
- *   create({ id, tenantId, userId, method, expiresAt, ip, userAgent }),
+ *   create({ id, tenantId, userId, method, mfa, expiresAt, ip, userAgent }),
  *   findActive(id) -> { id, tenantId, userId } | null   (belum dicabut, belum kedaluwarsa, user & tenant aktif),
  *   revoke(id, { revokedBy, reason }) -> bool,
  *   revokeAllForUser(tenantId, userId, { revokedBy, reason, exceptId }) -> jumlah,
@@ -16,11 +16,11 @@ const crypto = require('crypto');
  */
 function createSessionService({ store, tokens }) {
   return {
-    async issue(user, { method, ip, userAgent } = {}) {
+    async issue(user, { method, ip, userAgent, mfa = false } = {}) {
       const id = crypto.randomUUID();
       const token = tokens.sign(user, { sid: id });
       await store.create({
-        id, tenantId: user.tenantId, userId: user.id, method: method || 'unknown',
+        id, tenantId: user.tenantId, userId: user.id, method: method || 'unknown', mfa: mfa === true,
         expiresAt: tokens.expiresAt(token), ip: ip || null, userAgent: userAgent ? String(userAgent).slice(0, 255) : null,
       });
       return { token, sessionId: id };
@@ -64,7 +64,7 @@ function memorySessionStore({ now = () => new Date() } = {}) {
     },
     async listActiveForUser(tenantId, userId) {
       return [...rows.values()].filter((s) => s.tenantId === tenantId && s.userId === userId && live(s))
-        .map(({ id, method, createdAt, expiresAt, ip, userAgent }) => ({ id, method, createdAt, expiresAt, ip, userAgent }));
+        .map(({ id, method, mfa, createdAt, expiresAt, ip, userAgent }) => ({ id, method, mfa, createdAt, expiresAt, ip, userAgent }));
     },
   };
 }

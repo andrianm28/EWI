@@ -19,6 +19,10 @@ const FLAGS = Object.freeze({
   WEBHOOK_SYNC: 'em.webhook_sync',
   COST_PER_SESSION: 'cost.per_session',
   INA_DASHBOARD: 'ina.dashboard', // RG-4: ditahan dari POC Desember
+  // B1 (19 Nov): SSO ke IdP perusahaan klien untuk masuk ELGOS (beda dari em.sso = lompat ke EliteMentor)
+  AUTH_SSO: 'auth.sso',
+  // B1: pendaftaran verifikasi dua langkah (kode autentikator). Akun yang sudah aktif tetap ditantang walau flag mati
+  AUTH_MFA: 'auth.mfa',
 });
 
 const KNOWN = new Set(Object.values(FLAGS));

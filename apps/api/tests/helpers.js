@@ -26,7 +26,10 @@ function makeStores({ entitlements = {}, flags = {} } = {}) {
   return {
     users: {
       listActiveTenants: async () => [{ slug: 'elgos', name: 'ELGOS' }, { slug: 'other', name: 'Lain' }],
-      findByEmail: async (slug, email) => users.find((u) => u.tenantSlug === slug && u.email === email) || null },
+      findByEmail: async (slug, email) => users.find((u) => u.tenantSlug === slug && u.email === email) || null,
+      findById: async (tenantId, id) => users.find((u) => u.tenantId === tenantId && u.id === id) || null,
+      findTenantBySlug: async (slug) => { const u = users.find((x) => x.tenantSlug === slug); return u ? { id: u.tenantId, slug, name: slug } : null; },
+    },
     flags: { getTenantFlags: async (tid) => flags[tid] || {} },
     entitlements: { getActiveEntitlements: async (tid) => (entitlements[tid] || []).map((product) => ({ product })) },
     projects: {
