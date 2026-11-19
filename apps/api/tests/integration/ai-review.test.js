@@ -52,7 +52,7 @@ run('PK-14 review hasil AI (Postgres)', () => {
     await add('beni', 'learner');
     await db.query('UPDATE users SET supervisor_id = :spv WHERE id IN (:ids)', { replacements: { spv: u.spv, ids: [u.ani, u.beni] } });
     await db.query(`INSERT INTO entitlements (tenant_id, product) VALUES (:t, 'full_suite')`, { replacements: { t: tenant.id } });
-    await db.query(`INSERT INTO feature_flags (tenant_id, key, enabled) VALUES (:t, 'module.tna', true)`, { replacements: { t: tenant.id } });
+    await db.query(`INSERT INTO feature_flags (tenant_id, key, enabled) VALUES (:t, 'module.tna', true), (:t, 'tna.training_request', true)`, { replacements: { t: tenant.id } });
     const [[p]] = await db.query(`INSERT INTO lna_projects (tenant_id, name) VALUES (:t, 'Review') RETURNING id`, { replacements: { t: tenant.id } });
     projectId = p.id;
   });
