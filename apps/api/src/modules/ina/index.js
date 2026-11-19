@@ -71,6 +71,12 @@ module.exports = {
       status: v.status, dueDate: v.dueDate, assignedAt: v.assignedAt, startedAt: v.startedAt, endedAt: v.endedAt,
       reportedStatus: v.reportedStatus, summary: v.summary, aiProvider: v.aiProvider,
     });
+    /** Pemilik lama (tindakan sudah dialihkan atau ditandai individu) tidak lagi menerima judul tindakan yang sekarang. */
+    const ownerView = (v) => {
+      const out = publicVerification(v);
+      if (v.actionOwnerUserId !== v.ownerUserId || v.actionInvolvesIndividual) out.actionTitle = 'Tindakan perbaikan (sudah dialihkan)';
+      return out;
+    };
     const aiAction = (v) => ({ title: v.actionTitle, category: v.actionCategory, dueDate: v.actionDueDate });
 
     // ---------- Tindakan perbaikan ----------
@@ -84,9 +90,11 @@ module.exports = {
 
       const all = await db.listActions(req.tenantId, { scope: access.scope, hidden });
       const meta = { level: access.level };
-      if (access.level === LEVELS.MANAGE) meta.hiddenIndividual = hidden ? all.length : await db.countHidden(req.tenantId);
-      // KPI dari himpunan yang boleh dilihat pemanggil, sebelum filter query
-      const body = { data: [], kpis: kpis(all, today()), meta };
+      if (access.level === LEVELS.MANAGE) meta.hiddenIndividual = await db.countHidden(req.tenantId);
+      // KPI dari himpunan utama yang boleh dilihat pemanggil, sebelum filter query. Tindakan yang menyangkut
+      // individu tidak pernah ikut KPI, juga saat HR membuka daftar hidden=1.
+      const visible = hidden ? await db.listActions(req.tenantId, { scope: access.scope, hidden: false }) : all;
+      const body = { data: [], kpis: kpis(visible, today()), meta };
       if (access.level !== LEVELS.SUMMARY) {
         const rows = all.filter((a) => (!status || a.status === status) && (!category || a.category === category));
         await audit.readIndividual(req, 'ina.actions', { employeeIds: rows.map((a) => a.ownerUserId), objectType: 'ina_action', objectIds: rows.map((a) => a.id) });
@@ -111,6 +119,12 @@ module.exports = {
       const { action, access } = await loadAction(req);
       await audit.readIndividual(req, 'ina.action', { employeeIds: [action.ownerUserId], objectType: 'ina_action', objectIds: [action.id] });
       res.json({ data: publicAction(action, access.level, { detail: true }) });
+    }));
+
+    // Pilihan pemilik untuk formulir HR: akun aktif tenant (nama dan jabatan saja)
+    r.get('/owners', dashboard, wrap(async (req, res) => {
+      await requireLevel(req, stores, MANAGE);
+      res.json({ data: await db.ownerOptions(req.tenantId) });
     }));
 
     /** Validasi field tindakan yang ada di body; rujukan dicari ulang dalam tenant. */
@@ -201,7 +215,8 @@ module.exports = {
       if (changed.includes('status') && !canTransition(current.status, patch.status)) {
         throw conflict('INVALID_TRANSITION', `Status tidak bisa berubah dari ${current.status} ke ${patch.status}`);
       }
-      const saved = await db.updateAction(req.tenantId, current.id, Object.fromEntries(changed.map((k) => [k, patch[k]])));
+      const saved = await db.updateAction(req.tenantId, current.id, Object.fromEntries(changed.map((k) => [k, patch[k]])), current.status);
+      if (!saved) throw conflict('INVALID_TRANSITION', 'Status tindakan ini baru saja diubah orang lain. Muat ulang lalu coba lagi.');
 
       // verifikasi terbuka tidak lagi relevan bila pemilik berganti, tindakan ditutup, atau tindakan disembunyikan
       let cancelled = [];
@@ -287,7 +302,7 @@ module.exports = {
     // Pemilik tindakan (peran apa pun) melihat verifikasi yang ditugaskan kepadanya
     r.get('/verifications/mine', ...verif, wrap(async (req, res) => {
       const rows = await db.listVerifications(req.tenantId, { ownerUserId: req.user.id });
-      res.json({ data: rows.filter((v) => v.status !== 'cancelled').map(publicVerification) });
+      res.json({ data: rows.filter((v) => v.status !== 'cancelled').map(ownerView) });
     }));
 
     async function loadVerification(req) {
@@ -307,7 +322,7 @@ module.exports = {
       if (v.ownerUserId === req.user.id) {
         const turns = await db.turns(req.tenantId, v.id);
         await audit.readIndividual(req, 'ina.verification_transcript', { employeeIds: [v.ownerUserId], objectType: 'ina_verification', objectIds: [v.id] });
-        return res.json({ data: { ...publicVerification(v), turns } });
+        return res.json({ data: { ...ownerView(v), turns } });
       }
       if ((await inaAccess(req, stores)).level !== LEVELS.MANAGE) throw notFound('Verifikasi tidak ditemukan');
       await audit.readIndividual(req, 'ina.verification_summary', { employeeIds: [v.ownerUserId], objectType: 'ina_verification', objectIds: [v.id] });
@@ -339,7 +354,10 @@ module.exports = {
       const v = await loadOwn(req);
       if (v.status !== 'in_progress') throw conflict('INVALID_STATE', 'Verifikasi ini belum dimulai atau sudah ditutup');
       const answer = text(req.body || {}, 'text', 'Jawaban', 4000, { required: true });
-      await db.addTurn(req.tenantId, v.id, 'human', answer);
+      // status dan batas jawaban diperiksa lagi di dalam transaksi (request bersamaan, tarik diri, batal oleh HR)
+      if (!(await db.addTurn(req.tenantId, v.id, 'human', answer, { maxHuman: verifier.maxQuestions }))) {
+        throw conflict('INVALID_STATE', 'Verifikasi ini sudah ditutup atau semua pertanyaan sudah dijawab');
+      }
       const turns = await db.turns(req.tenantId, v.id);
       const answered = turns.filter((t) => t.speaker === 'human').length;
       const question = await verifier.nextQuestion({ action: aiAction(v), askedCount: answered, turns });
@@ -363,10 +381,7 @@ module.exports = {
     // Pemilik menarik diri: percakapan dihapus, HR hanya melihat statusnya
     r.post('/verifications/:id/withdraw', ...verif, wrap(async (req, res) => {
       const v = await loadOwn(req);
-      if (!(await db.moveVerification(req.tenantId, v.id, ['assigned', 'in_progress'], 'withdrawn'))) {
-        throw conflict('INVALID_STATE', 'Verifikasi ini sudah ditutup');
-      }
-      await db.deleteTurns(req.tenantId, v.id);
+      if (!(await db.withdrawVerification(req.tenantId, v.id))) throw conflict('INVALID_STATE', 'Verifikasi ini sudah ditutup');
       await auditVerification(req, 'update', v, { event: 'withdrawn' });
       res.json({ data: publicVerification(await db.getVerification(req.tenantId, v.id)) });
     }));

@@ -69,6 +69,7 @@ describe('INA verifikasi AI (bawaan)', () => {
     expect(classify(human('Masih berjalan', 'Terkendala anggaran'))).toBe('blocked');
     expect(classify(human('Masih berjalan', 'Tidak ada'))).toBe('in_progress');
     expect(classify(human('Sudah beres', 'Sempat terhambat vendor'))).toBe('done');
+    for (const t of ['Hampir selesai', 'Akan selesai minggu ini', 'Selesai bulan depan', 'Target selesai Desember']) expect(classify(human(t))).toBe('in_progress');
     expect(classify([])).toBe('in_progress');
   });
 

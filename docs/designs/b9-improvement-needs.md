@@ -66,7 +66,7 @@ Cakupan atasan memakai `scopeFor(req, stores.people)` → `visibleEmployeeScope(
 
 ### 4.3 Temuan yang menyangkut individu
 
-Kolom `involves_individual` (boolean, default `false`). Tindakan bertanda `true` tidak dikirim oleh `GET /ina/actions` bawaan untuk peran apa pun, dan tidak ikut KPI. HR mendapat hitungan `meta.hiddenIndividual`, dan hanya HR yang bisa membukanya lewat `GET /ina/actions?hidden=1` atau `GET /ina/actions/:id` agar bisa dikoreksi. Atasan dan pimpinan tidak mendapat hitungan itu; rute satuan menjawab 404. Tindakan bertanda individu tidak bisa diverifikasi lewat AI, dan menandainya membatalkan verifikasi yang masih terbuka.
+Kolom `involves_individual` (boolean, default `false`). Tindakan bertanda `true` tidak dikirim oleh `GET /ina/actions` bawaan untuk peran apa pun, dan tidak ikut KPI. HR mendapat hitungan `meta.hiddenIndividual`, dan hanya HR yang bisa membukanya lewat `GET /ina/actions?hidden=1` atau `GET /ina/actions/:id` agar bisa dikoreksi. Atasan dan pimpinan tidak mendapat hitungan itu; untuk atasan rute satuan menjawab 404, untuk pimpinan 403 (ia tidak punya rute satuan sama sekali). KPI selalu dihitung dari daftar utama, juga saat `hidden=1`. Tindakan bertanda individu tidak bisa diverifikasi lewat AI, dan menandainya membatalkan verifikasi yang masih terbuka.
 
 Saat tindakan dibuat **dari temuan** (`findingId`), `involvesIndividual` wajib dikirim eksplisit (`true`/`false`): temuan wawancara selalu berasal dari satu karyawan, jadi HR harus memutuskan dengan sadar. Judul tindakan selalu ditulis HR; judul temuan tidak diwarisi, supaya kalimat dari wawancara tidak ikut tampil ke atasan.
 
@@ -272,3 +272,19 @@ Review oleh subagent baru tanpa riwayat percakapan, 19 Nov 2026. 12 temuan.
 | 10 | Laporan PDF (BI-2) dan whistleblowing (BI-6/16) tidak dibangun | **Tunda.** Tidak ada di mockup final dan brief; tercatat di bagian 10 |
 | 11 | Kontrak AI sinkron/asinkron tidak jelas | **Perbaiki.** Kontrak async ditulis di 6.3 |
 | 12 | Skema: sub-label tanpa CHECK, giliran tanpa tenant | **Perbaiki sebagian.** CHECK ditambah; giliran tetap tanpa `tenant_id` dengan join wajib (ditulis di 5) |
+
+## 12. Review egm (diff)
+
+Review diff backend oleh subagent baru, 19 Nov 2026. Tidak ada temuan berat; 4 sedang, 5 ringan. Tenancy, flag, privasi transkrip, audit, dan enkripsi dinyatakan bersih.
+
+| # | Temuan | Keputusan |
+| --- | --- | --- |
+| 1 | Giliran bisa menyusul setelah pemilik menarik diri (balapan) | **Perbaiki.** `addTurn` mengunci baris verifikasi dan memeriksa status; tarik diri dan hapus percakapan dalam satu transaksi; ada test |
+| 2 | Giliran bersamaan melewati batas tiga jawaban | **Perbaiki.** Batas diperiksa di dalam transaksi yang sama; ada test |
+| 3 | Dua `PATCH` status bersamaan melewati aturan transisi | **Perbaiki.** `UPDATE … WHERE status = <yang dibaca>`, selain itu 409 `INVALID_TRANSITION`; ada test |
+| 4 | `hidden=1` menghitung KPI dari tindakan tersembunyi | **Perbaiki.** KPI selalu dari daftar utama |
+| 5 | KPI dihitung dari daftar berbatas 2.000 baris | **Tunda.** `[⚠️ BELUM TERVERIFIKASI]` Tenant POC jauh di bawah itu; agregasi SQL dikerjakan bila ada tenant mendekati batas |
+| 6 | Pimpinan mendapat 403, spek menulis 404 | **Perbaiki (dokumen).** 4.3 disesuaikan |
+| 7 | Pemilik lama masih melihat judul tindakan yang sekarang | **Perbaiki.** Judul diganti teks tetap untuk pemilik lama; ada test |
+| 8 | "Hampir selesai" terbaca selesai | **Perbaiki.** Kata penjaga ditambah; ada test |
+| 9 | Celah test: lintas tenant di rute verifikasi, atasan sebagai pemilik, pimpinan di rute verifikasi | **Perbaiki sebagian.** Test ditambah. Test dalam satu berkas tetap berurutan (pola repo); migrasi naik-turun-naik dijalankan CI |

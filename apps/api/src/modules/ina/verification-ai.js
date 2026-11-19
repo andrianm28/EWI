@@ -21,7 +21,8 @@ const QUESTIONS = Object.freeze([
 ]);
 
 const BLOCKED = /(terhambat|terkendala|terhenti|tertunda|macet|mandek|belum bisa|tidak bisa lanjut|menunggu (persetujuan|anggaran|keputusan|vendor))/i;
-const NOT_DONE = /(belum|tidak|bukan)\s+(\w+\s+)?(selesai|beres|rampung|tuntas)/i;
+// "hampir selesai", "akan selesai", "selesai bulan depan" belum berarti selesai
+const NOT_DONE = /((belum|tidak|bukan|hampir|akan|segera|target|rencana\w*|diperkirakan|perkiraan)\s+(\w+\s+)?(selesai|beres|rampung|tuntas))|((selesai|beres|rampung|tuntas)\s+(\w+\s+)?(besok|lusa|nanti|minggu depan|bulan depan|tahun depan|akhir))/i;
 const DONE = /(selesai|beres|rampung|tuntas)/i;
 
 /** Status dari jawaban pemilik: jawaban pertama menentukan selesai/berjalan; hambatan dibaca dari semua jawaban. */

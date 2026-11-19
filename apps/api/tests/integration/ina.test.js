@@ -145,9 +145,9 @@ run('Improvement Needs B9 (Postgres)', () => {
   it('ubah tindakan: transisi status, sub-label ikut kategori, audit tanpa isi teks', async () => {
     expect((await patch(`/actions/${id.aLain}`, {})).status).toBe(400);
     expect((await patch(`/actions/${id.aLain}`, { findingId: id.fNon })).status).toBe(400);
-    const bad = await patch(`/actions/${id.aLain}`, { status: 'done' });
-    expect(bad.status).toBe(200);
-    expect(bad.body.data.status).toBe('done');
+    const done = await patch(`/actions/${id.aLain}`, { status: 'done' });
+    expect(done.status).toBe(200);
+    expect(done.body.data.status).toBe('done');
     const again = await patch(`/actions/${id.aLain}`, { status: 'rejected' });
     expect([again.status, again.body.error.code]).toEqual([409, 'INVALID_TRANSITION']);
     expect((await sql('SELECT completed_at FROM ina_actions WHERE id = :id', { id: id.aLain }))[0].completed_at).not.toBeNull();
@@ -233,6 +233,11 @@ run('Improvement Needs B9 (Postgres)', () => {
     expect((await get(`/actions/${id.aSop}`, 'pim')).status).toBe(403);
     expect((await post('/actions', { title: 'Judul sah', category: 'sop' }, 'pim')).status).toBe(403);
     expect((await get('/actions', 'staf')).body.error.code).toBe('ROLE_FORBIDDEN');
+    // pilihan pemilik hanya untuk HR, tanpa email
+    const owners = await get('/owners');
+    expect(owners.body.data.find((o) => o.id === id.staf)).toEqual({ id: id.staf, name: 'Nama staf', jobRoleName: 'Engineer L1' });
+    expect(owners.body.data.map((o) => o.id)).not.toContain(id.stafB);
+    for (const who of ['pim', 'spv', 'staf']) expect((await get('/owners', who)).status).toBe(403);
     expect((await get(`/actions/${id.aSop}`, 'staf')).status).toBe(403);
   });
 
@@ -249,6 +254,8 @@ run('Improvement Needs B9 (Postgres)', () => {
     expect((await get('/actions', 'pim')).body.kpis.total).toBe(3);
     const hidden = await get('/actions?hidden=1');
     expect(hidden.body.data.map((x) => x.id)).toEqual([id.aTemuan]);
+    expect(hidden.body.kpis.total).toBe(3); // KPI tetap dari daftar utama
+    expect(hidden.body.meta.hiddenIndividual).toBe(1);
     expect((await get(`/actions/${id.aTemuan}`)).status).toBe(200);
   });
 
@@ -309,6 +316,14 @@ run('Improvement Needs B9 (Postgres)', () => {
     expect((await get(`/verifications/${vid}`, 'spv')).status).toBe(404);
     expect((await get(`/verifications/${vid}`, 'pim')).status).toBe(404);
     expect((await get('/verifications', 'spv')).status).toBe(403);
+    expect((await get('/verifications', 'pim')).status).toBe(403);
+    // lintas tenant: HR tenant B tidak menjangkau verifikasi tenant A
+    expect((await get(`/verifications/${vid}`, 'hrB')).status).toBe(404);
+    expect((await post(`/verifications/${vid}/cancel`, {}, 'hrB')).status).toBe(404);
+    expect((await post(`/verifications/${vid}/turns`, { text: 'x' }, 'stafB')).status).toBe(404);
+    expect((await get('/verifications', 'hrB')).body.data).toEqual([]);
+    // batas tiga jawaban dan status dijaga di store, bukan hanya di router
+    expect(await stores.ina.addTurn(A.id, vid, 'human', 'susulan', { maxHuman: 3 })).toBe(false);
 
     // status tindakan tidak berubah otomatis; HR melihat status yang dilaporkan, atasan tidak
     const hrRow = (await get('/actions')).body.data.find((x) => x.id === id.aSop);
@@ -345,6 +360,9 @@ run('Improvement Needs B9 (Postgres)', () => {
     expect((await post(`/verifications/${v3}/withdraw`, {}, 'staf')).body.data.status).toBe('withdrawn');
     expect((await sql('SELECT count(*)::int AS n FROM ina_verification_turns WHERE verification_id = :v3', { v3 }))[0].n).toBe(0);
     expect((await post(`/verifications/${v3}/withdraw`, {}, 'staf')).body.error.code).toBe('INVALID_STATE');
+    // giliran tidak bisa menyusul setelah ditarik (balapan turns vs withdraw)
+    expect(await stores.ina.addTurn(A.id, v3, 'human', 'menyusul')).toBe(false);
+    expect((await sql('SELECT count(*)::int AS n FROM ina_verification_turns WHERE verification_id = :v3', { v3 }))[0].n).toBe(0);
     // verifikasi yang ditarik tidak menjadi "verifikasi terakhir" tindakan
     expect((await get(`/actions/${id.aSop}`)).body.data.lastVerification.id).toBe(v2);
 
@@ -360,11 +378,22 @@ run('Improvement Needs B9 (Postgres)', () => {
     const moved = await patch(`/actions/${id.aSop}`, { ownerUserId: id.lain });
     expect(moved.body.data.ownerUserId).toBe(id.lain);
     expect((await sql('SELECT status FROM ina_verifications WHERE id = :v5', { v5 }))[0].status).toBe('cancelled');
+    // pemilik lama masih melihat riwayatnya, tetapi tidak lagi judul tindakan yang sekarang
+    const lama = (await get(`/verifications/${v2}`, 'staf')).body.data;
+    expect(lama.actionTitle).toBe('Tindakan perbaikan (sudah dialihkan)');
+    expect(lama.turns.length).toBeGreaterThan(0);
+    expect((await get(`/verifications/${v2}`)).body.data.actionTitle).toBe('Perbarui SOP eskalasi');
     const v6 = (await post(`/actions/${id.aSop}/verifications`, {})).body.data.id;
     expect((await get('/verifications/mine', 'lain')).body.data.map((v) => v.id)).toEqual([v6]);
     await patch(`/actions/${id.aSop}`, { status: 'done' });
     expect((await sql('SELECT status FROM ina_verifications WHERE id = :v6', { v6 }))[0].status).toBe('cancelled');
     expect((await post(`/actions/${id.aSop}/verifications`, {})).body.error.code).toBe('INVALID_STATE'); // tindakan sudah selesai
     expect((await get('/verifications/bukan-uuid')).status).toBe(404);
+    // status yang dibaca sudah basi (request lain lebih dulu): tidak ada yang disimpan
+    expect(await stores.ina.updateAction(A.id, id.aSop, { status: 'rejected' }, 'new')).toBeNull();
+    expect((await get(`/actions/${id.aSop}`)).body.data.status).toBe('done');
+    // atasan melihat tindakan yang ia miliki sendiri
+    await patch(`/actions/${id.aBudaya}`, { ownerUserId: id.spv });
+    expect((await get('/actions', 'spv')).body.data.map((x) => x.id)).toContain(id.aBudaya);
   });
 });

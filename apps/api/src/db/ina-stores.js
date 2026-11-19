@@ -32,7 +32,8 @@ const VERIF_COLS = `v.id, v.action_id AS "actionId", a.title AS "actionTitle", t
   a.status AS "actionStatus", a.category AS "actionCategory", v.owner_user_id AS "ownerUserId", o.name AS "ownerName", v.status,
   to_char(v.due_date, 'YYYY-MM-DD') AS "dueDate", v.consent_at AS "consentAt", v.consent_version AS "consentVersion",
   v.started_at AS "startedAt", v.ended_at AS "endedAt", v.reported_status AS "reportedStatus", v.summary,
-  v.ai_provider AS "aiProvider", v.created_at AS "assignedAt"`;
+  v.ai_provider AS "aiProvider", v.created_at AS "assignedAt",
+  a.owner_user_id AS "actionOwnerUserId", a.involves_individual AS "actionInvolvesIndividual"`;
 const VERIF_FROM = `FROM ina_verifications v
   JOIN ina_actions a ON a.id = v.action_id AND a.tenant_id = v.tenant_id
   LEFT JOIN users o ON o.id = v.owner_user_id AND o.tenant_id = v.tenant_id`;
@@ -88,15 +89,20 @@ function createInaStores(sequelize, { cipher } = {}) {
         return ina.getAction(tenantId, rows[0].id);
       } catch (e) { if (isUnique(e)) return null; throw e; }
     },
-    async updateAction(tenantId, id, patch) {
-      const sets = []; const rep = { tenantId, id };
+    /** fromStatus: status yang dibaca pemanggil; bila sudah berubah (request lain), tidak ada yang disimpan dan return null. */
+    async updateAction(tenantId, id, patch, fromStatus) {
+      const sets = []; const rep = { tenantId, id, fromStatus };
       for (const [k, col] of Object.entries(ACTION_FIELDS)) {
         if (patch[k] === undefined) continue;
         sets.push(`${col} = :${k}`);
         rep[k] = ACTION_ENC.includes(k) ? await enc(tenantId, patch[k]) : patch[k];
       }
       if (patch.status !== undefined) sets.push(`completed_at = ${patch.status === 'done' ? 'now()' : 'NULL'}`);
-      if (sets.length) await write(`UPDATE ina_actions SET ${sets.join(', ')}, updated_at = now() WHERE tenant_id = :tenantId AND id = :id`, rep);
+      if (sets.length) {
+        const rows = await write(`UPDATE ina_actions SET ${sets.join(', ')}, updated_at = now()
+                                   WHERE tenant_id = :tenantId AND id = :id AND status = :fromStatus RETURNING id`, rep);
+        if (!rows.length) return null;
+      }
       return ina.getAction(tenantId, id);
     },
 
@@ -120,6 +126,12 @@ function createInaStores(sequelize, { cipher } = {}) {
     },
     async activeUser(tenantId, id) {
       return one(`SELECT id, name, role FROM users WHERE tenant_id = :tenantId AND id = :id AND status <> 'disabled'`, { tenantId, id });
+    },
+
+    async ownerOptions(tenantId) {
+      return select(`SELECT u.id, u.name, jr.name AS "jobRoleName" FROM users u
+                       LEFT JOIN lna_job_roles jr ON jr.id = u.job_role_id AND jr.tenant_id = u.tenant_id
+                      WHERE u.tenant_id = :tenantId AND u.status <> 'disabled' ORDER BY u.name NULLS LAST LIMIT 2000`, { tenantId });
     },
 
     // ----- verifikasi AI -----
@@ -161,20 +173,46 @@ function createInaStores(sequelize, { cipher } = {}) {
                                  WHERE tenant_id = :tenantId AND action_id = :actionId AND status IN ('assigned','in_progress') RETURNING id`, { tenantId, actionId });
       return rows.map((r) => r.id);
     },
-    async addTurn(tenantId, verificationId, speaker, text) {
-      await write(`INSERT INTO ina_verification_turns (verification_id, speaker, text)
-                   SELECT v.id, :speaker, :text FROM ina_verifications v WHERE v.tenant_id = :tenantId AND v.id = :verificationId`,
-      { tenantId, verificationId, speaker, text: await enc(tenantId, text) });
+    /**
+     * Tambah giliran hanya selama verifikasi masih `in_progress` dan jawaban pemilik belum mencapai `maxHuman`.
+     * Baris verifikasi dikunci, jadi giliran tidak bisa menyusul setelah ditarik/dibatalkan dan batas pertanyaan
+     * tidak bisa dilewati oleh request bersamaan. Return true bila tersimpan.
+     */
+    async addTurn(tenantId, verificationId, speaker, text, { maxHuman } = {}) {
+      const cipherText = await enc(tenantId, text);
+      return sequelize.transaction(async (transaction) => {
+        const [v] = await sequelize.query(
+          `SELECT status FROM ina_verifications WHERE tenant_id = :tenantId AND id = :verificationId FOR UPDATE`,
+          { replacements: { tenantId, verificationId }, type: QueryTypes.SELECT, transaction });
+        if (!v || v.status !== 'in_progress') return false;
+        if (speaker === 'human' && maxHuman) {
+          const [c] = await sequelize.query(
+            `SELECT count(*)::int AS n FROM ina_verification_turns WHERE verification_id = :verificationId AND speaker = 'human'`,
+            { replacements: { verificationId }, type: QueryTypes.SELECT, transaction });
+          if (c.n >= maxHuman) return false;
+        }
+        await sequelize.query('INSERT INTO ina_verification_turns (verification_id, speaker, text) VALUES (:verificationId, :speaker, :text)',
+          { replacements: { verificationId, speaker, text: cipherText }, transaction });
+        return true;
+      });
+    },
+    /** Pemilik menarik diri: status dan penghapusan percakapan dalam satu transaksi. Return true bila berhasil. */
+    async withdrawVerification(tenantId, verificationId) {
+      return sequelize.transaction(async (transaction) => {
+        const [rows] = await sequelize.query(
+          `UPDATE ina_verifications SET status = 'withdrawn', ended_at = now()
+            WHERE tenant_id = :tenantId AND id = :verificationId AND status IN ('assigned','in_progress') RETURNING id`,
+          { replacements: { tenantId, verificationId }, transaction });
+        if (!rows.length) return false;
+        await sequelize.query('DELETE FROM ina_verification_turns WHERE verification_id = :verificationId', { replacements: { verificationId }, transaction });
+        return true;
+      });
     },
     async turns(tenantId, verificationId) {
       return open(tenantId, await select(
         `SELECT t.speaker, t.text, t.at FROM ina_verification_turns t
            JOIN ina_verifications v ON v.id = t.verification_id AND v.tenant_id = :tenantId
           WHERE t.verification_id = :verificationId ORDER BY t.id`, { tenantId, verificationId }), ['text']);
-    },
-    async deleteTurns(tenantId, verificationId) {
-      await write(`DELETE FROM ina_verification_turns t USING ina_verifications v
-                    WHERE v.id = t.verification_id AND v.tenant_id = :tenantId AND t.verification_id = :verificationId`, { tenantId, verificationId });
     },
   };
 
