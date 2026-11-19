@@ -82,7 +82,8 @@ async function planFields(body, { stores, tenantId, create }) {
       out.factors = body.factors.map((f) => text(f, 'Faktor lain', 300, { required: true }));
     }
   }
-  return out;
+  // isian yang tidak dikirim tidak ikut (undefined tidak boleh menimpa bawaan null saat membuat rencana)
+  return Object.fromEntries(Object.entries(out).filter(([, x]) => x !== undefined));
 }
 
 module.exports = {
@@ -174,9 +175,7 @@ module.exports = {
     r.post('/plans', hr, wrap(async (req, res) => {
       const v = await planFields(req.body || {}, { stores, tenantId: req.tenantId, create: true });
       for (const f of TEXT_FIELDS) v[f] = v[f] || '';
-      // isian yang tidak dikirim bernilai undefined di v; jangan sampai menimpa bawaan null
-      const given = Object.fromEntries(Object.entries(v).filter(([, x]) => x !== undefined));
-      const id = await stores.lim.createPlan(req.tenantId, { jobRoleId: null, periodFrom: null, periodUntil: null, baselineLabel: null, afterLabel: null, ...given }, req.user.id);
+      const id = await stores.lim.createPlan(req.tenantId, { jobRoleId: null, periodFrom: null, periodUntil: null, baselineLabel: null, afterLabel: null, ...v }, req.user.id);
       await audit.record(req, 'create', 'lim.plan', { planId: id });
       res.status(201).json({ data: await stores.lim.getPlan(req.tenantId, id) });
     }));

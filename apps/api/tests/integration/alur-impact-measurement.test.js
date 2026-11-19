@@ -10,11 +10,10 @@ const { createApp } = require('../../src/app');
 const { createStubProvider } = require('../../src/ai/stub-provider');
 const { FLAGS } = require('../../src/core/flags');
 const { makeConfig } = require('../helpers');
-const { siapkanTenant, tambahPengguna, pembuatMasuk, hapusTenant, langkah, kodeGalat } = require('../alur/driver');
+const { siapkanTenant, tambahPengguna, pembuatMasuk, hapusTenant, langkah, kodeGalat, hariWib: hari } = require('../alur/driver');
 const { JABATAN, KOMPETENSI, KARYAWAN_LAIN, TENANT_LAIN } = require('../alur/data');
 
 const run = process.env.DATABASE_URL ? describe : describe.skip;
-const hari = (n) => new Date(Date.now() + 7 * 3600e3 + n * 86400e3).toISOString().slice(0, 10);
 const FLAG_LIM = [FLAGS.MODULE_DNA, FLAGS.MODULE_LI, FLAGS.MODULE_LD, FLAGS.MODULE_LIM];
 
 run('Alur pengukuran dampak belajar (HR, atasan)', () => {
@@ -43,7 +42,7 @@ run('Alur pengukuran dampak belajar (HR, atasan)', () => {
     orang.jabatan = role;
     modul = await a.li.imporModul(orang.hr, {
       code: 'L1-ESK', name: 'Eskalasi tiket dan produk layanan', level: 'basic', jobRoles: JABATAN.name,
-      competencies: `${kEskalasi}; ${kProduk}`, items: [['S', 'Menentukan jalur eskalasi ke L2'], ['K', 'Memahami katalog produk layanan']],
+      competencies: `${kEskalasi}; ${kProduk}`, items: [{ type: 'S', text: 'Menentukan jalur eskalasi ke L2' }, { type: 'K', text: 'Memahami katalog produk layanan' }],
     });
   });
 
@@ -55,7 +54,7 @@ run('Alur pengukuran dampak belajar (HR, atasan)', () => {
   it('HR menjalankan pelatihan offline dari modul library: peserta, kehadiran, dan skor vendor (B13 → B14)', async () => {
     const pelatihan = await a.ld.pelatihanOffline(orang.hr, {
       title: 'Workshop eskalasi L1', moduleId: modul.id, startsOn: hari(-20), endsOn: hari(-19),
-      skor: [[orang.karyawan, 80], [orang.lain, 65]],
+      skor: [{ pengguna: orang.karyawan, score: 80 }, { pengguna: orang.lain, score: 65 }],
     });
     expect(pelatihan.assessmentStatus).toBe('manual');
   });
@@ -69,22 +68,27 @@ run('Alur pengukuran dampak belajar (HR, atasan)', () => {
     expect(r.participants).toBe(2);
     expect(r.chain.find((x) => x.key === 'activity').coverage).toBe('measured');
     const perKompetensi = Object.fromEntries(r.competencies.map((c) => [c.name, c]));
-    expect(perKompetensi[kEskalasi]).toMatchObject({ post: 73, postN: 2, postShared: true });
-    expect(perKompetensi[kProduk]).toMatchObject({ post: 73, postN: 2 }) // rata-rata 80 dan 65, dibulatkan;
+    // rata-rata 80 dan 65, dibulatkan; skor vendor_manual tidak bisa diaudit; satu skor modul dipakai dua kompetensi
+    for (const k of [kEskalasi, kProduk]) expect(perKompetensi[k]).toMatchObject({ post: 73, postN: 2, postUnauditable: 2, postShared: true });
+    const skor = await a.lim.skor(orang.hr, rencana.id);
+    expect(skor).toHaveLength(4);
+    expect(skor.every((x) => x.postSource === 'ld')).toBe(true);
   });
 
   it('atasan hanya melihat timnya dan hanya mengisi skor kinerja; antrean wawancara ulang khusus HR', async () => {
-    expect((await a.mentah('get', '/api/lim/plans', orang.atasan)).body.data).toEqual([expect.objectContaining({ id: rencana.id, participantCount: 1 })]);
+    expect(await a.lim.daftarRencana(orang.atasan)).toEqual([expect.objectContaining({ id: rencana.id, participantCount: 1 })]);
     expect((await a.lim.ringkasan(orang.atasan, rencana.id)).participants).toBe(1);
 
     const kompetensi = (await a.lim.ringkasan(orang.hr, rencana.id)).competencies.find((c) => c.name === kEskalasi).competencyId;
-    const isi = await a.mentah('put', `/api/lim/plans/${rencana.id}/measurements`, orang.atasan, { entries: [
+    const isi = await a.lim.isiSkor(orang.atasan, rencana.id, [
       { userId: orang.karyawan.id, competencyId: kompetensi, performanceScore: 78 },
       { userId: orang.lain.id, competencyId: kompetensi, performanceScore: 90 },
       { userId: orang.karyawan.id, competencyId: kompetensi, postScore: 99 },
-    ] });
-    expect(isi.body.data.saved).toBe(1);
-    expect(isi.body.data.rejected.map((x) => x.message)).toEqual(['Karyawan bukan anggota tim Anda', 'Atasan hanya mengisi skor kinerja']);
+    ]);
+    expect(isi.saved).toBe(1);
+    expect(isi.rejected.map((x) => x.message)).toEqual(['Karyawan bukan anggota tim Anda', 'Atasan hanya mengisi skor kinerja']);
+    const tersimpan = (await a.lim.skor(orang.hr, rencana.id)).find((x) => x.userId === orang.karyawan.id && x.competencyId === kompetensi);
+    expect(tersimpan).toMatchObject({ performanceScore: 78, postScore: 80 });
     expect((await a.mentah('get', `/api/lim/plans/${rencana.id}/queue`, orang.atasan)).status).toBe(403);
     expect((await a.mentah('post', '/api/lim/plans', orang.atasan, { title: 'x', moduleIds: [modul.id] })).status).toBe(403);
   });
@@ -105,7 +109,7 @@ run('Alur pengukuran dampak belajar (HR, atasan)', () => {
     const lain = await siapkanTenant(db, { slug: `${slug}-lain`, nama: TENANT_LAIN.nama, flags: FLAG_LIM });
     tenantIds.push(lain.id);
     const hrLain = await tambahPengguna(db, lain.id, { nama: 'HR Lain', email: `hr@${slug}-lain.test`, employeeId: 'E-TL-HR', peran: 'hr_admin' });
-    expect((await a.mentah('get', '/api/lim/plans', hrLain)).body.data).toEqual([]);
+    expect(await a.lim.daftarRencana(hrLain)).toEqual([]);
     expect((await a.mentah('get', `/api/lim/plans/${rencana.id}/overview`, hrLain)).status).toBe(404);
 
     const satuan = await siapkanTenant(db, { slug: `${slug}-satuan`, flags: FLAG_LIM, produk: ['dna', 'tna'] });

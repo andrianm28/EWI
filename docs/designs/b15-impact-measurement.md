@@ -364,4 +364,4 @@ lewat API sungguhan dan menemukan satu bug:
 
 | # | Temuan | Keputusan |
 | --- | --- | --- |
-| A1 | `POST /api/lim/plans` tanpa `baselineLabel`/`afterLabel` (persis yang dikirim formulir web) menghasilkan 500: isian `undefined` dari validasi menimpa bawaan `null` | Diperbaiki test-first: test integrasi "rencana minimal" (merah 500, lalu hijau 201). E2E web tidak menangkapnya karena API di-mock |
+| A1 | `POST /api/lim/plans` tanpa `baselineLabel`/`afterLabel` (persis yang dikirim formulir web), atau tanpa `jobRoleId`/`periodFrom`/`periodUntil`, menghasilkan 500: isian `undefined` dari validasi menimpa bawaan `null` | Diperbaiki test-first: test integrasi "rencana minimal" (merah 500, lalu hijau 201); `planFields` kini membuang isian yang tidak dikirim (satu tempat untuk POST dan PATCH). E2E web tidak menangkapnya karena API di-mock |

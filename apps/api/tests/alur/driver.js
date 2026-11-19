@@ -45,9 +45,16 @@ async function hapusTenant(db, ids) {
   });
 }
 
+/** Tanggal YYYY-MM-DD n hari dari hari ini menurut WIB (UTC+7), zona yang dipakai API untuk "hari ini". */
+const hariWib = (n = 0) => new Date(Date.now() + 7 * 3600e3 + n * 86400e3).toISOString().slice(0, 10);
+
 const kodeGalat = (res) => (res.body && res.body.error && res.body.error.code) || `HTTP_${res.status}`;
 
-function langkah(app, masuk) {
+/**
+ * opsi.stores: hanya untuk sambungan mesin yang belum punya API (mis. selesainya wawancara Core Competencies tahap 2).
+ * Begitu API-nya ada, langkah itu pindah ke API di sini dan test alur tidak berubah.
+ */
+function langkah(app, masuk, { stores } = {}) {
   const kirim = (method, path, siapa, body) => {
     const r = request(app)[method](path).set(masuk(siapa));
     return body === undefined ? r : r.send(body);
@@ -121,14 +128,14 @@ function langkah(app, masuk) {
     li: {
       /**
        * B13: impor satu modul library KSA lewat impor CSV (unggah lalu simpan), lalu mengembalikan modulnya.
-       * modul: { code, name, level, jobRoles, competencies, items: [[tipe K/S/A, butir], ...] }.
+       * modul: { code, name, level, jobRoles, competencies, items: [{ type: 'K'|'S'|'A', text }, ...] }.
        */
       async imporModul(hr, { code, name, level = 'basic', jobRoles = '', competencies = '', items }) {
         const sel = (s) => `"${String(s).replace(/"/g, '""')}"`;
         const header = 'Kode Modul,Nama Modul,Level,Rumpun,Tujuan,Jabatan,Kompetensi,Tipe Butir,Butir';
-        const baris = items.map(([tipe, butir], i) => (i === 0
-          ? [code, name, level, '', '', jobRoles, competencies, tipe, butir]
-          : [code, '', '', '', '', '', '', tipe, butir]).map(sel).join(','));
+        const baris = items.map(({ type, text }, i) => (i === 0
+          ? [code, name, level, '', '', jobRoles, competencies, type, text]
+          : [code, '', '', '', '', '', '', type, text]).map(sel).join(','));
         const up = await request(app).post('/api/li/imports/li_modules?filename=modul.csv').set(masuk(hr))
           .set('Content-Type', 'application/octet-stream').send(Buffer.from(`${[header, ...baris].join('\n')}\n`)).expect(201);
         await kirim('post', `/api/li/imports/batches/${up.body.data.id}/commit`, hr, {}).expect(200);
@@ -140,14 +147,14 @@ function langkah(app, masuk) {
     ld: {
       /**
        * B14: pelatihan offline dari satu modul; semua peserta hadir dan skor vendor diisi.
-       * skor: [[pengguna, angka], ...]. Mengembalikan detail pelatihan.
+       * skor: [{ pengguna, score }, ...]. Mengembalikan detail pelatihan.
        */
       async pelatihanOffline(hr, { title, moduleId, startsOn, endsOn = null, skor }) {
         const t = (await kirim('post', '/api/ld/trainings', hr, { title, moduleId, startsOn, endsOn }).expect(201)).body.data;
-        await kirim('put', `/api/ld/trainings/${t.id}/participants`, hr, { userIds: skor.map(([p]) => p.id) }).expect(200);
+        await kirim('put', `/api/ld/trainings/${t.id}/participants`, hr, { userIds: skor.map((x) => x.pengguna.id) }).expect(200);
         await kirim('put', `/api/ld/trainings/${t.id}/attendance`, hr, { allPresent: true }).expect(200);
         await kirim('put', `/api/ld/trainings/${t.id}/assessment`, hr, { mode: 'vendor_manual' }).expect(200);
-        await kirim('put', `/api/ld/trainings/${t.id}/scores`, hr, { entries: skor.map(([p, score]) => ({ userId: p.id, score })) }).expect(200);
+        await kirim('put', `/api/ld/trainings/${t.id}/scores`, hr, { entries: skor.map((x) => ({ userId: x.pengguna.id, score: x.score })) }).expect(200);
         return (await kirim('patch', `/api/ld/trainings/${t.id}`, hr, { status: 'done' }).expect(200)).body.data;
       },
     },
@@ -160,11 +167,34 @@ function langkah(app, masuk) {
       async penugasan(siapa) {
         return (await kirim('get', '/api/cca/assignments', siapa).expect(200)).body.data;
       },
+      /** Ringkasan wawancara yang boleh dibaca (peserta sendiri, atau HR untuk tier pimpinan). */
+      async ringkasan(siapa, assignmentId) {
+        return (await kirim('get', `/api/cca/assignments/${assignmentId}/summary`, siapa).expect(200)).body.data;
+      },
+      /** Sambungan sementara: mesin wawancara tahap 2 belum punya API, jadi selesai lewat store (butuh opsi.stores). */
+      async selesaikanWawancara(pengguna, assignmentId, ringkasan) {
+        if (!stores) throw new Error('langkah(app, masuk, { stores }) dibutuhkan untuk cca.selesaikanWawancara');
+        const row = await stores.cca.completeAssignment(pengguna.tenantId, assignmentId, { summary: ringkasan });
+        if (!row) throw new Error('Penugasan tidak aktif');
+        return row;
+      },
     },
     lim: {
       /** B15: rencana pengukuran (HR). */
       async buatRencana(hr, rencana) {
         return (await kirim('post', '/api/lim/plans', hr, rencana).expect(201)).body.data;
+      },
+      /** Rencana yang terlihat sesuai cakupan (atasan: hanya rencana berisi anggota timnya). */
+      async daftarRencana(siapa) {
+        return (await kirim('get', '/api/lim/plans', siapa).expect(200)).body.data;
+      },
+      /** Isian skor (HR: pre/post/kinerja; atasan: kinerja bawahan langsung). Mengembalikan { saved, rejected }. */
+      async isiSkor(siapa, planId, entries) {
+        return (await kirim('put', `/api/lim/plans/${planId}/measurements`, siapa, { entries }).expect(200)).body.data;
+      },
+      /** Skor per karyawan per kompetensi (HR). */
+      async skor(hr, planId) {
+        return (await kirim('get', `/api/lim/plans/${planId}/measurements`, hr).expect(200)).body.data;
       },
       async ringkasan(siapa, planId) {
         return (await kirim('get', `/api/lim/plans/${planId}/overview`, siapa).expect(200)).body.data;
@@ -193,4 +223,4 @@ async function siapkanTenantKenari(db, a, slug) {
   return { id: t.id, projectId };
 }
 
-module.exports = { siapkanTenant, tambahPengguna, pembuatMasuk, hapusTenant, langkah, siapkanTenantKenari, kodeGalat };
+module.exports = { siapkanTenant, tambahPengguna, pembuatMasuk, hapusTenant, langkah, siapkanTenantKenari, kodeGalat, hariWib };
