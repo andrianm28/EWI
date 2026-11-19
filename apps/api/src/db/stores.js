@@ -4,6 +4,7 @@ const { QueryTypes } = require('sequelize');
 const crypto = require('crypto');
 const { createLnaStores } = require('./lna-stores');
 const { createFieldCipher, createProvider } = require('../core/crypto');
+const { PRIVILEGED_ROLES, ROLES } = require('../core/rbac/roles');
 
 /** Penyimpan DEK terbungkus per tenant (R2-3). */
 function tenantKeyStore(sequelize) {
@@ -33,22 +34,35 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 /** Sesi login (PK-16). Sesi hanya berlaku bila belum dicabut, belum kedaluwarsa, user tidak nonaktif, tenant aktif. */
 function authSessionStore(q) {
   return {
-    async create({ id, tenantId, userId, method, mfa = false, expiresAt, ip, userAgent }) {
+    async create({ id, tenantId, userId, method, mfa = false, activeRole = null, expiresAt, ip, userAgent }) {
       await q(
-        `INSERT INTO auth_sessions (id, tenant_id, user_id, method, mfa, expires_at, ip, user_agent)
-         VALUES (:id, :tenantId, :userId, :method, :mfa, :expiresAt, :ip, :userAgent)`,
-        { id, tenantId, userId, method, mfa, expiresAt, ip, userAgent }, QueryTypes.INSERT,
+        `INSERT INTO auth_sessions (id, tenant_id, user_id, method, mfa, active_role, expires_at, ip, user_agent)
+         VALUES (:id, :tenantId, :userId, :method, :mfa, :activeRole, :expiresAt, :ip, :userAgent)`,
+        { id, tenantId, userId, method, mfa, activeRole, expiresAt, ip, userAgent }, QueryTypes.INSERT,
       );
     },
     async findActive(id) {
       if (!UUID_RE.test(String(id))) return null;
       const [row] = await q(
-        `SELECT s.id, s.tenant_id AS "tenantId", s.user_id AS "userId"
+        `SELECT s.id, s.tenant_id AS "tenantId", s.user_id AS "userId", s.active_role AS "activeRole",
+                s.role_version AS "roleVersion", s.expires_at AS "expiresAt", u.role AS "primaryRole",
+                ARRAY(SELECT ur.role FROM user_roles ur WHERE ur.user_id = u.id AND ur.tenant_id = u.tenant_id ORDER BY ur.role) AS roles
            FROM auth_sessions s JOIN users u ON u.id = s.user_id AND u.tenant_id = s.tenant_id
            JOIN tenants t ON t.id = s.tenant_id
           WHERE s.id = :id AND s.revoked_at IS NULL AND s.expires_at > now()
             AND u.status <> 'disabled' AND t.status = 'active'`,
         { id },
+      );
+      return row || null;
+    },
+    /** B2: ganti peran aktif; versi naik agar token lama tidak berlaku. Gagal bila sesi berubah di tempat lain. */
+    async setActiveRole(id, role, expectedVersion) {
+      if (!UUID_RE.test(String(id))) return null;
+      const [row] = await q(
+        `UPDATE auth_sessions SET active_role = :role, role_version = role_version + 1
+          WHERE id = :id AND role_version = :expectedVersion AND revoked_at IS NULL AND expires_at > now()
+          RETURNING role_version AS "roleVersion", expires_at AS "expiresAt"`,
+        { id, role, expectedVersion },
       );
       return row || null;
     },
@@ -138,6 +152,57 @@ function mfaStore(q) {
   };
 }
 
+/** B2: peran per akun. users.role = peran utama; user_roles = semua peran (trigger users_role_sync menjaga keduanya). */
+function userRoleStore(sequelize) {
+  const read = async (tenantId, userId, transaction) => {
+    const [row] = await sequelize.query(
+      `SELECT u.role AS "primary",
+              ARRAY(SELECT ur.role FROM user_roles ur WHERE ur.user_id = u.id AND ur.tenant_id = u.tenant_id ORDER BY ur.role) AS roles
+         FROM users u WHERE u.tenant_id = :tenantId AND u.id = :userId`,
+      { replacements: { tenantId, userId }, type: QueryTypes.SELECT, transaction });
+    return row || null;
+  };
+  return {
+    async get(tenantId, userId) {
+      if (!UUID_RE.test(String(userId))) return null;
+      return read(tenantId, userId);
+    },
+    /**
+     * Ganti peran akun. Satu transaksi yang mengunci baris tenant, supaya dua permintaan bersamaan tidak
+     * mencabut dua Admin Tenant terakhir. Return { status: 'ok', from, to } | 'not_found' | 'protected' | 'last_admin'.
+     */
+    async replace(tenantId, userId, { roles, primary, grantedBy }) {
+      if (!UUID_RE.test(String(userId))) return { status: 'not_found' };
+      return sequelize.transaction(async (transaction) => {
+        const opt = { transaction };
+        await sequelize.query('SELECT id FROM tenants WHERE id = :tenantId FOR UPDATE', { replacements: { tenantId }, ...opt });
+        const from = await read(tenantId, userId, transaction);
+        if (!from) return { status: 'not_found' };
+        if (from.roles.includes(ROLES.ETA_ADMIN)) return { status: 'protected' };
+        if (from.roles.includes(ROLES.TENANT_ADMIN) && !roles.includes(ROLES.TENANT_ADMIN)) {
+          const [{ n }] = await sequelize.query(
+            `SELECT count(*)::int AS n FROM user_roles ur JOIN users u ON u.id = ur.user_id
+              WHERE ur.tenant_id = :tenantId AND ur.role = :role AND ur.user_id <> :userId AND u.status <> 'disabled'`,
+            { replacements: { tenantId, userId, role: ROLES.TENANT_ADMIN }, type: QueryTypes.SELECT, ...opt });
+          if (n === 0) return { status: 'last_admin' };
+        }
+        // Urutan penting: peran utama dulu (trigger mengganti baris peran utama lama), lalu samakan sisanya
+        await sequelize.query('UPDATE users SET role = :primary, updated_at = now() WHERE tenant_id = :tenantId AND id = :userId',
+          { replacements: { tenantId, userId, primary }, ...opt });
+        await sequelize.query('DELETE FROM user_roles WHERE tenant_id = :tenantId AND user_id = :userId AND role NOT IN (:roles)',
+          { replacements: { tenantId, userId, roles }, ...opt });
+        for (const role of roles) {
+          await sequelize.query(
+            `INSERT INTO user_roles (tenant_id, user_id, role, granted_by) VALUES (:tenantId, :userId, :role, :grantedBy)
+             ON CONFLICT (user_id, role) DO NOTHING`,
+            { replacements: { tenantId, userId, role, grantedBy: grantedBy || null }, ...opt });
+        }
+        return { status: 'ok', from, to: await read(tenantId, userId, transaction) };
+      });
+    },
+  };
+}
+
 /**
  * encryption: config.encryption (R2-3). Tanpa config hanya boleh di test (kunci lokal acak per proses).
  */
@@ -185,8 +250,9 @@ function createStores(sequelize, { encryption } = {}) {
       /** R3-2: penerima undangan; `pendingOnly` = belum pernah masuk. HR/Admin tidak diundang lewat jalur ini. */
       async listInvitees(tenantId, { userIds, pendingOnly } = {}) {
         let sql = `SELECT id, tenant_id AS "tenantId", email, name, role FROM users
-                    WHERE tenant_id = :tenantId AND status <> 'disabled' AND role NOT IN ('hr_admin','eta_admin')`;
-        const rep = { tenantId };
+                    WHERE tenant_id = :tenantId AND status <> 'disabled'
+                      AND NOT EXISTS (SELECT 1 FROM user_roles ur WHERE ur.user_id = users.id AND ur.role IN (:privileged))`;
+        const rep = { tenantId, privileged: PRIVILEGED_ROLES };
         if (userIds) { sql += ' AND id IN (:userIds)'; rep.userIds = userIds.length ? userIds : ['00000000-0000-0000-0000-000000000000']; }
         if (pendingOnly) sql += ' AND last_login_at IS NULL';
         return q(`${sql} ORDER BY name NULLS LAST, email`, rep);
@@ -230,6 +296,8 @@ function createStores(sequelize, { encryption } = {}) {
     authSessions: authSessionStore(q),
     // B1: verifikasi dua langkah
     mfa: mfaStore(q),
+    // B2: peran per akun
+    userRoles: userRoleStore(sequelize),
     flags: {
       async getTenantFlags(tenantId) {
         const rows = await q('SELECT key, enabled FROM feature_flags WHERE tenant_id = :tenantId', { tenantId });

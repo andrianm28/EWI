@@ -65,7 +65,10 @@ function createLnaStores(sequelize, { cipher } = {}) {
                     FROM users WHERE tenant_id = :tenantId AND id = :userId`, { tenantId, userId });
     },
     async resolve(tenantId, { employeeIds, emails }) {
-      return select(`SELECT id, email, employee_id AS "employeeId", role, job_role_id AS "jobRoleId", career_level_id AS "careerLevelId"
+      // privileged (B2): akun punya peran HR/Admin Tenant/Super Admin di user_roles, walau peran utamanya lain
+      return select(`SELECT id, email, employee_id AS "employeeId", role, job_role_id AS "jobRoleId", career_level_id AS "careerLevelId",
+                            EXISTS (SELECT 1 FROM user_roles ur WHERE ur.user_id = users.id
+                                       AND ur.role IN ('hr_admin','tenant_admin','eta_admin')) AS privileged
                        FROM users
                       WHERE tenant_id = :tenantId AND (employee_id IN (:employeeIds) OR email IN (:emails))`,
       { tenantId, employeeIds: employeeIds.length ? employeeIds : [''], emails: emails.length ? emails : [''] });
@@ -84,7 +87,9 @@ function createLnaStores(sequelize, { cipher } = {}) {
             await sequelize.query(
               `UPDATE users SET employee_id = :employeeId, name = :name, email = :email, role = :role,
                       job_role_id = :jobRoleId, career_level_id = :careerLevelId, updated_at = now()
-                WHERE tenant_id = :tenantId AND id = :id AND role NOT IN ('hr_admin','eta_admin')`,
+                WHERE tenant_id = :tenantId AND id = :id
+                  AND NOT EXISTS (SELECT 1 FROM user_roles ur WHERE ur.user_id = users.id
+                                     AND ur.role IN ('hr_admin','tenant_admin','eta_admin'))`,
               { replacements: rep, transaction: t },
             );
             updated += 1;

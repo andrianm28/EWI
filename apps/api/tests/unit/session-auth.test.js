@@ -125,7 +125,7 @@ describe('pencabutan sesi', () => {
     const app = build();
     const a = (await login(app)).body.token;
     const b = (await login(app)).body.token;
-    expect((await request(app).get('/api/auth/me').set(bearer(a))).body.user).toEqual({ id: 'u-hr', tenantId: 't-1', role: 'hr_admin', email: 'hr@elgos.test' });
+    expect((await request(app).get('/api/auth/me').set(bearer(a))).body.user).toMatchObject({ id: 'u-hr', tenantId: 't-1', role: 'hr_admin', email: 'hr@elgos.test' });
     expect((await request(app).post('/api/auth/logout').set(bearer(a))).status).toBe(204);
     const gone = await request(app).get('/api/auth/me').set(bearer(a));
     expect(gone.status).toBe(401);

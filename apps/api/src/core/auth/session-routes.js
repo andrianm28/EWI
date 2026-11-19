@@ -24,7 +24,7 @@ function sessionRoutes({ sessions, audit, mfa, users }) {
   }));
 
   // B1: pemulihan saat autentikator hilang. Reset MFA akun lain di tenant ini, lalu cabut semua sesinya.
-  r.delete('/users/:userId/mfa', requireRole(ROLES.HR_ADMIN), wrap(async (req, res) => {
+  r.delete('/users/:userId/mfa', requireRole(ROLES.HR_ADMIN, ROLES.TENANT_ADMIN), wrap(async (req, res) => {
     const { userId } = req.params;
     if (String(userId) === String(req.user.id)) throw forbidden('SELF_MFA_RESET', 'Minta admin lain mereset verifikasi dua langkah Anda');
     // Tenant dari token: akun tenant lain diperlakukan seperti tidak ada

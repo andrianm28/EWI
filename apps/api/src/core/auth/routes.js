@@ -5,6 +5,7 @@ const { unauthorized, badRequest, notFound, forbidden } = require('../errors');
 const { limitByIp } = require('./rate-limit');
 const { finishFirstFactor } = require('./mfa');
 const { FLAGS } = require('../flags');
+const { viewOf } = require('../rbac/roles');
 const { HttpError } = require('../errors');
 
 const wrap = (fn) => (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
@@ -76,9 +77,23 @@ function authRoutes({ users, sessions, policy, audit, requireAuth, limits, mfa, 
   }
 
   r.get('/me', requireAuth, (req, res) => {
-    const { id, tenantId, role, email } = req.user;
-    res.json({ user: { id, tenantId, role, email }, entitlements: req.entitlements || null });
+    const { id, tenantId, role, email, roles, view, primaryRole } = req.user;
+    res.json({ user: { id, tenantId, role, email, roles, view, primaryRole }, entitlements: req.entitlements || null });
   });
+
+  // B2: ganti tampilan (peran aktif) pada sesi yang sama. Token lama langsung tidak berlaku.
+  r.post('/switch-role', requireAuth, wrap(async (req, res) => {
+    const role = String((req.body || {}).role || '');
+    if (!flags || !(await flags.isEnabled(req.user.tenantId, FLAGS.AUTH_MULTI_ROLE))) {
+      throw forbidden('FEATURE_DISABLED', 'Ganti tampilan peran belum diaktifkan untuk organisasi Anda');
+    }
+    const from = req.user.role;
+    const next = role === from ? null : await sessions.switchRole(req.user, role);
+    if (!next) throw forbidden('ROLE_NOT_ASSIGNED', 'Peran itu tidak diberikan ke akun Anda');
+    await audit.record({ tenantId: req.user.tenantId, user: { ...req.user, role } }, 'update', 'auth.role_view', { from, to: role });
+    const { id, tenantId, email } = req.user;
+    res.json({ token: next.token, user: { id, tenantId, email, role, roles: next.roles, view: viewOf(role), primaryRole: req.user.primaryRole } });
+  }));
 
   // Keluar: cabut sesi ini saja
   r.post('/logout', requireAuth, wrap(async (req, res) => {

@@ -14,7 +14,10 @@ const { createMfaService, mfaPublicRoutes, mfaAccountRoutes, memoryMfaStore, pla
 const { createAttemptLog } = require('./core/auth/attempts');
 const { createMailer } = require('./integrations/mailer');
 const { tenantContext } = require('./core/tenant');
-const { createFlagService } = require('./core/flags');
+const { createFlagService, FLAGS } = require('./core/flags');
+const { roleRoutes } = require('./core/rbac/role-routes');
+const { buildMenu } = require('./core/rbac/menu');
+const { VIEWS, describeRoles } = require('./core/rbac/roles');
 const { flagAdminRouter } = require('./core/flags/admin-routes');
 const { createAuditService, memoryAuditStore } = require('./core/audit');
 const { createEntitlementService } = require('./core/entitlement');
@@ -39,7 +42,11 @@ function createApp({ config, stores, ai, catalog, mailer, rateLimits }) {
   const entitlements = createEntitlementService(stores.entitlements);
   // PK-16: sesi yang bisa dicabut. Store sesi wajib di luar test; in-memory hanya untuk test tanpa DB.
   if (!stores.authSessions && config.nodeEnv !== 'test') throw new Error('stores.authSessions wajib (PK-16)');
-  const sessions = createSessionService({ store: stores.authSessions || memorySessionStore(), tokens });
+  const sessions = createSessionService({
+    store: stores.authSessions || memorySessionStore(), tokens,
+    // B2: pindah tampilan hanya untuk tenant yang flag auth.multi_role-nya menyala
+    multiRole: (tenantId) => flags.isEnabled(tenantId, FLAGS.AUTH_MULTI_ROLE),
+  });
   const authConfig = config.auth;
   const policy = createLoginPolicy(authConfig);
   const auth = requireAuth(tokens, { sessions, policy });
@@ -84,11 +91,18 @@ function createApp({ config, stores, ai, catalog, mailer, rateLimits }) {
   api.use(auth, tenantContext());
   api.get('/me/access', async (req, res, next) => {
     try {
-      res.json({ submodules: await entitlements.submodules(req.tenantId), flags: await flags.all(req.tenantId) });
+      const [submodules, tenantFlags] = [await entitlements.submodules(req.tenantId), await flags.all(req.tenantId)];
+      // B2: peran aktif, tampilan lain yang bisa dipilih, dan menu untuk tampilan ini
+      const { role, view, roles } = req.user;
+      res.json({
+        submodules, flags: tenantFlags, role, view, home: VIEWS[view].home, roles: describeRoles(roles),
+        menu: buildMenu(view, { flags: tenantFlags, submodules }),
+      });
     } catch (e) { next(e); }
   });
   api.use('/projects', projects.router({ projects: stores.projects }));
   api.use('/admin', flagAdminRouter({ flags, audit }));
+  if (stores.userRoles) api.use('/users', roleRoutes({ userRoles: stores.userRoles, audit }));
   api.use('/sessions', sessionRoutes({ sessions, audit, mfa, users: stores.users }));
   if (stores.loginLinks) api.use('/invitations', invitationRoutes({ users: stores.users, links, audit }));
   for (const m of SUBMODULE_MODULES) {

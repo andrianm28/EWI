@@ -1,5 +1,6 @@
 'use strict';
 const { unauthorized } = require('../errors');
+const { viewOf } = require('../rbac/roles');
 
 const EXPIRED = 'Sesi tidak valid atau kedaluwarsa';
 
@@ -21,11 +22,25 @@ function requireAuth(tokens, { sessions, policy } = {}) {
     }
     try {
       if (policy && !policy.allows(claims)) return next(unauthorized(EXPIRED));
-      if (sessions && !(await sessions.isActive(claims))) return next(unauthorized(EXPIRED));
+      req.user = { id: claims.id, tenantId: claims.tenantId, role: claims.role, email: claims.email, sid: claims.sid, rv: claims.rv || 0 };
+      if (sessions) {
+        const state = await sessions.check(claims);
+        if (!state.ok) {
+          req.user = undefined;
+          // B2: tampilan diganti di tab lain; web memuat ulang, bukan menganggap sesi habis
+          if (state.code) return next(Object.assign(unauthorized('Tampilan peran berubah. Muat ulang halaman.'), { code: state.code }));
+          return next(unauthorized(EXPIRED));
+        }
+        req.user.roles = state.roles;
+        req.user.primaryRole = state.primaryRole;
+      } else {
+        req.user.roles = [claims.role];
+        req.user.primaryRole = claims.role;
+      }
+      req.user.view = viewOf(claims.role);
     } catch (e) {
       return next(e);
     }
-    req.user = { id: claims.id, tenantId: claims.tenantId, role: claims.role, email: claims.email, sid: claims.sid };
     return next();
   };
 }

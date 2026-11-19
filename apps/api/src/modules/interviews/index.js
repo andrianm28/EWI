@@ -2,7 +2,7 @@
 // Sesi wawancara AI (teks) yang dipakai DNA dan TNA. Suara (voice) di balik flag dan menyusul.
 // Analisis memakai port AI (src/ai); implementasi masih stub sampai T3 diputuskan.
 const express = require('express');
-const { requireRole, ROLES } = require('../../core/rbac');
+const { requireRole, denyRoles, ROLES } = require('../../core/rbac');
 const { scopeFor, inScope } = require('../../core/rbac/scope');
 const { badRequest, forbidden, notFound, HttpError } = require('../../core/errors');
 
@@ -77,7 +77,10 @@ function interviewRouter({ submodule, stores, ai, audit }) {
     }));
   }
 
-  r.get('/:id', wrap(async (req, res) => {
+  // B2: Super Admin tidak membuka transkrip atau percakapan wawancara (mengelola konfigurasi, bukan isi jawaban)
+  const noSuperAdmin = denyRoles([ROLES.ETA_ADMIN], 'INTERVIEW_CONTENT_PRIVATE', 'Isi wawancara tidak dibuka untuk Super Admin');
+
+  r.get('/:id', noSuperAdmin, wrap(async (req, res) => {
     const s = await loadVisible(req);
     const turns = await stores.interviews.turns(req.tenantId, s.id);
     // R2-2: baca transkrip individu selalu dicatat (termasuk atasan dan Admin ETA)
@@ -97,7 +100,7 @@ function interviewRouter({ submodule, stores, ai, audit }) {
     res.json({ data: { status: 'in_progress', question: turn } });
   }));
 
-  r.post('/:id/turns', wrap(async (req, res) => {
+  r.post('/:id/turns', noSuperAdmin, wrap(async (req, res) => {
     const s = await loadVisible(req);
     mustBeInterviewee(req, s);
     if (s.status !== 'in_progress') throw new HttpError(409, 'INVALID_STATE', 'Sesi belum dimulai atau sudah selesai');
@@ -111,7 +114,7 @@ function interviewRouter({ submodule, stores, ai, audit }) {
     res.json({ data: { question: turn, done: !q } });
   }));
 
-  r.post('/:id/complete', wrap(async (req, res) => {
+  r.post('/:id/complete', noSuperAdmin, wrap(async (req, res) => {
     const s = await loadVisible(req);
     if (s.intervieweeId !== req.user.id && ![ROLES.HR_ADMIN, ROLES.ETA_ADMIN].includes(req.user.role)) {
       throw forbidden('ROLE_FORBIDDEN', 'Peran Anda tidak bisa menutup sesi ini');

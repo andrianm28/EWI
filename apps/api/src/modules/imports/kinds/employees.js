@@ -2,6 +2,7 @@
 // Data karyawan & posisi: membuat/memperbarui akun karyawan (tanpa kata sandi; masuk lewat link email, R3-2),
 // atasan langsung (RG-3), dan posisi job role + jenjang (DNA). Akun HR/Admin tidak bisa diubah lewat impor.
 const v = require('../values');
+const { PRIVILEGED_ROLES } = require('../../../core/rbac/roles');
 
 const ROLE_CHOICES = {
   learner: ['karyawan', 'staf', 'staff', 'peserta'],
@@ -45,7 +46,7 @@ module.exports = {
     const byEmail = ctx.existing.find((u) => u.email === email);
     if (byId && byEmail && byId.id !== byEmail.id) return { error: 'ID Karyawan dan Email milik dua akun berbeda' };
     const current = byId || byEmail;
-    if (current && ['hr_admin', 'eta_admin'].includes(current.role)) return { error: 'Akun HR/Admin tidak bisa diubah lewat impor' };
+    if (current && (current.privileged || PRIVILEGED_ROLES.includes(current.role))) return { error: 'Akun HR/Admin tidak bisa diubah lewat impor' };
     const sup = v.text(row.supervisorEmployeeId);
     if (sup && sup === employeeId) return { error: 'Atasan tidak boleh dirinya sendiri' };
     if (sup && !ctx.fileIds.has(sup) && !ctx.existing.some((u) => u.employeeId === sup)) return { error: `ID Atasan ${sup} tidak ditemukan di file maupun organisasi` };

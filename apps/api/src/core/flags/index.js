@@ -23,6 +23,8 @@ const FLAGS = Object.freeze({
   AUTH_SSO: 'auth.sso',
   // B1: pendaftaran verifikasi dua langkah (kode autentikator). Akun yang sudah aktif tetap ditantang walau flag mati
   AUTH_MFA: 'auth.mfa',
+  // B2: satu akun memakai beberapa peran dan berpindah tampilan di bilah atas
+  AUTH_MULTI_ROLE: 'auth.multi_role',
 });
 
 const KNOWN = new Set(Object.values(FLAGS));

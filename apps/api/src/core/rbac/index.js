@@ -12,6 +12,18 @@ function requireRole(...roles) {
 }
 
 /**
+ * Middleware: peran tertentu ditolak walau lolos requireRole. Dipakai untuk isi wawancara, yang tidak dibuka
+ * Super Admin (B2: super admin mengelola konfigurasi, bukan transkrip jawaban karyawan).
+ */
+function denyRoles(roles, code = 'ROLE_FORBIDDEN', message = 'Peran Anda tidak punya akses ke fitur ini') {
+  return (req, _res, next) => {
+    if (!req.user) return next(unauthorized());
+    if (roles.includes(req.user.role)) return next(forbidden(code, message));
+    return next();
+  };
+}
+
+/**
  * Cakupan data karyawan yang boleh dilihat user (RG-3).
  * Return { all: true } | { userIds: [...] }.
  */
@@ -21,4 +33,4 @@ function visibleEmployeeScope(user, directReportIds = []) {
   return { userIds: [user.id] };
 }
 
-module.exports = { requireRole, visibleEmployeeScope, ...require('./roles') };
+module.exports = { requireRole, denyRoles, visibleEmployeeScope, ...require('./roles') };
