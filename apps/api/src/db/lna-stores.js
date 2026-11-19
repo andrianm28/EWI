@@ -2,6 +2,8 @@
 // Store Postgres untuk DNA, TNA, dan wawancara (POC Desember). Setiap query memfilter tenant_id,
 // dan query data karyawan menerima `scope` dari visibleEmployeeScope() (RG-3).
 const { QueryTypes } = require('sequelize');
+const { createLiStores } = require('./li-stores');
+const { createLdStores } = require('./ld-stores');
 const { evaluate, effectiveRule, metricKey } = require('../modules/tna/performance');
 const { planAssignments } = require('../modules/tna/assignment');
 const { summaryStateOf, MAX_RESTARTS } = require('../modules/interviews/summary');
@@ -608,9 +610,12 @@ function createLnaStores(sequelize, { cipher } = {}) {
     },
     async performanceByIds(tenantId, ids) {
       if (!ids || !ids.length) return [];
-      return select(`SELECT id, user_id AS "userId", metric_type AS "metricType", name, target::float AS target, actual::float AS actual,
+      const rows = await select(`SELECT id, user_id AS "userId", metric_type AS "metricType", name, target::float AS target, actual::float AS actual,
                             is_met AS "isMet", period, direction, tolerance::float AS tolerance FROM lna_performance_records WHERE tenant_id = :tenantId AND id IN (:ids)`,
       { tenantId, ids });
+      // Urutan mengikuti ids (urutan pemicu sesi); tanpa ini Postgres bebas mengembalikan urutan apa pun
+      const pos = new Map(ids.map((id, i) => [id, i]));
+      return rows.sort((a, b) => pos.get(a.id) - pos.get(b.id));
     },
     /** PM-1 opsi B: aturan arah + toleransi per KPI (kunci = jenis metrik + nama dinormalkan). */
     async listKpiRules(tenantId) {
@@ -1486,7 +1491,7 @@ function createLnaStores(sequelize, { cipher } = {}) {
     return { deletedUploaded: (delMeta && delMeta.rowCount) || 0, clearedCommitted: (clrMeta && clrMeta.rowCount) || 0 };
   };
 
-  return { people, settings, dna, interviews, tna, catalog, projectsExtra, imports, aiUsage, analysis, dataRequests, assistant };
+  return { people, settings, dna, interviews, tna, catalog, projectsExtra, imports, aiUsage, analysis, dataRequests, assistant, ...createLiStores(sequelize), ...createLdStores(sequelize) };
 }
 
 module.exports = { createLnaStores, scopeSql };

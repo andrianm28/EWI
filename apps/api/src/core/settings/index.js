@@ -34,6 +34,12 @@ const DEFAULTS = Object.freeze({
     // B17: lama log Asisten ELGOS disimpan, dalam hari (1-365). [⏳ DITERIMA] 90 belum diputuskan pemilik produk
     retentionDays: 90,
   },
+  li: {
+    // K4: vendor modul per tenant (bukan hardcode). ELGOS hanya mencatat permintaan; tidak mengirim apa pun ke vendor.
+    vendorName: 'Mahaka Institute',
+    // Rumpun yang spesifik proses perusahaan: disarankan dikembangkan sendiri, bukan diminta ke vendor (usulan awal).
+    devStreams: ['Specific Technical'],
+  },
 });
 
 const INTERVIEW_SCOPES = Object.freeze(['all_members', 'red_only']);
