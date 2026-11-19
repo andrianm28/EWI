@@ -1,0 +1,9 @@
+{
+  "$metadata": { "httpStatusCode": 200 },
+  "output": { "message": { "role": "assistant", "content": [
+    { "text": "{\"assessments\":[{\"kompetensi\":\"K1\",\"score\":3,\"confidence\":0.6,\"evidence\":\"Menangani keluhan pelanggan sendiri sampai tuntas.\"},{\"kompetensi\":\"K1\",\"score\":1,\"confidence\":0.9,\"evidence\":\"duplikat\"},{\"kompetensi\":\"K2\",\"score\":7,\"confidence\":0.5,\"evidence\":\"skor di luar skala\"}]}" }
+  ] } },
+  "stopReason": "end_turn",
+  "usage": { "inputTokens": 1200, "outputTokens": 120, "totalTokens": 1320 },
+  "metrics": { "latencyMs": 2100 }
+}

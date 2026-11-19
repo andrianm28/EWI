@@ -18,7 +18,7 @@ describe('loadConfig', () => {
     const base = { EWI_JWT_SECRET: 'x'.repeat(40), DATABASE_URL: 'postgres://x' };
     expect(() => loadConfig({ ...base, NODE_ENV: 'production' })).toThrow(/MAIL_PROVIDER=ses/);
     expect(() => loadConfig({ ...base, NODE_ENV: 'production', MAIL_PROVIDER: 'ses' })).toThrow(/MAIL_FROM/);
-    expect(loadConfig({ ...base, NODE_ENV: 'production', MAIL_PROVIDER: 'ses', MAIL_FROM: 'ELGOS <no-reply@x.id>', ENCRYPTION_PROVIDER: 'kms' }).mail.provider).toBe('ses');
+    expect(loadConfig({ ...base, NODE_ENV: 'production', MAIL_PROVIDER: 'ses', MAIL_FROM: 'ELGOS <no-reply@x.id>', ENCRYPTION_PROVIDER: 'kms', BEDROCK_MODEL_ID: 'anthropic.model-uji' }).mail.provider).toBe('ses');
     const dev = loadConfig({ ...base, NODE_ENV: 'development', CORS_ORIGIN: 'https://dev.x.id/,http://a', EWI_LOCAL_MASTER_KEY: 'ab'.repeat(32) });
     expect(dev.mail.provider).toBe('log');
     expect(dev.appBaseUrl).toBe('https://dev.x.id');
@@ -30,5 +30,35 @@ describe('loadConfig', () => {
     expect(() => loadConfig({ ...base, NODE_ENV: 'development', EWI_LOCAL_MASTER_KEY: 'pendek' })).toThrow(/32 byte/);
     expect(loadConfig({ ...base, NODE_ENV: 'development', EWI_LOCAL_MASTER_KEY: 'ab'.repeat(32) }).encryption.localMasterKey).toHaveLength(32);
     expect(loadConfig({ EWI_JWT_SECRET: 'x'.repeat(40), NODE_ENV: 'test' }).encryption.localMasterKey).toHaveLength(32);
+  });
+
+  describe('PK-06: penyedia AI teks', () => {
+    const base = { EWI_JWT_SECRET: 'x'.repeat(40) };
+    const prod = { ...base, NODE_ENV: 'production', DATABASE_URL: 'postgres://x', MAIL_PROVIDER: 'ses', MAIL_FROM: 'a@b.c', ENCRYPTION_PROVIDER: 'kms' };
+    it('tiruan menjadi bawaan di luar produksi', () => {
+      expect(loadConfig({ ...base, NODE_ENV: 'test' }).ai.provider).toBe('stub');
+      expect(loadConfig({ ...base, NODE_ENV: 'test' }).aiProvider).toBe('stub');
+    });
+    it('produksi memakai bedrock dan menolak stub', () => {
+      expect(() => loadConfig({ ...prod, AI_PROVIDER: 'stub' })).toThrow(/AI_PROVIDER=stub tidak boleh di produksi/);
+      expect(() => loadConfig(prod)).toThrow(/BEDROCK_MODEL_ID wajib/);
+      const cfg = loadConfig({ ...prod, BEDROCK_MODEL_ID: 'anthropic.model-uji' });
+      expect(cfg.ai).toMatchObject({ provider: 'bedrock', region: 'ap-southeast-1', modelId: 'anthropic.model-uji', maxQuestions: 8 });
+    });
+    it('PD-2: hanya Singapura, profil lintas region ditolak kecuali diizinkan', () => {
+      const t = { ...base, NODE_ENV: 'test', AI_PROVIDER: 'bedrock' };
+      expect(() => loadConfig({ ...t, BEDROCK_MODEL_ID: 'm', BEDROCK_REGION: 'us-east-1' })).toThrow(/ap-southeast-1/);
+      for (const id of ['global.anthropic.x', 'apac.anthropic.x', 'arn:aws:bedrock:ap-southeast-1:1:inference-profile/us.anthropic.x']) {
+        expect(() => loadConfig({ ...t, BEDROCK_MODEL_ID: id })).toThrow(/lintas region/);
+      }
+      expect(loadConfig({ ...t, BEDROCK_MODEL_ID: 'global.anthropic.x', AI_ALLOW_CROSS_REGION: 'true' }).ai.modelId).toBe('global.anthropic.x');
+    });
+    it('menolak penyedia tak dikenal, angka dan JSON yang tidak valid', () => {
+      const t = { ...base, NODE_ENV: 'test' };
+      expect(() => loadConfig({ ...t, AI_PROVIDER: 'openai' })).toThrow(/AI_PROVIDER harus/);
+      expect(() => loadConfig({ ...t, AI_MAX_QUESTIONS: 'nol' })).toThrow(/maxQuestions/);
+      expect(() => loadConfig({ ...t, AI_PROVIDER: 'bedrock', BEDROCK_MODEL_ID: 'm', BEDROCK_EXTRA_FIELDS: '{' })).toThrow(/BEDROCK_EXTRA_FIELDS/);
+      expect(loadConfig({ ...t, AI_PRICE_INPUT_PER_MTOK: '3', AI_PRICE_OUTPUT_PER_MTOK: '15' }).ai).toMatchObject({ priceInputPerMTok: 3, priceOutputPerMTok: 15 });
+    });
   });
 });

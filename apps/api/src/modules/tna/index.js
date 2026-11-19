@@ -4,28 +4,35 @@
 // tetap direkam tetapi tidak ditampilkan selama flag INA mati.
 // Cadence 11 Nov: TNA bisa berjalan tanpa DACUM/DNA (C4). Cakupan wawancara per kebutuhan perusahaan:
 // hanya target merah (default, C3) atau semua karyawan di job role tertentu.
-// Terbuka: BT-30 (rumus Pareto), BT-31 (alur request training), K-1 (LMS), K-3 (status).
+// PK-23 (PM-8 ★ B+C+D+E, PM-6 dijawab 17 Nov): status rencana K-3, permintaan training ditunda di balik flag
+// (BT-31), daftar ringkas non-training untuk HR dan atasan yang diberi akses HR, di balik flag. Undangan 7 hari + pengingat: modules/interviews.
+// Terbuka: BT-30 (rumus Pareto), BT-31 (alur request training), K-1 (LMS).
+// PK-18/PK-20 (17 Nov): katalog course statis (Moodle) + aturan toleransi KPI (PM-1 ★ B).
 const crypto = require('crypto');
 const express = require('express');
 const { requireRole, ROLES } = require('../../core/rbac');
 const { scopeFor, inScope } = require('../../core/rbac/scope');
 const { INTERVIEW_SCOPES } = require('../../core/settings');
-const { FLAGS } = require('../../core/flags');
+const { FLAGS, requireFlag } = require('../../core/flags');
 const { badRequest, notFound, forbidden, HttpError } = require('../../core/errors');
 const { interviewRouter, wrap } = require('../interviews');
-const { evaluate } = require('./performance');
+const { inviteExpiry } = require('../interviews/invitation');
+const { evaluate, metricKey, METRIC_TYPES } = require('./performance');
 const { selectInterviewees } = require('./targeting');
 const { rankTrainingNeeds } = require('./pareto');
 const { importRouter } = require('../imports');
 const { getKind } = require('../imports/kinds');
 const { validateRows, commitRows } = require('../imports/engine');
+const { PLAN_STATUSES, PLAN_STATUS_LABEL, initialStatus, canTransition } = require('./plan-status');
 
-const PLAN_STATUSES = ['proposed', 'needs_module', 'assigned', 'in_progress', 'completed', 'cancelled'];
+const REVIEW_DECISIONS = { approve: 'approved', edit: 'edited', reject: 'rejected' };
+const REVIEWED = ['approved', 'edited'];
+const CATEGORIES = ['training', 'non_training'];
 
 module.exports = {
   key: 'tna',
   title: 'Training Needs Analysis',
-  router({ stores, ai, settings, catalog, flags, audit } = {}) {
+  router({ stores, ai, aiConfig, settings, catalog, flags, audit, analysis } = {}) {
     const r = express.Router();
     const hr = requireRole(ROLES.HR_ADMIN);
 
@@ -62,9 +69,39 @@ module.exports = {
       });
     }));
 
+    // --- PM-1 opsi B (★): aturan arah + toleransi per KPI. Mengubah aturan menghitung ulang status lama (C-8) ---
+    r.get('/kpi-rules', hr, wrap(async (req, res) => {
+      res.json({ data: await stores.tna.listKpiRules(req.tenantId) });
+    }));
+
+    r.put('/kpi-rules', hr, wrap(async (req, res) => {
+      const { metricType, name, direction = 'higher', tolerance = 0 } = req.body || {};
+      if (!METRIC_TYPES.includes(metricType)) throw badRequest(`metricType harus ${METRIC_TYPES.join(', ')}`);
+      if (!metricKey(name)) throw badRequest('name (nama metrik) wajib diisi');
+      if (!['higher', 'lower'].includes(direction)) throw badRequest('direction harus higher atau lower');
+      const tol = Number(tolerance);
+      if (!Number.isFinite(tol) || tol < 0) throw badRequest('tolerance harus angka 0 atau lebih');
+      const before = (await stores.tna.listKpiRules(req.tenantId)).find((x) => x.metricType === metricType && x.metricKey === metricKey(name)) || null;
+      const [rule] = await stores.tna.upsertKpiRules(req.tenantId, [{ metricType, metricKey: metricKey(name), name: String(name).trim(), direction, tolerance: tol }], req.user.id);
+      const recomputed = await stores.tna.recomputePerformance(req.tenantId, [rule]);
+      await audit.record(req, 'update', 'tna.kpi_rule', {
+        ruleId: rule.id, metricType, name: rule.name,
+        before: before ? { direction: before.direction, tolerance: before.tolerance } : null, after: { direction, tolerance: tol }, recomputed,
+      });
+      res.json({ data: { rule, recomputed } });
+    }));
+
+    // --- PK-18: katalog course statis (hasil impor) untuk HR ---
+    r.get('/catalog', hr, wrap(async (req, res) => {
+      res.json({ data: await stores.catalog.listItems(req.tenantId) });
+    }));
+
     r.get('/performance', wrap(async (req, res) => {
       const scope = await scopeFor(req, stores.people);
-      res.json({ data: await stores.tna.listPerformance(req.tenantId, scope, { period: req.query.period, projectId: req.query.projectId }) });
+      const rows = await stores.tna.listPerformance(req.tenantId, scope, { period: req.query.period, projectId: req.query.projectId });
+      // PK-15: baca data kinerja individu dicatat (R2-2)
+      await audit.readIndividual(req, 'tna.performance', { employeeIds: rows.map((p) => p.userId), objectType: 'performance_record', objectIds: rows.map((p) => p.id) });
+      res.json({ data: rows });
     }));
 
     // --- Jadwalkan wawancara TNA untuk tim. Scope dari body, lalu settings tenant (default red_only) ---
@@ -93,12 +130,109 @@ module.exports = {
       for (const p of picks) {
         if (open.has(p.userId)) continue;
         const m = members.find((x) => x.id === p.userId);
-        created.push({ ...(await stores.interviews.create(req.tenantId, { projectId, submodule: 'tna', intervieweeId: p.userId, jobRoleId: m.jobRoleId, triggerRecordIds: p.triggerRecordIds })), focus: p.focus });
+        created.push({ ...(await stores.interviews.create(req.tenantId, { projectId, submodule: 'tna', intervieweeId: p.userId, jobRoleId: m.jobRoleId, triggerRecordIds: p.triggerRecordIds, inviteExpiresAt: inviteExpiry() })), focus: p.focus });
       }
       res.status(201).json({ data: { scope, scheduled: created.length, skipped: picks.length - created.length, sessions: created } });
     }));
 
-    r.use('/sessions', interviewRouter({ submodule: 'tna', stores, ai, audit }));
+    r.use('/sessions', interviewRouter({ submodule: 'tna', stores, ai, aiConfig, audit, analysis }));
+
+    // --- Review hasil AI oleh HR (PK-14: PD-14 ★A, PM-3 ★A, PM-5 ★A) ---
+    // Temuan dari analisis AI berstatus draf. Draf tidak terlihat atasan dan karyawan, dan tidak dihitung di
+    // Pareto, dashboard, rencana, atau ekspor sampai HR menyetujui, mengubah, atau menolaknya.
+    // Tidak di balik flag: ini pengaman wajib, bukan fitur opsional.
+    r.get('/review', hr, wrap(async (req, res) => {
+      const status = req.query.status || 'draft';
+      const statuses = status === 'all' ? ['draft', ...Object.values(REVIEW_DECISIONS)] : status === 'reviewed' ? Object.values(REVIEW_DECISIONS) : [status];
+      if (!statuses.every((x) => ['draft', ...Object.values(REVIEW_DECISIONS)].includes(x))) throw badRequest('status harus draft, approved, edited, rejected, reviewed, atau all');
+      const [rows, counts] = await Promise.all([
+        stores.tna.reviewQueue(req.tenantId, { projectId: req.query.projectId, statuses }),
+        stores.tna.reviewCounts(req.tenantId, { projectId: req.query.projectId }),
+      ]);
+      await audit.readIndividual(req, 'tna.review_queue', { employeeIds: rows.map((f) => f.userId), objectType: 'tna_finding', objectIds: rows.map((f) => f.id) });
+      res.json({ data: rows, counts });
+    }));
+
+    r.post('/findings/:id/review', hr, wrap(async (req, res) => {
+      const { decision, title, detail, category, note } = req.body || {};
+      const status = REVIEW_DECISIONS[decision];
+      if (!status) throw badRequest('decision harus approve, edit, atau reject');
+      const clean = (v, max) => (v == null ? undefined : String(v).trim().slice(0, max));
+      const patch = { title: clean(title, 255), detail: clean(detail, 4000), note: clean(note, 2000) };
+      if (decision === 'edit') {
+        if (category != null && !CATEGORIES.includes(category)) throw badRequest(`category harus ${CATEGORIES.join(' atau ')}`);
+        if (!patch.title && patch.detail === undefined && !category) throw badRequest('Isi judul, rincian, atau kategori yang diubah');
+        if (title != null && !patch.title) throw badRequest('Judul tidak boleh kosong');
+      }
+      if (decision === 'reject' && !patch.note) throw badRequest('Tulis alasan penolakan di note');
+      const current = await stores.tna.getReviewItem(req.tenantId, req.params.id);
+      if (!current) throw notFound('Temuan tidak ditemukan');
+      if (current.reviewStatus !== 'draft') throw new HttpError(409, 'ALREADY_REVIEWED', 'Temuan ini sudah direview');
+      const out = await stores.tna.reviewFinding(req.tenantId, current.id, {
+        decision: status, title: patch.title, detail: patch.detail, category: decision === 'edit' ? category : undefined, note: patch.note, reviewerId: req.user.id,
+      });
+      if (!out) throw new HttpError(409, 'ALREADY_REVIEWED', 'Temuan ini sudah direview');
+      await audit.record(req, 'update', 'tna.finding_review', {
+        employeeIds: [current.userId], objectType: 'tna_finding', objectIds: [current.id], decision: status, confidence: current.confidence,
+      });
+      res.json({ data: out });
+    }));
+
+    // PM-6 (jawaban user 17 Nov): temuan "bukan masalah pelatihan" tampil untuk HR secara bawaan, ringkas,
+    // tanpa rencana aksi. Atasan langsung melihat temuan timnya hanya bila HR memberinya akses (bisa dicabut,
+    // diaudit). Karyawan tidak melihatnya. Seluruhnya di balik flag tna.non_training_hr.
+    const nonTrainingFlag = requireFlag(flags, FLAGS.TNA_NON_TRAINING_HR, 'Daftar temuan di luar pelatihan belum diaktifkan untuk organisasi Anda');
+    r.get('/findings/non-training', nonTrainingFlag, wrap(async (req, res) => {
+      const { role } = req.user;
+      let userIds;
+      if (role === ROLES.SUPERVISOR) {
+        if (!(await stores.tna.hasNonTrainingGrant(req.tenantId, req.user.id))) {
+          throw forbidden('NO_NON_TRAINING_ACCESS', 'HR belum memberi Anda akses ke temuan di luar pelatihan');
+        }
+        userIds = await stores.people.directReportIds(req.tenantId, req.user.id); // tim saja, bukan dirinya
+      } else if (![ROLES.HR_ADMIN, ROLES.ETA_ADMIN].includes(role)) {
+        throw forbidden('ROLE_FORBIDDEN', 'Temuan di luar pelatihan hanya untuk HR dan atasan yang diberi akses');
+      }
+      const rows = await stores.tna.listNonTrainingSummary(req.tenantId, { projectId: req.query.projectId, userIds });
+      await audit.readIndividual(req, 'tna.findings_non_training', { employeeIds: rows.map((f) => f.userId), objectType: 'tna_finding', objectIds: rows.map((f) => f.id) });
+      res.json({ data: rows });
+    }));
+
+    // Atasan memeriksa apakah dirinya punya akses (untuk menampilkan bagian di web)
+    r.get('/non-training-access/me', nonTrainingFlag, wrap(async (req, res) => {
+      const granted = [ROLES.HR_ADMIN, ROLES.ETA_ADMIN].includes(req.user.role)
+        || (req.user.role === ROLES.SUPERVISOR && (await stores.tna.hasNonTrainingGrant(req.tenantId, req.user.id)));
+      res.json({ data: { granted } });
+    }));
+
+    // HR mengelola izin atasan
+    r.get('/non-training-access', hr, nonTrainingFlag, wrap(async (req, res) => {
+      const [grants, supervisors] = await Promise.all([
+        stores.tna.nonTrainingGrants(req.tenantId),
+        stores.people.list(req.tenantId, { all: true }, { roles: [ROLES.SUPERVISOR] }),
+      ]);
+      res.json({ data: grants, supervisors: supervisors.map((s) => ({ id: s.id, name: s.name, email: s.email })) });
+    }));
+
+    async function loadSupervisor(req) {
+      const person = await stores.people.get(req.tenantId, req.params.supervisorId);
+      if (!person || person.role !== ROLES.SUPERVISOR) throw notFound('Atasan tidak ditemukan');
+      return person;
+    }
+
+    r.put('/non-training-access/:supervisorId', hr, nonTrainingFlag, wrap(async (req, res) => {
+      const sup = await loadSupervisor(req);
+      const created = await stores.tna.grantNonTraining(req.tenantId, sup.id, req.user.id);
+      if (created) await audit.record(req, 'create', 'tna.non_training_access', { supervisorId: sup.id, employeeIds: [sup.id] });
+      res.json({ data: { supervisorId: sup.id, granted: true, changed: created } });
+    }));
+
+    r.delete('/non-training-access/:supervisorId', hr, nonTrainingFlag, wrap(async (req, res) => {
+      const sup = await loadSupervisor(req);
+      const revoked = await stores.tna.revokeNonTraining(req.tenantId, sup.id, req.user.id);
+      if (revoked) await audit.record(req, 'delete', 'tna.non_training_access', { supervisorId: sup.id, employeeIds: [sup.id] });
+      res.json({ data: { supervisorId: sup.id, granted: false, changed: revoked } });
+    }));
 
     // --- Temuan & Pareto ---
     r.get('/findings', wrap(async (req, res) => {
@@ -114,7 +248,7 @@ module.exports = {
       const conf = await settings.get(req.tenantId);
       const findings = await stores.tna.listFindings(req.tenantId, scope, { projectId: req.query.projectId, categories: ['training'] });
       const rows = rankTrainingNeeds(findings.map((f) => ({
-        ...f, missRatio: f.target != null ? evaluate({ target: f.target, actual: f.actual, direction: f.direction }).missRatio : null,
+        ...f, missRatio: f.target != null ? evaluate({ target: f.target, actual: f.actual, direction: f.direction, tolerance: f.tolerance }).missRatio : null,
       })), conf.tna.pareto);
       res.json({ data: rows, formula: conf.tna.pareto });
     }));
@@ -123,29 +257,35 @@ module.exports = {
     r.post('/findings/:id/plan', hr, wrap(async (req, res) => {
       const f = await stores.tna.getFinding(req.tenantId, req.params.id);
       if (!f || f.category !== 'training') throw notFound('Temuan training tidak ditemukan');
+      if (!REVIEWED.includes(f.reviewStatus)) throw new HttpError(409, 'REVIEW_PENDING', 'Setujui temuan ini di antrean review sebelum membuat training plan');
       const conf = await settings.get(req.tenantId);
       const competency = f.competencyId ? await stores.dna.getCompetency(req.tenantId, f.competencyId) : null;
       const hit = await catalog.match({ tenantId: req.tenantId, targets: conf.lms.targets, competency, tier: req.body?.programTier });
       const item = await stores.tna.insertPlanItem(req.tenantId, {
-        findingId: f.id, userId: f.userId, origin: 'hr', status: hit ? 'proposed' : 'needs_module',
+        findingId: f.id, userId: f.userId, origin: 'hr', status: initialStatus('hr'),
         programTier: req.body?.programTier || null, catalogSource: hit?.source, catalogItemRef: hit?.ref, catalogItemTitle: hit?.title,
         note: req.body?.note || null,
       });
       await stores.tna.setFindingStatus(req.tenantId, f.id, 'planned');
-      res.status(201).json({ data: item });
+      // PK-15: perubahan temuan dan rencana dicatat
+      await audit.record(req, 'create', 'tna.plan_item', { employeeIds: [f.userId], objectType: 'tna_plan_item', objectIds: [item.id], findingId: f.id, status: item.status });
+      await audit.record(req, 'update', 'tna.finding', { employeeIds: [f.userId], objectType: 'tna_finding', objectIds: [f.id], from: f.status, to: 'planned' });
+      res.status(201).json({ data: { ...item, catalogItemUrl: hit?.url || null } });
     }));
 
-    // Request training oleh learner (RG-2). BT-31 terbuka: HR dan atasan sama-sama bisa memproses lewat PATCH.
-    r.post('/training-requests', wrap(async (req, res) => {
+    // Request training oleh learner (RG-2). PM-8 B: BT-31 ditunda, jadi endpoint di balik flag (default mati)
+    // dan tombolnya disembunyikan di web. Bila dinyalakan, HR dan atasan memproses lewat PATCH.
+    r.post('/training-requests', requireFlag(flags, FLAGS.TNA_TRAINING_REQUEST, 'Permintaan training belum dibuka selama POC'), wrap(async (req, res) => {
       const { findingId, note } = req.body || {};
       if (!findingId && !note) throw badRequest('findingId atau note wajib diisi');
       if (findingId) {
         const f = await stores.tna.getFinding(req.tenantId, findingId);
-        if (!f || f.userId !== req.user.id) throw notFound('Temuan tidak ditemukan');
+        if (!f || f.userId !== req.user.id || !REVIEWED.includes(f.reviewStatus)) throw notFound('Temuan tidak ditemukan');
       }
       const item = await stores.tna.insertPlanItem(req.tenantId, {
-        findingId: findingId || null, userId: req.user.id, origin: 'learner_request', status: 'proposed', note: note || null, requestedBy: req.user.id,
+        findingId: findingId || null, userId: req.user.id, origin: 'learner_request', status: initialStatus('learner_request'), note: note || null, requestedBy: req.user.id,
       });
+      await audit.record(req, 'create', 'tna.plan_item', { employeeIds: [req.user.id], objectType: 'tna_plan_item', objectIds: [item.id], findingId: findingId || null, origin: 'learner_request' });
       res.status(201).json({ data: item });
     }));
 
@@ -153,16 +293,23 @@ module.exports = {
       const scope = await scopeFor(req, stores.people);
       const rows = await stores.tna.listPlanItems(req.tenantId, scope);
       await audit.readIndividual(req, 'tna.plan_items', { employeeIds: rows.map((p) => p.userId), objectType: 'tna_plan_item', objectIds: rows.map((p) => p.id) });
-      res.json({ data: rows });
+      res.json({ data: rows, statusLabels: PLAN_STATUS_LABEL });
     }));
 
+    // K-3: hanya perpindahan status yang sah (Diminta -> Baru -> Berjalan -> Selesai; Ditolak sebelum selesai)
     r.patch('/plan-items/:id', requireRole(ROLES.HR_ADMIN, ROLES.SUPERVISOR), wrap(async (req, res) => {
       const item = await stores.tna.getPlanItem(req.tenantId, req.params.id);
       const scope = await scopeFor(req, stores.people);
       if (!item || !inScope(scope, item.userId)) throw notFound('Item training plan tidak ditemukan');
       const { status, catalogItemRef, catalogItemTitle, catalogSource } = req.body || {};
       if (status && !PLAN_STATUSES.includes(status)) throw badRequest(`status harus salah satu: ${PLAN_STATUSES.join(', ')}`);
-      res.json({ data: await stores.tna.updatePlanItem(req.tenantId, item.id, { status, catalogItemRef, catalogItemTitle, catalogSource }) });
+      if (status && status !== item.status && !canTransition(item.status, status)) {
+        throw new HttpError(409, 'INVALID_TRANSITION', `Status "${PLAN_STATUS_LABEL[item.status]}" tidak bisa diubah menjadi "${PLAN_STATUS_LABEL[status]}"`);
+      }
+      const saved = await stores.tna.updatePlanItem(req.tenantId, item.id, { status, catalogItemRef, catalogItemTitle, catalogSource });
+      const changed = Object.fromEntries(Object.entries({ status, catalogItemRef, catalogItemTitle, catalogSource }).filter(([, v]) => v !== undefined));
+      await audit.record(req, 'update', 'tna.plan_item', { employeeIds: [item.userId], objectType: 'tna_plan_item', objectIds: [item.id], from: { status: item.status }, changed });
+      res.json({ data: saved });
     }));
 
     // Ringkasan dashboard sesuai peran
@@ -174,6 +321,9 @@ module.exports = {
         stores.tna.listPlanItems(req.tenantId, scope),
         stores.tna.listPerformance(req.tenantId, scope, { projectId: req.query.projectId }),
       ]);
+      // HR melihat jumlah temuan yang menunggu review; peran lain tidak tahu ada draf (PM-5 ★A)
+      const isHr = [ROLES.HR_ADMIN, ROLES.ETA_ADMIN].includes(req.user.role);
+      const reviewPending = isHr ? (await stores.tna.reviewCounts(req.tenantId, { projectId: req.query.projectId })).draft : undefined;
       const count = (arr, key) => arr.reduce((acc, x) => ({ ...acc, [x[key]]: (acc[x[key]] || 0) + 1 }), {});
       res.json({
         data: {
@@ -183,6 +333,7 @@ module.exports = {
           sessions: count(sessions, 'status'),
           trainingFindings: findings.length,
           planItems: count(plan, 'status'),
+          ...(isHr ? { reviewPending } : {}),
         },
       });
     }));
