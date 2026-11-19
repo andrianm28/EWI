@@ -14,6 +14,7 @@ const { createAuditService, memoryAuditStore } = require('./core/audit');
 const { createEntitlementService } = require('./core/entitlement');
 const { requireSubmodule } = require('./core/entitlement/guard');
 const { errorHandler, notFound } = require('./core/errors');
+const { createReadiness, readyHandler } = require('./core/health');
 const projects = require('./modules/projects');
 const { employeeRouter } = require('./modules/employees');
 const { webhookRouter } = require('./integrations/elitementor/webhook');
@@ -30,7 +31,7 @@ const SUBMODULE_MODULES = ['cca', 'dna', 'tna', 'ina', 'li', 'ld'].map((k) => re
  * stores: { users, flags, audit, entitlements, projects, people, settings, dna, interviews, tna, projectsExtra }
  * ai / catalog / storage bisa diganti di test; default mengikuti config (AI_PROVIDER, PK-06; K-1 masih terbuka).
  */
-function createApp({ config, stores, ai, catalog, mailer, storage }) {
+function createApp({ config, stores, ai, catalog, mailer, readiness, storage }) {
   const app = express();
   const tokens = createTokenService(config.jwt);
   const flags = createFlagService(stores.flags);
@@ -70,7 +71,14 @@ function createApp({ config, stores, ai, catalog, mailer, storage }) {
   }
   app.use(express.json({ limit: '1mb' }));
 
+  // Liveness ringan (tanpa I/O). Kesiapan (DB + enkripsi) di /api/ready, dipakai deploy (PK-07, I-6).
   app.get('/api/health', (_req, res) => res.json({ status: 'ok', service: 'ewi-api' }));
+  app.get('/api/ready', readyHandler(readiness || createReadiness({
+    checks: {
+      ...(stores.ping ? { database: () => stores.ping() } : {}),
+      ...(stores.cipher?.healthCheck ? { encryption: () => stores.cipher.healthCheck() } : {}),
+    },
+  })));
   if (stores.loginLinks) app.use('/api/auth/email-link', emailLinkRoutes({ users: stores.users, links, tokens, audit }));
   app.use('/api/auth', authRoutes({ users: stores.users, tokens, requireAuth: auth, audit, tenantPicker: config.loginTenantPicker }));
 

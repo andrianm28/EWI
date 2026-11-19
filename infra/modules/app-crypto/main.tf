@@ -2,8 +2,10 @@
 #   - R2-3: satu customer managed key KMS per tenant (alias kontrak API: alias/<prefix>-<tenantId>)
 #   - IAM user per lingkungan untuk API di etavm2: hanya GenerateDataKey/Decrypt dengan encryption
 #     context {tenant} dan kirim email SES dari alamat mail_from.
+#   - PD-1 opsi A: InvokeModel Amazon Bedrock (Claude) hanya di region Singapura (PD-2).
+#   - N-4: semua izin hanya berlaku dari alamat IP etavm2 (allowed_source_ips).
 # Access key IAM user TIDAK dibuat di Terraform (agar tidak masuk state); buat lewat CLI, simpan di
-# /srv/elgos-<env>/.env di etavm2. Lihat docs/infra/vps-etavm2.md.
+# /srv/elgos-<env>/.env di etavm2, rotasi tiap 90 hari (docs/infra/rotasi-kunci.md).
 terraform {
   required_version = ">= 1.10"
   required_providers {
@@ -30,13 +32,40 @@ variable "mail_from" {
   description = "Alamat pengirim (MAIL_FROM); domainnya harus terverifikasi di SES (live/shared)."
 }
 
+variable "allowed_source_ips" {
+  type        = list(string)
+  description = "CIDR IP publik etavm2 (mis. [\"203.0.113.10/32\"]). Kunci aplikasi ditolak dari alamat lain (N-4)."
+  validation {
+    condition     = length(var.allowed_source_ips) > 0
+    error_message = "allowed_source_ips wajib diisi IP publik etavm2."
+  }
+}
+
+variable "bedrock_enabled" {
+  type        = bool
+  default     = true
+  description = "PD-1 opsi A: izinkan InvokeModel Bedrock (model Anthropic) di region ini."
+}
+
 data "aws_caller_identity" "this" {}
 data "aws_region" "this" {}
 data "aws_partition" "this" {}
 
 locals {
   tenant_key_prefix = "elgos-${var.env}-tenant"
-  key_arn_pattern   = "arn:${data.aws_partition.this.partition}:kms:${data.aws_region.this.region}:${data.aws_caller_identity.this.account_id}:key/*"
+  arn_prefix        = "arn:${data.aws_partition.this.partition}"
+  key_arn_pattern   = "${local.arn_prefix}:kms:${data.aws_region.this.region}:${data.aws_caller_identity.this.account_id}:key/*"
+  dari_etavm2       = { IpAddress = { "aws:SourceIp" = var.allowed_source_ips } }
+  bedrock_statement = var.bedrock_enabled ? [{
+    Sid    = "ModelBedrock"
+    Effect = "Allow"
+    Action = ["bedrock:InvokeModel", "bedrock:InvokeModelWithResponseStream"]
+    Resource = [
+      "${local.arn_prefix}:bedrock:${data.aws_region.this.region}::foundation-model/anthropic.*",
+      "${local.arn_prefix}:bedrock:${data.aws_region.this.region}:${data.aws_caller_identity.this.account_id}:inference-profile/*",
+    ]
+    Condition = local.dari_etavm2
+  }] : []
 }
 
 resource "aws_kms_key" "tenant" {
@@ -69,7 +98,7 @@ resource "aws_iam_user_policy" "app" {
   user = aws_iam_user.app.name
   policy = jsonencode({
     Version = "2012-10-17"
-    Statement = [
+    Statement = concat([
       {
         Sid      = "EnvelopeKunciTenant"
         Effect   = "Allow"
@@ -78,16 +107,20 @@ resource "aws_iam_user_policy" "app" {
         Condition = {
           StringEquals = { "aws:ResourceTag/elgos:env" = var.env }
           Null         = { "aws:ResourceTag/elgos:tenant" = "false", "kms:EncryptionContext:tenant" = "false" }
+          IpAddress    = { "aws:SourceIp" = var.allowed_source_ips }
         }
       },
       {
-        Sid       = "KirimEmail"
-        Effect    = "Allow"
-        Action    = ["ses:SendEmail", "ses:SendRawEmail"]
-        Resource  = "*"
-        Condition = { StringEquals = { "ses:FromAddress" = var.mail_from } }
+        Sid      = "KirimEmail"
+        Effect   = "Allow"
+        Action   = ["ses:SendEmail", "ses:SendRawEmail"]
+        Resource = "*"
+        Condition = {
+          StringEquals = { "ses:FromAddress" = var.mail_from }
+          IpAddress    = { "aws:SourceIp" = var.allowed_source_ips }
+        }
       },
-    ]
+    ], local.bedrock_statement)
   })
 }
 
