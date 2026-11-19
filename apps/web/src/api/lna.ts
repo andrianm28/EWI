@@ -52,8 +52,11 @@ export const lna = {
   dnaEmployees: () => call<{ data: EmployeeProfile[] }>('/dna/employees'),
   dnaEmployee: (id: string) => call<{ data: EmployeeDetail }>(`/dna/employees/${id}`),
   sessions: (key: 'dna' | 'tna') => call<{ data: Session[] }>(`/${key}/sessions`),
-  session: (key: 'dna' | 'tna', id: string) => call<{ data: Session & { turns: Turn[] } }>(`/${key}/sessions/${id}`),
-  consent: (key: 'dna' | 'tna', id: string) => post<{ data: { question: Turn | null } }>(`/${key}/sessions/${id}/consent`, {}),
+  // PO-6 A: turns hanya dikirim ke karyawan yang diwawancarai (transcriptVisible)
+  session: (key: 'dna' | 'tna', id: string) => call<{ data: Session & { turns?: Turn[]; transcriptVisible?: boolean } }>(`/${key}/sessions/${id}`),
+  // PM-9 A: persetujuan menyebut kode versi teks yang ditampilkan
+  consent: (key: 'dna' | 'tna', id: string, consentVersion: string) =>
+    post<{ data: { question: Turn | null; consentVersion: string } }>(`/${key}/sessions/${id}/consent`, { consentVersion }),
   answer: (key: 'dna' | 'tna', id: string, text: string) => post<{ data: { question: Turn | null; done: boolean } }>(`/${key}/sessions/${id}/turns`, { text }),
   complete: (key: 'dna' | 'tna', id: string) => post<{ data: { status: string; analysis?: { status: string } } }>(`/${key}/sessions/${id}/complete`, {}),
   reviewQueue: (status: 'draft' | 'reviewed' = 'draft') => call<{ data: ReviewItem[]; counts: ReviewCounts }>(`/tna/review?status=${status}`),

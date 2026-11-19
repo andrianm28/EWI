@@ -15,6 +15,7 @@ const { createEntitlementService } = require('./core/entitlement');
 const { requireSubmodule } = require('./core/entitlement/guard');
 const { errorHandler, notFound } = require('./core/errors');
 const projects = require('./modules/projects');
+const { employeeRouter } = require('./modules/employees');
 const { webhookRouter } = require('./integrations/elitementor/webhook');
 const { createSettingsService } = require('./core/settings');
 const { createAiProvider } = require('./ai');
@@ -61,7 +62,7 @@ function createApp({ config, stores, ai, catalog, mailer }) {
 
   app.get('/api/health', (_req, res) => res.json({ status: 'ok', service: 'ewi-api' }));
   if (stores.loginLinks) app.use('/api/auth/email-link', emailLinkRoutes({ users: stores.users, links, tokens, audit }));
-  app.use('/api/auth', authRoutes({ users: stores.users, tokens, requireAuth: auth, tenantPicker: config.loginTenantPicker }));
+  app.use('/api/auth', authRoutes({ users: stores.users, tokens, requireAuth: auth, audit, tenantPicker: config.loginTenantPicker }));
 
   const api = express.Router();
   api.use(auth, tenantContext());
@@ -72,6 +73,7 @@ function createApp({ config, stores, ai, catalog, mailer }) {
   });
   api.use('/projects', projects.router({ projects: stores.projects }));
   api.use('/admin', flagAdminRouter({ flags, audit }));
+  if (stores.people && stores.interviews) api.use('/employees', employeeRouter({ stores, flags, audit }));
   if (stores.loginLinks) api.use('/invitations', invitationRoutes({ users: stores.users, links, audit }));
   for (const m of SUBMODULE_MODULES) {
     api.use(`/${m.key}`, requireSubmodule(m.key, { entitlements, flags }), m.router(deps));
