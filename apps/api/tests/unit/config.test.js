@@ -11,6 +11,12 @@ describe('loadConfig', () => {
   it('mewajibkan DATABASE_URL di luar test', () => {
     expect(() => loadConfig({ NODE_ENV: 'production', EWI_JWT_SECRET: 'x'.repeat(40) })).toThrow(/DATABASE_URL/);
   });
+  it('B14: batas unggah EWI_UPLOAD_MAX_MB 1 sampai 200 (default 25 MB)', () => {
+    const base = { NODE_ENV: 'test', EWI_JWT_SECRET: 'x'.repeat(40) };
+    expect(loadConfig(base).uploads).toMatchObject({ dir: '', maxBytes: 25 * 1024 * 1024 });
+    expect(loadConfig({ ...base, EWI_UPLOAD_MAX_MB: '200', EWI_UPLOAD_DIR: '/data/unggahan' }).uploads).toMatchObject({ dir: '/data/unggahan', maxBytes: 200 * 1024 * 1024 });
+    for (const v of ['0.5', '0', '201', 'abc']) expect(() => loadConfig({ ...base, EWI_UPLOAD_MAX_MB: v })).toThrow(/EWI_UPLOAD_MAX_MB/);
+  });
   it('memakai audience ewi secara default', () => {
     expect(loadConfig({ NODE_ENV: 'test', EWI_JWT_SECRET: 'x'.repeat(40) }).jwt.audience).toBe('ewi');
   });

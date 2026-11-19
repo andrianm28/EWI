@@ -8,17 +8,16 @@ const { evaluate, effectiveRule, metricKey } = require('../modules/tna/performan
 const { planAssignments } = require('../modules/tna/assignment');
 const { summaryStateOf, MAX_RESTARTS } = require('../modules/interviews/summary');
 
-/** scope: { all: true } | { userIds: [...] } -> potongan SQL untuk kolom user id. */
-function scopeSql(column, scope, rep) {
-  if (!scope || scope.all) return '';
-  rep.scopeIds = scope.userIds && scope.userIds.length ? scope.userIds : ['00000000-0000-0000-0000-000000000000'];
-  return ` AND ${column} IN (:scopeIds)`;
-}
-
 const COMPETENCY_COLS = `c.id, c.job_role_id AS "jobRoleId", c.career_level_id AS "careerLevelId", c.kind, c.name,
   c.definition, c.indicators, c.source, c.version, c.required_score AS "requiredScore", c.importance,
   c.approved_at AS "approvedAt"`;
 
+/** Baris { reviewStatus, n } menjadi hitungan per status review, status tanpa baris bernilai 0. */
+function byReviewStatus(rows) {
+  const out = { draft: 0, approved: 0, edited: 0, rejected: 0 };
+  for (const r of rows) out[r.reviewStatus] = r.n;
+  return out;
+}
 const PLAN_COLS = `p.id, p.user_id AS "userId", u.name AS "userName", p.finding_id AS "findingId", p.origin, p.status,
   p.program_tier AS "programTier", p.catalog_source AS "catalogSource", p.catalog_item_ref AS "catalogItemRef",
   p.catalog_item_title AS "catalogItemTitle", (p.catalog_item_ref IS NULL AND p.origin <> 'learner_request') AS "needsModule", p.note, p.requested_by AS "requestedBy", p.created_at AS "createdAt",
@@ -26,6 +25,7 @@ const PLAN_COLS = `p.id, p.user_id AS "userId", u.name AS "userName", p.finding_
 
 // PK-14: hanya temuan yang sudah direview yang boleh dipakai di luar antrean review
 const { REVIEWED } = require('../modules/tna/review-status');
+const { scopeSql } = require('./scope-sql');
 const REVIEW_COLS = `f.id, f.project_id AS "projectId", f.session_id AS "sessionId", f.user_id AS "userId", u.name AS "userName",
   f.category, f.title, f.detail, f.competency_id AS "competencyId", c.name AS "competencyName",
   f.performance_record_id AS "performanceRecordId", pr.name AS "metricName", pr.target::float AS target, pr.actual::float AS actual,
@@ -726,10 +726,35 @@ function createLnaStores(sequelize, { cipher } = {}) {
       const rep = { tenantId };
       let sql = 'SELECT review_status AS "reviewStatus", count(*)::int AS n FROM lna_findings WHERE tenant_id = :tenantId';
       if (projectId) { sql += ' AND project_id = :projectId'; rep.projectId = projectId; }
-      const rows = await select(`${sql} GROUP BY review_status`, rep);
-      const out = { draft: 0, approved: 0, edited: 0, rejected: 0 };
-      for (const r of rows) out[r.reviewStatus] = r.n;
-      return out;
+      return byReviewStatus(await select(`${sql} GROUP BY review_status`, rep));
+    },
+    /**
+     * B3: jumlah temuan hasil job analisis AI per status review. Yang sudah diputus hanya dihitung bila diputus
+     * orang (reviewed_by terisi), supaya temuan lama yang ditandai massal oleh migrasi 20261117000400 tidak ikut.
+     */
+    async aiReviewCounts(tenantId) {
+      const rows = await select(`SELECT review_status AS "reviewStatus", count(*)::int AS n FROM lna_findings
+                                  WHERE tenant_id = :tenantId AND analysis_job_id IS NOT NULL
+                                    AND (review_status = 'draft' OR reviewed_by IS NOT NULL)
+                                  GROUP BY review_status`, { tenantId });
+      return byReviewStatus(rows);
+    },
+    /**
+     * B3: lama analisis per sesi TNA dalam hari (pecahan): dari wawancara selesai sampai temuan AI terakhirnya
+     * diputus HR. Hanya sesi yang seluruh temuan AI-nya sudah diputus orang. Sesi yang dihapus (session_id NULL
+     * pada temuan) tidak ikut.
+     */
+    async analysisDurations(tenantId, scope) {
+      const rep = { tenantId };
+      const sql = `SELECT s.id AS "sessionId", s.interviewee_id AS "userId",
+                          (EXTRACT(EPOCH FROM (max(f.reviewed_at) - s.ended_at)) / 86400.0)::float AS days
+                     FROM lna_interview_sessions s
+                     JOIN lna_findings f ON f.session_id = s.id AND f.tenant_id = s.tenant_id
+                    WHERE s.tenant_id = :tenantId AND s.submodule = 'tna' AND s.ended_at IS NOT NULL
+                      AND f.analysis_job_id IS NOT NULL${scopeSql('s.interviewee_id', scope, rep)}
+                    GROUP BY s.id, s.interviewee_id, s.ended_at
+                   HAVING bool_and(f.review_status <> 'draft' AND f.reviewed_by IS NOT NULL)`;
+      return select(sql, rep);
     },
     /**
      * Putusan review satu temuan (PD-14 ★A). Hanya temuan draf; dua pe-review bersamaan tidak saling timpa
@@ -926,7 +951,7 @@ function createLnaStores(sequelize, { cipher } = {}) {
   };
 
   const BATCH_COLS = `b.id, b.submodule, b.kind, b.filename, b.status, b.row_count AS "rowCount", b.headers, b.mapping, b.options,
-    b.result, b.created_at AS "createdAt", b.committed_at AS "committedAt", u.name AS "createdByName"`;
+    b.result, b.created_at AS "createdAt", b.committed_at AS "committedAt", b.created_by AS "createdBy", u.name AS "createdByName"`;
   const imports = {
     async create(tenantId, b) {
       await sequelize.query(
@@ -942,9 +967,19 @@ function createLnaStores(sequelize, { cipher } = {}) {
       if (row) row.rows = await cipher.decryptJson(tenantId, row.rows);
       return row;
     },
-    async list(tenantId, submodule) {
+    /** kinds (opsional): batasi jenis di SQL agar batas 100 tidak memotong jenis yang diminta (B11 CD-10). */
+    async list(tenantId, submodule, kinds = null) {
+      const byKind = kinds ? ' AND b.kind IN (:kinds)' : '';
+      if (kinds && !kinds.length) return [];
       return select(`SELECT ${BATCH_COLS} FROM import_batches b LEFT JOIN users u ON u.id = b.created_by
-                      WHERE b.tenant_id = :tenantId AND b.submodule = :submodule ORDER BY b.created_at DESC LIMIT 100`, { tenantId, submodule });
+                      WHERE b.tenant_id = :tenantId AND b.submodule = :submodule${byKind} ORDER BY b.created_at DESC LIMIT 100`, { tenantId, submodule, kinds });
+    },
+    /** B11: impor yang sudah disimpan untuk jenis tertentu, terbaru dulu (ringkasan Admin Tenant; tanpa baris mentah). */
+    async listCommitted(tenantId, kinds) {
+      if (!kinds || !kinds.length) return [];
+      return select(`SELECT ${BATCH_COLS} FROM import_batches b LEFT JOIN users u ON u.id = b.created_by
+                      WHERE b.tenant_id = :tenantId AND b.status = 'committed' AND b.kind IN (:kinds)
+                      ORDER BY b.committed_at DESC NULLS LAST, b.created_at DESC LIMIT 1000`, { tenantId, kinds });
     },
     async update(tenantId, id, patch) {
       const sets = []; const rep = { tenantId, id };
