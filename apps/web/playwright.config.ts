@@ -12,8 +12,9 @@ export default defineConfig({
   use: { baseURL: 'http://localhost:4174', trace: 'off' },
   projects: [{ name: 'chromium', use: { ...devices['Desktop Chrome'] } }],
   webServer: {
-    // VITE_UI_KIT=1 memasang halaman referensi komponen dan rute uji (tidak ada di build produksi)
-    command: 'VITE_UI_KIT=1 npm run build-only && npm run preview',
+    // VITE_UI_KIT=1 memasang halaman referensi komponen dan rute uji (tidak ada di build produksi).
+    // Hasilnya ke dist-e2e supaya dist (yang bisa dipakai deploy) tidak pernah berisi rute uji.
+    command: 'VITE_UI_KIT=1 npm run build-only -- --outDir dist-e2e && npm run preview -- --outDir dist-e2e',
     url: 'http://localhost:4174',
     reuseExistingServer: !process.env.CI,
     timeout: 120_000,

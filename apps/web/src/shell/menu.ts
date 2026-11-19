@@ -3,7 +3,7 @@
 import { reactive } from 'vue'
 import type { IconName } from '@/ui/icons'
 import type { SubmoduleKey } from '@/modules'
-import { VIEW_HOME, type ViewKey } from './views'
+import type { ViewKey } from './views'
 
 export interface MenuItem {
   key: string
@@ -13,7 +13,7 @@ export interface MenuItem {
   group?: 'lna' | 'li'
   flag?: string
   submodule?: SubmoduleKey
-  /** Butir peralihan: hilang untuk tampilan aktif begitu rute berandanya terdaftar. */
+  /** Butir peralihan: hilang untuk tampilan aktif begitu layar berandanya bisa dibuka (terdaftar dan gerbang lolos). */
   transitional?: boolean
 }
 
@@ -61,7 +61,10 @@ export const openGroups = reactive<Record<MenuGroup['key'], boolean>>({ lna: tru
 
 export interface MenuContext {
   view: ViewKey
-  hasRoute: (name: string) => boolean
+  /** Rute terdaftar dan gerbang meta-nya (flag, submodul, peran) lolos. */
+  routeOpen: (name: string) => boolean
+  /** Layar beranda tampilan aktif sudah bisa dibuka. */
+  homeReady: boolean
   flags: Record<string, boolean>
   canOpen: (key: SubmoduleKey) => boolean
 }
@@ -76,10 +79,10 @@ export function labelOf(item: MenuItem, view: ViewKey): string {
 
 export function isVisible(item: MenuItem, ctx: MenuContext): boolean {
   if (!item.views.includes(ctx.view)) return false
-  if (!ctx.hasRoute(item.key)) return false
+  if (!ctx.routeOpen(item.key)) return false
   if (item.flag && ctx.flags[item.flag] !== true) return false
   if (item.submodule && !ctx.canOpen(item.submodule)) return false
-  if (item.transitional && ctx.hasRoute(VIEW_HOME[ctx.view])) return false
+  if (item.transitional && ctx.homeReady) return false
   return true
 }
 
