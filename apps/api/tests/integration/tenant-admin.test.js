@@ -11,7 +11,7 @@ const run = process.env.DATABASE_URL ? describe : describe.skip;
 const BASE = '/api/tenant-admin';
 
 run('Admin Tenant B11 (Postgres)', () => {
-  let db; let app; let tokens; let mailer; let A; let B; let slugA;
+  let db; let app; let tokens; let mailer; let stores; let A; let B; let slugA;
   const tok = {}; const id = {};
   const as = (who) => ({ Authorization: `Bearer ${tok[who]}` });
   const get = (path, who = 'admin') => request(app).get(`${BASE}${path}`).set(as(who));
@@ -40,7 +40,8 @@ run('Admin Tenant B11 (Postgres)', () => {
     });
     db = createDb({ databaseUrl: process.env.DATABASE_URL, dbSchema: process.env.DB_SCHEMA || 'ewi' });
     mailer = memoryMailer();
-    app = createApp({ config, stores: createStores(db), mailer });
+    stores = createStores(db);
+    app = createApp({ config, stores, mailer });
     tokens = createTokenService(config.jwt);
     slugA = `b11-${Date.now()}`;
     [[A]] = await db.query(`INSERT INTO tenants (slug, name, elitementor_organization_id) VALUES (:slug, 'Tenant A', 77) RETURNING id`, { replacements: { slug: slugA } });
@@ -279,7 +280,7 @@ run('Admin Tenant B11 (Postgres)', () => {
   it('status integrasi: boolean saja, tanpa secret, URL, atau id organisasi', async () => {
     const a = (await get('/imports/summary')).body;
     expect(a.data.integrations).toEqual({
-      elitementor: { status: 'tersambung', organizationMapped: true, sso: false, webhookSync: false },
+      elitementor: { status: 'terkonfigurasi', organizationMapped: true, sso: false, webhookSync: false },
       lms: { targets: ['elitementor', 'moodle'], gapExport: true },
     });
     expect(JSON.stringify(a)).not.toMatch(/rahasia-klien|em\.test|organizationId|clientId/);
@@ -326,5 +327,47 @@ run('Admin Tenant B11 (Postgres)', () => {
     await db.query(`INSERT INTO feature_flags (tenant_id, key, enabled) VALUES (:b, 'module.dna', true)`, { replacements: { b: B.id } });
     expect((await request(app).get('/api/dna/imports/templates').set(as('adminB'))).status).toBe(200);
     expect((await request(app).get('/api/dna/imports/templates').set(as('stafB'))).status).toBe(403);
+  });
+
+  describe('triase review egm 19 Nov', () => {
+    it('CD-8/IR-2: atasan yang perannya diganti kehilangan izin temuan di luar pelatihan, dan pencabutannya tercatat', async () => {
+      await addUser(A.id, 'spvLama', 'supervisor');
+      await stores.tna.grantNonTraining(A.id, id.spvLama, id.admin);
+      expect(await stores.tna.hasNonTrainingGrant(A.id, id.spvLama)).toBe(true);
+      expect((await patch(`/users/${id.spvLama}`, { role: 'learner' })).status).toBe(200);
+      expect(await stores.tna.hasNonTrainingGrant(A.id, id.spvLama)).toBe(false);
+      const row = (await audits(A.id, 'tna.non_training_access')).pop();
+      expect(row).toMatchObject({ action: 'delete' });
+      expect(row.meta).toMatchObject({ supervisorId: id.spvLama, via: 'tenant-admin', reason: 'role_changed' });
+      // dijadikan atasan lagi: izin tidak kembali diam-diam
+      await patch(`/users/${id.spvLama}`, { role: 'supervisor' });
+      expect(await stores.tna.hasNonTrainingGrant(A.id, id.spvLama)).toBe(false);
+    });
+
+    it('CD-10: riwayat batch admin tidak tertutup oleh lebih dari 100 batch HR yang lebih baru', async () => {
+      const [[own]] = await db.query(
+        `INSERT INTO import_batches (id, tenant_id, submodule, kind, filename, row_count, headers, rows, mapping, created_by, created_at)
+         VALUES (gen_random_uuid(), :t, 'dna', 'dna_competencies', 'lama.xlsx', 0, '[]', '[]', '{}', :by, now() - interval '1 day') RETURNING id`,
+        { replacements: { t: A.id, by: id.admin } });
+      await db.query(
+        `INSERT INTO import_batches (id, tenant_id, submodule, kind, filename, row_count, headers, rows, mapping, created_by)
+         SELECT gen_random_uuid(), :t, 'dna', 'employees', 'k.csv', 0, '[]', '[]', '{}', :by FROM generate_series(1, 105)`,
+        { replacements: { t: A.id, by: id.admin } });
+      expect((await get('/imports/dna/batches')).body.data.map((b) => b.id)).toContain(own.id);
+    });
+
+    it('CB9-4: email gagal: undangan baru tetap dibuat dengan invited=false; kirim ulang menjawab 502 MAIL_FAILED', async () => {
+      const send = mailer.send;
+      mailer.send = async () => { throw new Error('SES mati'); };
+      try {
+        const res = await post('/users', { email: 'gagal-kirim@b11.test', name: 'Gagal Kirim', role: 'learner' });
+        expect(res.status).toBe(201);
+        expect(res.body.data.status).toBe('invited');
+        expect(res.body.invited).toBe(false);
+        const again = await post(`/users/${res.body.data.id}/invite`, {});
+        expect([again.status, again.body.error.code]).toEqual([502, 'MAIL_FAILED']);
+        expect((await audits(A.id, 'tenant_admin.invitation')).filter((x) => (x.meta.employeeIds || []).includes(res.body.data.id))).toEqual([]);
+      } finally { mailer.send = send; }
+    });
   });
 });
