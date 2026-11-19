@@ -60,12 +60,14 @@ const kpis = computed(() => {
 })
 
 // Nama dan keterangan modul dari mockup; tombol Buka menuju layar pertama modul yang bisa dibuka.
+// Keterangan dari mockup final (Main.dc.html, daftar modules). Nama vendor modul 2 tidak ditulis: datang dari
+// konfigurasi tenant (K4), jadi diganti "permintaan modul baru".
 const MODULE_INFO: Record<string, { name: string; desc: string; routes: string[] }> = {
-  lna: { name: 'Learning Needs Analysis', desc: 'CCA, DNA, TNA, dan INA', routes: ['dna', 'tna', 'cc', 'ina'] },
-  li: { name: 'Learning Intervention', desc: 'Library, program, dan pengembangan materi', routes: ['lib', 'prog', 'req'] },
-  ld: { name: 'Learning Delivery', desc: 'Pelaksanaan dan penjadwalan belajar', routes: ['ld'] },
-  lim: { name: 'Learning Impact Measurement', desc: 'Dampak belajar pada kinerja', routes: ['lim'] },
-  cp: { name: 'Career & Promotion', desc: 'Rekomendasi promosi berbasis kompetensi', routes: ['cp'] },
+  lna: { name: 'Learning Needs Analysis', desc: 'Core Competencies, Developmental, Training, dan Improvement Needs', routes: ['dna', 'tna', 'cc', 'ina'] },
+  li: { name: 'Learning Intervention', desc: 'Library modul, program, dan permintaan modul baru', routes: ['lib', 'prog', 'req'] },
+  ld: { name: 'Learning Delivery', desc: 'Pelaksanaan lewat EliteMentor/LMS', routes: ['ld'] },
+  lim: { name: 'Learning Impact Measurement', desc: 'Penutupan gap dan OKR', routes: ['lim'] },
+  cp: { name: 'Career & Promotion', desc: 'Kesiapan berbasis bukti', routes: ['cp'] },
 }
 const pct = (n: number) => Math.round(n * 100)
 const paretoNote = computed(() => {
