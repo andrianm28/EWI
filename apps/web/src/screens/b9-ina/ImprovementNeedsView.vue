@@ -97,6 +97,8 @@ const formOpen = ref(false)
 const editing = ref<InaAction | null>(null)
 const saving = ref(false)
 const formErrors = ref<{ message: string; fieldId?: string }[]>([])
+// detail tidak ada di daftar; dimuat terpisah. Selama belum termuat, detail tidak dikirim agar tidak terhapus.
+const detailLoaded = ref(true)
 const form = reactive({ title: '', detail: '', category: 'sop' as ActionCategory, subLabel: '', ownerUserId: '', sourceRef: '', dueDate: '', involvesIndividual: false })
 
 function openForm(a?: InaAction) {
@@ -107,7 +109,12 @@ function openForm(a?: InaAction) {
   })
   formErrors.value = []
   formOpen.value = true
-  if (a) ina.action(a.id).then((res) => { if (editing.value?.id === a.id) form.detail = res.data.detail ?? '' }).catch(() => { /* detail opsional */ })
+  detailLoaded.value = !a
+  if (a) {
+    ina.action(a.id).then((res) => {
+      if (editing.value?.id === a.id) { form.detail = res.data.detail ?? ''; detailLoaded.value = true }
+    }).catch(() => { /* detail tetap tidak dikirim */ })
+  }
 }
 
 async function submit() {
@@ -116,11 +123,12 @@ async function submit() {
   if (form.category === 'lainnya' && !form.subLabel.trim()) errs.push({ message: 'Isi sub-label untuk kategori Lainnya.', fieldId: 'ina-sublabel' })
   formErrors.value = errs
   if (errs.length) return
-  const body = {
-    title: form.title.trim(), detail: form.detail.trim() || null, category: form.category,
+  const body: Record<string, unknown> = {
+    title: form.title.trim(), category: form.category,
     subLabel: form.category === 'lainnya' ? form.subLabel.trim() : null, ownerUserId: form.ownerUserId || null,
     sourceRef: form.sourceRef.trim() || null, dueDate: form.dueDate || null, involvesIndividual: form.involvesIndividual,
   }
+  if (detailLoaded.value) body.detail = form.detail.trim() || null
   saving.value = true
   try {
     if (editing.value) await ina.updateAction(editing.value.id, body)
@@ -248,7 +256,7 @@ const REPORTED_TONE = { done: 'success', in_progress: 'info', blocked: 'critical
               </UiField>
             </div>
             <UiField id="ina-detail" v-slot="{ attrs }" label="Detail" class="ina__sub">
-              <textarea v-bind="attrs" v-model="form.detail" class="el-input" maxlength="4000" />
+              <textarea v-bind="attrs" v-model="form.detail" class="el-input" maxlength="4000" :disabled="!detailLoaded" :placeholder="detailLoaded ? '' : 'Memuat detail…'" />
             </UiField>
             <label class="el-check ina__sub">
               <input v-model="form.involvesIndividual" type="checkbox" />

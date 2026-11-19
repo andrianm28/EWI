@@ -50,6 +50,11 @@ test('HR: KPI, tabel tindakan, ubah status, tambah tindakan, dan akses atasan', 
       actions = actions.map((a) => (a.id === 'a-1' ? { ...a, ...body } : a))
       return json(r, { data: actions[0] })
     }
+    if (path === '/actions/a-1' && method === 'GET') {
+      // detail datang terlambat: menyimpan sebelum detail termuat tidak boleh menghapusnya
+      await new Promise((ok) => setTimeout(ok, 1500))
+      return json(r, { data: { ...actions[0], detail: 'Detail lama yang tidak boleh hilang' } })
+    }
     if (path === '/owners') return json(r, { data: [{ id: 'u-2', name: 'Karyawan A', jobRoleName: 'Engineer L1' }] })
     if (path === '/access') return json(r, { data: [{ supervisorId: 's-1', name: 'Atasan Satu', email: 'atasan@demo.test', granted, grantedAt: null, grantedByName: null }] })
     if (path === '/access/s-1' && method === 'PUT') { granted = true; return json(r, { data: { granted: true } }) }
@@ -89,6 +94,14 @@ test('HR: KPI, tabel tindakan, ubah status, tambah tindakan, dan akses atasan', 
   await page.getByRole('button', { name: 'Simpan' }).click()
   await expect(page.getByTestId('ina-info')).toHaveText('Tindakan ditambahkan.')
   expect(sent[1]).toMatchObject({ title: 'Tambah alat pemantauan tiket', category: 'alat', ownerUserId: 'u-2', dueDate: '2026-12-15', subLabel: null, involvesIndividual: false })
+
+  // ubah sebelum detail termuat: detail tidak ikut dikirim
+  await table.getByRole('row').filter({ hasText: 'Perbarui SOP eskalasi insiden' }).getByRole('button', { name: 'Ubah' }).click()
+  await page.getByLabel('Temuan atau tindakan').fill('Perbarui SOP eskalasi insiden v2')
+  await page.getByRole('button', { name: 'Simpan' }).click()
+  await expect(page.getByTestId('ina-info')).toHaveText('Tindakan diperbarui.')
+  expect(sent[2]).toMatchObject({ title: 'Perbarui SOP eskalasi insiden v2' })
+  expect(sent[2]).not.toHaveProperty('detail')
 
   // akses atasan (K1)
   const akses = page.getByTestId('ina-akses')
