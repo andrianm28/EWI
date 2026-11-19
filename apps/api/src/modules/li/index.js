@@ -79,7 +79,7 @@ module.exports = {
     }
     const optionalUuid = (v, label) => { if (v !== undefined && v !== '' && !UUID.test(String(v))) throw badRequest(`${label} tidak valid`); return v || undefined; };
 
-    r.get('/', (req, res) => res.json({ module: 'li', title: 'Learning Intervention', tenantId: req.tenantId, role: req.user.role }));
+    r.get('/', reviewer, (req, res) => res.json({ module: 'li', title: 'Learning Intervention', tenantId: req.tenantId, role: req.user.role }));
     r.use('/imports', importRouter({ submodule: 'li', stores, audit }));
 
     // --- Library ---
