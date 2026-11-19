@@ -3,6 +3,9 @@
 // (keputusan B22: ELGOS punya secret & audience JWT sendiri, tanpa fallback hardcoded).
 require('dotenv').config();
 
+// Domain internal yang boleh menerima email dari staging bila MAIL_ALLOWED_DOMAINS kosong.
+const STAGING_DEFAULT_MAIL_DOMAINS = Object.freeze(['eliteacademy.id', 'elitery.com']);
+
 function loadConfig(env = process.env) {
   const errors = [];
   const secret = env.EWI_JWT_SECRET || '';
@@ -16,6 +19,15 @@ function loadConfig(env = process.env) {
   // R3-2: di produksi link masuk harus benar-benar terkirim, bukan ditulis ke log
   if (env.NODE_ENV === 'production' && mailProvider !== 'ses') errors.push('MAIL_PROVIDER=ses wajib di produksi');
   if (mailProvider === 'ses' && !env.MAIL_FROM) errors.push('MAIL_FROM wajib diisi untuk MAIL_PROVIDER=ses');
+  // PK-07 / I-5 (PD-19 butir 1): staging hanya boleh mengirim email ke domain internal. Kosong di staging =
+  // domain internal bawaan; '*' = tanpa batas (hanya untuk produksi, ditolak di staging).
+  const appEnv = env.EWI_ENV || '';
+  let allowedDomains = (env.MAIL_ALLOWED_DOMAINS || '').split(',').map((d) => d.trim().toLowerCase().replace(/^@/, '')).filter(Boolean);
+  if (!allowedDomains.length && appEnv === 'staging') allowedDomains = [...STAGING_DEFAULT_MAIL_DOMAINS];
+  if (allowedDomains.includes('*')) {
+    if (appEnv === 'staging') errors.push("MAIL_ALLOWED_DOMAINS='*' tidak boleh di staging");
+    allowedDomains = [];
+  }
   // R2-3: enkripsi kolom per tenant. Produksi wajib KMS; dev/staging di luar KMS memakai kunci induk lokal dari env.
   const encProvider = env.ENCRYPTION_PROVIDER || 'local';
   if (!['local', 'kms'].includes(encProvider)) errors.push('ENCRYPTION_PROVIDER harus local atau kms');
@@ -69,6 +81,12 @@ function loadConfig(env = process.env) {
       provider: mailProvider,
       from: env.MAIL_FROM || '',
       region: env.MAIL_REGION || env.AWS_REGION || 'ap-southeast-3',
+      // kosong = semua domain boleh (produksi, dev dengan MAIL_PROVIDER=log)
+      allowedDomains: Object.freeze(allowedDomains),
+    }),
+    appEnv,
+    db: Object.freeze({
+      requireNonSuperuser: env.DB_REQUIRE_NON_SUPERUSER === 'true',
     }),
     jwt: Object.freeze({
       secret,
@@ -131,4 +149,4 @@ function loadAiConfig(env, errors) {
   return Object.freeze({ provider, region, modelId, extraFields, allowCrossRegion, allowedRegions, processing, ...nums });
 }
 
-module.exports = { loadConfig, loadAiConfig, JAKARTA, SINGAPORE };
+module.exports = { loadConfig, loadAiConfig, JAKARTA, SINGAPORE, STAGING_DEFAULT_MAIL_DOMAINS };
