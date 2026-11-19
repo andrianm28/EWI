@@ -61,7 +61,7 @@ run('Katalog course + toleransi KPI (Postgres)', () => {
   });
 
   const newFinding = (userId) => stores.tna.insertFinding(tenant.id, {
-    projectId: project.id, userId, competencyId: comp.id, category: 'training', title: 'Belum paham klausul SLA',
+    projectId: project.id, userId, competencyId: comp.id, category: 'training', title: 'Belum paham klausul SLA', reviewStatus: 'approved',
   });
 
   it('rencana training: perlu modul -> course katalog setelah impor, lalu selesai saat course lulus', async () => {
@@ -69,7 +69,7 @@ run('Katalog course + toleransi KPI (Postgres)', () => {
     const f1 = await newFinding(u.dimas);
     let plan = await request(app).post(`/api/tna/findings/${f1.id}/plan`).set(as('hr')).send({});
     expect(plan.status).toBe(201);
-    expect(plan.body.data.status).toBe('needs_module');
+    expect(plan.body.data).toMatchObject({ status: 'new', needsModule: true }); // K-3: perlu modul = Baru tanpa course
 
     // 2. Impor katalog: satu course terpetakan, satu kompetensi tak dikenal ditolak
     const done = await importCsv('tna', 'catalog_courses', [
@@ -85,10 +85,10 @@ run('Katalog course + toleransi KPI (Postgres)', () => {
     // 3. Rencana lama kini menunjuk course; rencana baru langsung mendapat course
     let items = (await request(app).get('/api/tna/plan-items').set(as('hr'))).body.data;
     expect(items).toHaveLength(1);
-    expect(items[0]).toMatchObject({ status: 'proposed', catalogSource: 'moodle', catalogItemRef: 'SDL1-101', catalogItemTitle: 'Membaca SLA dan Kontrak Layanan', catalogItemUrl: 'https://lms.test/course/view.php?id=101', courseStatus: null });
+    expect(items[0]).toMatchObject({ status: 'new', needsModule: false, catalogSource: 'moodle', catalogItemRef: 'SDL1-101', catalogItemTitle: 'Membaca SLA dan Kontrak Layanan', catalogItemUrl: 'https://lms.test/course/view.php?id=101', courseStatus: null });
     const f2 = await newFinding(u.rina);
     plan = await request(app).post(`/api/tna/findings/${f2.id}/plan`).set(as('hr')).send({ programTier: 'basic' });
-    expect(plan.body.data).toMatchObject({ status: 'proposed', catalogItemRef: 'SDL1-101', catalogItemUrl: 'https://lms.test/course/view.php?id=101' });
+    expect(plan.body.data).toMatchObject({ status: 'new', catalogItemRef: 'SDL1-101', catalogItemUrl: 'https://lms.test/course/view.php?id=101' });
 
     // 4. Katalog terlihat HR beserta kompetensinya; bukan untuk learner, tidak bocor ke tenant lain
     const cat = (await request(app).get('/api/tna/catalog').set(as('hr'))).body.data;
@@ -108,7 +108,7 @@ run('Katalog course + toleransi KPI (Postgres)', () => {
     expect(comp1.body.data.result.rejected[0].reason).toMatch(/Course "SDL1-777" belum ada di katalog/);
     items = (await request(app).get('/api/tna/plan-items').set(as('hr'))).body.data;
     expect(items.find((p) => p.userId === u.dimas)).toMatchObject({ status: 'completed', courseStatus: 'passed' });
-    expect(items.find((p) => p.userId === u.rina)).toMatchObject({ status: 'proposed', courseStatus: 'in_progress' });
+    expect(items.find((p) => p.userId === u.rina)).toMatchObject({ status: 'new', courseStatus: 'in_progress' });
 
     // 6. Impor ulang kode yang sama memperbarui course (tanpa duplikat); course nonaktif tidak diusulkan
     const again = await importCsv('dna', 'catalog_courses', ['Kode Course,Judul Course,Kompetensi', 'SDL1-101,Membaca SLA (rev),Memahami kontrak proyek']);

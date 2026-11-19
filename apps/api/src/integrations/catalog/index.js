@@ -36,7 +36,7 @@ function memoryAdapter(source, items = []) {
 }
 
 /**
- * Cari modul di semua LMS tujuan tenant, berurutan. Tidak ada hasil -> status 'needs_module'
+ * Cari modul di semua LMS tujuan tenant, berurutan. Tidak ada hasil -> rencana tanpa course (needsModule, K-3)
  * (RG-2: HR membuat modul atau memanggil vendor).
  */
 function createCatalogService(adapters = {}) {
