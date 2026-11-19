@@ -12,8 +12,8 @@ class AiError extends HttpError {
 const AI_ERRORS = {
   credentials: () => new AiError('AI_CREDENTIALS_MISSING',
     'Kredensial AWS untuk Amazon Bedrock tidak ditemukan. Isi AWS_ACCESS_KEY_ID dan AWS_SECRET_ACCESS_KEY (atau AWS_PROFILE) di lingkungan API.'),
-  accessDenied: (modelId) => new AiError('AI_ACCESS_DENIED',
-    `Akses ke model ${modelId} ditolak. Periksa izin IAM bedrock:InvokeModel dan aktivasi akses model di konsol Bedrock region ap-southeast-1.`),
+  accessDenied: (modelId, region) => new AiError('AI_ACCESS_DENIED',
+    `Akses ke model ${modelId} ditolak. Periksa izin IAM bedrock:InvokeModel dan aktivasi akses model di konsol Bedrock region ${region || 'yang dipakai'}.`),
   modelInvalid: (modelId) => new AiError('AI_MODEL_INVALID',
     `Model ${modelId} tidak dikenali atau tidak tersedia di region ini. Periksa BEDROCK_MODEL_ID.`),
   throttled: () => new AiError('AI_THROTTLED', 'Penyedia AI sedang sibuk. Coba lagi beberapa saat lagi.'),

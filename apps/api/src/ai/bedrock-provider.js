@@ -1,5 +1,5 @@
 'use strict';
-// Penyedia AI teks Amazon Bedrock (Claude) lewat Converse API (PK-06; PD-1 ★A, PD-2 ★A: hanya ap-southeast-1).
+// Penyedia AI teks Amazon Bedrock (Claude) lewat Converse API (PK-06; PD-1 ★A; PD-2b: Jakarta, Singapura, atau profil apac.).
 // Kredensial memakai rantai bawaan AWS SDK (kunci IAM yang sama dengan KMS dan SES di etavm2).
 // Setiap panggilan model mengembalikan catatan pemakaian token (R3-6) untuk disimpan pemanggil.
 const { BedrockRuntimeClient, ConverseCommand } = require('@aws-sdk/client-bedrock-runtime');
@@ -9,12 +9,12 @@ const P = require('./prompts');
 const MAX_TOKENS = { next_question: 400, assess_competencies: 2000, analyze_tna: 3000 };
 
 /** Ubah galat SDK menjadi AiError dengan pesan yang jelas. */
-function mapError(err, modelId) {
+function mapError(err, modelId, region) {
   if (err instanceof AiError) return err;
   const name = (err && (err.name || err.code)) || '';
   const msg = String((err && err.message) || '');
   if (name === 'CredentialsProviderError' || /could not load credentials|credential/i.test(msg)) return AI_ERRORS.credentials();
-  if (name === 'AccessDeniedException' || name === 'UnrecognizedClientException') return AI_ERRORS.accessDenied(modelId);
+  if (name === 'AccessDeniedException' || name === 'UnrecognizedClientException') return AI_ERRORS.accessDenied(modelId, region);
   if (name === 'ResourceNotFoundException' || (name === 'ValidationException' && /model/i.test(msg))) return AI_ERRORS.modelInvalid(modelId);
   if (name === 'ThrottlingException' || name === 'ServiceQuotaExceededException' || name === 'ServiceUnavailableException') return AI_ERRORS.throttled();
   if (name === 'AbortError' || name === 'TimeoutError' || /timed? ?out/i.test(msg)) return AI_ERRORS.timeout();
@@ -50,7 +50,7 @@ function createBedrockProvider(config, { client } = {}) {
     try {
       response = await bedrock.send(new ConverseCommand(input), { abortSignal: AbortSignal.timeout(config.timeoutMs || 30000) });
     } catch (e) {
-      throw mapError(e, modelId);
+      throw mapError(e, modelId, region);
     }
     const u = response.usage || {};
     return {
@@ -97,7 +97,7 @@ function createBedrockProvider(config, { client } = {}) {
         if (!creds) throw AI_ERRORS.credentials();
         return true;
       } catch (e) {
-        throw mapError(e, modelId);
+        throw mapError(e, modelId, region);
       }
     },
 

@@ -5,12 +5,12 @@ kini dijalankan model sungguhan lewat Amazon Bedrock. Suara (R3-1) tidak termasu
 
 ## Asumsi keputusan
 
-PD-1 dan PD-2 belum dijawab (per 19 Nov); kode memakai opsi ★ dan mudah diubah bila jawabannya lain. PM-10 sudah diputus A (17 Nov).
+PD-1 belum dijawab (per 19 Nov); kode memakai opsi ★. PM-10 diputus A (17 Nov). PD-2 diganti PD-2b (19 Nov 20.28 WIB).
 
 | Kode | Asumsi | Akibat di kode |
 |---|---|---|
 | PD-1 | ★A Amazon Bedrock (Claude) | `AI_PROVIDER=bedrock`, adaptor `src/ai/bedrock-provider.js` (Converse API) |
-| PD-2 | ★A Hanya region Singapura | `BEDROCK_REGION` wajib `ap-southeast-1`; ID profil lintas region (`global.`, `apac.`, `us.`, dst.) ditolak saat boot. `AI_ALLOW_CROSS_REGION=true` hanya bila PD-2 berubah |
+| PD-2b | ✅ Lokasi dengan latensi terendah ke Indonesia yang memenuhi spek (user, 19 Nov) | Urutan: Jakarta `ap-southeast-3` bila model Claude tersedia in-region, lalu Singapura `ap-southeast-1`, lalu profil lintas region `apac.`. `BEDROCK_REGION` (bawaan `ap-southeast-3`) wajib ada di `AI_ALLOWED_REGIONS` (bawaan `ap-southeast-3,ap-southeast-1`); profil `global.`, `us.`, `eu.`, dst. ditolak saat boot kecuali `AI_ALLOW_CROSS_REGION=true`. Lokasi yang dipakai tercetak saat boot (`in-region:<region>` atau `cross-region:apac`) untuk DPIA |
 | PM-10 | ✅ A (17 Nov) AI menyebut nama KPI dan angka milik karyawan itu | Model hanya menerima kompetensi jabatan dan target milik karyawan yang diwawancarai (`aiContext`); nama, email, dan data orang lain tidak dikirim |
 | R3-6 | ✅ A Pemakaian dicatat per panggilan sejak POC | Tabel `ai_usage_logs` (migrasi `20261117000100`) |
 
@@ -54,8 +54,9 @@ respons `POST /:id/complete` (`aiUsage`). Laporan biaya di panel Admin ETA belum
 | Variabel | Bawaan | Keterangan |
 |---|---|---|
 | `AI_PROVIDER` | `stub`, produksi `bedrock` | |
-| `BEDROCK_REGION` | `ap-southeast-1` | Region lain ditolak (PD-2) |
-| `BEDROCK_MODEL_ID` | wajib untuk bedrock | ID model Claude in-region Singapura, dicek di akun ELGOS (langkah 2 di bawah) |
+| `BEDROCK_REGION` | `ap-southeast-3` | Harus ada di `AI_ALLOWED_REGIONS` (PD-2b) |
+| `AI_ALLOWED_REGIONS` | `ap-southeast-3,ap-southeast-1` | |
+| `BEDROCK_MODEL_ID` | wajib untuk bedrock | ID model in-region, atau `apac.<id>` bila tidak ada in-region (langkah 2 di bawah) |
 | `BEDROCK_EXTRA_FIELDS` | kosong | JSON `additionalModelRequestFields`, opsional |
 | `AI_MAX_QUESTIONS` | 8 | |
 | `AI_TIMEOUT_MS` | 30000 | per panggilan |
@@ -63,17 +64,20 @@ respons `POST /:id/complete` (`aiUsage`). Laporan biaya di panel Admin ETA belum
 | `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY` | | Sama dengan KMS dan SES |
 
 Berkas deploy (`deploy/`, `infra/`) milik thread infra; variabel di atas dan izin IAM perlu ditambahkan di sana (A7 butir 5):
-`bedrock:InvokeModel` pada ARN foundation model `arn:aws:bedrock:ap-southeast-1::foundation-model/<BEDROCK_MODEL_ID>`.
+`bedrock:InvokeModel` pada `arn:aws:bedrock:<BEDROCK_REGION>::foundation-model/<model>`; bila memakai profil `apac.`,
+juga ARN profil inferensinya dan foundation model di semua region tujuan profil itu.
 
 ## Uji asap setelah akun AWS ELGOS ada
 
-1. Aktifkan akses model Anthropic di konsol Bedrock region ap-southeast-1 (akun ELGOS).
-2. Pastikan model tersedia in-region (bukan hanya lewat profil lintas region):
-   `aws bedrock list-foundation-models --region ap-southeast-1 --by-provider anthropic --query "modelSummaries[?contains(inferenceTypesSupported, 'ON_DEMAND')].modelId"`.
-   Pilih model Claude terbaru yang muncul. Bila daftar kosong, PD-2 opsi A tidak bisa dipenuhi untuk model itu:
-   bawa ke user (pilih model lain yang tersedia, atau PD-2 opsi B dengan profil `apac.`).
-3. Isi `BEDROCK_MODEL_ID` dan kredensial, lalu jalankan dari root repo:
-   `AI_PROVIDER=bedrock BEDROCK_MODEL_ID=<id> node apps/api/scripts/ai-smoke.js --record /tmp/rekaman-bedrock`
+1. Aktifkan akses model Anthropic di konsol Bedrock (akun ELGOS) untuk region yang akan dipakai.
+2. Pilih lokasi sesuai PD-2b, berhenti di langkah pertama yang berhasil:
+   a. Jakarta in-region: `aws bedrock list-foundation-models --region ap-southeast-3 --by-provider anthropic --query "modelSummaries[?contains(inferenceTypesSupported, 'ON_DEMAND')].modelId"`.
+   b. Singapura in-region: perintah yang sama dengan `--region ap-southeast-1`.
+   c. Profil APAC: `aws bedrock list-inference-profiles --region ap-southeast-3 --query "inferenceProfileSummaries[?starts_with(inferenceProfileId, 'apac.anthropic')].inferenceProfileId"` (ulangi untuk ap-southeast-1).
+   Pakai model Claude terbaru yang memenuhi spek. Bila a dan b sama-sama ada, bandingkan latensi dari etavm2 dengan
+   uji asap di kedua region dan ambil yang lebih cepat. Bila tidak ada satu pun, bawa ke user.
+3. Isi `BEDROCK_REGION`, `BEDROCK_MODEL_ID`, dan kredensial, lalu jalankan dari root repo:
+   `AI_PROVIDER=bedrock BEDROCK_REGION=<region> BEDROCK_MODEL_ID=<id> node apps/api/scripts/ai-smoke.js --record /tmp/rekaman-bedrock`
    Skrip memakai data fiktif, menjalankan wawancara TNA tiga giliran dan analisis, lalu mencetak pertanyaan, temuan, dan
    token per panggilan. Lulus bila tercetak `UJI ASAP LULUS`.
 4. Periksa rekaman, lalu salin yang relevan ke `apps/api/tests/fixtures/bedrock/` menggantikan fixture susunan tangan
@@ -84,10 +88,11 @@ Berkas deploy (`deploy/`, `infra/`) milik thread infra; variabel di atas dan izi
 
 ## Batas yang diketahui
 
-- Ketersediaan Claude in-region di ap-southeast-1 belum bisa dicek dari sini (tidak ada akun). Dokumentasi model
-  Claude terbaru di Bedrock mencantumkan profil geo `us.`, `eu.`, `au.`, `in.` dan `global.`, tanpa profil APAC/Singapura,
-  jadi langkah 2 wajib sebelum 20 Nov.
+- Ketersediaan Claude in-region di Jakarta atau Singapura belum bisa dicek dari sini (tidak ada akun). Dokumentasi
+  model Claude terbaru di Bedrock mencantumkan profil geo `us.`, `eu.`, `au.`, `in.` dan `global.`, tanpa `apac.`;
+  bila hanya itu yang tersedia, ketiga pilihan PD-2b tidak terpenuhi dan perlu dibawa ke user. Jadi langkah 2 wajib
+  begitu akun ada.
 - Analisis masih sinkron di `POST /complete`; B4 memindahkannya ke job terpisah dengan dua kali penilaian (PD-13).
 - Tidak ada streaming jawaban; pertanyaan pendek (maks 400 token keluar).
-- PD-2 di sini hanya mengatur AI teks. Suara live direncanakan lewat Gemini Live (19 Nov), yang tidak memproses data
-  di Singapura; lokasi pemrosesan suara harus diputus dan ditulis terpisah di DPIA dan teks persetujuan.
+- PD-2b juga berlaku untuk suara live (thread penyedia suara, rencana Gemini Live); kode ini hanya mengatur AI teks.
+  Lokasi teks dan suara yang akhirnya dipakai harus ditulis di DPIA dan teks persetujuan.
