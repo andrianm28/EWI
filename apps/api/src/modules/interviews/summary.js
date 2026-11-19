@@ -44,15 +44,19 @@ function publicSummary(findings) {
   }));
 }
 
-const PRIVATE_FIELDS = ['summaryAt', 'summaryConfirmedAt', 'summaryDisputed', 'restartCount'];
+// A11: daftar putih kolom sesi untuk semua peran yang boleh melihat sesi. Kolom baru di store tidak ikut otomatis.
+const SHARED_FIELDS = [
+  'id', 'projectId', 'submodule', 'intervieweeId', 'jobRoleId', 'status', 'mode', 'consentAt', 'consentVersion', 'triggerRecordIds',
+  'startedAt', 'endedAt', 'inviteExpiresAt', 'inviteExtendedCount', 'durationMinutes', 'focusKind', 'focusLabel', 'assignedBy', 'assignedByName',
+];
 
 /**
  * Sesi untuk respons GET (A11). Kolom ringkasan mentah dibuang; semua peran mendapat `step` dan `summaryState`.
  * Orang yang diwawancarai mendapat tambahan untuk stepper dan footer audit.
  */
 function sessionView(session, { interviewee = false, answerCount = 0, aiConfig = {}, now = new Date() } = {}) {
-  const view = { ...session };
-  for (const k of PRIVATE_FIELDS) delete view[k];
+  const view = {};
+  for (const k of SHARED_FIELDS) if (session[k] !== undefined) view[k] = session[k];
   view.step = stepOf(session, now);
   view.summaryState = summaryStateOf(session);
   if (!interviewee) return view;

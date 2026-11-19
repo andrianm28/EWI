@@ -35,9 +35,10 @@ Spek: `docs/designs/b6-wawancara-akar-masalah.md`. Saat flag menyala, wawancara 
 1. `POST /api/tna/sessions/:id/summary` memanggil `analyzeTna` sekali (penilaian pertama) dan menyimpan hasilnya terenkripsi di sesi. Percakapan terkunci.
 2. Karyawan memilih "Sesuai, kirim ke HR" (`POST .../summary/confirm`), "Kirim dengan catatan" (`{ accurate: false, note }`), atau "Ulangi wawancara" (`POST .../restart`, paling banyak 2 kali).
 3. Konfirmasi menutup sesi dan membuat job analisis dalam satu transaksi. Job memakai ringkasan sebagai penilaian pertama dan hanya memanggil model untuk penilaian kedua, jadi alur normal tetap dua panggilan `analyzeTna` per sesi.
-4. Sesi 15 menit paling banyak 5 pertanyaan. Sesi untuk gap kompetensi (B5) membawa nama kompetensi sebagai topik di prompt.
+4. Sesi 15 menit paling banyak 5 pertanyaan. Sesi hasil penugasan gap (B5) membawa nama kompetensi atau nama target kerja sebagai topik di prompt bila karyawan tidak punya target meleset sendiri.
+5. Ringkasan dibuang (409) bila ada jawaban baru masuk selama AI meringkas, sehingga karyawan tidak mengonfirmasi ringkasan tanpa jawaban terakhirnya.
 
-
+## Prompt
 
 `src/ai/prompts.js`, Bahasa Indonesia:
 

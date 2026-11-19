@@ -163,7 +163,7 @@ Kode galat:
 
 | Keadaan | Status | Kode |
 | --- | --- | --- |
-| Flag mati | 403 | `FEATURE_DISABLED` |
+| Flag mati (peran sudah lolos; peran diperiksa lebih dulu) | 403 | `FEATURE_DISABLED` |
 | Peran bukan HR/Admin ETA/atasan | 403 | `ROLE_FORBIDDEN` |
 | Parameter salah bentuk (UUID, `kind`, `mode`, `dueDate`, `durationMinutes`, `jobRoleId` hilang pada `all_job_role`, `employeeIds` > 200) | 400 | `BAD_REQUEST` |
 | Tenggat sebelum besok atau lebih dari 30 hari | 400 | `DUE_DATE_OUT_OF_RANGE` |
@@ -262,3 +262,19 @@ Reviewer: subagent baru tanpa konteks percakapan, 20 temuan. Triase:
 | 18 | Alur, proyek di layar, "Langsung ke tinjauan HR" | **Perbaiki**: bagian 7; layar tetap menyusul di atas PR B0 |
 | 19 | Penyimpangan BT-29, Q38, email, pembulatan | **Perbaiki** pembulatan dan batas 30 hari; sisanya dicatat ⏳/⚠️ dan diangkat di PR |
 | 20 | Indeks, CHECK, audit agregat, test | **Perbaiki** indeks/CHECK/test; audit agregat **ditolak** dengan alasan di R9 |
+
+## 13. Review diff dan code review (19 Nov)
+
+Review diff oleh subagent baru (diff `origin/claude/project-thread-scbrmb...HEAD` + spek B5/B6) dan `mattpocock-skills:code-review` sumbu Standards. Triase untuk B5:
+
+| # | Temuan | Keputusan |
+| --- | --- | --- |
+| D1 | Penugasan tidak memeriksa gap ada di tenant/cakupan (label OKR teks bebas) | **Perbaiki**: `/assignments` membangun papan yang sama (`board()`), gap tidak ditemukan 404 `NOT_FOUND`, label diambil dari baris gap. |
+| D2 | Mode `affected` gap kompetensi menghitung asesmen dari jabatan lama | **Perbaiki**: peserta hanya pemegang kompetensi yang disahkan, sama dengan papan dan detail. |
+| D3 | `pending` muncul padahal temuan ada tetapi tersembunyi bagi pemanggil | **Perbaiki**: temuan apa pun selain `rejected` membuat gap minimal `review` (R7). |
+| D8 | Atasan membatalkan sesi alur lama mendapat 403 | **Perbaiki**: sesi tanpa penugas atau yang sudah dimulai 409 `INVALID_STATE` lebih dulu (R10b). |
+| D9 | Kunci advisory tidak dipakai alur lama `POST /tna/projects/:id/interviews` | **Tunda** `[⏳ DITERIMA]`: alur lama akan diganti layar penugasan B5; mengubah alur lama menyentuh kode bersama di luar paket. Risiko: dua sesi terbuka bila HR memakai kedua alur bersamaan untuk orang yang sama. |
+| D11 | Learner mendapat `ROLE_FORBIDDEN` walau flag mati | **Tolak dengan alasan**: urutan peran lalu flag dipakai di semua modul TNA; tidak ada data bocor. Tabel galat: peran diperiksa sebelum flag. |
+| D13 | Papan memuat semua periode kinerja tiap request | **Tunda**: optimasi setelah data pilot 26 Nov menunjukkan ukuran nyata. |
+| S1 | Pesan galat memuat nama parameter Inggris; `REVIEWED`/helper WIB disalin; perantara `isOpenSession` | **Perbaiki** (4851068). |
+| S2 | Tipe `Gap` bersama untuk parser dan kunci (Primitive Obsession, Repeated Switches) | **Tunda**: dikerjakan bersama layar supaya kontrak kunci tidak berubah dua kali. |

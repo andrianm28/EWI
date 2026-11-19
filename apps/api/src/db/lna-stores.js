@@ -315,14 +315,16 @@ function createLnaStores(sequelize, { cipher } = {}) {
     // --- B6: ringkasan temuan yang diperiksa karyawan. Isi ringkasan dan catatan karyawan terenkripsi dan
     // hanya dimuat lewat getSummary/summaryForAnalysis, tidak pernah lewat get() ---
     /**
-     * Simpan ringkasan hanya bila sesi masih berjalan, belum punya ringkasan, dan belum diulang sejak permintaan
-     * dimulai (A2). null bila kalah balapan.
+     * Simpan ringkasan hanya bila sesi masih berjalan, belum punya ringkasan, belum diulang, dan tidak ada jawaban baru
+     * sejak permintaan dimulai (A2). null bila kalah balapan.
      */
-    async saveSummary(tenantId, id, findings, { restartCount }) {
-      return insert(`UPDATE lna_interview_sessions SET summary_findings = CAST(:findings AS jsonb), summary_at = now()
-                      WHERE tenant_id = :tenantId AND id = :id AND status = 'in_progress' AND summary_at IS NULL AND restart_count = :restartCount
-                      RETURNING id, summary_at AS "summaryAt"`,
-      { tenantId, id, restartCount, findings: JSON.stringify(await cipher.encryptJson(tenantId, findings)) });
+    async saveSummary(tenantId, id, findings, { restartCount, turnCount }) {
+      // turnCount: jumlah giliran saat transkrip dibaca. Jawaban yang masuk selama AI meringkas membatalkan ringkasan ini.
+      return insert(`UPDATE lna_interview_sessions s SET summary_findings = CAST(:findings AS jsonb), summary_at = now()
+                      WHERE s.tenant_id = :tenantId AND s.id = :id AND s.status = 'in_progress' AND s.summary_at IS NULL AND s.restart_count = :restartCount
+                        AND (SELECT count(*) FROM lna_interview_turns t WHERE t.session_id = s.id) = :turnCount
+                      RETURNING s.id, s.summary_at AS "summaryAt"`,
+      { tenantId, id, restartCount, turnCount, findings: JSON.stringify(await cipher.encryptJson(tenantId, findings)) });
     },
     async getSummary(tenantId, id) {
       const row = await one(`SELECT status, summary_findings AS findings, summary_at AS "summaryAt", summary_confirmed_at AS "summaryConfirmedAt",

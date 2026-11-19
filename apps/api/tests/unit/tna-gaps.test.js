@@ -161,6 +161,12 @@ describe('klasifikasi gap (R6, R7)', () => {
     expect(classify({ findings: [f('training', 'approved'), f('training', 'draft')], vis: hr, interviewed: true })).toBe('review');
   });
 
+  it('gap dengan temuan yang tersembunyi bagi pemanggil tidak kembali ke Belum diwawancarai (R7)', () => {
+    expect(classify({ findings: [f('training', 'draft')], vis: spv, interviewed: false })).toBe('review');
+    expect(classify({ findings: [f('non_training', 'approved')], vis: spv, interviewed: false })).toBe('review');
+    expect(classify({ findings: [f('non_training', 'approved')], vis: visibility({ role: 'hr_admin', flagNonTraining: false }), interviewed: false })).toBe('review');
+  });
+
   it('temuan yang ditolak diabaikan', () => {
     expect(classify({ findings: [f('training', 'rejected')], vis: hr, interviewed: true })).toBe('review');
     expect(classify({ findings: [f('training', 'rejected')], vis: hr, interviewed: false })).toBe('pending');

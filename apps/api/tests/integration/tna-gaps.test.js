@@ -295,8 +295,13 @@ run('B5 Training Needs: gap dan penugasan (Postgres)', () => {
     expect((await assign('hr', { ...base, gap: { kind: 'competency', competencyId: T.cLain } })).status).toBe(404);
     expect((await assign('hr', { ...base, gap: { kind: 'competency', competencyId: T.cDraft } })).status).toBe(404);
     expect((await assign('hr', { ...base, mode: 'all_job_role', jobRoleId: T.other.jobRoleId })).status).toBe(404);
-    expect((await assign('hrLain', { ...base, projectId: T.other.projectId })).body.error.code).toBe('NO_ELIGIBLE_EMPLOYEE');
-    const none = await assign('hr', { ...base, gap: { ...OKR, name: 'Tidak ada' } });
+    // gap OKR yang tidak ada di tenant pemanggil: 404 (tabel galat spek B5)
+    expect((await assign('hrLain', { ...base, projectId: T.other.projectId })).status).toBe(404);
+    const missing = await assign('hr', { ...base, gap: { ...OKR, name: 'Tidak ada' } });
+    expect(missing.status).toBe(404);
+    expect(missing.body.error.code).toBe('NOT_FOUND');
+    // gap ada tetapi tidak ada yang terdampak (semua skor Komunikasi pelanggan sudah di target): 409
+    const none = await assign('hr', { ...base, gap: { kind: 'competency', competencyId: T.c2 } });
     expect(none.status).toBe(409);
     expect(none.body.error.code).toBe('NO_ELIGIBLE_EMPLOYEE');
     const [[closed]] = await db.query(`INSERT INTO lna_projects (tenant_id, name, status) VALUES (:t, 'Tutup', 'closed') RETURNING id`, { replacements: { t: T.main.id } });
@@ -377,5 +382,32 @@ run('B5 Training Needs: gap dan penugasan (Postgres)', () => {
       { replacements: { id: s15.id, at: new Date(now.getTime() + 3 * DAY) } });
     await runInterviewReminders({ stores, mailer, appBaseUrl: 'https://app.test', now });
     expect(mailer.sent.find((m) => m.to === 'spv@gap-utama.test').text).toMatch(/sekitar 15 menit/);
+  });
+
+  it('peserta gap kompetensi hanya pemegang kompetensi itu; gap di luar cakupan 404; sesi alur lama tidak bisa dibatalkan', async () => {
+    const t = T.main;
+    const [[jr2]] = await db.query(`INSERT INTO lna_job_roles (tenant_id, name) VALUES (:t, 'Service Desk L2') RETURNING id`, { replacements: { t: t.id } });
+    await addUser(t, 'e', 'learner', { sup: u.spv, jobRoleId: jr2.id });
+    await assess(t, u.e, T.c1, 0); // asesmen lama dari jabatan sebelumnya
+    const [[p4]] = await db.query(`INSERT INTO lna_projects (tenant_id, name, status) VALUES (:t, 'Pindah jabatan', 'active') RETURNING id`, { replacements: { t: t.id } });
+    const base = { projectId: p4.id, gap: { kind: 'competency', competencyId: T.c1 }, mode: 'affected', dueDate: wibDate(5), durationMinutes: 30 };
+    const moved = await assign('spv', { ...base, employeeIds: [u.e] });
+    expect(moved.status).toBe(400);
+    expect(moved.body.error.code).toBe('EMPLOYEE_NOT_ELIGIBLE');
+    const res = await assign('spv', base);
+    expect(res.body.data.assigned.map((x) => x.employeeId)).not.toContain(u.e);
+
+    // gap OKR milik tim lain tidak terlihat oleh atasan ini
+    await request(app).post('/api/tna/performance/import').set(as('hr')).send({
+      period: '2026-11', rows: [{ employeeId: 'G-d', metricType: 'kpi', name: 'Tiket tim lain', target: 10, actual: 5, direction: 'higher' }],
+    }).expect(201);
+    const foreign = await assign('spv', { ...base, gap: { kind: 'okr', metricType: 'kpi', name: 'Tiket tim lain', period: '2026-11' } });
+    expect(foreign.status).toBe(404);
+
+    // sesi alur lama (tanpa penugas) milik bawahan: 409 INVALID_STATE, bukan NOT_ASSIGNER (R10b)
+    const legacy = await stores.interviews.create(t.id, { projectId: p4.id, submodule: 'tna', intervieweeId: u.b, triggerRecordIds: [] });
+    const cancel = await request(app).post(`/api/tna/assignments/${legacy.id}/cancel`).set(as('spv'));
+    expect(cancel.status).toBe(409);
+    expect(cancel.body.error.code).toBe('INVALID_STATE');
   });
 });

@@ -54,6 +54,15 @@ describe('langkah dan status ringkasan', () => {
     expect(mine).not.toHaveProperty('summaryDisputed');
   });
 
+  it('sessionView memakai daftar putih: kolom baru dari store tidak ikut terkirim (A11)', () => {
+    const s = { id: 'abcdef12-0000-4000-8000-000000000000', status: 'in_progress', projectId: 'p1', focusLabel: 'Waktu respons', summaryFindings: 'rahasia', voiceBlob: 'x', restartCount: 0 };
+    for (const view of [sessionView(s, { now }), sessionView(s, { interviewee: true, now })]) {
+      expect(view).toMatchObject({ id: s.id, projectId: 'p1', focusLabel: 'Waktu respons' });
+      expect(view).not.toHaveProperty('summaryFindings');
+      expect(view).not.toHaveProperty('voiceBlob');
+    }
+  });
+
   it('konfirmasi: tidak sesuai wajib bercatatan 10-1000 karakter', () => {
     expect(parseConfirmation(undefined)).toEqual({ disputed: false, note: null });
     expect(parseConfirmation({ accurate: true, note: 'diabaikan' })).toEqual({ disputed: false, note: null });
@@ -73,7 +82,8 @@ describe('topik fokus kompetensi (A10)', () => {
     const safe = aiContext(ctx, session);
     expect(safe.focus).toEqual({ kind: 'competency', label: 'Analisis insiden' });
     expect(JSON.stringify(safe)).not.toMatch(/Dimas|dimas@/);
-    expect(aiContext(ctx, { intervieweeId: 'u1', focusKind: 'okr', focusLabel: 'Waktu respons' }).focus).toBeNull();
+    // sesi OKR mode semua karyawan tidak punya target meleset: AI tetap tahu target yang dibahas (review diff #5)
+    expect(aiContext(ctx, { intervieweeId: 'u1', focusKind: 'okr', focusLabel: 'Waktu respons' }).focus).toEqual({ kind: 'okr', label: 'Waktu respons' });
     expect(aiContext(ctx, { intervieweeId: 'u1' }).focus).toBeNull();
   });
 
@@ -91,6 +101,17 @@ describe('topik fokus kompetensi (A10)', () => {
     const trig = { id: 't1', metricType: 'sla', name: 'Waktu respons', target: 15, actual: 30, period: '2026-11', direction: 'lower' };
     const both = P.interviewSystemPrompt({ submodule: 'tna', context: { ...context, triggers: [trig] }, askedCount: 0, maxQuestions: 5 });
     expect(both).toMatch(/Mulai dari target yang meleset/);
+  });
+
+  it('judul blok menyesuaikan fokus; label dipotong; fokus OKR menyebut targetnya', () => {
+    const comp = P.interviewSystemPrompt({ submodule: 'tna', context: { competencies: [], triggers: [], focus: { kind: 'competency', label: 'A'.repeat(300) } }, askedCount: 0, maxQuestions: 5 });
+    expect(comp).not.toMatch(/Target milik karyawan ini yang belum tercapai/);
+    expect(comp).not.toMatch(/mengapa target kerja karyawan ini belum tercapai/);
+    expect(comp).toMatch(new RegExp(`"${'A'.repeat(120)}"`));
+    expect(comp).not.toMatch(new RegExp('A'.repeat(121)));
+    const okr = P.interviewSystemPrompt({ submodule: 'tna', context: { competencies: [], triggers: [], focus: { kind: 'okr', label: 'Waktu respons' } }, askedCount: 0, maxQuestions: 5 });
+    expect(okr).toMatch(/Topik wawancara: target kerja "Waktu respons"/);
+    expect(okr).not.toMatch(/Tidak ada target yang meleset/);
   });
 
   it('stub membuka dengan topik fokus lalu satu pertanyaan penutup', async () => {

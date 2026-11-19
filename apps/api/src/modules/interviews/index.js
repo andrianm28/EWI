@@ -148,6 +148,8 @@ function interviewRouter({ submodule, stores, ai, aiConfig = {}, audit, analysis
     const saved = await stores.interviews.addTurn(req.tenantId, s.id, 'human', answer, opts);
     if (!saved) throw new HttpError(409, 'INVALID_STATE', 'Sesi sudah berubah. Muat ulang halaman ini.');
     const turn = q ? await stores.interviews.addTurn(req.tenantId, s.id, 'ai', q, opts) : null;
+    // Ringkasan atau ulangi masuk di antara dua simpan: jangan biarkan layar menunggu pertanyaan yang tidak tersimpan
+    if (q && !turn) throw new HttpError(409, 'INVALID_STATE', 'Sesi sudah berubah. Muat ulang halaman ini.');
     res.json({ data: { question: turn, done: !q } });
   }));
 
@@ -201,7 +203,7 @@ function interviewRouter({ submodule, stores, ai, aiConfig = {}, audit, analysis
       const ctx = aiContext(await buildContext(stores, req.tenantId, s), s);
       const out = await callAi({ stores, aiConfig, tenantId: req.tenantId, session: s },
         () => ai.analyzeTna({ transcript, triggers: ctx.triggers, competencies: ctx.competencies, pass: 1 }));
-      const saved = await stores.interviews.saveSummary(req.tenantId, s.id, out.findings, { restartCount: s.restartCount });
+      const saved = await stores.interviews.saveSummary(req.tenantId, s.id, out.findings, { restartCount: s.restartCount, turnCount: transcript.length });
       const stored = await stores.interviews.getSummary(req.tenantId, s.id);
       // Kalah balapan: pakai ringkasan pemenang; bila sesi sudah diulang atau ditutup, hasil ini dibuang.
       if (!stored || stored.status !== 'in_progress' || stored.restartCount !== s.restartCount) {

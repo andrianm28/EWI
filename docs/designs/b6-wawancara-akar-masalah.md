@@ -232,3 +232,18 @@ Reviewer: subagent baru tanpa konteks percakapan, 20 temuan. Triase:
 | 20 | Pemakaian ulang oleh B10 | **Tolak** perluasan: di luar cakupan B6; batasnya ditulis di A1 |
 
 Permintaan thread suara (B19): `addTurn` satu pintu dengan `opts.mode` diterima (bagian 7); slot input di komponen Percakapan dicatat untuk layar.
+
+## 12. Review diff dan code review (19 Nov)
+
+Review diff oleh subagent baru dan `mattpocock-skills:code-review` sumbu Standards. Triase untuk B6:
+
+| # | Temuan | Keputusan |
+| --- | --- | --- |
+| D4 | `GET /sessions/:id` masih `...s` dikurangi kolom, bukan daftar putih (A11) | **Perbaiki**: `sessionView` menyalin kolom dari daftar putih `SHARED_FIELDS`; kolom baru di store tidak ikut otomatis. |
+| D5 | Sesi OKR mode semua karyawan tidak tahu target yang dibahas | **Perbaiki**: `aiContext` membawa fokus OKR (label saja); prompt menulis "Topik wawancara: target kerja ...". |
+| D6 | Jawaban yang masuk selama AI meringkas hilang dari ringkasan | **Perbaiki**: `saveSummary` mensyaratkan jumlah giliran sama dengan saat transkrip dibaca; bila tidak, 409 dan ringkasan bisa dibuat ulang. |
+| D7 | Giliran AI ditolak penjaga menghasilkan `{ question: null, done: false }` | **Perbaiki**: 409 `INVALID_STATE`. Tanpa test otomatis karena jendelanya di antara dua query; dicakup penjaga yang sama dengan D6. |
+| D10 | Judul blok target tetap dipakai saat ada fokus; label tidak dipotong | **Perbaiki**: judul dan tujuan prompt mengikuti fokus; label `clip(…, 120)`. |
+| D12 | Judul "## Prompt" hilang di `docs/ewi/ai-teks.md` | **Perbaiki**. |
+| S3 | Opsi `mode` untuk suara B19 diteruskan tanpa dipakai | **Perbaiki**: dihapus (4851068); B19 menambahkannya saat dibutuhkan. |
+| S4 | Logika khusus TNA di router wawancara bersama (Divergent Change) | **Tolak dengan alasan**: DNA belum punya langkah ringkasan; dipisah bila DNA memerlukannya. |

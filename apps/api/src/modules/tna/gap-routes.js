@@ -169,20 +169,19 @@ function gapRouter({ stores, flags, audit }) {
     if (status === 'closed') throw new HttpError(409, 'PROJECT_CLOSED', 'Proyek sudah ditutup, pilih proyek lain');
     if (input.jobRoleId && !(await stores.dna.listJobRoles(tenantId)).some((jr) => jr.id === input.jobRoleId)) throw notFound('Jabatan tidak ditemukan');
 
-    const members = await membersInScope(req);
-    const ids = { userIds: members.map((m) => m.id) };
-    const ctx = { mode: input.mode, gap: input.gap, members, jobRoleId: input.jobRoleId, selfId: req.user.id };
-    const focus = { ...input.gap };
+    // Gap harus ada di tenant dan dalam cakupan pemanggil (tabel galat spek B5: 404), dihitung sama dengan papan
+    const b = await board(req, input.gap.kind === 'okr' ? { period: input.gap.period } : {});
+    const row = (input.gap.kind === 'competency' ? b.competencyRows : b.okrRows).find((x) => x.key === gapKeyOf(input.gap));
+    if (!row) throw notFound('Gap tidak ditemukan');
+    const ctx = { mode: input.mode, gap: input.gap, members: b.members, jobRoleId: input.jobRoleId, selfId: req.user.id };
+    const focus = { ...input.gap, label: row.name };
     if (input.gap.kind === 'competency') {
-      const competency = await stores.dna.getCompetency(tenantId, input.gap.competencyId);
-      // hanya kompetensi yang sudah disahkan HR yang menjadi target (R2)
-      if (!competency || !competency.approvedAt) throw notFound('Kompetensi tidak ditemukan');
-      ctx.competency = competency;
-      ctx.latest = latestScores(await stores.dna.assessmentsFor(tenantId, ids.userIds));
-      focus.label = competency.name;
+      ctx.competency = await stores.dna.getCompetency(tenantId, input.gap.competencyId);
+      ctx.latest = latestScores(b.assessments);
+      // Terdampak hanya pemegang kompetensi ini, sama dengan papan dan detail (asesmen dari jabatan lama tidak dihitung)
+      if (input.mode === 'affected') ctx.members = b.members.filter((m) => m.competencies.some((c) => c.id === input.gap.competencyId && c.approvedAt));
     } else {
-      ctx.records = await stores.tna.listPerformance(tenantId, ids, { period: input.gap.period });
-      focus.label = input.gap.name;
+      ctx.records = b.periodRecords;
     }
     let eligible = eligibleEmployees(ctx);
     if (input.employeeIds) {
@@ -213,6 +212,8 @@ function gapRouter({ stores, flags, audit }) {
     const s = await stores.interviews.get(req.tenantId, req.params.sessionId);
     const scope = await scopeFor(req, stores.people);
     if (!s || s.submodule !== 'tna' || !inScope(scope, s.intervieweeId)) throw notFound('Penugasan tidak ditemukan');
+    // R10b: sesi alur lama (tanpa penugas) atau yang sudah dimulai tidak bisa dibatalkan, siapa pun pemanggilnya
+    if (!s.assignedBy || s.status !== 'scheduled') throw new HttpError(409, 'INVALID_STATE', 'Hanya penugasan yang belum dimulai yang bisa dibatalkan');
     if (req.user.role === ROLES.SUPERVISOR && s.assignedBy !== req.user.id) {
       throw forbidden('NOT_ASSIGNER', 'Hanya HR atau atasan yang menugaskan yang bisa membatalkan penugasan ini');
     }

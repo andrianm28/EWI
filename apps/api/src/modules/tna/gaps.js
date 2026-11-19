@@ -191,7 +191,9 @@ function classify({ findings = [], vis, interviewed }) {
   if (draft || (training && nonTraining)) return 'review';
   if (training) return 'training';
   if (nonTraining) return 'non_training';
-  return interviewed ? 'review' : 'pending';
+  // R7: temuan apa pun (selain ditolak) berarti gap sudah diwawancarai, walau temuannya tersembunyi bagi pemanggil
+  const hasFindings = findings.some((f) => f.reviewStatus !== 'rejected');
+  return interviewed || hasFindings ? 'review' : 'pending';
 }
 
 /** Lengkapi baris dengan klasifikasi (R6) dan hitungan wawancara (R8). */

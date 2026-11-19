@@ -397,6 +397,21 @@ run('B6 ringkasan wawancara akar masalah (Postgres)', () => {
     const dropped = await pendingSummary;
     expect(dropped.status).toBe(409);
     expect(await raw(sidA)).toMatchObject({ status: 'scheduled', findings: null, summaryAt: null });
+
+    // jawaban masuk ketika ringkasan sedang dibuat: ringkasan itu dibuang agar karyawan tidak mengonfirmasi ringkasan tanpa jawabannya
+    const gate3 = deferred();
+    const slowS = scriptedAi({ analyzeGate: gate3.promise });
+    const appS = createApp({ config, stores, ai: slowS });
+    const sidS = await openSession('joko');
+    const pendingS = api(appS, sidS).summary('joko').then((r) => r);
+    await new Promise((r) => setTimeout(r, 100));
+    expect((await api(app, sidS).turn('joko', 'Tambahan: saya juga belum dilatih tools baru')).status).toBe(200);
+    gate3.release();
+    const stale = await pendingS;
+    expect(stale.status).toBe(409);
+    expect(stale.body.error.code).toBe('INVALID_STATE');
+    expect(await raw(sidS)).toMatchObject({ status: 'in_progress', findings: null, summaryAt: null });
+    expect((await api(app, sidS).summary('joko')).status).toBe(201);
   });
 
   it('durasi 15 menit berhenti di 5 pertanyaan; fokus kompetensi muncul di pertanyaan pembuka', async () => {

@@ -35,7 +35,9 @@ function competencyBlock(competencies) {
 function triggerBlock(triggers, focus = null) {
   // B6 (A10): sesi yang ditugaskan untuk gap kompetensi tidak membahas target kerja
   if (!triggers.length && focus && focus.label) {
-    return `Topik wawancara: gap kompetensi "${focus.label}" (skor asesmen karyawan ini di bawah target jabatan). Tidak ada target kerja yang dibahas.`;
+    const label = clip(focus.label, 120);
+    if (focus.kind === 'okr') return `Topik wawancara: target kerja "${label}" yang meleset di tim karyawan ini (karyawan ini sendiri tidak tercatat meleset).`;
+    return `Topik wawancara: gap kompetensi "${label}" (skor asesmen karyawan ini di bawah target jabatan). Tidak ada target kerja yang dibahas.`;
   }
   if (!triggers.length) return '(Tidak ada target yang meleset. Karyawan diwawancarai karena seluruh anggota Job Role ikut TNA.)';
   return triggers.map((t) => {
@@ -74,11 +76,15 @@ Balas hanya dengan teks pertanyaan berikutnya, tanpa awalan, tanpa tanda kutip, 
   const startRule = focus
     ? '- Mulai dari pengalaman kerja terakhir terkait topik, gali bagian yang sulit, ketersediaan panduan/alat, dan kesempatan praktik.'
     : '- Mulai dari target yang meleset, satu per satu. Tanyakan penyebab menurut karyawan, lalu gali apakah ia tahu cara mengerjakannya.';
+  const goal = focus
+    ? 'memahami kendala karyawan ini pada topik di bawah'
+    : 'memahami mengapa target kerja karyawan ini belum tercapai';
+  const heading = focus ? 'Topik yang dibahas:' : 'Target milik karyawan ini yang belum tercapai (boleh Anda sebut nama dan angkanya):';
   return `Anda adalah pewawancara ELGOS (Elite Learning & Growth Operating System) untuk Training Needs Analysis (TNA).
-Tujuan: memahami mengapa target kerja karyawan ini belum tercapai, lalu membedakan penyebab yang bisa diatasi dengan pelatihan
+Tujuan: ${goal}, lalu membedakan penyebab yang bisa diatasi dengan pelatihan
 (pengetahuan atau keterampilan) dari penyebab non-pelatihan (SOP, tools, sistem, akses, beban kerja, koordinasi).
 
-Target milik karyawan ini yang belum tercapai (boleh Anda sebut nama dan angkanya):
+${heading}
 ${triggerBlock(triggers, focus)}
 
 Kompetensi jabatan (konteks, tidak perlu dibacakan):
