@@ -21,6 +21,8 @@ declare module 'vue-router' {
     flag?: string
     /** Submodul yang harus dimiliki dan menyala. */
     submodule?: SubmoduleKey
+    /** Modul 2–5: produk entitlement yang harus dimiliki tenant (mis. 'full_suite'), sama dengan pemeriksaan API-nya. */
+    entitlement?: string
     /** Butir menu yang menyala saat rute ini terbuka (untuk layar anak). */
     menuKey?: string
     /** Peran asli (dari API) yang boleh membuka rute ini, mis. ['hr_admin', 'eta_admin']. Tanpa ini: semua peran. */
@@ -72,6 +74,8 @@ function passesGates(meta: RouteLocationNormalized['meta'], params: RouteLocatio
   const key = (meta.submodule ?? (meta.submoduleParam ? params.key : undefined)) as SubmoduleKey | undefined
   if (key && !session.canOpen(key)) return false
   if (meta.roles && !session.roles.some((r) => meta.roles!.includes(r))) return false
+  // Gagal-tertutup: API lama tanpa `products` berarti produk tidak diketahui, jadi modulnya disembunyikan
+  if (meta.entitlement && !session.access?.products?.includes(meta.entitlement)) return false
   return true
 }
 

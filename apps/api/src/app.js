@@ -76,7 +76,8 @@ function createApp({ config, stores, ai, catalog, mailer, readiness }) {
   api.use(auth, tenantContext());
   api.get('/me/access', async (req, res, next) => {
     try {
-      res.json({ submodules: await entitlements.submodules(req.tenantId), flags: await flags.all(req.tenantId) });
+      // products: dipakai web untuk menyembunyikan menu modul 2–5 yang butuh produk tertentu (mis. full_suite)
+      res.json({ submodules: await entitlements.submodules(req.tenantId), products: await entitlements.products(req.tenantId), flags: await flags.all(req.tenantId) });
     } catch (e) { next(e); }
   });
   api.use('/projects', projects.router({ projects: stores.projects }));

@@ -18,6 +18,8 @@ export interface SessionUser {
 
 interface Access {
   submodules: SubmoduleKey[]
+  /** Produk entitlement aktif tenant (mis. ['full_suite']); untuk gerbang modul 2–5 (meta.entitlement). */
+  products?: string[]
   flags: Record<string, boolean>
 }
 

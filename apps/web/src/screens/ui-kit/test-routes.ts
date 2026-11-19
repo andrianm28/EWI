@@ -4,7 +4,7 @@ import type { RouteRecordRaw } from 'vue-router'
 import type { ViewKey } from '@/shell/views'
 import type { SubmoduleKey } from '@/modules'
 
-interface TestRoute { name: string; path?: string; views?: ViewKey[]; flag?: string; submodule?: SubmoduleKey; menuKey?: string; roles?: string[] }
+interface TestRoute { name: string; path?: string; views?: ViewKey[]; flag?: string; submodule?: SubmoduleKey; menuKey?: string; roles?: string[]; entitlement?: string }
 
 export function testRoutes(): RouteRecordRaw[] {
   let list: TestRoute[] = []
@@ -14,6 +14,6 @@ export function testRoutes(): RouteRecordRaw[] {
     path: t.path ?? `/uji/${t.name}`,
     name: t.name,
     component: () => import('./TestScreen.vue'),
-    meta: { views: t.views, flag: t.flag, submodule: t.submodule, menuKey: t.menuKey, roles: t.roles },
+    meta: { views: t.views, flag: t.flag, submodule: t.submodule, menuKey: t.menuKey, roles: t.roles, entitlement: t.entitlement },
   }))
 }
