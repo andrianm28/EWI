@@ -38,11 +38,12 @@ Bagian layar, urutan mockup: kartu KPI → Status modul → Pareto 20/80 → Per
 - Dipasang di `app.js` di bawah `auth` + `tenantContext()`, di balik **flag baru `dashboard.main`** (default mati) lewat `requireFlag`, hanya bila `stores.people`, `stores.interviews`, `stores.tna`, `stores.dna` tersedia (pola `/employees`). Router: `dashboardRouter({ stores, flags, entitlements, settings, audit })`; `entitlements` ditambahkan ke pemanggilan di `app.js`.
 - **Bukan submodul**: dashboard merangkum beberapa modul, jadi tidak lewat `requireSubmodule()` (sama seperti `/api/employees`). Sebagai gantinya tiap bagian respons hanya diisi bila modul sumbernya terbuka untuk tenant (entitlement + flag, aturan yang sama dengan `requireSubmodule`). Bagian yang modulnya tertutup bernilai `null`.
 - `tenant_id` hanya dari `req.tenantId`.
-- Peran: `hr_admin`, `eta_admin`, `supervisor`. Peran lain → 403 `ROLE_FORBIDDEN`.
+- Peran: `hr_admin`, `eta_admin`, `supervisor`. Peran lain → 403 `ROLE_FORBIDDEN`. Gerbang flag diperiksa lebih dulu: selama `dashboard.main` mati semua peran mendapat 403 `FEATURE_DISABLED`.
 - Cakupan: dari `scopeFor()` → `visibleEmployeeScope()`. Untuk atasan, id dirinya sendiri dikeluarkan dari cakupan supaya "tim" berarti bawahan langsung (sama dengan `GET /tna/findings/non-training`). Atasan tanpa bawahan mendapat dashboard kosong, bukan galat.
 - Audit (R2-2, gagal-tertutup: audit gagal → 500, data tidak dikirim):
   - **Atasan:** `audit.readIndividual(req, 'dashboard.summary', { employeeIds })` dengan **semua** id bawahan dalam cakupan. Agregat tim kecil bisa menunjuk orang.
   - **HR:** `audit.record(req, 'read', 'dashboard.summary', { scope: 'all', people })`, ringkas tanpa daftar id. Dashboard adalah halaman mendarat; menulis seluruh id tenant di setiap login tidak menambah jejak yang berguna.
+  - **HR, baris Pareto berjudul:** temuan pelatihan tanpa kompetensi dikelompokkan dengan judul temuannya (`tna/pareto.js`), jadi labelnya isi individu. Bila baris seperti itu ikut terkirim, `audit.readIndividual(req, 'dashboard.pareto', { employeeIds })` mencatat karyawan di baliknya.
   - Komentar `core/audit/index.js` diperbarui (kode bersama: reviewer Andrian).
 
 ### 3.2 Respons
@@ -82,10 +83,10 @@ Nama, deskripsi, dan teks tindakan **tidak** dikirim API; web yang memetakannya 
 
 | Angka | Definisi | Sumber |
 | --- | --- | --- |
-| `people` | Karyawan aktif (`status <> 'disabled'`) dalam cakupan dengan peran `learner`, `supervisor`, `role_leader`, `sme`. **Penyebut semua angka**: baris data orang di luar daftar ini tidak dihitung di mana pun | `stores.people.list` |
+| `people` | Karyawan aktif (`status <> 'disabled'`) dalam cakupan dengan peran `learner`, `supervisor`, `role_leader`, `sme`. **Penyebut semua angka per orang** (dianalisis, gap, Pareto, lama analisis, wawancara, rencana, Improvement Needs): baris data orang di luar daftar ini tidak dihitung. Dua pengecualian seluruh tenant, khusus HR: `aiHrAgreement` (putusan HR atas karyawan yang kemudian nonaktif tetap putusan sah) dan `review_pending` (harus sama dengan isi antrean tinjauan). `hr_admin`, `pimpinan`, dan orang tanpa jabatan tidak termasuk penyebut; K2 (HR juga karyawan) belum diterapkan di sini `[⏳ DITERIMA]` | `stores.people.list` |
 | `employeesAnalyzed` | Karyawan dalam `people` yang punya minimal satu penilaian DNA (bila DNA terbuka) **atau** minimal satu temuan TNA yang sudah ditinjau HR, pelatihan maupun non-pelatihan (bila TNA terbuka). Temuan non-pelatihan hanya dihitung untuk HR, atau atasan yang diberi akses HR saat flag `tna.non_training_hr` menyala (K1). Sesi selesai yang temuannya masih draf **tidak** dihitung (PM-5), supaya atasan tidak bisa menyimpulkan ada draf | `stores.dna.assessmentsFor`, `stores.tna.listFindings` (hanya `approved`/`edited`) |
-| `competencyGaps` | Jumlah kompetensi berbeda yang minimal satu karyawan dalam `people` berstatus `gap` terhadap kompetensi jabatannya. `not_assessed` bukan gap. Dihitung langsung dengan `stores.dna.competenciesForPosition` + `computeGap().items` (`dna/gap.js`), satu kueri kompetensi per kombinasi jabatan dan jenjang | |
-| `okrGaps` | Jumlah target kinerja (KPI/OKR/SLA) yang belum tercapai pada **periode terbaru** tiap metrik per karyawan (kunci: karyawan + jenis + nama dinormalkan; periode dibandingkan sebagai teks, format impor `2026-11`/`2026-Q4`). Periode lama tidak dihitung. Toleransi per KPI (PM-1) sudah masuk di `isMet` | `stores.tna.listPerformance`, fungsi `latestUnmet` |
+| `competencyGaps` | Definisi papan gap B5 (`tna/gaps.js competencyGaps`, `CONTEXT.md` "Gap kompetensi"): jumlah kompetensi **yang sudah disahkan HR** dengan rata-rata skor terbaru karyawan dalam `people` di bawah skor minimal. Kompetensi yang belum dinilai siapa pun bukan gap. Satu kueri kompetensi per kombinasi jabatan dan jenjang | `stores.dna.competenciesForPosition`, `assessmentsFor` |
+| `okrGaps` | Definisi papan gap B5 (`tna/gaps.js okrGaps`, `CONTEXT.md` "Gap OKR"): jumlah metrik (jenis + `metricKey(nama)`) yang meleset untuk minimal satu karyawan dalam `people` pada **periode unggahan terbaru** tenant (`performancePeriods()[0]`, urut waktu unggah, bukan urutan teks). Toleransi per KPI (PM-1) sudah masuk di `isMet` | `stores.tna.performancePeriods`, `listPerformance` |
 | `aiHrAgreement.percent` | **Hanya HR.** `approved / (approved + edited + rejected)` × 100, dibulatkan; `null` bila belum ada yang ditinjau. Seluruh tenant, hanya temuan hasil job analisis AI (`analysis_job_id` terisi) yang diputus orang (`reviewed_by` terisi), supaya temuan lama yang ditandai massal oleh migrasi `20261117000400` tidak menaikkan angka | store baru `stores.tna.aiReviewCounts` |
 | `analysisDays.median` | **Hanya HR** (LIN-B1 adalah metrik waktu HR; untuk atasan selisih jumlah sesi bisa membocorkan draf). Per sesi TNA milik karyawan dalam `people`: hari pecahan dari wawancara selesai (`ended_at`) sampai temuan AI terakhirnya diputus. Hanya sesi yang seluruh temuan AI-nya sudah diputus orang. Median selisih itu dibulatkan ke 0,01 hari lalu ke atas ke hari penuh. `null` bila belum ada sesi | store baru `stores.tna.analysisDurations` (SQL di `lna-stores.js`) |
 | `pareto.rows` | Helper bersama `rankFindings()` (`tna/pareto.js`, juga dipakai `GET /tna/pareto`: hitung `missRatio` lewat `evaluate()` lalu `rankTrainingNeeds()`) atas temuan pelatihan yang sudah ditinjau dalam `people`, dengan `settings.tna.pareto`; 7 teratas | sama dengan `GET /tna/pareto` |
@@ -101,12 +102,12 @@ Nama, deskripsi, dan teks tindakan **tidak** dikirim API; web yang memetakannya 
 | No | `key` | Aktif bila |
 | --- | --- | --- |
 | 1 | `lna` | minimal satu dari `cca`, `dna`, `tna`, `ina` terbuka (entitlement + flag `module.<key>`); `parts` merinci keempatnya |
-| 2 | `li` | flag `module.li` |
-| 3 | `ld` | flag `module.ld` |
-| 4 | `lim` | flag `module.lim` |
-| 5 | `cp` | flag `promotion.recommendation` |
+| 2 | `li` | `li` terbuka: entitlement (`full_suite`) + flag `module.li`, sama dengan `requireSubmodule` di `app.js` |
+| 3 | `ld` | `ld` terbuka: entitlement (`full_suite`) + flag `module.ld` |
+| 4 | `lim` | produk `full_suite` + flag `module.lim` |
+| 5 | `cp` | DNA terbuka + flag `promotion.recommendation` (endpoint ada di `/dna/promotion-candidates`) |
 
-Flag `module.li`, `module.ld`, `module.lim` dibuat paket B13–B15. Sebelum ada, `flags.all()` tidak memuatnya dan modulnya berstatus tidak aktif. Dashboard tidak mendaftarkan flag itu.
+Status "Aktif" memakai gerbang yang sama dengan API modulnya, supaya dashboard tidak menyebut aktif modul yang API-nya menolak. `module.li` dan `module.ld` sudah ada (B13, B14). `module.lim` dibuat B15; sebelum ada, `flags.all()` tidak memuatnya dan modul 4 berstatus tidak aktif. Dashboard tidak mendaftarkan flag itu.
 
 Mockup menampilkan status "Aktif / Baru / Konsep", persen kemajuan, dan satu metrik per modul. Itu data demo tanpa sumber. B3 menampilkan **Aktif** atau **Belum aktif** dari flag, rincian submodul untuk LNA, dan tombol "Buka" bila layarnya sudah terpasang. Tanpa batang persen. `[⏳ DITERIMA]` metrik per modul ditambahkan paket modul masing-masing lewat perubahan kecil di dashboard setelah datanya ada; tidak diuji di B3.
 
@@ -117,7 +118,7 @@ Hanya butir dengan `count > 0` yang dikirim, urutan tetap:
 | `key` | Untuk | Hitungan | Syarat |
 | --- | --- | --- | --- |
 | `review_pending` | HR | temuan berstatus draf seluruh tenant, yaitu isi antrean tinjauan HR (`reviewQueue`, semua kategori, hasil AI maupun bukan) yang dituju tombol "Tinjau" | TNA terbuka |
-| `interviews_open` | HR, atasan | sesi TNA `scheduled` atau `in_progress` milik karyawan dalam `people` | TNA terbuka |
+| `interviews_open` | HR, atasan | sesi TNA terbuka milik karyawan dalam `people`: `in_progress`, atau `scheduled` dengan undangan belum kedaluwarsa (`isOpen` di `tna/gaps.js`, sama dengan B5) | TNA terbuka |
 | `plan_needs_module` | HR | butir rencana pelatihan milik karyawan dalam `people` tanpa modul (`needsModule`) yang belum `completed`/`rejected` | TNA terbuka |
 | `non_training_findings` | HR; atasan **hanya bila** `hasNonTrainingGrant` | temuan non-pelatihan yang sudah ditinjau, dalam cakupan | TNA terbuka + flag `tna.non_training_hr` |
 | `competencies_unapproved` | HR | kompetensi dengan `approvedAt` kosong | DNA terbuka |
@@ -182,7 +183,7 @@ Gerbang: `npm run lint`, `npm test`, `npm run build`, `npm run e2e`.
 - `[⚠️ BELUM TERVERIFIKASI]` definisi "waktu analisis" (3.3).
 - `[⚠️ BELUM TERVERIFIKASI]` dashboard tim hanya untuk `supervisor`. `pimpinan` dan `role_leader` tidak mendapat layar ini (`meta.roles`) dan tetap di Beranda lama. Menunggu definisi lima peran dari B2.
 - `[⏳ DITERIMA]` metrik per modul dan persen kemajuan tidak ditampilkan (3.4).
-- `[⏳ DITERIMA]` kinerja: dashboard memuat daftar (temuan, kinerja, sesi) lalu menghitung di Node, seperti `GET /tna/dashboard`. Cukup untuk pilot (puluhan karyawan); agregasi SQL bila tenant ratusan orang. Tidak ada test beban.
+- `[⏳ DITERIMA]` kinerja: dashboard memuat daftar (temuan, kinerja, sesi, rencana) lalu menghitung di Node, seperti `GET /tna/dashboard`, termasuk mendekripsi judul yang hanya dipakai untuk menghitung. Pilot ELGOS L1: puluhan karyawan, beberapa ratus baris; target muat < 1 detik. Tenant ratusan orang (mis. 500 × 10 metrik × 12 periode = 60 ribu baris kinerja) butuh kueri hitung SQL tanpa dekripsi untuk rencana, sesi, dan Improvement Needs, serta kinerja satu periode saja. Dicatat untuk setelah 2 Des; tidak ada test beban.
 - Flag `dashboard.main` harus dinyalakan per tenant oleh Admin ETA saat Go/No-Go; sampai itu pengguna tetap melihat Beranda lama.
 
 ## 9. Review egm
@@ -233,3 +234,29 @@ Dijalankan terhadap titik tetap scbrmb dengan dua subagent (Standar = `CLAUDE.md
 | Standar | **Bug**: label tim dari `activeView`, API memakai peran utama | **Perbaiki**: label dari `scope` respons. E2E multi-peran merah lalu hijau |
 | Standar | `meta.roles` memakai peran mana pun, API peran utama | **Diterima** `[⏳ DITERIMA]` sampai B2 (#20, `switch-role`) masuk |
 | Standar | `aiReviewCounts` tidak menyaring `submodule`/karyawan aktif | **Tolak**: hanya `saveTna` yang menulis `lna_findings.analysis_job_id` (`lna-stores.js`), jadi job DNA tidak menghasilkan temuan. Kesepakatan dihitung seluruh tenant sesuai 3.3 (putusan HR atas karyawan yang kemudian nonaktif tetap putusan sah) |
+
+### Review diff egm (plugin egm, 19 Nov)
+
+Reviewer `egm:egm-codebase-details` dan `egm:egm-implementation-readiness` (subagent baru, hanya menerima spek, diff, `CLAUDE.md`, `docs/agents/domain.md`, `CONTEXT.md`, spek B0, mockup, dan brief). Hasil: 1 Blocker, 11 Major, 20 Nit. Privasi inti dinyatakan aman oleh keduanya (tidak ada jalur draf atau Improvement Needs tanpa akses ke atasan). Triase `egm-resolve` lengkap di folder proyek `elgos-eksekusi/egm/b3/goldfish_review_report.md`. Ringkasan:
+
+| Temuan | Keputusan |
+| --- | --- |
+| Blocker: baris `people` bilang tidak ada angka di luar penyebut, padahal dua angka seluruh tenant | **Perbaiki**: pengecualian ditulis di 3.3 |
+| Gap kompetensi ikut kompetensi yang belum disahkan; gap OKR memilih periode lewat urutan teks dan menghitung per orang | **Perbaiki**: memakai `competencyGaps`/`okrGaps`/`performancePeriods` B5, angka dashboard = papan gap. Test merah lalu hijau |
+| Status modul 2–5 hanya dari flag | **Perbaiki**: gerbang API modulnya (3.4). Test merah lalu hijau |
+| `interviews_open` menghitung undangan kedaluwarsa | **Perbaiki**: `isOpen` B5 |
+| Baris Pareto berjudul temuan adalah isi individu, audit HR ringkas | **Perbaiki**: audit `dashboard.pareto` dengan id karyawan di baliknya |
+| Celah test: K1 pada "dianalisis", audit HR gagal, Pareto `null` | **Perbaiki**: test ditambah (lulus tanpa perubahan kode) |
+| Dua urutan tindakan (API vs web); label "temuan AI"; kunci modul tak dikenal membuat halaman galat; mock e2e tanpa `products`; median negatif | **Perbaiki** |
+| Kontrak perluasan untuk B9 dan B13–B16 belum tertulis | **Perbaiki sebagian**: aturan di sub-bagian "Menambah bagian dashboard" di bawah. Seam berkas per bagian **ditunda** `[⏳ DITERIMA]`: lima thread sedang paralel, refaktor sekarang memindahkan konflik ke mereka |
+| Kinerja dan dekripsi untuk tenant besar | **Diterima** `[⏳ DITERIMA]` dengan anggaran di bagian 8 |
+| `non_training_findings` hanya dari `tna.non_training_hr`, bukan `module.ina` + `ina.dashboard` | **Ditunda** ke B9, yang memiliki rute `ina` dan status tindak lanjutnya |
+| Kedip judul multi-peran sebelum data datang; Pareto tidak bisa diklik; `menuKey` statis | **Tolak** (Nit): kedip hanya akun multi-peran dan hilang setelah B2 `switch-role`; klik Pareto ke detail gap menunggu rute detail B5 di layar baru |
+
+### Menambah bagian dashboard (B9, B13–B16)
+
+- Tiap modul menambah datanya di `GET /api/dashboard` hanya bila modulnya terbuka dengan gerbang di 3.4, dan bernilai `null` (bukan 0) bila tertutup, tanpa membaca datanya.
+- Metrik per modul: field opsional `modules[].metric: { label: string, value: number | null }`. Layar menampilkannya di bawah keterangan modul bila ada.
+- Butir tindakan baru: kunci baru di akhir urutan 3.5 kecuali spek paketnya menyebut posisi lain; layar menambah entri di `ACTIONS` (`DashboardView.vue`). Kunci yang belum dikenal layar dilewati.
+- Untuk atasan: angka yang bergantung pada draf tidak dikirim (PM-5); Improvement Needs hanya dengan akses HR (K1); id karyawan yang menjadi sumber angka ikut ke audit `readIndividual`.
+- Test yang disalin tiap paket: modul tertutup → `null` dan store tidak dipanggil; cakupan atasan; tidak ada angka yang membocorkan draf.
