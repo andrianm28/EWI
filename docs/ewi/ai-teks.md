@@ -5,13 +5,13 @@ kini dijalankan model sungguhan lewat Amazon Bedrock. Suara (R3-1) tidak termasu
 
 ## Asumsi keputusan
 
-Keputusan berikut belum dijawab; kode memakai opsi ★ dan mudah diubah bila jawabannya lain.
+PD-1 dan PD-2 belum dijawab (per 19 Nov); kode memakai opsi ★ dan mudah diubah bila jawabannya lain. PM-10 sudah diputus A (17 Nov).
 
 | Kode | Asumsi | Akibat di kode |
 |---|---|---|
 | PD-1 | ★A Amazon Bedrock (Claude) | `AI_PROVIDER=bedrock`, adaptor `src/ai/bedrock-provider.js` (Converse API) |
 | PD-2 | ★A Hanya region Singapura | `BEDROCK_REGION` wajib `ap-southeast-1`; ID profil lintas region (`global.`, `apac.`, `us.`, dst.) ditolak saat boot. `AI_ALLOW_CROSS_REGION=true` hanya bila PD-2 berubah |
-| PM-10 | ★A AI menyebut nama KPI dan angka milik karyawan itu | Model hanya menerima kompetensi jabatan dan target milik karyawan yang diwawancarai (`aiContext`); nama, email, dan data orang lain tidak dikirim |
+| PM-10 | ✅ A (17 Nov) AI menyebut nama KPI dan angka milik karyawan itu | Model hanya menerima kompetensi jabatan dan target milik karyawan yang diwawancarai (`aiContext`); nama, email, dan data orang lain tidak dikirim |
 | R3-6 | ✅ A Pemakaian dicatat per panggilan sejak POC | Tabel `ai_usage_logs` (migrasi `20261117000100`) |
 
 ## Cara kerja
@@ -89,3 +89,5 @@ Berkas deploy (`deploy/`, `infra/`) milik thread infra; variabel di atas dan izi
   jadi langkah 2 wajib sebelum 20 Nov.
 - Analisis masih sinkron di `POST /complete`; B4 memindahkannya ke job terpisah dengan dua kali penilaian (PD-13).
 - Tidak ada streaming jawaban; pertanyaan pendek (maks 400 token keluar).
+- PD-2 di sini hanya mengatur AI teks. Suara live direncanakan lewat Gemini Live (19 Nov), yang tidak memproses data
+  di Singapura; lokasi pemrosesan suara harus diputus dan ditulis terpisah di DPIA dan teks persetujuan.
