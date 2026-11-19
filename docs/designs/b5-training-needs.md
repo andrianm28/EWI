@@ -187,10 +187,10 @@ E2E layar (di PR layar, API mock): buka ringkasan, pindah tab, buka detail, tuga
 
 ## 8. Susunan kode
 
-- `apps/api/src/modules/tna/gaps.js`: fungsi murni tanpa DB. `toPct`, `latestScores`, `competencyGaps`, `okrGaps`, `withPareto`, `gapKeyOf`, `linkSessions`, `classify`, `visibility`, `evidenceFor`, `HYPOTHESES`, `summarize`.
+- `apps/api/src/modules/tna/gaps.js`: fungsi murni tanpa DB. `toPct`, `latestScores`, `competencyGaps`, `okrGaps`, `withPareto`, `gapKeyOf`, `linkSessions`, `findingsByGap`, `visibility`, `classify`, `decorate`, `summarize`, `evidenceFor`, `HYPOTHESES`.
 - `apps/api/src/modules/tna/assignment.js`: fungsi murni. `parseDueDate(str, now)` (akhir hari WIB), `validateAssignment(body)`, `eligibleEmployees(...)`, `planAssignments(...)` (assign / skip / replace).
 - `apps/api/src/modules/tna/gap-routes.js`: router Express, dipasang dari `tna/index.js`.
-- `apps/api/src/db/lna-stores.js`: `tna.performancePeriods(tenantId, scope)`, `tna.findingsForGaps(tenantId, scope)` (kolom minimal, tanpa judul/rincian sehingga tanpa dekripsi), `interviews.gapSessions(tenantId, scope)`, `interviews.assign(tenantId, { projectId, assignedBy, rows })` (transaksi + advisory lock + pengganti sesi kedaluwarsa), `interviews.cancelAssigned`, `projectsExtra.status`; `interviews.list/get` + kolom penugasan; `listPerformance` + `createdAt`; `reminderCandidates` + `durationMinutes`.
+- `apps/api/src/db/lna-stores.js`: `tna.performancePeriods(tenantId, scope)`, `tna.findingsForGaps(tenantId, scope)` (kolom minimal, tanpa judul/rincian sehingga tanpa dekripsi), `interviews.gapSessions(tenantId, scope)`, `interviews.assign(tenantId, { projectId, assignedBy, eligible, dueAt, durationMinutes, focus })` (transaksi + advisory lock + pengganti sesi kedaluwarsa), `interviews.cancelAssigned`, `projectsExtra.status`; `interviews.list/get` + kolom penugasan; `reminderCandidates` + `durationMinutes`.
 - `apps/api/src/modules/interviews/invitation.js`: `reminderMessage` memakai `durationMinutes`.
 - `apps/api/src/core/flags/index.js`: dua flag baru.
 
@@ -223,17 +223,17 @@ Integrasi (`tests/integration/tna-gaps.test.js`, Postgres):
 
 ## 11. Daftar perubahan file
 
-- [ ] `apps/api/migrations/20261119000500-tna-penugasan-wawancara.js`
-- [ ] `apps/api/src/core/flags/index.js`
-- [ ] `apps/api/src/modules/tna/gaps.js`
-- [ ] `apps/api/src/modules/tna/assignment.js`
-- [ ] `apps/api/src/modules/tna/gap-routes.js`
-- [ ] `apps/api/src/modules/tna/index.js` (pasang router)
-- [ ] `apps/api/src/modules/interviews/invitation.js` + job pengingat (durasi)
-- [ ] `apps/api/src/db/lna-stores.js`
-- [ ] `apps/api/tests/unit/tna-gaps.test.js`
-- [ ] `apps/api/tests/integration/tna-gaps.test.js`
-- [ ] `docs/ewi/poc-dna-tna.md` (catatan flag baru)
+- [x] `apps/api/migrations/20261119000500-tna-penugasan-wawancara.js`
+- [x] `apps/api/src/core/flags/index.js`
+- [x] `apps/api/src/modules/tna/gaps.js`
+- [x] `apps/api/src/modules/tna/assignment.js`
+- [x] `apps/api/src/modules/tna/gap-routes.js`
+- [x] `apps/api/src/modules/tna/index.js` (pasang router)
+- [x] `apps/api/src/modules/interviews/invitation.js` + job pengingat (durasi)
+- [x] `apps/api/src/db/lna-stores.js`
+- [x] `apps/api/tests/unit/tna-gaps.test.js`
+- [x] `apps/api/tests/integration/tna-gaps.test.js`
+- [x] `docs/ewi/poc-dna-tna.md` (catatan flag baru)
 - [ ] Layar web (menyusul, di atas PR B0)
 
 ## 12. Review egm atas spek (19 Nov)

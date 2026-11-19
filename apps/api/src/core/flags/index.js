@@ -23,6 +23,10 @@ const FLAGS = Object.freeze({
   TNA_TRAINING_REQUEST: 'tna.training_request',
   // PM-6 (17 Nov): daftar ringkas temuan non-training untuk HR; atasan bila diberi akses HR. Mati = disembunyikan
   TNA_NON_TRAINING_HR: 'tna.non_training_hr',
+  // B5 (19 Nov): papan gap Training Needs (gap kompetensi + gap OKR, klasifikasi, detail gap)
+  TNA_GAP_BOARD: 'tna.gap_board',
+  // B5: penugasan wawancara akar masalah per gap (tenggat, durasi 15/30 menit) oleh HR atau atasan
+  TNA_INTERVIEW_ASSIGNMENT: 'tna.interview_assignment',
 });
 
 const KNOWN = new Set(Object.values(FLAGS));
