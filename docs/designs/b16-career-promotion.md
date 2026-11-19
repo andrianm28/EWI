@@ -111,7 +111,7 @@ dna: {
   3. Tidak ada siklus terbuka untuk (karyawan, jenjang berikutnya saat ini) dengan `from_level_id` = jenjang karyawan sekarang → 409 `WAITING_SUPERVISOR`.
   4. **Pemisahan tugas:** HR yang tercatat sebagai `supervisor_by` siklus itu (mis. perannya berubah dari atasan ke HR) → 403 `ROLE_FORBIDDEN`; layar tidak memberi tombol (`blockedReason: 'self_recommended'`).
   5. `approve`: atasan harus `recommend` (selain itu 409 `SUPERVISOR_NOT_RECOMMEND`) dan karyawan masih `eligible` (selain itu 409 `NOT_ELIGIBLE`). `hold` selalu boleh.
-  - Tulis dalam transaksi yang mengunci baris karyawan (`SELECT … FOR UPDATE` pada `users`, sama dengan tahap atasan): `UPDATE … SET hr_decision … WHERE id = :id AND hr_decision IS NULL` dan, untuk `approve`, `AND supervisor_decision = 'recommend'`. Nol baris berubah → 409 `SUPERVISOR_NOT_RECOMMEND` bila siklus yang sama masih terbuka (atasan baru saja mengubah ke `hold`), selain itu `ALREADY_DECIDED`. Indeks unik `approved` adalah penjaga terakhir.
+  - Tulis dalam transaksi yang mengunci baris karyawan (`SELECT … FOR UPDATE` pada `users`, sama dengan tahap atasan): `UPDATE … SET hr_decision … WHERE id = :id AND hr_decision IS NULL` dan, untuk `approve`, `AND supervisor_decision = 'recommend'`. UPDATE juga mensyaratkan `from_level_id` = jenjang karyawan saat ini (dibaca di bawah kunci), supaya perubahan posisi yang masuk setelah rute membaca siklus tidak meloloskan siklus usang (C9). Nol baris berubah → 409 `SUPERVISOR_NOT_RECOMMEND` bila siklus yang sama masih terbuka (atasan baru saja mengubah ke `hold`), `WAITING_SUPERVISOR` bila tidak ada lagi siklus terbuka yang cocok (posisi berubah), selain itu `ALREADY_DECIDED`. Indeks unik `approved` adalah penjaga terakhir.
   - Siklus terbuka yang dibuat atasan sah tetap boleh diputuskan HR walau atasan itu kemudian berganti, perannya dicabut, atau `supervisor_id` dikosongkan; rekomendasinya sah saat dibuat (C9). `no_supervisor` (C10) hanya menghalangi siklus yang belum ada.
   - Keputusan HR menutup siklus dan tidak bisa diubah.
 - **C8 Tidak ada kenaikan otomatis.** `approve` tidak mengubah `users.career_level_id`. Jenjang diubah HR lewat `PUT /dna/employees/:userId/position` setelah ada surat keputusan.
@@ -119,7 +119,7 @@ dna: {
 - **C10 Karyawan tanpa atasan yang sah.** Bila `supervisor_id` kosong, atau menunjuk user yang perannya bukan `supervisor`, tidak ada yang bisa mengisi tahap atasan: baris menampilkan `blockedReason: 'no_supervisor'` dan HR tidak bisa memutuskan (kecuali siklus terbuka yang sudah ada, C7). HR tidak boleh merangkap tahap atasan (pemisahan tugas). Mockup tidak membahas kasus ini; diasumsikan HR membetulkan data atasan lewat impor karyawan (§8). K2 (satu akun banyak peran) adalah milik B2.
 - **C11 Visibilitas dan peran.**
   - Semua endpoint: `requireRole(hr_admin, supervisor)`; `learner` dan peran lain → 403 `ROLE_FORBIDDEN`. `eta_admin` selalu lolos `requireRole`, jadi ia bisa memanggil GET (melihat) tetapi kedua POST menolaknya secara eksplisit (C6, C7).
-  - Selain itu peran pemanggil harus ada di `settings.dna.promotionVisibleTo` (nilai bukan array dianggap `['hr_admin']`; `okrMin` di luar 0–100 atau bukan angka dianggap 80, `metricTypes` kosong dianggap `['okr']`) (kecuali `eta_admin`), selain itu 403 `ROLE_FORBIDDEN`. Tenant yang mengisi `['hr_admin']` menutup modul ini untuk atasan; akibatnya tidak ada yang bisa merekomendasi dan alur berhenti di `waiting_supervisor`. Akibat ini diketahui dan disengaja: RG-1e adalah keputusan privasi user, jadi gerbang kedua ini tidak dihapus sepihak (eskalasi review egm S6, §8).
+  - Selain itu peran pemanggil harus ada di `settings.dna.promotionVisibleTo` (`dna` null atau bukan objek dianggap kosong; nilai `promotionVisibleTo` bukan array dianggap `['hr_admin']`; `okrMin` di luar 0–100 atau bukan angka dianggap 80, `metricTypes` kosong dianggap `['okr']`) (kecuali `eta_admin`), selain itu 403 `ROLE_FORBIDDEN`. Tenant yang mengisi `['hr_admin']` menutup modul ini untuk atasan; akibatnya tidak ada yang bisa merekomendasi dan alur berhenti di `waiting_supervisor`. Akibat ini diketahui dan disengaja: RG-1e adalah keputusan privasi user, jadi gerbang kedua ini tidak dihapus sepihak (eskalasi review egm S6, §8).
   - Data dibatasi `scopeFor()` → `visibleEmployeeScope()`: HR semua, atasan bawahan langsungnya. Baris **diri sendiri dikeluarkan** dari semua respons (atasan tidak melihat status promosi dirinya). Karyawan di luar scope, nonaktif, bukan populasi, tenant lain, atau id bukan UUID → 404.
 - **C12 Audit.**
   - Baca peta, bukti, dan daftar keputusan → `audit.readIndividual` (`dna.career_map`, `dna.career_evidence`, `dna.promotion_decisions`; `objectType: 'promotion'`).
@@ -164,7 +164,7 @@ Catatan:
   | --- | --- | --- | --- |
   | `eta_admin` | apa pun | `[]` | `view_only` |
   | siapa pun | siklus `approved` | `[]` | `approved` |
-  | atasan langsung | `eligible` | `['recommend','hold']` | null |
+  | atasan langsung (peran `supervisor` di basis data) | `eligible` | `['recommend','hold']` | null |
   | atasan langsung | tidak `eligible`, ada siklus terbuka | `['hold']` (tarik rekomendasi) | null |
   | atasan langsung | tidak `eligible`, tanpa siklus terbuka | `[]` | `not_eligible` |
   | `hr_admin` | siklus terbuka dicatat oleh dirinya | `[]` | `self_recommended` |
@@ -201,7 +201,7 @@ Satu-satunya daftar status terbuka spek ini.
 | `[⏳ DITERIMA]` | Siklus usang hidup lagi bila karyawan kembali ke jenjang semula; indeks `approved` memblok promosi ulang ke jenjang yang sama; upsert atasan menimpa catatan sebelumnya (review egm S15) | Kasus langka pada POC; HR bisa menunda. Redesain epoch/event ditolak (YAGNI) |
 | `[⏳ DITERIMA]` | Snapshot bukti, `drifted`, reviewer pengganti, optimasi `load()` (S16) | YAGNI untuk POC ±200 karyawan |
 | `[⏳ DITERIMA]` | `/paths` agregat tidak diaudit; penghapusan karyawan tidak menghapus `meta` audit | Agregat tanpa data individu; mengikuti kebijakan retensi audit yang ada |
-| `[⏳ DITERIMA]` | Tidak dites: atomisitas audit, balapan nol baris, kill switch, beban | Butuh injeksi kegagalan di store, di luar pola test repo |
+| `[⏳ DITERIMA]` | Tidak dites: atomisitas audit, cabang `SUPERVISOR_NOT_RECOMMEND` saat atasan berubah di tengah permintaan HR, kill switch, beban (dua persetujuan HR paralel dan siklus usang di store sudah dites) | Butuh injeksi kegagalan di store, di luar pola test repo |
 | `[⏳ DITERIMA]` | Menu `cp` tanpa tampilan Super Admin | B12 memegang tampilan Super Admin; tautan langsung tetap terbuka |
 
 ## 9. Alternatif yang dipertimbangkan
@@ -216,9 +216,9 @@ Satu-satunya daftar status terbuka spek ini.
 
 ## 10. Test
 
-- `apps/api/tests/unit/dna-career.test.js`: OKR (arah, biner/tenggat, batas, baris dilewati, jenis metrik, periode, deduplikasi impor ulang termasuk waktu sama), delapan status C4, ambang konfigurasi, kandidat C5, `findCycle`, `decisionState`, tindakan atasan dan HR, pemisahan tugas (`self_recommended`), tanpa atasan sah dan Super Admin.
+- `apps/api/tests/unit/dna-career.test.js`: OKR (arah, biner/tenggat, batas, baris dilewati, jenis metrik, periode, deduplikasi impor ulang termasuk waktu sama), delapan status C4, ambang konfigurasi, kandidat C5, `findCycle`, `decisionState`, tindakan atasan dan HR, pemisahan tugas (`self_recommended`), tanpa atasan sah dan Super Admin, setelan rusak (`dna: null`), atasan yang perannya dicabut.
 - `apps/api/tests/unit/dna-domain.test.js`: `careerStatus` lama tetap lulus.
-- `apps/api/tests/integration/dna-career.test.js` (Postgres): flag mati → 403; `promotionVisibleTo` tanpa `supervisor` → atasan 403; peta + KPI + filter divisi; atasan tidak melihat dirinya; bukti; jalur; rekomendasi → persetujuan dengan audit; klik ganda; `hold` vs `approve`; `WAITING_SUPERVISOR`; `NOT_ELIGIBLE`; atasan lain 404; karyawan 403; peran salah 403; tenant lain dan nonaktif 404; jenjang tidak berubah setelah `approve`; `ALREADY_DECIDED`; siklus baru setelah `hold`; perubahan posisi; `next_no_requirement`; `no_supervisor`; catatan terenkripsi; endpoint lama khusus HR; setelan `promotionVisibleTo` rusak tidak 500.
+- `apps/api/tests/integration/dna-career.test.js` (Postgres): flag mati → 403; `promotionVisibleTo` tanpa `supervisor` → atasan 403; peta + KPI + filter divisi; atasan tidak melihat dirinya; bukti; jalur; rekomendasi → persetujuan dengan audit; klik ganda; `hold` vs `approve`; `WAITING_SUPERVISOR`; `NOT_ELIGIBLE`; atasan lain 404; karyawan 403; peran salah 403; tenant lain dan nonaktif 404; jenjang tidak berubah setelah `approve`; `ALREADY_DECIDED`; siklus baru setelah `hold`; perubahan posisi (termasuk store menolak siklus usang); `next_no_requirement`; `no_supervisor`; catatan terenkripsi; endpoint lama khusus HR; setelan `promotionVisibleTo` rusak tidak 500.
 - `apps/api/tests/integration/poc-dna-tna.test.js`: atasan 403 di `/promotion-candidates` (C14, tidak berubah dari base).
 - `apps/web/e2e/b16-cp.spec.ts`: HR (peta per divisi, bukti, jalur, keputusan menunggu atasan); atasan merekomendasi dengan catatan; HR yang mencatat rekomendasi sendiri tanpa tombol; menu dan rute tertutup bila flag mati.
 - Tidak dites: lihat §8.
@@ -243,7 +243,7 @@ Satu-satunya daftar status terbuka spek ini.
 - (B) `apps/api/tests/unit/dna-career.test.js`, `apps/api/tests/integration/dna-career.test.js`
 - (B) `apps/web/src/screens/b16-cp/routes.ts`, `api.ts`, `CareerPromotionView.vue`
 - (B) `apps/web/e2e/b16-cp.spec.ts`
-- (U) `docs/ewi/poc-dna-tna.md`
+- (U) `docs/ewi/poc-dna-tna.md`, `docs/designs/b0-fondasi-ui.md` (catatan rute `cp`)
 
 ## Lampiran A. Riwayat review
 
@@ -254,5 +254,7 @@ Status terbuka hanya di §8; lampiran ini catatan sejarah.
 **Review diff ikan mas (19 Nov).** 11 temuan, dikerjakan test-first: peran atasan dari basis data, kunci `FOR UPDATE` dan cek `approved` lebih dulu, setelan rusak ke default, deduplikasi deterministik, tarik rekomendasi, Super Admin tanpa catatan, pemisahan tugas 403, test tambahan. Keputusan C9 vs C10 dan sisa yang ditunda pindah ke C7 dan §8.
 
 **Review egm (19 Nov, plugin `egm`, tahap 5–9).** Laporan: `docs/designs/egm-review/b16/` dan triase egm-resolve di `goldfish_review_report.md`. Diterapkan: alternatif (S1); `self_recommended` menggantikan `waiting_hr` yang tidak pernah dikembalikan, plus tabel tindakan (S2); keputusan review diff dilipat ke C7/C10 (S3); `canSeePromotion` lewat `promotionSettings()` (S4); endpoint lama khusus HR (S5); `meta.roles` rute `cp` (S8); C2 sebagai daftar kasus (S9); bukan sasaran, register risiko, alur komponen (S10); sumber acuan dan glosarium kode (S11); placeholder dalam backtick (S12); `poc-dna-tna.md` (S13); §10 test (S14). Eskalasi: `promotionVisibleTo` (S6). Bantahan: `meta.entitlement` (S7, §7). Ditolak dengan catatan di §8: S15, S16.
+
+**Review diff (19 Nov, agen egm + `mattpocock-skills:code-review`).** Triase di `docs/designs/egm-review/diff-review-triage.md`: setelan `dna: null`, siklus usang dalam balapan, tombol atasan dari peran basis data.
 
 **Cek drift.** 19 Nov manual (sebelum plugin terpasang); setelah review egm dijalankan ulang dengan skill `egm-drift-report`, laporan di `docs/designs/egm-review/`.
