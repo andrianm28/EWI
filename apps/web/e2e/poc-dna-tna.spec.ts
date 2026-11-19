@@ -31,7 +31,7 @@ async function loginAs(page: Page, role: string, id = 'u-1', extraFlags: Record<
   await page.goto('/login')
   await page.getByLabel('Organisasi').fill('demo')
   await page.getByLabel('Email').fill(`${role}@demo.test`)
-  await page.getByLabel('Password').fill(`pw-${Date.now()}`)
+  await page.getByLabel('Kata sandi').fill(`pw-${Date.now()}`)
   await page.getByRole('button', { name: 'Masuk' }).click()
   await expect(page.getByTestId('card-dna')).toBeVisible()
 }
@@ -302,7 +302,7 @@ test('karyawan: minta link masuk lalu masuk dari link email (R3-2)', async ({ pa
   await page.goto('/login')
   await page.getByLabel('Organisasi').fill('demo')
   await page.getByLabel('Email').fill('dimas@demo.test')
-  await page.getByRole('button', { name: 'Minta link lewat email' }).click()
+  await page.getByRole('button', { name: 'Kirim link masuk' }).click()
   await expect(page.getByRole('status')).toContainText('link masuk sudah dikirim')
   expect(requested).toEqual({ tenant: 'demo', email: 'dimas@demo.test' })
 

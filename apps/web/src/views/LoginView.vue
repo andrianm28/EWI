@@ -1,33 +1,57 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+// B1: layar masuk mengikuti mockup Pak Eji (panel kepercayaan kiri, formulir kanan). Spek: docs/designs/b1-login.md.
+// PD-10: produksi hanya link email. Kata sandi tampil bila API mengizinkan (dev/staging), SSO bila flag tenant menyala.
+// Kartu "Masuk sebagai (khusus demo)" di mockup tidak dibangun (K4: data demo bukan bagian produk).
+import { computed, onMounted, ref, watch } from 'vue'
 import { api } from '@/api/client'
 import { useRoute, useRouter } from 'vue-router'
 import { useSessionStore } from '@/stores/session'
+import { UiButton, UiErrorSummary, UiField, UiIcon, UiNote } from '@/ui'
 
 const session = useSessionStore()
 const router = useRouter()
 const route = useRoute()
-const tenant = ref('')
+
+type Step = 'cred' | 'mfa'
+const step = ref<Step>('cred')
+const tenant = ref(typeof route.query.org === 'string' ? route.query.org : '')
 const email = ref('')
 const password = ref('')
-const error = ref('')
+const otp = ref('')
+const challenge = ref('')
+const errors = ref<{ message: string; fieldId?: string }[]>([])
 const loading = ref(false)
 const linkNotice = ref('')
 // Daftar organisasi hanya tersedia bila API mengizinkan (LOGIN_TENANT_PICKER, dev/staging). Selain itu input teks.
 const tenants = ref<{ slug: string; name: string }[]>([])
-// PK-16 / PD-10: form password hanya tampil bila API mengizinkan (dev/staging). Produksi: link email saja.
-// Bila API tidak bisa ditanya, anggap link email saja.
+// Bila API tidak bisa ditanya, anggap link email saja (tanpa sandi, tanpa SSO)
 const passwordEnabled = ref(false)
+const ssoEnabled = ref(false)
 const expired = computed(() => route.query.alasan === 'sesi-habis')
 
+interface Methods { password?: boolean; emailLink?: boolean; sso?: boolean }
+// Kata sandi ditentukan lingkungan (tanpa organisasi); SSO ditentukan flag organisasi, jadi ditanya terpisah
+async function loadMethods() {
+  try { passwordEnabled.value = (await api<Methods>('/auth/methods')).password === true } catch { passwordEnabled.value = false }
+}
+async function loadSso() {
+  const slug = tenant.value.trim()
+  if (!slug) { ssoEnabled.value = false; return }
+  try { ssoEnabled.value = (await api<Methods>(`/auth/methods?tenant=${encodeURIComponent(slug)}`)).sso === true } catch { ssoEnabled.value = false }
+}
+
 onMounted(async () => {
-  const [t, m] = await Promise.allSettled([
-    api<{ data: { slug: string; name: string }[] }>('/auth/tenants'),
-    api<{ password: boolean }>('/auth/methods'),
-  ])
+  const [t] = await Promise.allSettled([api<{ data: { slug: string; name: string }[] }>('/auth/tenants'), loadMethods()])
   tenants.value = t.status === 'fulfilled' ? t.value.data : []
-  if (tenants.value.length === 1) tenant.value = tenants.value[0]!.slug
-  passwordEnabled.value = m.status === 'fulfilled' && m.value.password === true
+  if (tenants.value.length === 1 && !tenant.value) tenant.value = tenants.value[0]!.slug
+  await loadSso()
+})
+
+// SSO tergantung organisasi: tanya ulang setelah organisasi dipilih atau diketik
+let ssoTimer: ReturnType<typeof setTimeout> | null = null
+watch(tenant, () => {
+  if (ssoTimer) clearTimeout(ssoTimer)
+  ssoTimer = setTimeout(loadSso, 300)
 })
 
 // Kembali ke halaman semula setelah sesi habis; hanya path internal
@@ -36,76 +60,170 @@ function target() {
   return ke.startsWith('/') && !ke.startsWith('//') ? ke : { name: 'home' }
 }
 
+function requireFields(withPassword: boolean) {
+  const list: { message: string; fieldId: string }[] = []
+  if (!tenant.value.trim()) list.push({ message: 'Isi organisasi Anda', fieldId: 'org' })
+  if (!email.value.trim()) list.push({ message: 'Isi email kerja Anda', fieldId: 'em' })
+  if (withPassword && !password.value) list.push({ message: 'Isi kata sandi', fieldId: 'pw' })
+  errors.value = list
+  return list.length === 0
+}
+const fieldError = (id: string) => errors.value.find((e) => e.fieldId === id)?.message
+const fail = (e: unknown, fallback: string) => { errors.value = [{ message: e instanceof Error ? e.message : fallback }] }
+
 async function submit() {
   if (!passwordEnabled.value) return sendLink()
-  error.value = ''
+  linkNotice.value = ''
+  if (!requireFields(true)) return
   loading.value = true
   try {
-    await session.login(tenant.value.trim(), email.value.trim(), password.value)
+    const next = await session.login(tenant.value.trim(), email.value.trim(), password.value)
+    if (next) { challenge.value = next; otp.value = ''; step.value = 'mfa'; return }
     await router.push(target())
   } catch (e) {
-    error.value = e instanceof Error ? e.message : 'Gagal masuk'
+    fail(e, 'Gagal masuk')
   } finally {
     loading.value = false
   }
 }
 
-// R3-2: masuk lewat link email (tanpa password). PD-10: satu-satunya cara masuk di produksi.
+// R3-2 / PD-10: masuk lewat link email sekali pakai; satu-satunya cara masuk di produksi
 async function sendLink() {
-  error.value = ''; linkNotice.value = ''
-  if (!tenant.value.trim() || !email.value.trim()) { error.value = 'Isi organisasi dan email dulu.'; return }
+  linkNotice.value = ''
+  if (!requireFields(false)) return
   loading.value = true
   try {
     const res = await api<{ message: string }>('/auth/email-link', { method: 'POST', body: JSON.stringify({ tenant: tenant.value.trim(), email: email.value.trim() }) })
     linkNotice.value = res.message
   } catch (e) {
-    error.value = e instanceof Error ? e.message : 'Gagal mengirim link'
+    fail(e, 'Gagal mengirim link')
   } finally {
     loading.value = false
   }
 }
+
+async function sso() {
+  errors.value = []
+  try {
+    await api('/auth/sso/start', { method: 'POST', body: JSON.stringify({ tenant: tenant.value.trim() }) })
+  } catch (e) {
+    fail(e, 'SSO belum tersedia')
+  }
+}
+
+async function verify() {
+  if (!/^\d{6}$/.test(otp.value.trim())) { errors.value = [{ message: 'Masukkan 6 digit kode verifikasi', fieldId: 'otp' }]; return }
+  errors.value = []
+  loading.value = true
+  try {
+    await session.verifyMfa(challenge.value, otp.value.trim())
+    await router.push(target())
+  } catch (e) {
+    fail(e, 'Kode tidak bisa diverifikasi')
+  } finally {
+    loading.value = false
+  }
+}
+
+function back() { step.value = 'cred'; challenge.value = ''; otp.value = ''; errors.value = [] }
 </script>
 
 <template>
-  <main class="min-h-screen grid place-items-center bg-slate-50 px-4">
-    <form class="w-full max-w-sm space-y-4 rounded-xl bg-white p-6 shadow" @submit.prevent="submit">
+  <div class="lg">
+    <aside class="lg-l" aria-label="Tentang ELGOS">
       <div>
-        <h1 class="text-xl font-semibold text-slate-900">Elite Learning & Growth Operating System</h1>
-        <p class="text-sm text-slate-500">Masuk ke akun organisasi Anda</p>
+        <div class="lg-brand"><div class="lg-logo" aria-hidden="true">EG</div><div><div class="lg-name">ELGOS</div><div class="lg-tag">Elite Learning &amp; Growth Operating System</div></div></div>
+        <p class="lg-small">Workforce intelligence berbasis AI: dari gap kompetensi sampai dampak bisnis.</p>
       </div>
-      <p v-if="expired" data-testid="session-expired" class="rounded bg-amber-50 px-3 py-2 text-sm text-amber-800">
-        Sesi Anda sudah berakhir. Silakan masuk lagi.
-      </p>
-      <label class="block text-sm">Organisasi
-        <select v-if="tenants.length" v-model="tenant" name="tenant" required class="mt-1 w-full rounded border bg-white px-3 py-2">
-          <option value="" disabled>Pilih organisasi</option>
-          <option v-for="t in tenants" :key="t.slug" :value="t.slug">{{ t.name }}</option>
-        </select>
-        <input v-else v-model="tenant" name="tenant" required class="mt-1 w-full rounded border px-3 py-2" placeholder="kode organisasi" />
-      </label>
-      <label class="block text-sm">Email
-        <input v-model="email" name="email" type="email" required class="mt-1 w-full rounded border px-3 py-2" />
-      </label>
-      <label v-if="passwordEnabled" class="block text-sm">Password
-        <input v-model="password" name="password" type="password" required class="mt-1 w-full rounded border px-3 py-2" />
-      </label>
-      <p v-if="error" role="alert" class="text-sm text-red-600">{{ error }}</p>
-      <p v-if="linkNotice" role="status" class="text-sm text-emerald-700">{{ linkNotice }}</p>
-      <template v-if="passwordEnabled">
-        <button type="submit" :disabled="loading" class="w-full rounded bg-slate-900 py-2 text-white disabled:opacity-60">
-          {{ loading ? 'Memproses…' : 'Masuk' }}
-        </button>
-        <div class="border-t pt-3 text-center text-sm">
-          <p class="text-slate-500">Login password hanya tersedia di lingkungan uji.</p>
-          <button type="button" :disabled="loading" class="mt-1 text-blue-700" @click="sendLink">Minta link lewat email</button>
-        </div>
-      </template>
-      <template v-else>
-        <button type="submit" :disabled="loading" class="w-full rounded bg-slate-900 py-2 text-white disabled:opacity-60">
-          {{ loading ? 'Memproses…' : 'Minta link lewat email' }}
-        </button>
-        <p class="text-center text-sm text-slate-500">Kami mengirim link masuk ke email Anda. Link berlaku 15 menit dan hanya bisa dipakai sekali.</p>
-      </template>
-    </form>
-  </main>
+      <div>
+        <p class="lg-hero">Kebutuhan belajar yang terukur, keputusan talenta yang berbukti.</p>
+        <p class="lg-lead">Platform analisis dan pengembangan kompetensi untuk organisasi yang mengutamakan kepercayaan dan kepatuhan.</p>
+      </div>
+      <ul class="lg-trust">
+        <li><UiIcon name="verified_user" :size="20" /><span>Akses berbasis peran dan log audit di setiap sesi</span></li>
+        <li><UiIcon name="lock" :size="20" /><span>Data tiap perusahaan terisolasi; persetujuan karyawan tercatat</span></li>
+        <!-- K3: klaim kepatuhan hanya UU PDP; tidak ada klaim OJK -->
+        <li><UiIcon name="policy" :size="20" /><span>Dirancang mengikuti UU PDP No. 27/2022</span></li>
+      </ul>
+    </aside>
+
+    <main id="isi-login" class="lg-r">
+      <div class="lg-c">
+        <form v-if="step === 'cred'" novalidate @submit.prevent="submit">
+          <h1 class="lg-h1">Masuk ke ELGOS</h1>
+          <p class="lg-sub">Gunakan akun kerja yang didaftarkan oleh admin perusahaan Anda.</p>
+          <p v-if="expired" data-testid="session-expired"><UiNote tone="warning">Sesi Anda sudah berakhir. Silakan masuk lagi.</UiNote></p>
+          <UiErrorSummary :errors="errors" />
+
+          <UiField id="org" v-slot="{ attrs }" label="Organisasi" :error="fieldError('org')">
+            <select v-if="tenants.length" v-bind="attrs" v-model="tenant" name="tenant" class="el-input lg-w">
+              <option value="" disabled>Pilih organisasi</option>
+              <option v-for="t in tenants" :key="t.slug" :value="t.slug">{{ t.name }}</option>
+            </select>
+            <input v-else v-bind="attrs" v-model="tenant" name="tenant" class="el-input lg-w" placeholder="kode organisasi" autocomplete="organization" />
+          </UiField>
+          <UiField id="em" v-slot="{ attrs }" label="Email kerja" :error="fieldError('em')">
+            <input v-bind="attrs" v-model="email" name="email" type="email" class="el-input lg-w" placeholder="nama@perusahaan.com" autocomplete="email" />
+          </UiField>
+          <UiField v-if="passwordEnabled" id="pw" v-slot="{ attrs }" label="Kata sandi" hint="Hanya di lingkungan uji." :error="fieldError('pw')">
+            <input v-bind="attrs" v-model="password" name="password" type="password" class="el-input lg-w" autocomplete="current-password" />
+          </UiField>
+
+          <p v-if="linkNotice" role="status"><UiNote tone="success">{{ linkNotice }}</UiNote></p>
+
+          <div class="lg-actions">
+            <UiButton type="submit" :disabled="loading">{{ loading ? 'Memproses…' : (passwordEnabled ? 'Masuk' : 'Kirim link masuk') }}</UiButton>
+            <UiButton v-if="passwordEnabled" variant="text" :disabled="loading" @click="sendLink">Minta link lewat email</UiButton>
+            <UiButton v-if="ssoEnabled" variant="outlined" icon="badge" :disabled="loading" @click="sso">Masuk dengan SSO perusahaan</UiButton>
+          </div>
+          <p v-if="!passwordEnabled" class="lg-help">Kami mengirim link masuk ke email Anda. Link berlaku 15 menit dan hanya bisa dipakai sekali.</p>
+        </form>
+
+        <form v-else novalidate @submit.prevent="verify">
+          <h1 class="lg-h1">Verifikasi dua langkah</h1>
+          <p class="lg-sub">Masukkan 6 digit kode dari aplikasi autentikator untuk {{ email || 'akun Anda' }}.</p>
+          <UiErrorSummary :errors="errors" />
+          <UiField id="otp" v-slot="{ attrs }" label="Kode verifikasi" :error="fieldError('otp')">
+            <input v-bind="attrs" v-model="otp" name="otp" class="el-input lg-w lg-otp" inputmode="numeric" maxlength="6" autocomplete="one-time-code" />
+          </UiField>
+          <div class="lg-row">
+            <UiButton type="submit" :disabled="loading">{{ loading ? 'Memproses…' : 'Verifikasi dan masuk' }}</UiButton>
+            <UiButton variant="text" @click="back">Kembali</UiButton>
+          </div>
+        </form>
+
+        <p class="lg-meta">Sesi dienkripsi · percobaan masuk dicatat di log audit tenant</p>
+      </div>
+    </main>
+  </div>
 </template>
+
+<style scoped>
+.lg { min-height: 100vh; display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); background: var(--el-surface); color: var(--el-on-surface); }
+.lg-l { background: var(--el-primary); color: var(--el-on-primary); padding: 48px; display: flex; flex-direction: column; justify-content: space-between; gap: 32px; }
+.lg-brand { display: flex; align-items: center; gap: 12px; }
+.lg-logo { width: 40px; height: 40px; border-radius: 10px; display: grid; place-items: center; background: var(--el-on-primary); color: var(--el-primary); font-weight: 600; }
+.lg-name { font-weight: 500; font-size: 18px; }
+.lg-tag, .lg-small { font-size: 12px; opacity: .8; }
+.lg-small { margin-top: 12px; max-width: 440px; }
+.lg-hero { font-size: 32px; line-height: 40px; max-width: 440px; }
+.lg-lead { opacity: .85; max-width: 440px; margin-top: 16px; }
+.lg-trust { display: flex; flex-direction: column; gap: 12px; font-size: 13px; list-style: none; padding: 0; margin: 0; }
+.lg-trust li { display: flex; gap: 10px; align-items: center; }
+.lg-r { display: grid; place-items: center; padding: 48px 16px; }
+.lg-c { width: 100%; max-width: 400px; }
+.lg-h1 { font-size: 24px; line-height: 32px; font-weight: 500; }
+.lg-sub { color: var(--el-on-surface-variant); margin: 4px 0 16px; }
+.lg-w { width: 100%; }
+.lg-otp { letter-spacing: 6px; font-family: var(--el-font-mono); }
+.lg-actions { margin-top: 20px; display: flex; flex-direction: column; gap: 10px; }
+.lg-actions :deep(.el-btn) { justify-content: center; }
+.lg-row { margin-top: 20px; display: flex; gap: 8px; flex-wrap: wrap; }
+.lg-help { font-size: 13px; color: var(--el-on-surface-variant); margin-top: 12px; }
+.lg-meta { margin-top: 28px; font-size: 12px; color: var(--el-on-surface-variant); }
+@media (max-width: 840px) {
+  .lg { grid-template-columns: 1fr; }
+  .lg-l { padding: 24px 16px; }
+  .lg-hero, .lg-lead, .lg-small { display: none; }
+}
+</style>

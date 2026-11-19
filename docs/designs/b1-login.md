@@ -125,7 +125,7 @@ R3-2, PK-16/PD-10 ★B, K3, aturan CLAUDE.md 2, 3, 5, 6, 7.
 
 ## Layar (setelah B0)
 
-`LoginView.vue` ditulis ulang sesuai mockup dengan komponen B0; `MfaSetupView.vue` baru di menu akun. E2E dengan API mock: minta link, tukar link, langkah MFA, galat, tombol SSO hanya saat flag menyala, teks K3, `?org=`.
+`LoginView.vue` ditulis ulang sesuai mockup dengan komponen B0. Kartu "Masuk sebagai (khusus demo)" tidak dibangun (K4). Kata sandi hanya tampil bila `/auth/methods` mengizinkan; `sso` ditanya per organisasi (`/auth/methods?tenant=`); `MfaSetupView.vue` baru di menu akun. E2E dengan API mock: minta link, tukar link, langkah MFA, galat, tombol SSO hanya saat flag menyala, teks K3, `?org=`.
 
 ## Test
 
@@ -145,7 +145,8 @@ R3-2, PK-16/PD-10 ★B, K3, aturan CLAUDE.md 2, 3, 5, 6, 7.
 - [x] `apps/api/src/db/stores.js` (`mfa`, `findTenantBySlug`, `findById`)
 - [x] `apps/api/src/app.js` (rangkai, limiter)
 - [x] test di atas
-- [ ] (setelah B0) `apps/web` layar login + e2e
+- [x] (setelah B0) `apps/web` layar login + langkah MFA di login dan `/masuk` + e2e (`e2e/login.spec.ts`)
+- [ ] (setelah B0) `MfaSetupView.vue` (pendaftaran autentikator di menu akun) + e2e
 
 ## Review spek (egm, 19 Nov)
 

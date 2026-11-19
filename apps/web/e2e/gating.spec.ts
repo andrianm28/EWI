@@ -16,7 +16,7 @@ async function login(page: Page) {
   await page.goto('/login')
   await page.getByLabel('Organisasi').fill('demo')
   await page.getByLabel('Email').fill('hr@demo.test')
-  await page.getByLabel('Password').fill(`pw-${Date.now()}`) // API di-mock, nilai bebas
+  await page.getByLabel('Kata sandi').fill(`pw-${Date.now()}`) // API di-mock, nilai bebas
   await page.getByRole('button', { name: 'Masuk' }).click()
 }
 
@@ -47,7 +47,7 @@ test('login gagal menampilkan pesan', async ({ page }) => {
     route.fulfill({ status: 401, json: { error: { code: 'UNAUTHORIZED', message: 'Email atau password salah' } } }),
   )
   await login(page)
-  await expect(page.getByRole('alert')).toHaveText('Email atau password salah')
+  await expect(page.getByRole('alert')).toContainText('Email atau password salah')
 })
 
 test('organisasi berupa dropdown bila API menyediakan daftar', async ({ page }) => {
@@ -63,7 +63,7 @@ test('organisasi berupa dropdown bila API menyediakan daftar', async ({ page }) 
   await page.goto('/login')
   await page.getByLabel('Organisasi').selectOption({ label: 'Demo Organisasi' })
   await page.getByLabel('Email').fill('hr@demo.test')
-  await page.getByLabel('Password').fill(`pw-${Date.now()}`)
+  await page.getByLabel('Kata sandi').fill(`pw-${Date.now()}`)
   await page.getByRole('button', { name: 'Masuk' }).click()
   await expect(page.getByRole('alert')).toBeVisible()
   expect(sent).toMatchObject({ tenant: 'demo' })
@@ -78,7 +78,7 @@ test('produksi: tanpa kolom password, tombol utama mengirim link email', async (
     await r.fulfill({ status: 202, json: { message: 'Bila email terdaftar di organisasi ini, link masuk sudah dikirim. Periksa kotak masuk Anda.' } })
   })
   await page.goto('/login')
-  await expect(page.getByLabel('Password')).toHaveCount(0)
+  await expect(page.getByLabel('Kata sandi')).toHaveCount(0)
   await page.getByLabel('Organisasi').fill('demo')
   await page.getByLabel('Email').fill('hr@demo.test')
   await page.getByLabel('Email').press('Enter')
@@ -89,8 +89,8 @@ test('produksi: tanpa kolom password, tombol utama mengirim link email', async (
 test('API tidak menjawab metode login: anggap link email saja', async ({ page }) => {
   await page.route('**/api/auth/methods', (r) => r.fulfill({ status: 500, json: {} }))
   await page.goto('/login')
-  await expect(page.getByRole('button', { name: 'Minta link lewat email' })).toBeVisible()
-  await expect(page.getByLabel('Password')).toHaveCount(0)
+  await expect(page.getByRole('button', { name: 'Kirim link masuk' })).toBeVisible()
+  await expect(page.getByLabel('Kata sandi')).toHaveCount(0)
 })
 
 test('sesi dicabut di server: kembali ke login dengan pesan, lalu ke halaman semula', async ({ page }) => {
@@ -106,7 +106,7 @@ test('sesi dicabut di server: kembali ke login dengan pesan, lalu ke halaman sem
   await page.route(/\/api\/(dna|tna)\//, (route) => route.fulfill({ json: { data: [] } }))
   await page.getByLabel('Organisasi').fill('demo')
   await page.getByLabel('Email').fill('hr@demo.test')
-  await page.getByLabel('Password').fill(`pw-${Date.now()}`)
+  await page.getByLabel('Kata sandi').fill(`pw-${Date.now()}`)
   await page.getByRole('button', { name: 'Masuk' }).click()
   await expect(page).toHaveURL(/\/m\/tna$/)
 })
@@ -120,7 +120,7 @@ test('sesi kedaluwarsa (exp JWT lewat) saat halaman terbuka: diarahkan ke login'
   await page.goto('/login')
   await page.getByLabel('Organisasi').fill('demo')
   await page.getByLabel('Email').fill('hr@demo.test')
-  await page.getByLabel('Password').fill(`pw-${Date.now()}`)
+  await page.getByLabel('Kata sandi').fill(`pw-${Date.now()}`)
   await page.getByRole('button', { name: 'Masuk' }).click()
   await expect(page.getByTestId('card-dna')).toBeVisible()
   await expect(page).toHaveURL(/\/login\?alasan=sesi-habis/, { timeout: 8000 })
