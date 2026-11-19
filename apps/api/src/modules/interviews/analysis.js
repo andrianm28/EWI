@@ -51,7 +51,7 @@ function createAnalysisRunner({ stores, ai, aiConfig = {}, logger = console, max
     const compIds = [...new Set(items.map((f) => f.competencyId).filter(Boolean))];
     const recIds = [...new Set(items.map((f) => f.performanceRecordId).filter(Boolean))];
     if (!compIds.length && !recIds.length) return items;
-    const comps = new Set(compIds.length && stores.dna.existingCompetencyIds ? await stores.dna.existingCompetencyIds(tenantId, compIds) : compIds);
+    const comps = new Set(compIds.length ? await stores.dna.existingCompetencyIds(tenantId, compIds) : compIds);
     const recs = new Set(recIds.length ? (await stores.tna.performanceByIds(tenantId, recIds)).map((r) => r.id) : []);
     return items.map((f) => ({
       ...f,
@@ -75,7 +75,7 @@ function createAnalysisRunner({ stores, ai, aiConfig = {}, logger = console, max
     const call = (pass) => callAi(env, () => ai.analyzeTna({ transcript, triggers: safe.triggers, competencies: safe.competencies, pass }));
     // B6 (A8): ringkasan yang dikonfirmasi karyawan adalah penilaian pertama, jadi temuan yang sampai ke HR
     // sama dengan yang dilihat karyawan. Model hanya dipanggil untuk penilaian kedua.
-    const confirmed = stores.interviews.summaryForAnalysis ? await stores.interviews.summaryForAnalysis(tenantId, session.id) : null;
+    const confirmed = await stores.interviews.summaryForAnalysis(tenantId, session.id);
     const first = confirmed || (await call(1)).findings;
     const r2 = await call(2);
     const { items, onlySecond } = combineTnaFindings(first, r2.findings);
