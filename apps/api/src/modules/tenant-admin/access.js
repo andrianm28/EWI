@@ -34,7 +34,7 @@ const denied = () => forbidden('ROLE_FORBIDDEN', 'Layar ini hanya untuk Admin Te
 /**
  * Gerbang Admin Tenant. Peran di token bisa sudah basi (token berlaku sampai 8 jam), padahal layar ini memberi
  * peran. Karena itu peran dan status pelaku dibaca ulang dari DB di setiap request: admin yang diturunkan atau
- * dinonaktifkan langsung kehilangan akses ke sini. store: { actor(tenantId, userId) -> { role, status } | null }
+ * dinonaktifkan langsung kehilangan akses ke sini. store: { actor(tenantId, userId) -> { role, roles?, status } | null }
  */
 function requireTenantAdmin(store) {
   return async (req, _res, next) => {
@@ -42,7 +42,9 @@ function requireTenantAdmin(store) {
       if (!req.user) return next(unauthorized());
       if (!isTenantAdmin(req.user)) return next(denied());
       const actor = await store.actor(req.tenantId, req.user.id);
-      if (!actor || actor.status !== 'active' || !isTenantAdmin(actor)) return next(denied());
+      // peran aktif di token harus masih diberikan di DB: users.role, atau daftar peran akun setelah B2
+      const assigned = actor && (Array.isArray(actor.roles) ? actor.roles : [actor.role]);
+      if (!actor || actor.status !== 'active' || !assigned.includes(req.user.role)) return next(denied());
       return next();
     } catch (e) { return next(e); }
   };

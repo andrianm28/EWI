@@ -70,6 +70,17 @@ describe('Akses Admin Tenant (B11)', () => {
     expect(await run({ id: 'u', role: 'learner' }, { role: 'hr_admin', status: 'active' })).toBe('ROLE_FORBIDDEN');
     expect(await run(null, null)).toBe('UNAUTHORIZED');
   });
+
+  it('DC-1: peran aktif di token harus masih diberikan di DB (users.role, atau daftar peran B2)', async () => {
+    const run = (user, actor) => new Promise((resolve) => {
+      requireTenantAdmin({ actor: async () => actor })({ user, tenantId: 't' }, null, (err) => resolve(err ? err.code : 'ok'));
+    });
+    // B2: tenant_admin sebagai peran tambahan, peran utama hr_admin → tidak terkunci
+    expect(await run({ id: 'u', role: 'tenant_admin' }, { role: 'hr_admin', roles: ['hr_admin', 'tenant_admin'], status: 'active' })).toBe('ok');
+    // peran aktif di token sudah dicabut di DB, walau peran DB lain juga admin
+    expect(await run({ id: 'u', role: 'tenant_admin' }, { role: 'hr_admin', status: 'active' })).toBe('ROLE_FORBIDDEN');
+    expect(await run({ id: 'u', role: 'tenant_admin' }, { role: 'hr_admin', roles: ['hr_admin'], status: 'active' })).toBe('ROLE_FORBIDDEN');
+  });
 });
 
 describe('Impor kamus per jabatan (B11)', () => {
