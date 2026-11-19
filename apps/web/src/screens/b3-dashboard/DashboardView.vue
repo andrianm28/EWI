@@ -82,7 +82,7 @@ const ACTIONS: { key: ActionKey; text: (n: number) => string; desc: string; cta:
 const actions = computed(() => ACTIONS.flatMap((a) => {
   const item = data.value?.actions.find((x) => x.key === a.key)
   if (!item) return []
-  return [{ key: a.key, text: a.text(item.count), desc: a.desc, cta: a.cta, to: a.routes.find((r) => routeOpen(r, session)) }]
+  return [{ key: a.key, text: a.text(item.count), desc: a.desc, cta: a.cta, to: a.routes.find((r) => routeOpen(r, session.activeView, session)) }]
 }))
 
 const PART_LABEL: Record<string, string> = { cca: 'CCA', dna: 'DNA', tna: 'TNA', ina: 'INA' }
@@ -93,7 +93,7 @@ const modules = computed(() => (data.value?.modules ?? []).map((m) => {
     ...m,
     ...info,
     parts: (m.parts ?? []).filter((p) => p.active).map((p) => PART_LABEL[p.key] ?? p.key).join(' · '),
-    open: m.active ? info.routes.find((r) => routeOpen(r, session)) : undefined,
+    open: m.active ? info.routes.find((r) => routeOpen(r, session.activeView, session)) : undefined,
   }
 }))
 </script>
