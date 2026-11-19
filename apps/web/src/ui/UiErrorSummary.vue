@@ -5,11 +5,14 @@ import { nextTick, ref, watch } from 'vue'
 const props = withDefaults(defineProps<{ title?: string; errors: { message: string; fieldId?: string }[] }>(), { title: 'Ada masalah' })
 const box = ref<HTMLElement | null>(null)
 
-watch(() => props.errors, async (list) => {
-  if (!list.length) return
+// Fokus pindah hanya saat ringkasan muncul (kosong menjadi berisi). Validasi langsung saat mengetik tidak boleh
+// merebut fokus dari input; pemakai yang ingin fokus ulang saat kirim memanggil focus() lewat ref.
+async function focus() {
   await nextTick()
   box.value?.focus()
-}, { immediate: true, deep: true })
+}
+watch(() => props.errors.length > 0, (shown) => { if (shown) focus() }, { immediate: true })
+defineExpose({ focus })
 
 function jump(e: Event, fieldId: string) {
   e.preventDefault()
