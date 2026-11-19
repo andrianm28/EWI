@@ -68,6 +68,7 @@ function dashboardRouter({ stores, flags, entitlements, settings, audit }) {
     const add = (key, count) => { if (count > 0) actions.push({ key, count }); };
     let pareto = null;
     let unapproved = 0;
+    let planNeedsModule = 0; // hanya HR
 
     if (dnaOn) {
       const assessments = await stores.dna.assessmentsFor(tenantId, ids);
@@ -114,11 +115,11 @@ function dashboardRouter({ stores, flags, entitlements, settings, audit }) {
           ? { median: median(durations.map((d) => Number(d.days))), sessions: durations.length, targetDays: ANALYSIS_TARGET_DAYS }
           : null;
         add('review_pending', counts.draft);
-        add('interviews_open', sessions.filter((s) => OPEN_SESSION.includes(s.status) && inScope.has(s.intervieweeId)).length);
-        add('plan_needs_module', plan.filter((p) => inScope.has(p.userId) && p.needsModule && !CLOSED_PLAN.includes(p.status)).length);
-      } else {
-        add('interviews_open', sessions.filter((s) => OPEN_SESSION.includes(s.status) && inScope.has(s.intervieweeId)).length);
+        planNeedsModule = plan.filter((p) => inScope.has(p.userId) && p.needsModule && !CLOSED_PLAN.includes(p.status)).length;
       }
+      // Urutan butir tetap (spek 3.5): review_pending, interviews_open, plan_needs_module
+      add('interviews_open', sessions.filter((s) => OPEN_SESSION.includes(s.status) && inScope.has(s.intervieweeId)).length);
+      add('plan_needs_module', planNeedsModule);
 
       // K1 / PM-6: temuan non-pelatihan untuk HR; atasan hanya bila HR memberinya akses. Tanpa akses butirnya
       // tidak dikirim sama sekali, sehingga atasan tidak bisa menyimpulkan ada temuan.

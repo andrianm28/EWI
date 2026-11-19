@@ -17,6 +17,12 @@ const COMPETENCY_COLS = `c.id, c.job_role_id AS "jobRoleId", c.career_level_id A
   c.definition, c.indicators, c.source, c.version, c.required_score AS "requiredScore", c.importance,
   c.approved_at AS "approvedAt"`;
 
+/** Baris { reviewStatus, n } menjadi hitungan per status review, status tanpa baris bernilai 0. */
+function byReviewStatus(rows) {
+  const out = { draft: 0, approved: 0, edited: 0, rejected: 0 };
+  for (const r of rows) out[r.reviewStatus] = r.n;
+  return out;
+}
 const PLAN_COLS = `p.id, p.user_id AS "userId", u.name AS "userName", p.finding_id AS "findingId", p.origin, p.status,
   p.program_tier AS "programTier", p.catalog_source AS "catalogSource", p.catalog_item_ref AS "catalogItemRef",
   p.catalog_item_title AS "catalogItemTitle", (p.catalog_item_ref IS NULL AND p.origin <> 'learner_request') AS "needsModule", p.note, p.requested_by AS "requestedBy", p.created_at AS "createdAt",
@@ -715,10 +721,7 @@ function createLnaStores(sequelize, { cipher } = {}) {
       const rep = { tenantId };
       let sql = 'SELECT review_status AS "reviewStatus", count(*)::int AS n FROM lna_findings WHERE tenant_id = :tenantId';
       if (projectId) { sql += ' AND project_id = :projectId'; rep.projectId = projectId; }
-      const rows = await select(`${sql} GROUP BY review_status`, rep);
-      const out = { draft: 0, approved: 0, edited: 0, rejected: 0 };
-      for (const r of rows) out[r.reviewStatus] = r.n;
-      return out;
+      return byReviewStatus(await select(`${sql} GROUP BY review_status`, rep));
     },
     /**
      * B3: jumlah temuan hasil job analisis AI per status review. Yang sudah diputus hanya dihitung bila diputus
@@ -729,9 +732,7 @@ function createLnaStores(sequelize, { cipher } = {}) {
                                   WHERE tenant_id = :tenantId AND analysis_job_id IS NOT NULL
                                     AND (review_status = 'draft' OR reviewed_by IS NOT NULL)
                                   GROUP BY review_status`, { tenantId });
-      const out = { draft: 0, approved: 0, edited: 0, rejected: 0 };
-      for (const r of rows) out[r.reviewStatus] = r.n;
-      return out;
+      return byReviewStatus(rows);
     },
     /**
      * B3: lama analisis per sesi TNA dalam hari (pecahan): dari wawancara selesai sampai temuan AI terakhirnya
