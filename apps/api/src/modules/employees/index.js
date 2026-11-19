@@ -36,6 +36,8 @@ async function buildExport({ stores, flags, tenantId, person, self }) {
     stores.dna.assessments(tenantId, person.id),
     stores.dna.completions(tenantId, [person.id]),
   ]);
+  // B10: hasil program nilai dan penugasan wawancara Core Competencies; ringkasan wawancara hanya untuk karyawan itu sendiri
+  const coreCompetencies = stores.cca ? await stores.cca.exportFor(tenantId, person.id, { withSummary: self }) : undefined;
   return {
     format: EXPORT_VERSION,
     exportedAt: new Date().toISOString(),
@@ -46,6 +48,7 @@ async function buildExport({ stores, flags, tenantId, person, self }) {
     planItems,
     performance,
     dna: { assessments, completions },
+    coreCompetencies,
   };
 }
 

@@ -5,8 +5,8 @@ import { test, expect, type Page } from '@playwright/test'
 const SUBMODULES = ['cca', 'dna', 'tna', 'ina']
 const FLAGS: Record<string, boolean> = { 'module.dna': true, 'module.tna': true, 'module.cca': false, 'module.ina': false }
 
-interface TestRoute { name: string; views?: string[]; flag?: string; submodule?: string; menuKey?: string; roles?: string[] }
-interface Opts { role?: string; roles?: string[]; flags?: Record<string, boolean>; routes?: TestRoute[]; tenantName?: string }
+interface TestRoute { name: string; views?: string[]; flag?: string; submodule?: string; menuKey?: string; roles?: string[]; entitlement?: string }
+interface Opts { role?: string; roles?: string[]; flags?: Record<string, boolean>; routes?: TestRoute[]; tenantName?: string; products?: string[] }
 
 async function loginAs(page: Page, o: Opts = {}) {
   const role = o.role ?? 'hr_admin'
@@ -15,7 +15,7 @@ async function loginAs(page: Page, o: Opts = {}) {
   await page.route('**/api/auth/tenants', (r) => r.fulfill({ json: { data: [] } }))
   await page.route('**/api/auth/login', (r) => r.fulfill({ json: { token: 't', user } }))
   await page.route('**/api/auth/me', (r) => r.fulfill({ json: { user } }))
-  await page.route('**/api/me/access', (r) => r.fulfill({ json: { submodules: SUBMODULES, flags: { ...FLAGS, ...o.flags } } }))
+  await page.route('**/api/me/access', (r) => r.fulfill({ json: { submodules: SUBMODULES, products: o.products ?? ['full_suite'], flags: { ...FLAGS, ...o.flags } } }))
   await page.route(/\/api\/(dna|tna)\//, (r) => r.fulfill({ json: { data: [] } }))
   await page.goto('/login')
   await page.getByLabel('Organisasi').fill('demo')
@@ -149,14 +149,41 @@ test('meta.roles: peran asli di luar daftar tidak mendapat butir menu dan tidak 
   await expect(page).toHaveURL(/\/$/)
 })
 
-test('tinjauan hasil AI lama: HR bisa membuka, atasan dikembalikan ke beranda', async ({ page }) => {
+test('meta.entitlement: modul 2–5 tanpa produk yang dibutuhkan tidak tampil di menu dan tidak bisa dibuka', async ({ page }) => {
+  const routes = [{ name: 'lib', flag: 'module.li', entitlement: 'full_suite' }]
+  await loginAs(page, { products: ['dna', 'tna'], flags: { 'module.li': true }, routes })
+  await expect(nav(page).getByRole('link', { name: 'Library' })).toHaveCount(0)
+  await page.goto('/uji/lib')
+  await expect(page).toHaveURL(/\/$/)
+})
+
+test('meta.entitlement: tenant full_suite melihat modulnya', async ({ page }) => {
+  await loginAs(page, { products: ['full_suite'], flags: { 'module.li': true }, routes: [{ name: 'lib', flag: 'module.li', entitlement: 'full_suite' }] })
+  await expect(nav(page).getByRole('link', { name: 'Library' })).toBeVisible()
+})
+
+test('tinjauan hasil AI lama: atasan dikembalikan ke beranda', async ({ page }) => {
   await loginAs(page, { role: 'supervisor' })
   await page.goto('/m/tna/review')
   await expect(page).toHaveURL(/\/$/)
 })
 
+test('tinjauan hasil AI lama: HR bisa membuka dan butir Training Needs menyala', async ({ page }) => {
+  await loginAs(page)
+  await page.goto('/m/tna/review')
+  await expect(page).toHaveURL(/\/m\/tna\/review$/)
+  await expect(page.getByTestId('judul-layar')).toHaveText('Tinjauan hasil AI')
+  await expect(nav(page).getByRole('link', { name: 'Training Needs' })).toHaveAttribute('aria-current', 'page')
+})
+
+test('butir menu tidak tampil untuk tampilan yang tidak diizinkan meta.views rutenya', async ({ page }) => {
+  // dash didaftarkan hanya untuk HR: atasan tidak mendapat butirnya walau menu mockup memuatnya
+  await loginAs(page, { role: 'supervisor', routes: [{ name: 'dash', views: ['hr'] }] })
+  await expect(nav(page).getByRole('link')).toHaveText(['Beranda', 'Developmental Needs', 'Training Needs'])
+})
+
 test('tampilan tersimpan yang tidak valid diabaikan', async ({ page }) => {
-  await page.addInitScript(() => sessionStorage.setItem('ewi.view', 'super'))
+  await page.addInitScript(() => sessionStorage.setItem('elgos.view', 'super'))
   await loginAs(page, { role: 'learner' })
   await expect(page.getByTestId('identitas')).toContainText('Karyawan')
 })
@@ -242,10 +269,10 @@ test.describe('layar sempit', () => {
 test('keluar kembali ke login dan menghapus tampilan tersimpan', async ({ page }) => {
   await loginAs(page, { roles: ['hr_admin'], routes: [{ name: 'my', views: ['karyawan'] }] })
   await page.getByRole('group', { name: 'Tampilan' }).getByRole('button', { name: 'Karyawan (saya)' }).click()
-  await expect.poll(() => page.evaluate(() => sessionStorage.getItem('ewi.view'))).toBe('karyawan')
+  await expect.poll(() => page.evaluate(() => sessionStorage.getItem('elgos.view'))).toBe('karyawan')
   await page.getByRole('button', { name: 'Keluar' }).click()
   await expect(page).toHaveURL(/\/login$/)
-  expect(await page.evaluate(() => [sessionStorage.getItem('ewi.view'), sessionStorage.getItem('ewi.token')])).toEqual([null, null])
+  expect(await page.evaluate(() => [sessionStorage.getItem('elgos.view'), sessionStorage.getItem('ewi.token')])).toEqual([null, null])
 })
 
 test('shell + Beranda: snapshot visual', async ({ page }) => {

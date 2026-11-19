@@ -8,7 +8,7 @@ module.exports = {
   key: 'dna_job_levels',
   label: 'Jenjang & program',
   description: 'Job role, jenjang karier dari terendah, dan program (Basic/Intermediate/Advanced) per jenjang.',
-  submodules: ['dna'],
+  submodules: ['dna', 'cca'],
   fields: [
     { key: 'jobRole', header: 'Job Role', required: true, aliases: ['jabatan', 'posisi', 'job role'], example: 'Service Delivery L1' },
     { key: 'division', header: 'Divisi', aliases: ['departemen', 'unit', 'division'], example: 'Service Delivery' },

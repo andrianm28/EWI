@@ -15,7 +15,7 @@ const route = useRoute()
 
 const menu = computed(() => buildMenu({
   view: session.activeView,
-  routeOpen: (name) => routeOpen(name, session),
+  routeOpen: (name) => routeOpen(name, session.activeView, session),
   homeReady: session.homeReady(session.activeView),
   flags: session.access?.flags ?? {},
   canOpen: session.canOpen,

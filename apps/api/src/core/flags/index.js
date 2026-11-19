@@ -6,6 +6,9 @@ const FLAGS = Object.freeze({
   MODULE_DNA: 'module.dna',
   MODULE_TNA: 'module.tna',
   MODULE_INA: 'module.ina',
+  // Bangun penuh 19 Nov (mockup Pak Eji): modul di luar Learning Needs Analysis
+  MODULE_LI: 'module.li', // B13 Learning Intervention
+  MODULE_LD: 'module.ld', // B14 Learning Delivery
   // Cadence 11 Nov (C2): POC ELGOS memakai hasil wawancara DNA manual; wawancara AI DNA ditahan
   DNA_AI_INTERVIEW: 'dna.ai_interview',
   // G2-A (13 Nov): rekomendasi promosi = modul terpisah, di luar POC DNA+TNA
@@ -23,6 +26,14 @@ const FLAGS = Object.freeze({
   TNA_TRAINING_REQUEST: 'tna.training_request',
   // PM-6 (17 Nov): daftar ringkas temuan non-training untuk HR; atasan bila diberi akses HR. Mati = disembunyikan
   TNA_NON_TRAINING_HR: 'tna.non_training_hr',
+  // B5 (19 Nov): papan gap Training Needs (gap kompetensi + gap OKR, klasifikasi, detail gap)
+  TNA_GAP_BOARD: 'tna.gap_board',
+  // B5: penugasan wawancara akar masalah per gap (tenggat, durasi 15/30 menit) oleh HR atau atasan
+  TNA_INTERVIEW_ASSIGNMENT: 'tna.interview_assignment',
+  // B6: karyawan memeriksa ringkasan temuan AI (sesuai / ulangi) sebelum dikirim ke HR
+  TNA_INTERVIEW_SUMMARY: 'tna.interview_summary',
+  // B10: wawancara AI berjenjang visi-misi-nilai (pimpinan lalu karyawan); hasil program dan persyaratan tetap bisa dibuka tanpa ini
+  CCA_INTERVIEW: 'cca.interview',
 });
 
 const KNOWN = new Set(Object.values(FLAGS));

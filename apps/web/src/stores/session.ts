@@ -18,11 +18,13 @@ export interface SessionUser {
 
 interface Access {
   submodules: SubmoduleKey[]
+  /** Produk entitlement aktif tenant (mis. ['full_suite']); untuk gerbang modul 2–5 (meta.entitlement). */
+  products?: string[]
   flags: Record<string, boolean>
 }
 
 const STORAGE_KEY = 'ewi.token'
-const VIEW_KEY = 'ewi.view'
+const VIEW_KEY = 'elgos.view'
 
 function readToken(): string | null {
   try { return sessionStorage.getItem(STORAGE_KEY) } catch { return null }
@@ -34,10 +36,13 @@ function readView(): string | null {
 
 // Apakah layar beranda sebuah tampilan sudah bisa dibuka (rute terdaftar dan gerbangnya lolos). Diisi router
 // saat dibuat (store tidak mengimpor router supaya tidak ada impor melingkar).
-interface Gates { access: Access | null; canOpen: (key: SubmoduleKey) => boolean; roles: string[] }
-type HomeReady = (view: ViewKey, session: Gates) => boolean
-let homeReadyFn: HomeReady = () => false
-export function bindRoutes(fn: (view: ViewKey, session: never) => boolean) { homeReadyFn = fn as HomeReady }
+/** Bagian sesi yang dibaca gerbang rute (flag, submodul, peran). */
+export interface Gates { access: Access | null; canOpen: (key: SubmoduleKey) => boolean; roles: string[] }
+/** Apakah layar beranda tampilan `view` sudah bisa dibuka untuk sesi ini. */
+export type HomeReadyCheck = (view: ViewKey, gates: Gates) => boolean
+let homeReadyFn: HomeReadyCheck = () => false
+/** Diisi router: memasang pemeriksa "beranda tampilan siap" (lihat homeFor di router). */
+export function bindRoutes(fn: HomeReadyCheck) { homeReadyFn = fn }
 
 export const useSessionStore = defineStore('session', () => {
   const token = ref<string | null>(readToken())

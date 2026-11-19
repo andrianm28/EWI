@@ -1,5 +1,5 @@
 import { createRouter, createWebHistory, type RouteLocationNormalized, type RouteRecordRaw } from 'vue-router'
-import { bindRoutes, useSessionStore } from '@/stores/session'
+import { bindRoutes, useSessionStore, type Gates } from '@/stores/session'
 import type { SubmoduleKey } from '@/modules'
 import { menuLabel } from '@/shell/menu'
 import { VIEW_HOME, type ViewKey } from '@/shell/views'
@@ -21,6 +21,8 @@ declare module 'vue-router' {
     flag?: string
     /** Submodul yang harus dimiliki dan menyala. */
     submodule?: SubmoduleKey
+    /** Modul 2–5: produk entitlement yang harus dimiliki tenant (mis. 'full_suite'), sama dengan pemeriksaan API-nya. */
+    entitlement?: string
     /** Butir menu yang menyala saat rute ini terbuka (untuk layar anak). */
     menuKey?: string
     /** Peran asli (dari API) yang boleh membuka rute ini, mis. ['hr_admin', 'eta_admin']. Tanpa ini: semua peran. */
@@ -65,20 +67,27 @@ assertUnique(routes)
 
 const router = createRouter({ history: createWebHistory(), routes })
 
-type Session = ReturnType<typeof useSessionStore>
+type Session = Gates
 
 function passesGates(meta: RouteLocationNormalized['meta'], params: RouteLocationNormalized['params'], session: Session): boolean {
   if (meta.flag && session.access?.flags[meta.flag] !== true) return false
   const key = (meta.submodule ?? (meta.submoduleParam ? params.key : undefined)) as SubmoduleKey | undefined
   if (key && !session.canOpen(key)) return false
   if (meta.roles && !session.roles.some((r) => meta.roles!.includes(r))) return false
+  // Gagal-tertutup: API lama tanpa `products` berarti produk tidak diketahui, jadi modulnya disembunyikan
+  if (meta.entitlement && !session.access?.products?.includes(meta.entitlement)) return false
   return true
 }
 
-/** Rute terdaftar dan gerbangnya (flag, submodul, peran) lolos. Dipakai menu supaya butir tidak memantul saat diklik. */
-export function routeOpen(name: string, session: Session = useSessionStore()): boolean {
+/**
+ * Rute terdaftar, boleh dibuka tampilan `view`, dan gerbangnya (flag, submodul, peran) lolos. Dipakai menu dan
+ * layar supaya tautan tidak memantul ke beranda saat diklik. Rute ber-param wajib tidak bisa diperiksa: false.
+ */
+export function routeOpen(name: string, view: ViewKey, session: Session = useSessionStore()): boolean {
   if (!router.hasRoute(name)) return false
-  const target = router.resolve({ name })
+  let target: ReturnType<typeof router.resolve>
+  try { target = router.resolve({ name }) } catch { return false }
+  if (target.meta.views && !target.meta.views.includes(view)) return false
   return passesGates(target.meta, target.params, session)
 }
 
@@ -88,10 +97,7 @@ export function routeOpen(name: string, session: Session = useSessionStore()): b
  */
 export function homeFor(view: ViewKey, session: Session = useSessionStore()): string {
   const name = VIEW_HOME[view]
-  if (!router.hasRoute(name)) return 'home'
-  const target = router.resolve({ name })
-  if (target.meta.views && !target.meta.views.includes(view)) return 'home'
-  return passesGates(target.meta, target.params, session) ? name : 'home'
+  return routeOpen(name, view, session) ? name : 'home'
 }
 
 // Satu sumber untuk "layar beranda tampilan ini sudah bisa dibuka": dipakai penjaga rute, daftar tampilan
