@@ -174,7 +174,9 @@ module.exports = {
     r.post('/plans', hr, wrap(async (req, res) => {
       const v = await planFields(req.body || {}, { stores, tenantId: req.tenantId, create: true });
       for (const f of TEXT_FIELDS) v[f] = v[f] || '';
-      const id = await stores.lim.createPlan(req.tenantId, { jobRoleId: null, periodFrom: null, periodUntil: null, baselineLabel: null, afterLabel: null, ...v }, req.user.id);
+      // isian yang tidak dikirim bernilai undefined di v; jangan sampai menimpa bawaan null
+      const given = Object.fromEntries(Object.entries(v).filter(([, x]) => x !== undefined));
+      const id = await stores.lim.createPlan(req.tenantId, { jobRoleId: null, periodFrom: null, periodUntil: null, baselineLabel: null, afterLabel: null, ...given }, req.user.id);
       await audit.record(req, 'create', 'lim.plan', { planId: id });
       res.status(201).json({ data: await stores.lim.getPlan(req.tenantId, id) });
     }));

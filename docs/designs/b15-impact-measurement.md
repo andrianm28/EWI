@@ -356,3 +356,12 @@ diff yang sama. Laporan dan triase `egm-resolve`: `/mnt/project-files/elgos-ekse
 | D21 | Enum `Verdict` berbahasa Indonesia, `GET /api/lim/` tidak di tabel 5 (standards, spek) | Tolak: nilai mengikuti spek 6.1; `GET /` sama dengan modul lain |
 | D22 | `job_role_id` ON DELETE SET NULL memperlebar kohort diam-diam (readiness) | Catat: perilaku sesuai bagian 4; layar menampilkan "semua jabatan" bila jabatan kosong |
 | D23 | `teamOf` tidak memakai `visibleEmployeeScope()` (aturan 4) (standards) | Eskalasi ke Andrian (sama dengan B10 E7): spek 6.5 membuang atasan dari cakupan, `visibleEmployeeScope` memasukkannya |
+
+### Test alur B18 (19 Nov, PR susulan)
+
+Test alur `apps/api/tests/integration/alur-impact-measurement.test.js` (tabel 3.3 spek B18) menjalankan B13 → B14 → B15
+lewat API sungguhan dan menemukan satu bug:
+
+| # | Temuan | Keputusan |
+| --- | --- | --- |
+| A1 | `POST /api/lim/plans` tanpa `baselineLabel`/`afterLabel` (persis yang dikirim formulir web) menghasilkan 500: isian `undefined` dari validasi menimpa bawaan `null` | Diperbaiki test-first: test integrasi "rencana minimal" (merah 500, lalu hijau 201). E2E web tidak menangkapnya karena API di-mock |
