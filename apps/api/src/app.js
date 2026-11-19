@@ -17,8 +17,12 @@ const { errorHandler, notFound } = require('./core/errors');
 const { createReadiness, readyHandler } = require('./core/health');
 const projects = require('./modules/projects');
 const { employeeRouter } = require('./modules/employees');
+const { myRouter } = require('./modules/my');
+const { assistantRouter } = require('./modules/assistant');
 const { dashboardRouter } = require('./modules/dashboard');
 const { webhookRouter } = require('./integrations/elitementor/webhook');
+const { createElitementorClient } = require('./integrations/elitementor/client');
+const { createAssignmentService } = require('./integrations/elitementor/assignments');
 const { createSettingsService } = require('./core/settings');
 const { createAiProvider } = require('./ai');
 const { createAnalysisRunner } = require('./modules/interviews/analysis');
@@ -26,14 +30,14 @@ const { createCatalogService, elitementorAdapter, moodleAdapter } = require('./i
 const tenantAdmin = require('./modules/tenant-admin');
 const { createStorage } = require('./integrations/storage');
 const { createLdSync } = require('./modules/ld/sync');
-const SUBMODULE_MODULES = ['cca', 'dna', 'tna', 'ina', 'li', 'ld'].map((k) => require(`./modules/${k}`));
+const SUBMODULE_MODULES = ['cca', 'dna', 'tna', 'ina', 'li', 'ld', 'lim'].map((k) => require(`./modules/${k}`));
 
 /**
  * Bangun aplikasi Express. Semua akses data lewat `stores` agar bisa diganti di test.
  * stores: { users, flags, audit, entitlements, projects, people, settings, dna, interviews, tna, projectsExtra }
- * ai / catalog / storage bisa diganti di test; default mengikuti config (AI_PROVIDER, PK-06; K-1 masih terbuka).
+ * ai / catalog / assignments / storage bisa diganti di test; default mengikuti config (AI_PROVIDER, PK-06; K-1 masih terbuka).
  */
-function createApp({ config, stores, ai, catalog, mailer, readiness, storage }) {
+function createApp({ config, stores, ai, catalog, mailer, readiness, assignments, storage }) {
   const app = express();
   const tokens = createTokenService(config.jwt);
   const flags = createFlagService(stores.flags);
@@ -59,6 +63,11 @@ function createApp({ config, stores, ai, catalog, mailer, readiness, storage }) 
     uploads: config.uploads || {},
     appBaseUrl: config.appBaseUrl,
   };
+  // B7: penugasan ke EliteMentor hanya terpasang bila dinyalakan lewat env (kontrak FR-EM belum final);
+  // tanpa adapter, endpoint penugasan menjawab ASSIGN_UNAVAILABLE.
+  const em = config.elitementor || {};
+  deps.assignments = assignments
+    || (em.assignmentsEnabled && em.baseUrl && em.tokenUrl ? createAssignmentService({ client: createElitementorClient(em) }) : null);
   // PK-14: analisis wawancara berjalan di latar. app.locals.analysis dipakai server (penyapu) dan test (drain).
   deps.analysis = createAnalysisRunner({ stores, ai: deps.ai, aiConfig: deps.aiConfig });
   app.locals.analysis = deps.analysis;
@@ -96,6 +105,10 @@ function createApp({ config, stores, ai, catalog, mailer, readiness, storage }) 
   api.use('/projects', projects.router({ projects: stores.projects }));
   api.use('/admin', flagAdminRouter({ flags, audit }));
   if (stores.people && stores.interviews) api.use('/employees', employeeRouter({ stores, flags, audit }));
+  // B8: beranda karyawan. Bukan submodul; tiap bagian memeriksa modulnya sendiri (flag learner.home).
+  if (stores.people && stores.dataRequests) api.use('/my', myRouter({ stores, flags, entitlements, settings, audit }));
+  // B17: Asisten ELGOS. Bukan submodul; tiap penyusun fakta memeriksa modulnya sendiri (flag assistant).
+  if (stores.people && stores.assistant) api.use('/assistant', assistantRouter({ ...deps, entitlements }));
   // B3: dashboard lintas modul. Bukan submodul; di balik flag sendiri dan tiap bagian mengikuti modul sumbernya.
   if (stores.people && stores.interviews && stores.tna && stores.dna) {
     api.use('/dashboard', requireFlag(flags, FLAGS.DASHBOARD_MAIN, 'Dashboard belum diaktifkan untuk organisasi Anda'),

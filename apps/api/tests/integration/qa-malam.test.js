@@ -91,7 +91,7 @@ run('QA malam dengan penyedia stub (Postgres)', () => {
     const laporan = await jalankanQaMalam({ db, config: makeConfig(), ai: createStubProvider(), persona: [personaUji()], env });
     expect(laporan.persona[0].tautan).toEqual(expect.any(Number));
     expect(laporan.cakupan.operasi).toEqual(expect.objectContaining({ nextQuestion: expect.any(Number), analyzeTna: expect.any(Number) }));
-    expect(laporan.cakupan.belumDiuji).toEqual(['assessCompetencies']);
+    expect(laporan.cakupan.belumDiuji).toEqual(['assessCompetencies', 'assistantReply']); // assistantReply (B17) belum punya persona QA malam
     expect(laporan.cakupan.alur).toEqual({ selesai: 1 });
   });
 

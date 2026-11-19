@@ -232,8 +232,10 @@ describe('GET /api/dashboard', () => {
     const flags = { ...ALL_ON, 'module.li': true, 'module.ld': true, 'module.lim': true, 'promotion.recommendation': true };
     const status = async (entitlements) => (await setup({ flags, entitlements }).get('u-hr', 'hr_admin')).body.data.modules.map((m) => [m.key, m.active]);
     expect(await status(['dna', 'tna'])).toEqual([['lna', true], ['li', false], ['ld', false], ['lim', false], ['cp', true]]);
-    // module.lim belum terdaftar di FLAGS (dibuat B15), jadi flags.all() tidak memuatnya dan modul 4 tetap tidak aktif
-    expect(await status(['full_suite'])).toEqual([['lna', true], ['li', true], ['ld', true], ['lim', false], ['cp', true]]);
+    // module.lim terdaftar di FLAGS sejak B15 (PR #27): full_suite + flag menyala = modul 4 aktif, flag mati = tidak aktif
+    expect(await status(['full_suite'])).toEqual([['lna', true], ['li', true], ['ld', true], ['lim', true], ['cp', true]]);
+    const tanpaLim = await setup({ flags: { ...flags, 'module.lim': false }, entitlements: ['full_suite'] }).get('u-hr', 'hr_admin');
+    expect(tanpaLim.body.data.modules.find((m) => m.key === 'lim').active).toBe(false);
     expect(await status(['tna'])).toEqual([['lna', true], ['li', false], ['ld', false], ['lim', false], ['cp', false]]);
   });
 

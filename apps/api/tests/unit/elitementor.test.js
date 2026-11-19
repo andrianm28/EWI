@@ -50,3 +50,20 @@ describe('klien OAuth2 EliteMentor', () => {
     expect(calls.filter((u) => u.endsWith('/token'))).toHaveLength(1);
   });
 });
+
+describe('port penugasan EliteMentor (B7)', () => {
+  const { createAssignmentService } = require('../../src/integrations/elitementor/assignments');
+  it('mengirim kunci idempotensi, organisasi, dan batas waktu', async () => {
+    const calls = [];
+    const client = { async request(method, path, opts) { calls.push({ method, path, opts }); return { id: 42 }; } };
+    const out = await createAssignmentService({ client, timeoutMs: 500 }).assign({
+      organizationId: 'org-1', employee: { employeeId: 'E-1', email: 'a@x.test' }, course: { ref: 'C-1', title: 'Judul' }, planItemId: 'plan-1',
+    });
+    expect(out).toEqual({ ref: '42' });
+    expect(calls[0]).toMatchObject({
+      method: 'POST', path: '/api/ewi/assignments',
+      opts: { organizationId: 'org-1', headers: { 'Idempotency-Key': 'plan-1' }, body: { idempotencyKey: 'plan-1', employeeId: 'E-1', email: 'a@x.test', courseRef: 'C-1', courseTitle: 'Judul' } },
+    });
+    expect(calls[0].opts.signal).toBeInstanceOf(AbortSignal);
+  });
+});

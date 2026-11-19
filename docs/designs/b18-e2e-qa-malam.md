@@ -119,6 +119,9 @@ apps/api/tests/
 | Rekomendasi promosi | Atasan merekomendasi → HR setuju; nama dan waktu tercatat | B16 | thread B16 |
 | Modul mati | Dengan `module.ina` mati: tindakan perbaikan dari tinjauan HR tidak bisa dibuat dan API Improvement Needs mengembalikan 404/403; modul lain tetap jalan. Diulang untuk modul yang ditahan Go/No-Go | B7, B9 | thread integrasi |
 | Entitlement vs flag | Flag menyala tetapi tenant tidak punya entitlement submodul: rute ditolak | sekarang ada | thread integrasi |
+| Tinjauan HR versi mockup | HR mengklasifikasi tiga tombol → temuan pelatihan masuk solusi dengan course usulan → HR menugaskan ke EliteMentor (adapter tiruan) atau, bila `lms.delivery = lms_export`, mengekspor CSV gap; temuan non-pelatihan diserahkan ke Improvement Needs dan tidak bisa diklasifikasi ulang | B7 | thread T5 (B7), `alur-tinjauan-hr.test.js` setelah `driver.js` rilis |
+| Tarik persetujuan dan permintaan data | Karyawan menarik persetujuan → wawancara berhenti, sesi ditandai, draf temuannya keluar dari antrean HR, data tetap ada → HR menutup permintaan dengan `erase: true` → transkrip dan temuan terhapus, audit tercatat sebelum hapus; karyawan meminta hapus data (tenggat 3x24 jam) | B8 | thread T5 (B8), `alur-permintaan-data.test.js` |
+| Asisten ELGOS per peran | Karyawan bertanya tentang rencananya → jawaban dari data sendiri; bertanya tentang karyawan lain → ditolak tanpa panggilan model; atasan → model hanya menerima kode samaran timnya, jawaban memuat nama asli, audit berisi anggota tim; HR → angka tinjauan/gap/rencana cocok; tenant lain tidak ikut; pertanyaan ke-21 dalam 10 menit → 429 | B17 | thread T5 (B17), `alur-asisten.test.js` |
 | Gap TNA ke intervensi | HR mengimpor library modul KSA (`li_modules`) → gap TNA yang sudah disetujui HR muncul di Pareto `/api/li/modules?priority=pareto`, gap yang belum ditinjau tidak → HR meminta modul ke vendor → maju `confirmed` → `delivered` → `installed` dengan `catalogItemId` course aktif (atau `PATCH /api/li/modules/:id`) → modul `status.key = available`; atasan dan karyawan ditolak 403; `module.li` mati → 403 `FEATURE_DISABLED`; tanpa `full_suite` → 403 `NOT_ENTITLED` | B13, B5 | thread B13/B14 (setelah `driver.js` dirilis) |
 | Pelatihan offline sampai skor | HR membuat pelatihan offline → menambah peserta dari jabatan → mencatat kehadiran → mengisi skor vendor → detail `/api/ld/trainings/:id` `assessmentStatus = manual` begitu semua peserta yang hadir punya skor → dashboard `/api/ld/dashboard` memuat pelatihan itu; pengingat kedua dalam 24 jam ditolak 409 `REMINDER_RECENT` | B14 | thread B13/B14 (setelah `driver.js` dirilis) |
 | Webhook EliteMentor ke pelatihan online | Course LMS tersinkron jadi pelatihan → event `learning.progress` dan `assessment.result` ber-HMAC memperbarui peserta dan skor; event ulang tidak berefek; dengan `em.webhook_sync` atau `module.ld` mati, atau tenant tanpa `full_suite`, event diabaikan tanpa galat (202) | B14 | thread B13/B14 (setelah `driver.js` dirilis) |
@@ -147,8 +150,9 @@ Spec milik paket (`poc-dna-tna.spec.ts`, `gating.spec.ts`, `shell.spec.ts`, dan 
 
 ### 4.2 Antarmuka `support/`
 
-- `loginSebagai(page, peran, { flags, submodules, peranLain })`: me-mock verifikasi tautan email (setelah B1), `/api/me/access` (berisi `submodules` dan `flags`, keduanya dibutuhkan `canOpen` di `session.ts`), dan `/api/auth/me`, lalu membuka aplikasi. `peranLain` untuk pengguna yang bisa ganti tampilan (K2).
-- `mockApi(page, penangan)`: penangan berupa fungsi `(request) => respons`, sehingga parameter path, query, dan state antar-permintaan bisa ditangani. Peta statis tidak cukup.
+- `loginSebagai(page, peran, { flags, submodules, products, peranLain, nama, tenantName })`: `peran` adalah tampilan K2 (`hr`, `atasan`, `karyawan`, `admin`, `super`), dipetakan ke kunci peran API di `PERAN_API`. Me-mock verifikasi tautan email (`POST /api/auth/email-link/verify`, halaman `/masuk` yang sudah ada), `/api/me/access` (berisi `submodules`, `flags`, dan `products`; `products` wajib karena gerbang `meta.entitlement` B0 gagal-tertutup), dan `/api/auth/me`, lalu masuk sampai shell tampil. Bawaan: semua submodul, `module.<x>` menyala, `products: ['full_suite']`. `peranLain` untuk pengguna yang bisa ganti tampilan (K2).
+- `mockApi(page, penangan)`: penangan berupa fungsi `(request) => respons | undefined`, sehingga parameter path, query, dan state antar-permintaan bisa ditangani. Peta statis tidak cukup. `cocok(req, 'GET /tna/sessions/:id')` mengembalikan parameter path. Penangan test selalu menang atas mock sesi, apa pun urutan pemanggilannya. Permintaan yang tidak ditangani dijawab 404 `BELUM_DIMOCK` dan dicatat (`permintaanBelumDimock(page)`).
+- `fixture(nama)` membaca `support/data/<nama>.json`. Fixture ditangkap dari respons API sungguhan (README di folder itu).
 - Locator memakai role dan label teks dari mockup (`getByRole('link', { name: 'Training Needs' })`), bukan `data-testid`.
 - Antarmuka ini dirilis 20 Nov di atas tampilan sekarang. Isinya menyesuaikan saat B0, B1, dan B2 digabung, tetapi tanda tangan fungsinya tetap, supaya paket lain bisa memakainya sejak awal.
 
@@ -346,7 +350,7 @@ QA malam dan driver (mulai 20 Nov):
 - [x] `apps/api/tests/integration/alur-tna.test.js`, `alur-modul-mati.test.js`
 - [x] `.github/workflows/qa-malam.yml`
 - [x] `docs/ewi/qa-malam.md` (cara menjalankan, membaca laporan, menambah persona, kebutuhan IAM)
-- [ ] `apps/web/e2e/support/sesi.ts`, `api.ts`, `data/` (antarmuka 20 Nov)
+- [x] `apps/web/e2e/support/sesi.ts`, `api.ts`, `fixture.ts`, `data/` (antarmuka 20 Nov), diuji `apps/web/e2e/alur/dukungan.spec.ts`
 
 Setelah B0, B1, B2 digabung:
 

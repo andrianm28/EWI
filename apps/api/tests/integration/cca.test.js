@@ -38,6 +38,7 @@ run('B10 Core Competencies (Postgres)', () => {
       tok[key] = tokens.sign({ id: row.id, tenantId: t, role, email: `${key}@cca.test` });
     };
     await add('hr', 'hr_admin');
+    await add('eta', 'eta_admin');
     await add('spv', 'supervisor', { jobRole: jr.id });
     await add('dir', 'pimpinan');
     await add('spv2', 'supervisor');
@@ -401,6 +402,45 @@ run('B10 Core Competencies (Postgres)', () => {
       const hr = (await get('/assignments', 'luar')).body.data;
       expect(hr.kpis).toMatchObject({ leadersEligible: 1, leadersAssigned: 0, employeesAssigned: 0 });
       expect(hr.leaders.map((l) => l.userId)).toEqual([u.luarspv]);
+    });
+  });
+
+  describe('gerbang, peran, dan audit (review diff egm)', () => {
+    it('group yang bukan milik objek (toString) dijawab 400, bukan 500', async () => {
+      expect((await get('/overview?group=toString')).status).toBe(400);
+      expect((await get('/overview?group=constructor')).status).toBe(400);
+    });
+
+    it('eta_admin lolos seperti HR', async () => {
+      expect((await get('/overview?group=vm', 'eta')).status).toBe(200);
+      expect((await get('/assignments', 'eta')).body.data.role).toBe('hr');
+    });
+
+    it('perubahan data tercatat audit.record untuk sumber, persyaratan, program, dan penugasan', async () => {
+      const rows = await db.query(`SELECT DISTINCT resource FROM audit_logs WHERE tenant_id = :t AND action IN ('create','update')`, { replacements: { t: tenant.id }, type: 'SELECT' });
+      const resources = rows.map((r) => r.resource);
+      for (const r of ['cca.source', 'cca.requirement', 'cca.program', 'cca.assignment']) expect(resources).toContain(r);
+    });
+
+    it('flag cca.interview mati menutup semua rute penugasan; module.cca mati menutup seluruh modul', async () => {
+      await flag(tenant.id, 'cca.interview', false);
+      const id = '00000000-0000-4000-8000-000000000000';
+      for (const res of [await get('/assignments'), await send('post', '/assignments', { assigneeIds: [u.spv], dueDate: future }),
+        await send('patch', `/assignments/${id}`, { status: 'cancelled' }), await get(`/assignments/${id}/summary`)]) {
+        expect(res.status).toBe(403);
+        expect(res.body.error.code).toBe('FEATURE_DISABLED');
+      }
+      await flag(tenant.id, 'cca.interview', true);
+      await flag(tenant.id, 'module.cca', false);
+      for (const res of [await get('/overview?group=vm'), await get('/programs'), await get('/assignments')]) expect(res.status).toBe(403);
+      await flag(tenant.id, 'module.cca', true);
+    });
+
+    it('penugasan menolak durasi di luar 5-60 menit dan lebih dari 200 penerima', async () => {
+      expect((await send('post', '/assignments', { assigneeIds: [u.spv2], dueDate: future, durationMinutes: 4 })).status).toBe(400);
+      expect((await send('post', '/assignments', { assigneeIds: [u.spv2], dueDate: future, durationMinutes: 61 })).status).toBe(400);
+      const many = Array.from({ length: 201 }, (_, i) => `00000000-0000-4000-8000-${String(i).padStart(12, '0')}`);
+      expect((await send('post', '/assignments', { assigneeIds: many, dueDate: future })).status).toBe(400);
     });
   });
 });

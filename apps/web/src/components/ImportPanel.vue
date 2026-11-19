@@ -3,7 +3,8 @@
 import { computed, onMounted, ref, watch } from 'vue'
 import { imports, type ImportBatch, type ImportKind, type ImportPreview, type Mapping, type Submodule } from '@/api/imports'
 
-const props = defineProps<{ submodule: Submodule; projects?: { id: string; name: string }[] }>()
+// plans: pilihan untuk opsi bertipe lim_plan (B15); bila hanya satu, langsung terpilih
+const props = defineProps<{ submodule: Submodule; projects?: { id: string; name: string }[]; plans?: { id: string; name: string }[] }>()
 const emit = defineEmits<{ imported: [kind: string] }>()
 
 const kinds = ref<ImportKind[]>([])
@@ -32,8 +33,12 @@ onMounted(async () => {
   } catch (e) { error.value = (e as Error).message }
 })
 
+function presetOptions(): Record<string, string> {
+  const only = props.plans?.length === 1 ? props.plans[0]!.id : ''
+  return Object.fromEntries((kind.value?.options ?? []).filter((o) => o.type === 'lim_plan' && only).map((o) => [o.key, only]))
+}
 function reset() {
-  batch.value = null; preview.value = null; mapping.value = {}; options.value = {}
+  batch.value = null; preview.value = null; mapping.value = {}; options.value = presetOptions()
   if (fileInput.value) fileInput.value.value = ''
 }
 watch(kindKey, () => { reset(); notice.value = ''; error.value = '' })
@@ -134,6 +139,10 @@ const when = (s: string | null) => (s ? new Date(s).toLocaleString('id-ID', { da
           <select v-if="o.type === 'project'" v-model="options[o.key]" class="mt-1 w-full rounded border px-2 py-1">
             <option value="">Tanpa proyek</option>
             <option v-for="p in props.projects ?? []" :key="p.id" :value="p.id">{{ p.name }}</option>
+          </select>
+          <select v-else-if="o.type === 'lim_plan'" v-model="options[o.key]" class="mt-1 w-full rounded border px-2 py-1">
+            <option value="">Pilih rencana</option>
+            <option v-for="p in props.plans ?? []" :key="p.id" :value="p.id">{{ p.name }}</option>
           </select>
           <input v-else v-model="options[o.key]" :type="o.type === 'date' ? 'date' : 'text'" class="mt-1 w-full rounded border px-2 py-1" />
         </label>

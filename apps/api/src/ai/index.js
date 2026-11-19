@@ -11,6 +11,8 @@
 //     -> { results: [{ competencyId, score 0-4, confidence 0-1, evidence }], usage }
 //   analyzeTna({ transcript, triggers, competencies })
 //     -> { findings: [{ category training|non_training, title, detail, competencyId?, performanceRecordId?, confidence? }], usage }
+//   assistantReply({ view, roleLabel, facts, pages: [{ key, label }], question })                     (B17)
+//     -> { answer: string | null, page: string | null, refused: boolean, usage }      (answer null = tidak tahu)
 //   UsageRecord = { operation, provider, model, inputTokens, outputTokens, latencyMs }   (satu per panggilan model, R3-6)
 //
 // context = { competencies, triggers } sudah diminimalkan oleh pemanggil (lihat aiContext di modul interviews):

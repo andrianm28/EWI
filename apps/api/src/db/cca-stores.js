@@ -149,8 +149,8 @@ function createCcaStores(sequelize, { cipher } = {}) {
             });
         }
         const [, meta] = await sequelize.query(
-          `DELETE FROM cca_program_results WHERE tenant_id = :tenantId AND program_id = :programId AND user_id NOT IN (:userIds)`,
-          { replacements: { tenantId, programId, userIds: rows.map((r) => r.userId) }, transaction: t });
+          `DELETE FROM cca_program_results WHERE tenant_id = :tenantId AND program_id = :programId AND NOT (user_id = ANY(CAST(:userIds AS uuid[])))`,
+          { replacements: { tenantId, programId, userIds: `{${rows.map((r) => r.userId).join(',')}}` }, transaction: t });
         if (cutoffDate) {
           await sequelize.query('UPDATE cca_programs SET cutoff_date = :cutoffDate, updated_at = now() WHERE tenant_id = :tenantId AND id = :programId',
             { replacements: { tenantId, programId, cutoffDate }, transaction: t });
