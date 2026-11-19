@@ -148,9 +148,11 @@ Butir peralihan (tidak ada di mockup, hilang sendiri begitu penggantinya terpasa
 Aturan tampil satu butir, dievaluasi berurutan:
 
 1. tampilan aktif termasuk `views` butir;
-2. **rute bernama `key` sudah terdaftar di router**. Layar yang belum dibangun tidak punya rute, jadi tidak muncul di menu. Tidak ada halaman kosong "segera hadir" di produksi;
+2. **rute bernama `key` sudah terdaftar di router dan gerbang `meta`-nya (`flag`, `submodule`, `roles`) lolos** (`routeOpen`). Layar yang belum dibangun tidak punya rute, jadi tidak muncul di menu; butir yang tampil tidak pernah memantul ke beranda saat diklik. Tidak ada halaman kosong "segera hadir" di produksi;
 3. bila ada `flag`, `access.flags[flag] === true`; bila ada `submodule`, `session.canOpen(submodule)`;
-4. bila `transitional`, rute beranda tampilan aktif belum terdaftar.
+4. bila `transitional`, layar beranda tampilan aktif belum bisa dibuka, yaitu `homeFor(view) === 'home'`: rutenya belum terdaftar **atau** gerbangnya (misalnya flag default mati) belum lolos.
+
+Satu ukuran "beranda tampilan sudah bisa dibuka" (`session.homeReady(view)`, dari `homeFor`) dipakai di tiga tempat: penjaga rute, butir peralihan, dan daftar tampilan tambahan (5.1). Dengan itu paket beranda yang rutenya di balik flag mati tidak mengubah apa pun: pengguna tetap di Beranda, butir peralihan bertahan, dan tampilan tambahan tidak ditawarkan.
 
 Grup accordion (`lna`, `li`) tampil bila minimal satu anaknya tampil. Keadaan buka-tutup disimpan di state tingkat modul (`openGroups` di `menu.ts`, default terbuka) supaya bertahan saat pindah halaman; tidak di storage. Klik grup hanya membuka atau menutup. Di mockup, klik grup Learning Intervention juga pindah ke Library; itu **ditolak** karena tombol yang sekaligus membuka dan menavigasi membingungkan pembaca layar (`aria-expanded` pada tautan). Butir aktif: rute sekarang atau `meta.menuKey` rute sekarang (untuk layar anak seperti detail gap yang menyalakan butir `tna`).
 
@@ -168,10 +170,14 @@ Supaya thread-thread paralel tidak mengedit berkas router yang sama:
   - `title?: string` judul di top bar (default: label butir menu);
   - `views?: ViewKey[]` tampilan yang boleh membuka. Bila tampilan aktif tidak termasuk tetapi pengguna punya tampilan lain yang termasuk, tampilan aktif diganti ke tampilan itu (tautan langsung tetap bekerja). Bila tidak punya, diarahkan ke beranda tampilannya;
   - `flag?: string` dan `submodule?: SubmoduleKey` sama seperti aturan menu; gagal → beranda;
+  - `roles?: string[]` peran asli dari API yang boleh membuka (cocok dengan salah satu `session.roles`), untuk layar yang lebih sempit dari tampilannya (misalnya tinjauan hasil AI: `['hr_admin', 'eta_admin']`); gagal → beranda. Ini hanya penjaga UI, otorisasi tetap di API;
+  - `submoduleParam?: boolean` khusus rute lama `/m/:key`: param `key` diperlakukan sebagai submodul. Paket baru memakai `submodule`; param bernama `key` di rute baru tidak punya arti khusus;
   - `menuKey?: string` butir menu yang menyala.
 - Halaman yang memakai kerangka membungkus isinya dengan `<AppShell>`, seperti halaman lama. Layar penuh (login) cukup tidak memakainya.
 - Rute anak (detail, langkah) diberi nama `<kunci>-<anak>`, misalnya `tna-gap`, dengan `meta.menuKey`.
-- Nama atau path rute ganda membuat aplikasi gagal dimuat (`assertUnique` di `router/index.ts`), sehingga e2e PR yang membawanya langsung merah.
+- Nama atau path rute ganda membuat aplikasi gagal dimuat (`assertUnique` di `router/index.ts`), sehingga e2e PR yang membawanya langsung merah. Rute paket **datar**: `children` dan `alias` ditolak, karena tidak ikut diperiksa. Pemeriksaan path hanya perbandingan teks (`/m/dna` dan `/m/:key(dna)` dianggap berbeda).
+- Rute bersifat statis. Jangan memakai `router.addRoute` saat runtime: menu dan daftar tampilan tidak akan ikut berubah.
+- Di build uji (`VITE_UI_KIT=1`), rute uji dari `localStorage` **menggantikan** rute asli bernama atau ber-path sama. Jadi test shell yang mendaftarkan `dash` atau `my` tiruan tetap berjalan setelah layar aslinya ada.
 - Elemen yang melayang di atas semua layar (Asisten ELGOS, B17): taruh `src/screens/<nama-paket>/ShellExtra.vue`; `AppShell` memasangnya setelah `<main>` tanpa perlu diedit.
 - Beranda tampilan (`homeFor(view)`): `dash` (hr, atasan), `my` (karyawan), `users` (admin), `tenants` (super) bila rutenya terdaftar dan gerbangnya (`views`, `flag`, `submodule`) lolos; selain itu `home`. Rute `home` mengalihkan ke beranda tampilan, jadi kode yang melakukan `router.push({ name: 'home' })` (login, link email) tidak perlu diubah.
 - `src/modules.ts` (`SubmoduleKey`) tidak perlu diedit untuk modul 2–5: pakai `meta.flag`.
@@ -182,6 +188,7 @@ Supaya thread-thread paralel tidak mengedit berkas router yang sama:
 | --- | --- | --- |
 | `screens/legacy-dna/` | `dna`, `/m/dna` | B4, yang mendaftarkan `dna` baru |
 | `screens/legacy-tna/` | `tna`, `/m/tna` | B5, yang mendaftarkan `tna` baru |
+| `screens/legacy-review/` | `tna-review`, `/m/tna/review` (PK-14, `meta.roles` HR dan Admin ETA) | B7, yang mendaftarkan `review` |
 | `screens/legacy-interview/` | `interview`, `/m/:key(dna\|tna)/sessions/:id` | B6 |
 | `screens/legacy-cca/` | `legacy-cca`, `/m/:key(cca)` | B10, yang mendaftarkan `cc` |
 | `screens/legacy-ina/` | `legacy-ina`, `/m/:key(ina)` | B9, yang mendaftarkan `ina` |
@@ -200,9 +207,9 @@ Alamat rute lama tidak berubah. Rute inti tetap di `router/index.ts`: `login` (`
 | `ina` | B9 | `users`, `jobs`, `cfg` | B11 |
 | `review` (anak `tna`) | B7 | `tenants`, `platform` | B12 |
 
-Perhatian: `li` adalah **rute** Rencana belajar milik B8, sedangkan `module.li` adalah **flag** Learning Intervention milik B13 dan `li` juga kunci grup accordion. Ketiganya tidak saling memakai nama rute. Nama yang sudah terpakai dan tidak boleh dipakai ulang: `home`, `login`, `email-link`, `interview`, `legacy-cca`, `legacy-ina`, `ui-kit`.
+Perhatian: `li` adalah **rute** Rencana belajar milik B8, sedangkan `module.li` adalah **flag** Learning Intervention milik B13 dan `li` juga kunci grup accordion. Ketiganya tidak saling memakai nama rute. Nama yang sudah terpakai dan tidak boleh dipakai ulang: `home`, `login`, `email-link`, `interview`, `tna-review` (sampai B7 menghapus `legacy-review`), `legacy-cca`, `legacy-ina`, `ui-kit`. Layar B7 bernama `review` (pengecualian dari konvensi `<kunci>-<anak>`), sehingga tidak bertabrakan dengan `tna-review` lama selama keduanya masih ada.
 
-**Kewajiban paket beranda.** Begitu B3 mendaftarkan `dash` (atau B8 `my`, B11 `users`, B12 `tenants`), pengguna tampilan itu tidak lagi mendarat di Beranda setelah login. Helper login di e2e lama (`loginAs` di `poc-dna-tna.spec.ts`, `gating.spec.ts`) menunggu `card-dna` dan URL `/`; paket itu wajib memperbaruinya di PR yang sama.
+**Kewajiban paket beranda.** Begitu `dash` milik B3 (atau `my` B8, `users` B11, `tenants` B12) terdaftar **dan flag-nya menyala**, pengguna tampilan itu tidak lagi mendarat di Beranda setelah login. Helper login di e2e lama (`loginAs` di `poc-dna-tna.spec.ts`, `gating.spec.ts`) menunggu `card-dna` dan URL `/`; paket itu wajib memperbaruinya di PR yang sama.
 
 ### 5.4 Kerangka
 
@@ -338,3 +345,31 @@ Tidak diubah: `LoginView.vue`, `EmailLinkView.vue` (milik B1), halaman lama lain
 | 17 | Kontrak belum mengatur path, pemilik, nama ganda | **Perbaiki**: tabel pemilik, konvensi nama anak, `assertUnique` |
 | 18 | Dampak `dash`/`my` pada e2e lama | **Perbaiki**: kewajiban paket beranda ditulis di 5.3 |
 | 19 | Tipe dan batas kecil | **Perbaiki** di bagian 4, 5.3, 5.4 |
+
+### Review diff (subagent baru, 19 Nov)
+
+Tidak ada temuan berat; 5 sedang, 8 ringan, ditambah catatan e2e dan build uji. Tidak ada pelanggaran aturan arsitektur. Triase:
+
+| # | Temuan | Keputusan |
+| --- | --- | --- |
+| S1 | Menu dan daftar tampilan hanya melihat rute terdaftar, `homeFor` juga melihat gerbang; rute beranda di balik flag mati menghilangkan Beranda dan butir peralihan | **Perbaiki**: satu ukuran `homeReady`, menu memakai `routeOpen` (5.2). Test: dua test "layar beranda di balik flag" |
+| S2 | `UiErrorSummary` merebut fokus tiap `errors` berubah | **Perbaiki**: fokus hanya saat ringkasan muncul; `focus()` diekspos untuk saat kirim |
+| S3 | Drawer layar sempit tanpa perangkap fokus; Esc hanya di dalam kerangka | **Perbaiki**: `inert` pada konten selama drawer melayang terbuka, Esc di `document`. Test scrim |
+| S4 | `tna-review` (PR #16) tidak tercatat di spek dan menumpang di folder B5 | **Perbaiki**: pindah ke `screens/legacy-review/`, tabel 5.3 diperbarui |
+| S5 | Test "pindah rute menutup drawer" lulus karena remount | **Perbaiki**: test antar dua rute berkomponen sama + klik scrim |
+| R1 | `params.key` apa pun dianggap submodul | **Perbaiki**: `meta.submoduleParam` hanya di rute lama |
+| R2 | `hrOnly` tidak dihitung `homeFor` dan membaca `role` tunggal | **Perbaiki**: diganti `meta.roles` di dalam gerbang bersama, membaca `session.roles` |
+| R3 | `setView` dipanggil sebelum gerbang | **Perbaiki** |
+| R4 | `assertUnique` tidak memeriksa `children`/`alias` | **Perbaiki sebagian**: keduanya ditolak. Tumpang-tindih pola path **diterima** `[⏳ DITERIMA]`: butuh pencocokan pola, dan nama ganda sudah tertangkap |
+| R5 | Warna `*-100`, `*-200`, `*-800`, indigo halaman lama tidak dipetakan di mode gelap | **Perbaiki** |
+| R6 | `UiTabs`: model tak cocok membuat tablist tak terjangkau; urutan ref | **Perbaiki** |
+| R7 | `UiKpiCard` bergantung pada CSS `UiCard` | **Perbaiki**: `.el-card` pindah ke `style.css` |
+| R8 | `addEventListener` MediaQueryList di Safari lama | **Perbaiki**: pemanggilan opsional |
+| build | `dist` lokal berisi build uji setelah e2e | **Perbaiki**: e2e membangun ke `dist-e2e` |
+| build | Rute uji berisi cacat (`[null]`) menggagalkan muat | **Perbaiki**: entri tanpa nama dilewati |
+| build | Belum ada gerbang CI bahwa `dist` produksi bebas rute uji | **Tunda**: perlu mengubah workflow CI (kode bersama); dicatat di PR. Diperiksa manual pada PR ini |
+| e2e | Toleransi snapshot 2% longgar | **Diterima** `[⏳ DITERIMA]`: snapshot menjaga tata letak; kontras dan peran dijaga test perilaku. Diperketat bila CI terbukti stabil |
+| e2e | Celah: `roles`, tampilan tersimpan tak valid, `tna-review` | **Perbaiki**: test ditambah. Celah lain (`/auth/me` gagal, multi-peran admin, tema mengikuti sistem) **ditunda**, dicatat di PR |
+| drift | Props wajib dan tambahan komponen tidak ada di tabel bagian 4 | **Perbaiki**: catatan di bawah |
+
+Drift bagian 4 yang dikoreksi: `UiTabs` wajib `id` dan `label`; `UiStepper` wajib `label`; `UiDataTable` punya `captionHidden` dan `Column.sortValue`; `UiProgressBar` punya `tone`; `UiErrorSummary` mengekspos `focus()`. Sumber kebenaran props adalah halaman `/ui-kit` dan tipe di `src/ui/`.
