@@ -179,7 +179,15 @@ Admin yang mengunggah berkas KPI melihat pratinjau barisnya (data per karyawan d
 
 ## 7. Perubahan web
 
-Menumpuk di atas PR B0 (fondasi UI, thread T1) setelah terbuka; sebelum itu hanya backend. Tiga view baru di `apps/web/src/views/admin/`: `UsersView.vue`, `JobRolesView.vue`, `ImportIntegrationView.vue`, memakai komponen B0 (tabel data, chip, tombol, ringkasan galat) dan `ImportPanel.vue` yang ada. Rute `/admin/pengguna`, `/admin/jabatan`, `/admin/impor`, tampil di menu hanya bila `flags['admin.tenant']` dan peran lolos 4.2. E2E `apps/web/e2e/admin-tenant.spec.ts` dengan API mock.
+Dibangun di atas kontrak B0 (PR #18). Layar di `apps/web/src/screens/b11-admin/`: `UsersView.vue` (Pengguna & peran), `JobsView.vue` (Jabatan & kamus kompetensi), `ConfigView.vue` (Impor data & integrasi), `AdminNav.vue` (tab antar layar), dan `ImportFlow.vue` (alur unggah → petakan → periksa → simpan, khusus Admin Tenant; `ImportPanel.vue` HR tidak dipakai karena memanggil rute HR). Rute di `routes.ts`: nama `users`, `jobs`, `cfg` di `/admin/pengguna`, `/admin/jabatan`, `/admin/impor`, meta `flag: 'admin.tenant'`, `views: ['admin', 'hr', 'super']` (`hr` sementara sampai B2). Menu memakai `routeOpen()` dari B0, jadi butir hanya tampil bila rute bisa dibuka. API klien `apps/web/src/api/tenantAdmin.ts`.
+
+Detail tampilan (hasil code review):
+
+- kolom Sumber di Jabatan menampilkan label sumber dan nama berkas impor terakhir (`DACUM · DACUM_SD_v2.1.xlsx`);
+- ringkasan impor menampilkan sumber per berkas; sumber data kinerja dipilih admin (Berkas, HRIS, Sistem OKR) dan dikirim sebagai opsi `source`;
+- status EliteMentor ditulis "Terkonfigurasi", bukan "tersambung", karena belum ada uji panggil (lihat 10).
+
+E2E `apps/web/e2e/admin-tenant.spec.ts` (4 test) dengan API mock.
 
 ## 8. Test yang ditulis (test-first)
 
@@ -221,7 +229,7 @@ Menumpuk di atas PR B0 (fondasi UI, thread T1) setelah terbuka; sebelum itu hany
 - [x] `apps/api/tests/unit/tenant-admin.test.js`
 - [x] `apps/api/tests/integration/tenant-admin.test.js`
 - [x] `apps/api/tests/unit/imports.test.js`
-- [ ] `apps/web/src/views/admin/*.vue`, `apps/web/src/api/tenantAdmin.ts`, rute, `apps/web/e2e/admin-tenant.spec.ts` (setelah B0)
+- [x] `apps/web/src/screens/b11-admin/*` (layar, `routes.ts`), `apps/web/src/api/tenantAdmin.ts`, `apps/web/e2e/admin-tenant.spec.ts`
 
 ## 10. Asumsi dan risiko yang tersisa
 
@@ -268,3 +276,14 @@ Review diff backend oleh subagent baru, 19 Nov 2026. Tidak ada temuan berat; 2 s
 | 6 | `options.jobRoleId` disimpan tanpa dirapikan | **Perbaiki.** Opsi teks di-trim sebelum disimpan |
 | 7 | Kirim ulang undangan ke akun `eta_admin` tidak ditolak | **Perbaiki.** 403, ada test |
 | 8 | Gerbang dijalankan dua kali di rute impor; aturan atasan timbal balik tanpa test | **Perbaiki.** Gerbang sekali; test ditambah |
+
+## 13. Code review (mattpocock-skills:code-review)
+
+Satu putaran untuk B9 dan B11; tabel lengkap di `docs/designs/b9-improvement-needs.md` bagian 13. Khusus B11:
+
+| Sumbu | Temuan | Tindak lanjut |
+| --- | --- | --- |
+| Spec | Jabatan tanpa nama berkas, sumber per berkas, label "tersambung", "deep link" tetap, sumber KPI tetap `berkas` | **Perbaiki** (commit `f8f06c8`), assertion e2e ditulis dulu |
+| Spec | Formulir pengguna belum punya isian jenjang dan atasan | **Tunda.** API sudah menerima; layar menyusul bersama B2 |
+| Standards | Pengecualian `requireSubmodule` untuk impor admin menduplikasi logika entitlement dan kill switch | **Tunda** (⏳ di 10), usul opsi pada `requireSubmodule`, perlu Andrian |
+| Standards | `TENANT_ADMIN` dan label peran di luar `core/rbac/roles.js` | **Tunda** sampai B2 menetapkan peran `tenant_admin` |

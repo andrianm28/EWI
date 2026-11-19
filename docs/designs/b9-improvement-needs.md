@@ -213,7 +213,13 @@ Hubungan dengan B7 (T5): tinjauan HR menandai temuan untuk Improvement (`improve
 
 ## 7. Perubahan web
 
-Menumpuk di atas PR B0. View `apps/web/src/views/ImprovementNeedsView.vue` (KPI, tabel, dialog tambah/ubah, panel akses atasan, daftar verifikasi) dan `apps/web/src/views/ActionVerificationView.vue` (persetujuan → percakapan → selesai) untuk pemilik. API `apps/web/src/api/ina.ts`. Menu "Improvement Needs" tampil bila `module.ina` + `ina.dashboard` menyala dan `GET /ina/access/me` mengembalikan level. E2E `apps/web/e2e/improvement-needs.spec.ts` dengan API mock.
+Dibangun di atas kontrak B0 (PR #18). Layar di `apps/web/src/screens/b9-ina/`:
+
+- `ImprovementNeedsView.vue`: KPI, tabel tindakan, formulir tambah/ubah, panel akses atasan, daftar verifikasi. Detail tindakan dimuat terpisah; selama belum termuat, kolom detail dikunci dan tidak dikirim saat menyimpan, supaya detail lama tidak terhapus (hasil code review).
+- `ActionVerificationView.vue`: persetujuan → percakapan → selesai, untuk pemilik tindakan.
+- `ShellExtra.vue`: pengingat verifikasi yang menunggu, dipasang otomatis oleh shell B0.
+
+Rute di `routes.ts`: `ina` di `/ina` (meta `submodule: 'ina'`, `flag: 'ina.dashboard'`, `views: ['hr', 'atasan', 'super']`), `ina-verifikasi` di `/ina/verifikasi/:id?` (flag `ina.ai_verification`), dan `ina-lama` yang mengarahkan alamat lama `/m/ina` ke `/ina`. Layar lama `screens/legacy-ina` dihapus. Pemilih pemilik memakai `GET /ina/owners`. Menu memakai `routeOpen()` dari B0. API klien `apps/web/src/api/ina.ts`. E2E `apps/web/e2e/improvement-needs.spec.ts` (5 test) dengan API mock.
 
 ## 8. Test yang ditulis (test-first)
 
@@ -242,7 +248,8 @@ Menumpuk di atas PR B0. View `apps/web/src/views/ImprovementNeedsView.vue` (KPI,
 - [x] `apps/api/src/modules/ina/index.js` (router), `access.js`, `domain.js` (status, KPI), `verification-ai.js`
 - [x] `apps/api/tests/unit/ina-domain.test.js`
 - [x] `apps/api/tests/integration/ina.test.js`
-- [ ] `apps/web/src/views/ImprovementNeedsView.vue`, `ActionVerificationView.vue`, `apps/web/src/api/ina.ts`, rute, `apps/web/e2e/improvement-needs.spec.ts` (setelah B0)
+- [x] `apps/web/src/screens/b9-ina/*` (layar, `ShellExtra.vue`, `routes.ts`), `apps/web/src/api/ina.ts`, `apps/web/e2e/improvement-needs.spec.ts`; `screens/legacy-ina` dihapus
+- [ ] Baris alur "Akses atasan ke perbaikan" (B18 tabel 3.3) dengan `apps/api/tests/alur/driver.js`: menunggu driver rilis 20 Nov. Sementara alur yang sama diuji di `tests/integration/ina.test.js` (test K1)
 
 ## 10. Asumsi dan risiko yang tersisa
 
@@ -288,3 +295,16 @@ Review diff backend oleh subagent baru, 19 Nov 2026. Tidak ada temuan berat; 4 s
 | 7 | Pemilik lama masih melihat judul tindakan yang sekarang | **Perbaiki.** Judul diganti teks tetap untuk pemilik lama; ada test |
 | 8 | "Hampir selesai" terbaca selesai | **Perbaiki.** Kata penjaga ditambah; ada test |
 | 9 | Celah test: lintas tenant di rute verifikasi, atasan sebagai pemilik, pimpinan di rute verifikasi | **Perbaiki sebagian.** Test ditambah. Test dalam satu berkas tetap berurutan (pola repo); migrasi naik-turun-naik dijalankan CI |
+
+## 13. Code review (mattpocock-skills:code-review)
+
+Titik tetap `origin/claude/project-thread-scbrmb`, dua sumbu paralel, mencakup B9 dan B11.
+
+| Sumbu | Temuan | Tindak lanjut |
+| --- | --- | --- |
+| Spec | Simpan ubah tindakan sebelum detail termuat menghapus detail | **Perbaiki**, test e2e merah lalu hijau (commit `6f6a903`) |
+| Spec | Jabatan tidak menampilkan nama berkas; ringkasan impor tidak menampilkan sumber; sumber KPI ditetapkan `berkas`; "tersambung" dan "deep link" menyesatkan | **Perbaiki** (B11, commit `f8f06c8`) |
+| Spec | Butir menu tampil walau flag rute mati | **Selesai di B0** (`routeOpen()`, head T1 `4823b8e`) |
+| Spec | Teks 7 dan 9 basi; `/owners`, `ShellExtra`, pengalihan `/m/ina` tidak tercatat | **Perbaiki (dokumen)**, bagian 7 dan 9 |
+| Standards | Duplikasi pembantu kecil (`wrap`, pemeriksa UUID, `conflict`) antarmodul; konstanta web meniru API | **Tunda.** Pola repo yang sudah ada; dirapikan bersama setelah 2 Des (usul `/mattpocock-skills:improve-codebase-architecture`) |
+| Standards | `ina_verification_turns` tanpa `tenant_id` | **Tolak.** Selalu dibaca lewat join terkunci ke `ina_verifications` yang berfilter tenant; ada test lintas tenant |
