@@ -51,9 +51,8 @@ function statusOf(r, config) {
   if (!completed(r, config)) return 'in_progress';
   const final = finalScoreOf(r, config);
   if (final < config.passScore) return 'not_passed';
-  const band = config.bands.find((b) => final >= b.min);
-  // skor lulus yang tidak masuk band mana pun (celah antara passScore dan band terendah) ikut band terendah
-  return (band || config.bands[config.bands.length - 1]).key;
+  // validateProgramConfig mewajibkan min band terendah = passScore, jadi skor lulus selalu masuk satu band
+  return config.bands.find((b) => final >= b.min).key;
 }
 
 /** Rata-rata skor nilai satu peserta (hanya nilai yang terisi), atau null. */
@@ -155,6 +154,10 @@ function normalizeManualReport(config, input) {
     if (statuses[k] === undefined) return { error: 'Jumlah karyawan per status harus bilangan bulat 0 atau lebih' };
   }
   if (keys.reduce((s, k) => s + statuses[k], 0) !== registered) return { error: 'Jumlah karyawan di semua status harus sama dengan jumlah terdaftar' };
+  if (config.bands.reduce((s, b) => s + statuses[b.key], 0) !== passed) return { error: 'Jumlah karyawan di band status lulus harus sama dengan jumlah lulus' };
+  if (statuses.in_progress !== registered - completedN || statuses.not_passed !== completedN - passed) {
+    return { error: 'Belum selesai harus sama dengan terdaftar dikurangi selesai, dan tidak lulus sama dengan selesai dikurangi lulus' };
+  }
 
   const vals = Array.isArray(input.values) ? input.values : [];
   if (vals.length !== config.values.length) return { error: `Isi skor untuk ${config.values.length} nilai sesuai urutan program` };

@@ -4,6 +4,7 @@
 const { QueryTypes } = require('sequelize');
 const { createLiStores } = require('./li-stores');
 const { createLdStores } = require('./ld-stores');
+const { createLimStores } = require('./lim-stores');
 const { evaluate, effectiveRule, metricKey } = require('../modules/tna/performance');
 const { planAssignments } = require('../modules/tna/assignment');
 const { summaryStateOf, MAX_RESTARTS } = require('../modules/interviews/summary');
@@ -1148,7 +1149,7 @@ function createLnaStores(sequelize, { cipher } = {}) {
     return { deletedUploaded: (delMeta && delMeta.rowCount) || 0, clearedCommitted: (clrMeta && clrMeta.rowCount) || 0 };
   };
 
-  return { people, settings, dna, interviews, tna, catalog, projectsExtra, imports, aiUsage, analysis, ...createLiStores(sequelize), ...createLdStores(sequelize)  };
+  return { people, settings, dna, interviews, tna, catalog, projectsExtra, imports, aiUsage, analysis, ...createLiStores(sequelize), ...createLdStores(sequelize), ...createLimStores(sequelize) };
 }
 
 module.exports = { createLnaStores, scopeSql };
