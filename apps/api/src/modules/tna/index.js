@@ -218,7 +218,7 @@ module.exports = {
       } else if (![ROLES.HR_ADMIN, ROLES.ETA_ADMIN].includes(role)) {
         throw forbidden('ROLE_FORBIDDEN', 'Temuan di luar pelatihan hanya untuk HR dan atasan yang diberi akses');
       }
-      const rows = await stores.tna.listNonTrainingSummary(req.tenantId, { projectId: req.query.projectId, userIds });
+      const rows = await stores.tna.listNonTrainingSummary(req.tenantId, { projectId: req.query.projectId, userIds, excludeFrozen: true });
       await audit.readIndividual(req, 'tna.findings_non_training', { employeeIds: rows.map((f) => f.userId), objectType: 'tna_finding', objectIds: rows.map((f) => f.id) });
       res.json({ data: rows });
     }));
@@ -349,8 +349,8 @@ module.exports = {
       const scope = await scopeFor(req, stores.people);
       const [sessions, findings, plan, perf] = await Promise.all([
         stores.interviews.list(req.tenantId, 'tna', scope, { projectId: req.query.projectId }),
-        stores.tna.listFindings(req.tenantId, scope, { projectId: req.query.projectId, categories: ['training'] }),
-        stores.tna.listPlanItems(req.tenantId, scope),
+        stores.tna.listFindings(req.tenantId, scope, { projectId: req.query.projectId, categories: ['training'], excludeFrozen: true }),
+        stores.tna.listPlanItems(req.tenantId, scope, { excludeFrozen: true }),
         stores.tna.listPerformance(req.tenantId, scope, { projectId: req.query.projectId }),
       ]);
       // HR melihat jumlah temuan yang menunggu review; peran lain tidak tahu ada draf (PM-5 ★A)

@@ -705,7 +705,7 @@ function createLnaStores(sequelize, { cipher } = {}) {
       return open(tenantId, await select(`${sql} ORDER BY f.created_at DESC`, rep), ['title', 'detail']);
     },
     /** PM-6 B: daftar ringkas temuan non-training untuk HR (tanpa detail dan tanpa rencana aksi). */
-    async listNonTrainingSummary(tenantId, { projectId, userIds } = {}) {
+    async listNonTrainingSummary(tenantId, { projectId, userIds, excludeFrozen = false } = {}) {
       const rep = { tenantId };
       let sql = `SELECT f.id, f.project_id AS "projectId", f.user_id AS "userId", u.name AS "userName", f.title,
                         pr.name AS "metricName", lf.title AS "linkedTrainingTitle", f.created_at AS "createdAt"
@@ -714,6 +714,7 @@ function createLnaStores(sequelize, { cipher } = {}) {
                    LEFT JOIN lna_performance_records pr ON pr.id = f.performance_record_id
                    LEFT JOIN lna_findings lf ON lf.id = f.linked_finding_id
                   WHERE f.tenant_id = :tenantId AND f.category = 'non_training' AND f.review_status IN ${REVIEWED_SQL}`;
+      if (excludeFrozen) sql += ` AND ${notFrozen('f')}`;
       if (userIds) sql += scopeSql('f.user_id', { userIds }, rep);
       if (projectId) { sql += ' AND f.project_id = :projectId'; rep.projectId = projectId; }
       return open(tenantId, await select(`${sql} ORDER BY f.created_at DESC`, rep), ['title', 'linkedTrainingTitle']);
@@ -764,7 +765,7 @@ function createLnaStores(sequelize, { cipher } = {}) {
       const rep = { tenantId };
       let sql = `SELECT f.review_status AS "reviewStatus", count(*)::int AS n
                    FROM lna_findings f LEFT JOIN lna_interview_sessions s ON s.id = f.session_id AND s.tenant_id = f.tenant_id
-                  WHERE f.tenant_id = :tenantId AND ${NOT_WITHDRAWN_DRAFT}`;
+                  WHERE f.tenant_id = :tenantId AND s.consent_withdrawn_at IS NULL`; // agregat: semua temuan beku keluar
       if (projectId) { sql += ' AND f.project_id = :projectId'; rep.projectId = projectId; }
       return byReviewStatus(await select(`${sql} GROUP BY f.review_status`, rep));
     },
@@ -775,7 +776,7 @@ function createLnaStores(sequelize, { cipher } = {}) {
     async aiReviewCounts(tenantId) {
       const rows = await select(`SELECT review_status AS "reviewStatus", count(*)::int AS n FROM lna_findings
                                   WHERE tenant_id = :tenantId AND analysis_job_id IS NOT NULL
-                                    AND (review_status = 'draft' OR reviewed_by IS NOT NULL)
+                                    AND (review_status = 'draft' OR reviewed_by IS NOT NULL) AND ${notFrozen('lna_findings')}
                                   GROUP BY review_status`, { tenantId });
       return byReviewStatus(rows);
     },
@@ -790,7 +791,7 @@ function createLnaStores(sequelize, { cipher } = {}) {
                           (EXTRACT(EPOCH FROM (max(f.reviewed_at) - s.ended_at)) / 86400.0)::float AS days
                      FROM lna_interview_sessions s
                      JOIN lna_findings f ON f.session_id = s.id AND f.tenant_id = s.tenant_id
-                    WHERE s.tenant_id = :tenantId AND s.submodule = 'tna' AND s.ended_at IS NOT NULL
+                    WHERE s.tenant_id = :tenantId AND s.submodule = 'tna' AND s.ended_at IS NOT NULL AND s.consent_withdrawn_at IS NULL
                       AND f.analysis_job_id IS NOT NULL${scopeSql('s.interviewee_id', scope, rep)}
                     GROUP BY s.id, s.interviewee_id, s.ended_at
                    HAVING bool_and(f.review_status <> 'draft' AND f.reviewed_by IS NOT NULL)`;
@@ -1003,7 +1004,7 @@ function createLnaStores(sequelize, { cipher } = {}) {
       const rep = { tenantId, limit };
       const sql = `SELECT c.name AS competency, count(DISTINCT f.user_id)::int AS employees
                      FROM lna_findings f JOIN lna_competencies c ON c.id = f.competency_id
-                    WHERE f.tenant_id = :tenantId AND f.category = 'training' AND f.review_status IN ${REVIEWED_SQL}${scopeSql('f.user_id', scope, rep)}
+                    WHERE f.tenant_id = :tenantId AND f.category = 'training' AND f.review_status IN ${REVIEWED_SQL} AND ${notFrozen('f')}${scopeSql('f.user_id', scope, rep)}
                     GROUP BY c.name ORDER BY employees DESC, c.name LIMIT :limit`;
       return select(sql, rep);
     },
@@ -1012,23 +1013,25 @@ function createLnaStores(sequelize, { cipher } = {}) {
       const rep = { tenantId };
       const rows = await select(`SELECT p.status, count(*)::int AS n,
                                         count(*) FILTER (WHERE p.catalog_item_ref IS NULL AND p.origin <> 'learner_request')::int AS "needsModule"
-                                   FROM lna_training_plan_items p WHERE p.tenant_id = :tenantId${scopeSql('p.user_id', scope, rep)}
+                                   FROM lna_training_plan_items p WHERE p.tenant_id = :tenantId AND NOT ${planFrozen('p')}${scopeSql('p.user_id', scope, rep)}
                                   GROUP BY p.status`, rep);
       return { byStatus: Object.fromEntries(rows.map((r) => [r.status, r.n])), needsModule: rows.reduce((a, r) => a + r.needsModule, 0) };
     },
     /** B17: temuan Improvement Needs yang sudah diputus HR, dan yang sudah diteruskan ke Improvement Needs. */
     async improvementCounts(tenantId) {
       return one(`SELECT count(*)::int AS decided, count(improvement_handoff_at)::int AS "handedOff"
-                    FROM lna_findings WHERE tenant_id = :tenantId AND category = 'non_training' AND review_status IN ${REVIEWED_SQL}`, { tenantId });
+                    FROM lna_findings WHERE tenant_id = :tenantId AND category = 'non_training' AND review_status IN ${REVIEWED_SQL}
+                     AND ${notFrozen('lna_findings')}`, { tenantId });
     },
-    async listPlanItems(tenantId, scope) {
+    async listPlanItems(tenantId, scope, { excludeFrozen = false } = {}) {
       const rep = { tenantId };
+      const frozenSql = excludeFrozen ? ` AND NOT ${planFrozen('p')}` : '';
       const sql = `SELECT ${PLAN_COLS}, f.title AS "findingTitle", ci.url AS "catalogItemUrl", cc.status AS "courseStatus", cc.score::float AS "courseScore"
                      FROM lna_training_plan_items p
                      JOIN users u ON u.id = p.user_id LEFT JOIN lna_findings f ON f.id = p.finding_id
                      LEFT JOIN lna_catalog_items ci ON ci.tenant_id = p.tenant_id AND ci.source = p.catalog_source AND ci.external_ref = p.catalog_item_ref
                      LEFT JOIN lna_catalog_completions cc ON cc.tenant_id = p.tenant_id AND cc.catalog_item_id = ci.id AND cc.user_id = p.user_id
-                    WHERE p.tenant_id = :tenantId${scopeSql('p.user_id', scope, rep)} ORDER BY p.created_at DESC`;
+                    WHERE p.tenant_id = :tenantId${frozenSql}${scopeSql('p.user_id', scope, rep)} ORDER BY p.created_at DESC`;
       return open(tenantId, await select(sql, rep), ['note', 'findingTitle']);
     },
     async getPlanItem(tenantId, id) {

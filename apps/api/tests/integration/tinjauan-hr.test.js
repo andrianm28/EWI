@@ -436,7 +436,8 @@ run('B7 tinjauan HR (Postgres)', () => {
       await db.query(`UPDATE lna_interview_sessions SET status = 'completed', ended_at = now() WHERE id = :id`, { replacements: { id: ws.id } });
       const mk = async (title, category, extra = {}) => (await finding('beni', { title, category, sessionId: ws.id, reviewStatus: 'approved', ...extra })).id;
       const trPlanned = await mk('Beku berencana', 'training');
-      const trOpen = await mk('Beku tanpa rencana', 'training');
+      const [[kb]] = await db.query(`INSERT INTO lna_competencies (tenant_id, kind, name) VALUES (:t, 'job', 'Kompetensi beku') RETURNING id`, { replacements: { t: tenant.id } });
+      const trOpen = await mk('Beku tanpa rencana', 'training', { competencyId: kb.id });
       const imHanded = await mk('Beku sudah diserahkan', 'non_training');
       const imOpen = await mk('Beku belum diserahkan', 'non_training');
       await setFlag('module.ina', true);
@@ -445,6 +446,12 @@ run('B7 tinjauan HR (Postgres)', () => {
       await db.query(`UPDATE lna_findings SET status = 'planned' WHERE id = :id`, { replacements: { id: trPlanned } });
 
       const liBefore = (await stores.li.listTrainingGaps(tenant.id, { all: true })).filter((g) => g.userId === u.beni).length;
+      const all = { all: true };
+      const aggBefore = {
+        plans: await stores.tna.planStatusCounts(tenant.id, all),
+        improvement: await stores.tna.improvementCounts(tenant.id),
+        review: await stores.tna.reviewCounts(tenant.id),
+      };
       // karyawan menarik persetujuan
       await db.query('UPDATE lna_interview_sessions SET consent_withdrawn_at = now() WHERE id = :id', { replacements: { id: ws.id } });
 
@@ -492,6 +499,19 @@ run('B7 tinjauan HR (Postgres)', () => {
       expect((await stores.tna.findingsForGaps(tenant.id, { all: true })).map((x) => x.id)).not.toContain(trOpen);
       const liAfter = (await stores.li.listTrainingGaps(tenant.id, { all: true })).filter((g) => g.userId === u.beni).length;
       expect(liAfter).toBe(liBefore - 2); // trPlanned dan trOpen tidak lagi dihitung
+
+      // agregat dasbor dan asisten ikut mengecualikan (pilihan user: "tidak ikut ... agregat dasbor"; DPIA R12)
+      const plansAfter = await stores.tna.planStatusCounts(tenant.id, all);
+      expect(plansAfter.byStatus.new || 0).toBe((aggBefore.plans.byStatus.new || 0) - 1);
+      expect(await stores.tna.improvementCounts(tenant.id)).toEqual({
+        decided: aggBefore.improvement.decided - 2, handedOff: aggBefore.improvement.handedOff - 1,
+      });
+      expect((await stores.tna.reviewCounts(tenant.id)).approved).toBe(aggBefore.review.approved - 4);
+      const frozenIds = [trPlanned, trOpen, imHanded, imOpen];
+      expect((await stores.tna.listFindings(tenant.id, all, { categories: ['training', 'non_training'], excludeFrozen: true })).map((x) => x.id).filter((id) => frozenIds.includes(id))).toEqual([]);
+      expect((await stores.tna.listPlanItems(tenant.id, all, { excludeFrozen: true })).map((x) => x.id)).not.toContain(plan.id);
+      expect((await stores.tna.listNonTrainingSummary(tenant.id, { excludeFrozen: true })).map((x) => x.id)).not.toContain(imOpen);
+      expect((await stores.tna.topTrainingGaps(tenant.id, all, 50)).map((g) => g.competency)).not.toContain('Kompetensi beku');
       expect((await stores.tna.listImprovementHandoffs(tenant.id)).map((x) => x.findingId)).not.toContain(imHanded);
 
       // data tetap disimpan
