@@ -31,3 +31,21 @@
 - 🟡 9. Rencana test kurang: tabrakan kode, nama di pertanyaan, injeksi, konkurensi rate limit (N paralel → tepat 20), audit sukses tapi `finish` gagal.
 - Nit: audit `answered` vs log `error` bila `finish` gagal; baris `pending` yatim (sweeper >5 menit → error); potong 1200 karakter sebelum penggantian nama; tampilan HR angka kecil setara data individu (nyatakan diterima); `hashtext` 32-bit aman (sebut).
 - Sudah benar: rate limit advisory lock tanpa race; semua query `req.tenantId`; `scopeSql` userIds kosong → UUID nol; halaman usulan divalidasi; instruksi sistem statis + blok berpembatas; teks terenkripsi dan tidak masuk `audit_logs.meta`.
+
+---
+# Tahap 9 — egm-implementation-readiness (baris 155–akhir): siap dengan catatan, 0 🔴
+- 🟡 Rencana test belum memuat fail closed audit (test ada) dan penolakan dari model lewat `restoreNames` (test belum ada).
+- 🟡 Butir 7 tenant lain: data uji tenant lain terlalu tipis (hanya satu draf); sebutkan data minimum.
+- 🟡 `normalize()` `assistant.retentionDays` tanpa test unit.
+- 🟡 Retensi bisa gagal untuk semua tenant: nilai mentah besar lolos `^[0-9]+$` lalu `::int` out of range dalam satu DELETE lintas tenant. Batasi `^[0-9]{1,3}$` + test.
+- 🟡 Pembatas `<fakta>`/`<pertanyaan>` di `prompts.js:247` tidak di-escape.
+- 🟢 Klaim "semua penyusun memakai `ctx.scope`" tidak benar untuk `tinjauan`, `perbaikan`, `permintaanData`.
+- 🟢 Test hilang: Admin ETA lewat API, atasan `view=karyawan`, saran hilang bila fakta mati, potong 1200 karakter.
+- 🟢 Audit HR `employeeIds` selalu `[]`; regex `\bK(\d+)\b` bisa mengganti "Modul K1".
+- Benar: tenant, flag default mati, rate limit transaksional, audit sebelum `finish`, enkripsi, `down` migrasi.
+
+# Tahap 9 — egm-codebase-details (B17)
+- 🟡 b17:85/170: `AI_BAD_OUTPUT` = 502, bukan 503.
+- 🟡 b17:213 klaim `ctx.scope` tidak akurat untuk `tinjauan`, `perbaikan`, `permintaanData`.
+- 🟢 pesan pengguna juga memuat baris peran dan blok `<halaman>`; peran tak dikenal jatuh ke learner; judul pengganti `rencanaSaya` berbeda dari B8.
+- Reuse: logika "Hasil saya" dan hitungan held/overdue diduplikasi; `tinjauan` mendekripsi semua draf hanya untuk menghitung.

@@ -29,3 +29,21 @@
 - 🟡 6. Isolasi lintas tenant permintaan data belum diuji di PR ini.
 - 🟡 7. Hapus akun tidak membahas provisioning ulang/sinkronisasi EliteMentor.
 - 🟢 1–6: bagian Balapan tidak menyebut jalur B6 (`summary`, `confirm`, `restart`); `transcriptPath` setelah erase; transkrip lewat rute ber-`requireSubmodule`; penarikan tanpa sesi; volume audit beranda; `down` migrasi dan `DELETE turns` tanpa filter tenant.
+
+---
+# Tahap 9 — egm-implementation-readiness (baris 154–akhir): Siap dengan catatan, 0 🔴, 3 🟡, 5 🟢
+- 🟡 1. Audit `erase` (`beforeErase`) tidak ikut transaksi: `audit.record` tidak menerima `transaction` → jejak palsu bila rollback, dan koneksi kedua saat pool habis. Teruskan `transaction` atau koreksi klaim.
+- 🟡 2. Audit penarikan dan pemenuhan ditulis setelah commit (`employees/index.js:86-87, 123-125`).
+- 🟡 3. Janji test tidak ada: tenant lain terpisah; hasil DNA tetap setelah erase; urutan audit sebelum hapus; ekspor `consentWithdrawnAt`/`dataRequests`; `interviews.update` bersyarat; `ADMIN_ACCOUNT` untuk Admin ETA.
+- 🟢 4. Test `deliveryFor` ada di `review-sla.test.js`, bukan `my-results.test.js`.
+- 🟢 5. Daftar file: path lengkap `review-workspace.js`; perubahan undangan massal tidak disebut.
+- 🟢 6. Naik-turun-naik dijalankan `.github/workflows/ci.yml:40`.
+- 🟢 7. Indeks `data_subject_requests_tenant_idx` tidak disebut di spek.
+- 🟢 8. DELETE `lna_interview_turns` tanpa tenant aman (id dari query tenant + lock).
+
+# Tahap 9 — egm-codebase-details (B8)
+- 🔴 b8:115 butir (b) "semua sesi … abandoned" bertentangan dengan kode (hanya TNA) dan triase #3.
+- 🟡 b8:156 test `deliveryFor` ada di `review-sla.test.js`.
+- 🟡 b8:68 tanda tangan `submoduleActive({ entitlements, flags }, tenantId, submodule)`.
+- 🟢 `addTurn` memakai INSERT…SELECT; `409 INVALID_STATE` tidak tertulis; `/api/my` hanya dipasang bila `stores.dataRequests`; indeks tenant; `transcriptPath` hardcode `/api/tna`; daftar file kurang undangan massal dan fungsi store.
+- Reuse: logika "Hasil saya" diduplikasi di `my/index.js` dan `assistant/facts.js`; `isAdmin` ditulis ulang inline.
