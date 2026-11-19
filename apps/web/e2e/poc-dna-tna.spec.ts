@@ -185,7 +185,7 @@ test('HR: cakupan TNA mengikuti konfigurasi klien (ELGOS: semua anggota L1)', as
   expect(scheduledWith).toEqual({ scope: 'all_members', period: '2026-11', jobRoleId: 'jr1' })
 })
 
-test('learner: wawancara TNA lalu meminta training', async ({ page }) => {
+test('learner: wawancara TNA lalu meminta training (flag BT-31 dinyalakan)', async ({ page }) => {
   let state = 'scheduled'
   const empty = { data: [] }
   await page.route('**/api/tna/dashboard', (r) => r.fulfill({ json: { data: { role: 'learner', people: 1, redTargets: 1, sessions: {}, trainingFindings: 0, planItems: {} } } }))
@@ -200,7 +200,7 @@ test('learner: wawancara TNA lalu meminta training', async ({ page }) => {
   let requested = false
   await page.route('**/api/tna/training-requests', (r) => { requested = true; return r.fulfill({ status: 201, json: { data: {} } }) })
 
-  await loginAs(page, 'learner')
+  await loginAs(page, 'learner', 'u-1', { 'tna.training_request': true })
   await page.goto('/m/tna')
   await page.getByTestId('tna-my-sessions').getByRole('link', { name: 'Mulai wawancara' }).click()
   // PM-9 A: tombol aktif setelah kotak dicentang; kode versi teks ikut terkirim
@@ -218,6 +218,72 @@ test('learner: wawancara TNA lalu meminta training', async ({ page }) => {
   await page.getByRole('button', { name: 'Minta training' }).click()
   await expect(page.getByRole('status')).toHaveText('Permintaan training terkirim.')
   expect(requested).toBe(true)
+})
+
+test('PK-23 learner: BT-31 ditunda (tanpa tombol Minta training), undangan lewat tidak bisa dimulai', async ({ page }) => {
+  const past = new Date(Date.now() - 3600_000).toISOString()
+  await page.route('**/api/tna/dashboard', (r) => r.fulfill({ json: { data: { role: 'learner', people: 1, redTargets: 1, sessions: {}, trainingFindings: 1, planItems: {} } } }))
+  await page.route('**/api/tna/findings', (r) => r.fulfill({ json: { data: [{ id: 'f1', userId: 'u-1', userName: 'Dimas', title: 'Kesulitan mencapai target SLA', status: 'open', competencyName: null, metricName: null, target: null, actual: null }] } }))
+  await page.route('**/api/tna/plan-items', (r) => r.fulfill({ json: { data: [] } }))
+  await page.route('**/api/tna/sessions', (r) => r.fulfill({ json: { data: [{ id: 's1', projectId: 'p1', intervieweeId: 'u-1', intervieweeName: 'Dimas', status: 'scheduled', triggerCount: 1, inviteExpiresAt: past }] } }))
+  await loginAs(page, 'learner')
+  await page.goto('/m/tna')
+  await expect(page.getByTestId('tna-findings')).toContainText('Kesulitan mencapai target SLA')
+  await expect(page.getByRole('button', { name: 'Minta training' })).toHaveCount(0)
+  await expect(page.getByTestId('tna-my-sessions')).toContainText('Undangan sudah berakhir')
+  await expect(page.getByTestId('tna-my-sessions').getByRole('link')).toHaveCount(0)
+})
+
+test('PK-23 HR: perpanjang undangan, temuan di luar pelatihan, status rencana K-3', async ({ page }) => {
+  const soon = new Date(Date.now() + 2 * 86400_000).toISOString()
+  let extended: unknown = null; let patched: unknown = null
+  await page.route('**/api/tna/dashboard', (r) => r.fulfill({ json: { data: { role: 'hr_admin', people: null, redTargets: 1, sessions: {}, trainingFindings: 0, planItems: {} } } }))
+  await page.route('**/api/tna/findings', (r) => r.fulfill({ json: { data: [] } }))
+  await page.route('**/api/tna/pareto', (r) => r.fulfill({ json: { data: [] } }))
+  await page.route('**/api/tna/job-roles', (r) => r.fulfill({ json: { data: [], defaults: { scope: 'red_only', jobRoleId: null } } }))
+  await page.route('**/api/projects', (r) => r.fulfill({ json: { data: [] } }))
+  await page.route('**/api/tna/findings/non-training', (r) => r.fulfill({ json: { data: [{ id: 'n1', userId: 'd', userName: 'Dimas', title: 'Tools Pandu lambat', metricName: 'SLA respons', linkedTrainingTitle: null, createdAt: '' }] } }))
+  await page.route('**/api/tna/plan-items', (r) => r.fulfill({ json: { data: [{ id: 'pi1', userId: 'd', userName: 'Dimas', findingTitle: 'Kontrak proyek', origin: 'hr', status: 'new', catalogItemTitle: null, needsModule: true, note: null }] } }))
+  await page.route('**/api/tna/plan-items/pi1', async (r) => { patched = r.request().postDataJSON(); await r.fulfill({ json: { data: { id: 'pi1', status: 'in_progress' } } }) })
+  await page.route('**/api/tna/sessions', (r) => r.fulfill({ json: { data: [{ id: 's1', projectId: 'p1', intervieweeId: 'd', intervieweeName: 'Dimas', status: 'scheduled', triggerCount: 1, inviteExpiresAt: soon }] } }))
+  let granted: string | null = null
+  await page.route('**/api/tna/non-training-access', (r) => r.fulfill({ json: { data: [], supervisors: [{ id: 'spv-1', name: 'Rudi', email: 'rudi@demo.test' }] } }))
+  await page.route('**/api/tna/non-training-access/spv-1', async (r) => { granted = r.request().method(); await r.fulfill({ json: { data: { granted: true } } }) })
+  await page.route('**/api/tna/sessions/s1/extend', async (r) => { extended = r.request().postDataJSON(); await r.fulfill({ json: { data: { inviteExpiresAt: soon } } }) })
+
+  await loginAs(page, 'hr_admin', 'u-hr', { 'tna.non_training_hr': true })
+  await page.goto('/m/tna')
+  await expect(page.getByTestId('tna-non-training')).toContainText('Tools Pandu lambat')
+  await expect(page.getByTestId('tna-non-training').locator('li button')).toHaveCount(0) // tanpa rencana aksi
+  await page.getByTestId('tna-non-training-access').getByLabel('Atasan').selectOption('spv-1')
+  await page.getByRole('button', { name: 'Beri akses' }).click()
+  await expect(page.getByRole('status')).toHaveText('Akses atasan diberikan.')
+  expect(granted).toBe('PUT')
+  await expect(page.getByTestId('tna-plan')).toContainText('perlu modul baru')
+  const status = page.getByLabel('Status pi1')
+  await expect(status.locator('option')).toHaveText(['Baru', 'Berjalan', 'Ditolak'])
+  await status.selectOption('in_progress')
+  await expect(page.getByRole('status')).toHaveText('Status diperbarui.')
+  expect(patched).toEqual({ status: 'in_progress' })
+  await page.getByTestId('tna-invites').getByRole('button', { name: 'Perpanjang 7 hari' }).click()
+  await expect(page.getByRole('status')).toContainText('Undangan Dimas diperpanjang sampai')
+  expect(extended).toEqual({ days: 7 })
+})
+
+test('PM-6 atasan: temuan di luar pelatihan tampil hanya bila HR memberi akses', async ({ page }) => {
+  let access = false
+  await page.route('**/api/tna/dashboard', (r) => r.fulfill({ json: { data: { role: 'supervisor', people: 2, redTargets: 1, sessions: {}, trainingFindings: 0, planItems: {} } } }))
+  for (const path of ['findings', 'plan-items', 'sessions', 'pareto']) await page.route(`**/api/tna/${path}`, (r) => r.fulfill({ json: { data: [] } }))
+  await page.route('**/api/tna/non-training-access/me', (r) => r.fulfill({ json: { data: { granted: access } } }))
+  await page.route('**/api/tna/findings/non-training', (r) => r.fulfill({ json: { data: [{ id: 'n1', userId: 'd', userName: 'Dimas', title: 'Tools Pandu lambat', metricName: null, linkedTrainingTitle: null, createdAt: '' }] } }))
+  await loginAs(page, 'supervisor', 'spv-1', { 'tna.non_training_hr': true })
+  await page.goto('/m/tna')
+  await expect(page.getByTestId('tna-stats')).toBeVisible()
+  await expect(page.getByTestId('tna-non-training')).toHaveCount(0)
+  access = true
+  await page.reload()
+  await expect(page.getByTestId('tna-non-training')).toContainText('Tools Pandu lambat')
+  await expect(page.getByTestId('tna-non-training-access')).toHaveCount(0)
 })
 
 test('karyawan: minta link masuk lalu masuk dari link email (R3-2)', async ({ page }) => {

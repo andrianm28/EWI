@@ -274,17 +274,21 @@ run('POC DNA + TNA (Postgres)', () => {
     expect(spv.body.data).toHaveLength(1);
   });
 
-  it('training plan dari katalog; learner bisa request; atasan memproses timnya', async () => {
+  it('training plan dari katalog; learner bisa request (flag BT-31); atasan memproses timnya', async () => {
     const [finding] = (await request(app).get('/api/tna/findings').set(as('hr'))).body.data;
     const plan = await request(app).post(`/api/tna/findings/${finding.id}/plan`).set(as('hr')).send({});
     expect(plan.status).toBe(201);
-    expect(plan.body.data).toMatchObject({ status: 'proposed', catalogSource: 'elitementor', catalogItemRef: 'prog-12' });
+    expect(plan.body.data).toMatchObject({ status: 'new', needsModule: false, catalogSource: 'elitementor', catalogItemRef: 'prog-12' });
 
+    // PM-8 B: permintaan training mati selama POC; dinyalakan di sini untuk menguji alurnya bila BT-31 dibuka
+    expect((await request(app).post('/api/tna/training-requests').set(as('dimas')).send({ findingId: finding.id })).status).toBe(403);
+    await db.query(`INSERT INTO feature_flags (tenant_id, key, enabled) VALUES (:t, 'tna.training_request', true)`, { replacements: { t: tenant.id } });
     const reqRes = await request(app).post('/api/tna/training-requests').set(as('dimas')).send({ findingId: finding.id, note: 'Mohon pelatihan kontrak' });
     expect(reqRes.status).toBe(201);
+    expect(reqRes.body.data.status).toBe('requested');
     expect((await request(app).post('/api/tna/training-requests').set(as('rina')).send({ findingId: finding.id })).status).toBe(404);
 
-    const patched = await request(app).patch(`/api/tna/plan-items/${reqRes.body.data.id}`).set(as('spv')).send({ status: 'assigned' });
+    const patched = await request(app).patch(`/api/tna/plan-items/${reqRes.body.data.id}`).set(as('spv')).send({ status: 'new' });
     expect(patched.status).toBe(200);
     expect((await request(app).patch(`/api/tna/plan-items/${reqRes.body.data.id}`).set(as('dimas')).send({ status: 'completed' })).status).toBe(403);
 
@@ -301,7 +305,7 @@ run('POC DNA + TNA (Postgres)', () => {
     );
     const plan = await request(app).post(`/api/tna/findings/${f.id}/plan`).set(as('hr')).send({ programTier: 'basic' });
     expect(plan.status).toBe(201);
-    expect(plan.body.data).toMatchObject({ status: 'needs_module', catalogSource: null });
+    expect(plan.body.data).toMatchObject({ status: 'new', needsModule: true, catalogSource: null });
     await db.query('DELETE FROM lna_findings WHERE id = :id', { replacements: { id: f.id } });
   });
 
@@ -348,7 +352,7 @@ run('POC DNA + TNA (Postgres)', () => {
     const [finding] = (await request(app).get(`/api/tna/findings?projectId=${p.id}`).set(as('hr'))).body.data;
     expect(finding).toMatchObject({ category: 'training', competencyId: null });
     const plan = await request(app).post(`/api/tna/findings/${finding.id}/plan`).set(as('hr')).send({});
-    expect(plan.body.data.status).toBe('needs_module');
+    expect(plan.body.data).toMatchObject({ status: 'new', needsModule: true });
   });
   it('R2-2: baca data individu dicatat di audit log; agregat tidak; log append-only', async () => {
     const auditRows = async (resource) => db.query(

@@ -16,7 +16,7 @@ const COMPETENCY_COLS = `c.id, c.job_role_id AS "jobRoleId", c.career_level_id A
 
 const PLAN_COLS = `p.id, p.user_id AS "userId", u.name AS "userName", p.finding_id AS "findingId", p.origin, p.status,
   p.program_tier AS "programTier", p.catalog_source AS "catalogSource", p.catalog_item_ref AS "catalogItemRef",
-  p.catalog_item_title AS "catalogItemTitle", p.note, p.requested_by AS "requestedBy", p.created_at AS "createdAt",
+  p.catalog_item_title AS "catalogItemTitle", (p.catalog_item_ref IS NULL AND p.origin <> 'learner_request') AS "needsModule", p.note, p.requested_by AS "requestedBy", p.created_at AS "createdAt",
   p.updated_at AS "updatedAt"`;
 
 // PK-14: hanya temuan yang sudah direview yang boleh dipakai di luar antrean review
@@ -252,10 +252,12 @@ function createLnaStores(sequelize, { cipher } = {}) {
 
   const interviews = {
     async create(tenantId, s) {
-      return insert(`INSERT INTO lna_interview_sessions (tenant_id, project_id, submodule, interviewee_id, job_role_id, trigger_record_ids)
-                     VALUES (:tenantId, :projectId, :submodule, :intervieweeId, :jobRoleId, CAST(:triggers AS uuid[]))
-                     RETURNING id, project_id AS "projectId", submodule, interviewee_id AS "intervieweeId", status, trigger_record_ids AS "triggerRecordIds"`,
-      { ...withNulls({ tenantId, ...s }, ['jobRoleId']), triggers: `{${(s.triggerRecordIds || []).join(',')}}` });
+      return insert(`INSERT INTO lna_interview_sessions (tenant_id, project_id, submodule, interviewee_id, job_role_id, trigger_record_ids, invite_expires_at)
+                     VALUES (:tenantId, :projectId, :submodule, :intervieweeId, :jobRoleId, CAST(:triggers AS uuid[]),
+                             COALESCE(CAST(:inviteExpiresAt AS timestamptz), now() + interval '7 days'))
+                     RETURNING id, project_id AS "projectId", submodule, interviewee_id AS "intervieweeId", status, trigger_record_ids AS "triggerRecordIds",
+                               invite_expires_at AS "inviteExpiresAt"`,
+      { ...withNulls({ tenantId, ...s }, ['jobRoleId', 'inviteExpiresAt']), triggers: `{${(s.triggerRecordIds || []).join(',')}}` });
     },
     async openFor(tenantId, { projectId, submodule }) {
       const rows = await select(`SELECT interviewee_id AS "userId" FROM lna_interview_sessions
@@ -267,7 +269,8 @@ function createLnaStores(sequelize, { cipher } = {}) {
       const rep = { tenantId, submodule };
       let sql = `SELECT s.id, s.project_id AS "projectId", s.interviewee_id AS "intervieweeId", u.name AS "intervieweeName",
                         s.status, s.mode, s.consent_at AS "consentAt", s.consent_version AS "consentVersion", s.started_at AS "startedAt", s.ended_at AS "endedAt",
-                        cardinality(s.trigger_record_ids) AS "triggerCount", j.status AS "analysisStatus"
+                        cardinality(s.trigger_record_ids) AS "triggerCount", j.status AS "analysisStatus", s.invite_expires_at AS "inviteExpiresAt",
+                        s.invite_extended_count AS "inviteExtendedCount"
                    FROM lna_interview_sessions s JOIN users u ON u.id = s.interviewee_id
                    LEFT JOIN lna_analysis_jobs j ON j.session_id = s.id
                   WHERE s.tenant_id = :tenantId AND s.submodule = :submodule`;
@@ -278,7 +281,8 @@ function createLnaStores(sequelize, { cipher } = {}) {
     async get(tenantId, id) {
       return one(`SELECT id, project_id AS "projectId", submodule, interviewee_id AS "intervieweeId", job_role_id AS "jobRoleId",
                          status, mode, consent_at AS "consentAt", consent_version AS "consentVersion", trigger_record_ids AS "triggerRecordIds",
-                         started_at AS "startedAt", ended_at AS "endedAt"
+                         started_at AS "startedAt", ended_at AS "endedAt", invite_expires_at AS "inviteExpiresAt",
+                         invite_extended_count AS "inviteExtendedCount"
                     FROM lna_interview_sessions WHERE tenant_id = :tenantId AND id = :id`, { tenantId, id });
     },
     async turns(tenantId, sessionId) {
@@ -304,6 +308,44 @@ function createLnaStores(sequelize, { cipher } = {}) {
       if (!sets.length) return null;
       return insert(`UPDATE lna_interview_sessions SET ${sets.join(', ')} WHERE tenant_id = :tenantId AND id = :id RETURNING id, status`,
         { tenantId, id, ...fields });
+    },
+    /** Q38: HR memperpanjang undangan. Pengingat H-3/H-1 di-reset agar dikirim lagi untuk batas baru. */
+    async extendInvite(tenantId, id, inviteExpiresAt) {
+      return insert(`UPDATE lna_interview_sessions
+                        SET invite_expires_at = :inviteExpiresAt, invite_extended_count = invite_extended_count + 1,
+                            reminder_h3_at = NULL, reminder_h1_at = NULL
+                      WHERE tenant_id = :tenantId AND id = :id
+                      RETURNING id, status, invite_expires_at AS "inviteExpiresAt", invite_extended_count AS "inviteExtendedCount"`,
+      { tenantId, id, inviteExpiresAt });
+    },
+    /**
+     * Job pengingat (lintas tenant, dipanggil job sistem, bukan request): sesi terbuka yang batasnya
+     * dalam `withinDays` hari dan masih ada pengingat yang belum terkirim. Keputusan akhir di dueReminder().
+     */
+    async reminderCandidates({ now, withinDays }) {
+      return select(`SELECT s.id, s.tenant_id AS "tenantId", s.submodule, s.status, s.invite_expires_at AS "inviteExpiresAt",
+                            s.reminder_h3_at AS "reminderH3At", s.reminder_h1_at AS "reminderH1At",
+                            u.id AS "userId", u.email, u.name, t.name AS "tenantName"
+                       FROM lna_interview_sessions s
+                       JOIN users u ON u.id = s.interviewee_id AND u.tenant_id = s.tenant_id
+                       JOIN tenants t ON t.id = s.tenant_id
+                      WHERE s.status IN ('scheduled','in_progress')
+                        AND s.invite_expires_at > :now
+                        AND s.invite_expires_at <= CAST(:now AS timestamptz) + make_interval(days => :withinDays)
+                        AND (s.reminder_h3_at IS NULL OR s.reminder_h1_at IS NULL)
+                        AND u.status <> 'disabled' AND t.status = 'active'
+                      ORDER BY s.invite_expires_at`, { now, withinDays });
+    },
+    /** Tandai pengingat terkirim; hanya berhasil sekali per jenis (aman bila job berjalan ganda). */
+    async markReminded(tenantId, id, kind, at) {
+      const col = kind === 'h1' ? 'reminder_h1_at' : 'reminder_h3_at';
+      const row = await insert(`UPDATE lna_interview_sessions SET ${col} = :at
+                                 WHERE tenant_id = :tenantId AND id = :id AND ${col} IS NULL RETURNING id`, { tenantId, id, at });
+      return Boolean(row);
+    },
+    async clearReminded(tenantId, id, kind) {
+      const col = kind === 'h1' ? 'reminder_h1_at' : 'reminder_h3_at';
+      await sequelize.query(`UPDATE lna_interview_sessions SET ${col} = NULL WHERE tenant_id = :tenantId AND id = :id`, { replacements: { tenantId, id } });
     },
   };
 
@@ -368,6 +410,48 @@ function createLnaStores(sequelize, { cipher } = {}) {
       sql += scopeSql('f.user_id', scope, rep);
       if (projectId) { sql += ' AND f.project_id = :projectId'; rep.projectId = projectId; }
       return open(tenantId, await select(`${sql} ORDER BY f.created_at DESC`, rep), ['title', 'detail']);
+    },
+    /** PM-6 B: daftar ringkas temuan non-training untuk HR (tanpa detail dan tanpa rencana aksi). */
+    async listNonTrainingSummary(tenantId, { projectId, userIds } = {}) {
+      const rep = { tenantId };
+      let sql = `SELECT f.id, f.project_id AS "projectId", f.user_id AS "userId", u.name AS "userName", f.title,
+                        pr.name AS "metricName", lf.title AS "linkedTrainingTitle", f.created_at AS "createdAt"
+                   FROM lna_findings f
+                   LEFT JOIN users u ON u.id = f.user_id
+                   LEFT JOIN lna_performance_records pr ON pr.id = f.performance_record_id
+                   LEFT JOIN lna_findings lf ON lf.id = f.linked_finding_id
+                  WHERE f.tenant_id = :tenantId AND f.category = 'non_training' AND f.review_status IN ('approved', 'edited')`;
+      if (userIds) sql += scopeSql('f.user_id', { userIds }, rep);
+      if (projectId) { sql += ' AND f.project_id = :projectId'; rep.projectId = projectId; }
+      return open(tenantId, await select(`${sql} ORDER BY f.created_at DESC`, rep), ['title', 'linkedTrainingTitle']);
+    },
+    // PM-6: izin atasan melihat temuan non-training timnya, diberikan dan dicabut HR
+    async nonTrainingGrants(tenantId) {
+      return select(`SELECT g.supervisor_id AS "supervisorId", u.name AS "supervisorName", u.email AS "supervisorEmail",
+                            g.granted_at AS "grantedAt", gb.name AS "grantedByName"
+                       FROM lna_non_training_grants g
+                       JOIN users u ON u.id = g.supervisor_id
+                       LEFT JOIN users gb ON gb.id = g.granted_by
+                      WHERE g.tenant_id = :tenantId AND g.revoked_at IS NULL ORDER BY u.name NULLS LAST, u.email`, { tenantId });
+    },
+    async hasNonTrainingGrant(tenantId, supervisorId) {
+      return Boolean(await one(`SELECT 1 AS ok FROM lna_non_training_grants
+                                 WHERE tenant_id = :tenantId AND supervisor_id = :supervisorId AND revoked_at IS NULL`, { tenantId, supervisorId }));
+    },
+    /** Return true bila izin baru dibuat, false bila sudah aktif sebelumnya. */
+    async grantNonTraining(tenantId, supervisorId, grantedBy) {
+      const row = await insert(`INSERT INTO lna_non_training_grants (tenant_id, supervisor_id, granted_by)
+                                VALUES (:tenantId, :supervisorId, :grantedBy)
+                                ON CONFLICT (tenant_id, supervisor_id) WHERE revoked_at IS NULL DO NOTHING RETURNING id`,
+      { tenantId, supervisorId, grantedBy });
+      return Boolean(row);
+    },
+    /** Return true bila ada izin aktif yang dicabut. */
+    async revokeNonTraining(tenantId, supervisorId, revokedBy) {
+      const row = await insert(`UPDATE lna_non_training_grants SET revoked_at = now(), revoked_by = :revokedBy
+                                 WHERE tenant_id = :tenantId AND supervisor_id = :supervisorId AND revoked_at IS NULL RETURNING id`,
+      { tenantId, supervisorId, revokedBy });
+      return Boolean(row);
     },
     async getFinding(tenantId, id) {
       return open(tenantId, await one(`SELECT f.id, f.user_id AS "userId", f.category, f.title, f.competency_id AS "competencyId", f.status,
@@ -435,7 +519,8 @@ function createLnaStores(sequelize, { cipher } = {}) {
                      VALUES (:tenantId, :findingId, :userId, :origin, :status, :programTier, :catalogSource, :catalogItemRef,
                              :catalogItemTitle, :note, :requestedBy)
                      RETURNING id, user_id AS "userId", finding_id AS "findingId", origin, status, catalog_source AS "catalogSource",
-                               catalog_item_ref AS "catalogItemRef", catalog_item_title AS "catalogItemTitle", note`,
+                               catalog_item_ref AS "catalogItemRef", catalog_item_title AS "catalogItemTitle", note,
+                               (catalog_item_ref IS NULL AND origin <> 'learner_request') AS "needsModule"`,
       withNulls({ tenantId, ...p, note: await enc(tenantId, p.note) }, ['findingId', 'programTier', 'catalogSource', 'catalogItemRef', 'catalogItemTitle', 'note', 'requestedBy']))
         .then((row) => open(tenantId, row, ['note']));
     },

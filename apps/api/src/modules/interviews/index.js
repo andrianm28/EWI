@@ -9,6 +9,7 @@ const { requireRole, ROLES } = require('../../core/rbac');
 const { scopeFor, inScope } = require('../../core/rbac/scope');
 const { badRequest, forbidden, notFound, HttpError } = require('../../core/errors');
 const { currentConsentVersion, isAcceptedConsentVersion } = require('../../core/consent');
+const { inviteExpiry, isExpired, extendedExpiry, parseExtendDays, OPEN_STATUSES, EXTEND_MAX_DAYS } = require('./invitation');
 
 const wrap = (fn) => (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
 
@@ -54,7 +55,7 @@ function interviewRouter({ submodule, stores, ai, aiConfig = {}, audit, analysis
         if (open.has(id)) continue;
         const person = await stores.people.get(req.tenantId, id);
         if (!person) continue;
-        created.push(await stores.interviews.create(req.tenantId, { projectId, submodule, intervieweeId: id, jobRoleId: person.jobRoleId }));
+        created.push(await stores.interviews.create(req.tenantId, { projectId, submodule, intervieweeId: id, jobRoleId: person.jobRoleId, inviteExpiresAt: inviteExpiry() }));
       }
       res.status(201).json({ data: created });
     }));
@@ -88,6 +89,8 @@ function interviewRouter({ submodule, stores, ai, aiConfig = {}, audit, analysis
     const s = await loadVisible(req);
     mustBeInterviewee(req, s);
     if (s.status !== 'scheduled') throw new HttpError(409, 'INVALID_STATE', 'Sesi sudah dimulai atau selesai');
+    // Q38: undangan berlaku 7 hari. Sesi yang sudah berjalan boleh diselesaikan (BT-28 belum dibangun).
+    if (isExpired(s.inviteExpiresAt)) throw new HttpError(409, 'INVITATION_EXPIRED', 'Undangan wawancara sudah berakhir. Minta HR memperpanjang undangan Anda.');
     const current = currentConsentVersion(submodule);
     if (!current) throw new HttpError(409, 'CONSENT_TEXT_PENDING', 'Teks persetujuan untuk wawancara ini belum terbit');
     const consentVersion = String((req.body || {}).consentVersion || '').trim();
@@ -102,6 +105,22 @@ function interviewRouter({ submodule, stores, ai, aiConfig = {}, audit, analysis
     await audit.record(req, 'create', `${submodule}.interview_consent`, { employeeIds: [s.intervieweeId], objectType: 'interview_session', objectIds: [s.id], consentVersion });
     const turn = q ? await stores.interviews.addTurn(req.tenantId, s.id, 'ai', q) : null;
     res.json({ data: { status: 'in_progress', consentVersion, question: turn } });
+  }));
+
+  // Q38: HR memperpanjang undangan (default 7 hari, maksimal 30). Dihitung dari batas lama, atau dari
+  // sekarang bila undangan sudah lewat. Pengingat H-3/H-1 dikirim ulang untuk batas baru.
+  r.post('/:id/extend', requireRole(ROLES.HR_ADMIN), wrap(async (req, res) => {
+    const s = await loadVisible(req);
+    if (!OPEN_STATUSES.includes(s.status)) throw new HttpError(409, 'INVALID_STATE', 'Sesi sudah selesai, undangan tidak perlu diperpanjang');
+    const days = parseExtendDays((req.body || {}).days);
+    if (days === null) throw badRequest(`days harus bilangan bulat 1-${EXTEND_MAX_DAYS}`);
+    const until = extendedExpiry(s.inviteExpiresAt, days);
+    const row = await stores.interviews.extendInvite(req.tenantId, s.id, until);
+    await audit.record(req, 'update', `${submodule}.interview_invitation`, {
+      employeeIds: [s.intervieweeId], objectType: 'interview_session', objectIds: [s.id], days,
+      from: s.inviteExpiresAt, to: until.toISOString(),
+    });
+    res.json({ data: row });
   }));
 
   r.post('/:id/turns', wrap(async (req, res) => {
