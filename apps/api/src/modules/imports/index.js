@@ -106,7 +106,8 @@ function importRouter({ submodule, stores, audit }) {
     if (b.status !== 'uploaded') throw new HttpError(409, 'INVALID_STATE', 'Impor ini sudah disimpan');
     const { kind, mapping, options, accepted, rejected } = await run(req, b);
     if (!accepted.length) throw badRequest('Tidak ada baris valid untuk disimpan');
-    const summary = await commitRows(kind, accepted, { stores, tenantId: req.tenantId, options, batchId: b.id, user: req.user });
+    const boundAudit = { record: (action, resource, meta) => audit.record(req, action, resource, meta) };
+    const summary = await commitRows(kind, accepted, { stores, tenantId: req.tenantId, options, batchId: b.id, user: req.user, audit: boundAudit });
     const result = { imported: accepted.length, rejectedCount: rejected.length, rejected: rejected.slice(0, MAX_REJECTED).map(({ row, reason }) => ({ row, reason })), ...summary };
     const saved = await stores.imports.update(req.tenantId, b.id, { mapping, options, result, status: 'committed', committedAt: new Date(), committedBy: req.user.id, rows: [] });
     await audit.record(req, 'create', `import.${kind.key}`, { batchId: b.id, filename: b.filename, imported: accepted.length, rejected: rejected.length });

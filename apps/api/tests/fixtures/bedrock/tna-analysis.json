@@ -1,0 +1,10 @@
+{
+  "$metadata": { "httpStatusCode": 200 },
+  "output": { "message": { "role": "assistant", "content": [
+    { "reasoningContent": { "reasoningText": { "text": "Karyawan menyebut belum paham klausul SLA dan aplikasi tiket sering lambat." } } },
+    { "text": "```json\n{\"findings\":[{\"category\":\"training\",\"title\":\"Belum memahami klausul SLA di kontrak pelanggan\",\"detail\":\"Karyawan mengaku tidak tahu batas waktu respons per prioritas di kontrak.\",\"kompetensi\":\"K2\",\"target\":\"T1\",\"confidence\":0.8},{\"category\":\"non_training\",\"title\":\"Aplikasi tiket lambat saat jam sibuk\",\"detail\":\"Karyawan menyebut aplikasi tiket sering macet pukul 09.00-11.00.\",\"kompetensi\":null,\"target\":\"T1\",\"confidence\":0.7},{\"category\":\"lainnya\",\"title\":\"diabaikan\"},{\"category\":\"training\",\"title\":\"Kode mengarang\",\"detail\":\"x\",\"kompetensi\":\"K9\",\"target\":\"T7\",\"confidence\":3}]}\n```" }
+  ] } },
+  "stopReason": "end_turn",
+  "usage": { "inputTokens": 1904, "outputTokens": 231, "totalTokens": 2135 },
+  "metrics": { "latencyMs": 3820 }
+}

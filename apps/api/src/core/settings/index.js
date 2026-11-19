@@ -18,8 +18,9 @@ const DEFAULTS = Object.freeze({
     promotionVisibleTo: ['hr_admin'],
   },
   lms: {
-    // K-1 terbuka: EliteMentor jalur default; LMS klien (mis. 'moodle') ditambah lewat konfigurasi
-    targets: ['elitementor'],
+    // K-1 terbuka: EliteMentor jalur default (adapter masih kosong). PK-18: katalog statis 'moodle' (hasil impor
+    // HR) ikut dicari; tenant tanpa katalog impor tidak terpengaruh karena hasilnya kosong.
+    targets: ['elitementor', 'moodle'],
   },
 });
 
