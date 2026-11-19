@@ -118,6 +118,23 @@ function langkah(app, masuk) {
       },
       transkrip: (siapa, sid) => kirim('get', `/api/tna/sessions/${sid}/transcript`, siapa),
     },
+    /** B9 Improvement Needs. Langkah tulis memastikan sukses; baca mengembalikan respons mentah untuk cek penolakan. */
+    ina: {
+      async buatTindakan(hr, tindakan) {
+        return (await kirim('post', '/api/ina/actions', hr, tindakan).expect(201)).body.data;
+      },
+      daftarTindakan: (siapa) => kirim('get', '/api/ina/actions', siapa),
+      async beriAkses(hr, atasan) {
+        return (await kirim('put', `/api/ina/access/${atasan.id}`, hr).expect(200)).body.data;
+      },
+      async cabutAkses(hr, atasan) {
+        return (await kirim('delete', `/api/ina/access/${atasan.id}`, hr).expect(200)).body.data;
+      },
+    },
+    /** B11 Admin Tenant. */
+    adminTenant: {
+      ubahPengguna: (admin, pengguna, perubahan) => kirim('patch', `/api/tenant-admin/users/${pengguna.id}`, admin, perubahan),
+    },
   };
 }
 

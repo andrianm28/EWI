@@ -1,6 +1,6 @@
 # B9 · Improvement Needs
 
-Status (19 Nov 2026): backend dan web sudah dibangun di PR #17 dan sesuai spek ini. egm-review penuh (tahap 5–9), review diff, dan triasenya ada di bagian 14 dan `docs/designs/egm-review/`. Yang tersisa: baris alur B18 (menunggu `driver.js`) dan keputusan terbuka di bagian 10.
+Status (19 Nov 2026): backend dan web sudah dibangun di PR #17 dan sesuai spek ini. egm-review penuh (tahap 5–9), review diff, dan triasenya ada di bagian 14 dan `docs/designs/egm-review/`. Yang tersisa: keputusan terbuka di bagian 10.
 
 Istilah: "Improvement Needs" (INA) mengikuti `CONTEXT.md`; "temuan non-pelatihan" adalah temuan TNA berkategori `non_training` yang menjadi sumber tindakan. Tanda ⚠️ = asumsi yang belum diputuskan, ⏳ = risiko yang diterima sementara; keduanya punya baris di bagian 10.
 
@@ -267,7 +267,7 @@ Rute di `routes.ts`: `ina` di `/ina` (meta `submodule: 'ina'`, `flag: 'ina.dashb
 - [x] `apps/api/tests/unit/ina-domain.test.js`
 - [x] `apps/api/tests/integration/ina.test.js`
 - [x] `apps/web/src/screens/b9-ina/*` (layar, `ShellExtra.vue`, `routes.ts`), `apps/web/src/api/ina.ts`, `apps/web/e2e/improvement-needs.spec.ts`; `screens/legacy-ina` dihapus
-- [ ] Baris alur "Akses atasan ke perbaikan" (B18 tabel 3.3) dengan `apps/api/tests/alur/driver.js`: menunggu driver rilis 20 Nov. Sementara alur yang sama diuji di `tests/integration/ina.test.js` (test K1)
+- [x] Baris alur "Akses atasan ke perbaikan" (B18 tabel 3.3): `apps/api/tests/integration/alur-ina.test.js` dengan langkah `ina.*` dan `adminTenant.*` di `apps/api/tests/alur/driver.js`
 
 ## 10. Asumsi dan risiko yang tersisa
 
