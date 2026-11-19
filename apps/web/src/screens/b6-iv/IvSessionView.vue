@@ -1,7 +1,7 @@
 <script setup lang="ts">
 // Sesi wawancara akar masalah (mockup layar `iv`): Undangan → Persetujuan → Wawancara → Ringkasan → Selesai.
 // Spek: docs/designs/b6-wawancara-akar-masalah.md bagian 4 (aturan A2–A12) dan 15 (kontrak layar).
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import AppShell from '@/components/AppShell.vue'
 import { ApiError } from '@/api/client'
@@ -10,6 +10,7 @@ import { useSessionStore } from '@/stores/session'
 import PercakapanWawancara from './PercakapanWawancara.vue'
 import PersetujuanTna from './PersetujuanTna.vue'
 import { TNA_CONSENT_VERSION } from '@/content/consent'
+import { CLASSIFICATION_LABEL } from '../b5-tna/labels'
 import { iv, stepOf, type SessionView, type Step, type Summary } from './api'
 import './iv.css'
 import '../b5-tna/tna.css'
@@ -17,7 +18,7 @@ import '../b5-tna/tna.css'
 const session = useSessionStore()
 const route = useRoute()
 const router = useRouter()
-const id = route.params.id as string
+const id = computed(() => route.params.id as string)
 const summaryOn = computed(() => session.hasFlag('tna.interview_summary'))
 
 const s = ref<SessionView | null>(null)
@@ -30,15 +31,21 @@ const working = ref('')
 const error = ref('')
 const noteOpen = ref(false)
 const note = ref('')
+const noteError = ref('')
+const errors = computed(() => [
+  ...(noteError.value ? [{ message: noteError.value, fieldId: 'iv-note' }] : []),
+  ...(error.value ? [{ message: error.value }] : []),
+])
 
-async function load() {
-  const r = (await iv.session(id)).data
+async function load({ keepSummary = false } = {}) {
+  const r = (await iv.session(id.value)).data
   s.value = r
   const t = r.turns ?? []
   // Setelah muat ulang: AI selesai bila giliran terakhir milik karyawan atau batas pertanyaan tercapai
   aiDone.value = t.length > 0 && (t[t.length - 1]!.speaker === 'human' || (!!r.questionLimit && t.filter((x) => x.speaker === 'ai').length >= r.questionLimit))
-  summary.value = null
-  if (stepOf(r) === 'summary' && summaryOn.value && r.transcriptVisible !== false) summary.value = (await iv.getSummary(id)).data
+  if (!keepSummary) summary.value = null
+  // Ringkasan gagal dimuat tidak boleh mengosongkan layar: langkah sesi tetap tampil bersama galatnya
+  if (!summary.value && stepOf(r) === 'summary' && summaryOn.value && r.transcriptVisible !== false) summary.value = (await iv.getSummary(id.value)).data
 }
 async function run(fn: () => Promise<void>, fallback: string) {
   busy.value = true; error.value = ''
@@ -49,15 +56,17 @@ async function run(fn: () => Promise<void>, fallback: string) {
   } finally { busy.value = false; working.value = '' }
 }
 onMounted(() => run(load, 'Sesi wawancara tidak bisa dimuat'))
+// Pindah dari /iv/a ke /iv/b memakai komponen yang sama: muat sesi baru
+watch(id, () => { s.value = null; noteOpen.value = false; note.value = ''; noteError.value = ''; run(load, 'Sesi wawancara tidak bisa dimuat') })
 
-const STEPS = computed(() => [
+const steps = computed(() => [
   { key: 'undangan', label: 'Undangan' }, { key: 'persetujuan', label: 'Persetujuan' }, { key: 'wawancara', label: 'Wawancara' },
   ...(summaryOn.value || step.value === 'summary' ? [{ key: 'ringkasan', label: 'Ringkasan' }] : []), { key: 'selesai', label: 'Selesai' },
 ])
 const STEP_KEY: Record<Step, string> = { expired: 'undangan', consent: 'persetujuan', chat: 'wawancara', summary: 'ringkasan', done: 'selesai', closed: 'selesai' }
 
 const consent = () => run(async () => {
-  const r = (await iv.consent(id, s.value?.consentVersionRequired || TNA_CONSENT_VERSION)).data
+  const r = (await iv.consent(id.value, s.value?.consentVersionRequired || TNA_CONSENT_VERSION)).data
   if (!s.value) return
   // Pertanyaan pertama datang di respons persetujuan; sesi lanjut ke langkah wawancara tanpa muat ulang
   s.value = { ...s.value, status: 'in_progress', step: s.value.step ? 'chat' : undefined, turns: r.question ? [r.question] : [] }
@@ -70,7 +79,7 @@ function send(text: string, restore: (t: string) => void) {
   list.push({ speaker: 'human', text, at: new Date().toISOString() })
   run(async () => {
     let r
-    try { r = (await iv.answer(id, text)).data } catch (e) {
+    try { r = (await iv.answer(id.value, text)).data } catch (e) {
       // AI gagal: jawaban tidak tersimpan di server, kembalikan ke kotak teks untuk dikirim ulang
       list.pop(); restore(text); throw e
     }
@@ -83,24 +92,28 @@ const hasAnswer = computed(() => turns.value.some((t) => t.speaker === 'human'))
 
 const makeSummary = () => run(async () => {
   working.value = 'AI sedang menyusun ringkasan…'
-  summary.value = (await iv.makeSummary(id)).data
-  await load()
+  summary.value = (await iv.makeSummary(id.value)).data
+  await load({ keepSummary: true })
 }, 'Ringkasan gagal dibuat. Coba lagi.')
-const confirm = () => run(async () => { await iv.confirm(id, {}); await load() }, 'Ringkasan gagal dikirim')
-const confirmWithNote = () => run(async () => {
+const confirm = () => run(async () => { await iv.confirm(id.value, {}); await load() }, 'Ringkasan gagal dikirim')
+const confirmWithNote = () => {
   const t = note.value.trim()
-  if (t.length < 10 || t.length > 1000) throw new Error('Tulis catatan 10-1000 karakter untuk HR')
-  await iv.confirm(id, { accurate: false, note: t })
+  noteError.value = t.length < 10 || t.length > 1000 ? 'Tulis catatan 10-1000 karakter untuk HR' : ''
+  if (!noteError.value) return sendNote(t)
+}
+const sendNote = (t: string) => run(async () => {
+  await iv.confirm(id.value, { accurate: false, note: t })
   await load()
 }, 'Ringkasan gagal dikirim')
-const restart = () => run(async () => { await iv.restart(id); noteOpen.value = false; await load() }, 'Wawancara gagal diulang')
+const restart = () => run(async () => { await iv.restart(id.value); noteOpen.value = false; await load() }, 'Wawancara gagal diulang')
 const complete = () => run(async () => {
-  await iv.complete(id)
+  await iv.complete(id.value)
   await router.push({ name: 'iv' })
 }, 'Wawancara gagal dikirim')
 
 const confidence = (c: number | null) => (c === null ? null : Math.round(c * 100))
-const CATEGORY = { training: 'Training Needs', non_training: 'Improvement Needs' } as const
+const restartsLeft = computed(() => s.value?.restartsLeft ?? 0)
+const STEP_STATUS: Record<Step, string> = { expired: 'Berakhir', consent: 'Belum mulai', chat: 'Berjalan', summary: 'Menunggu konfirmasi ringkasan', done: 'Selesai', closed: 'Dibatalkan' }
 const audit = computed(() => {
   const v = s.value
   if (!v?.sessionCode) return []
@@ -113,14 +126,15 @@ const audit = computed(() => {
     <nav class="el-muted tna-bc" aria-label="Lokasi"><RouterLink :to="{ name: 'iv' }" class="tna-link">Wawancara akar masalah</RouterLink> › Sesi</nav>
     <h1 class="tna-h1">Wawancara akar masalah</h1>
     <p v-if="s?.focusLabel" class="el-muted">Topik: {{ s.focusLabel }}</p>
-    <UiErrorSummary :errors="error ? [{ message: error }] : []" />
+    <UiErrorSummary :errors="errors" />
 
-    <UiCard v-if="s && s.transcriptVisible === false" data-testid="transcript-private">
-      Percakapan wawancara hanya bisa dibaca karyawan yang bersangkutan. Lihat ringkasan dan temuannya di halaman temuan.
+    <UiCard v-if="s && s.transcriptVisible === false">
+      <p data-testid="transcript-private">Percakapan wawancara hanya bisa dibaca karyawan yang bersangkutan.</p>
+      <p v-if="step" class="el-muted">Status: {{ STEP_STATUS[step] }}</p>
     </UiCard>
 
     <div v-else-if="s && step" class="iv-layout">
-      <UiCard tonal><UiStepper :steps="STEPS" :current="STEP_KEY[step]" label="Langkah wawancara" /></UiCard>
+      <UiCard tonal><UiStepper :steps="steps" :current="STEP_KEY[step]" label="Langkah wawancara" /></UiCard>
       <UiCard>
         <template v-if="step === 'expired'">
           <p>Undangan sudah berakhir. Minta HR memperpanjang undangan Anda.</p>
@@ -155,7 +169,7 @@ const audit = computed(() => {
               <div class="iv-finding__title">{{ f.title }}</div>
               <div v-if="f.detail" class="el-muted">{{ f.detail }}</div>
               <div class="iv-actions">
-                <UiChip :tone="f.category === 'training' ? 'training' : 'improvement'">{{ CATEGORY[f.category] }}</UiChip>
+                <UiChip :tone="f.category === 'training' ? 'training' : 'improvement'">{{ CLASSIFICATION_LABEL[f.category] }}</UiChip>
                 <UiChip v-if="f.confidence === null || f.confidence < 0.5" tone="review">Perlu ditinjau HR</UiChip>
                 <span v-if="confidence(f.confidence) !== null" class="el-muted iv-small">Keyakinan AI sementara: {{ confidence(f.confidence) }}%</span>
               </div>
@@ -163,12 +177,12 @@ const audit = computed(() => {
           </ul>
           <div class="iv-actions iv-mt">
             <UiButton :disabled="busy" @click="confirm">Sesuai, kirim ke HR</UiButton>
-            <UiButton variant="outlined" :disabled="busy || !s.restartsLeft" @click="restart">Ulangi wawancara<template v-if="s.restartsLeft"> ({{ s.restartsLeft }} kali lagi)</template></UiButton>
-            <UiButton v-if="s.restartsLeft === 0 && !noteOpen" variant="text" @click="noteOpen = true">Kirim dengan catatan</UiButton>
+            <UiButton variant="outlined" :disabled="busy || !restartsLeft" @click="restart">Ulangi wawancara<template v-if="restartsLeft"> ({{ restartsLeft }} kali lagi)</template></UiButton>
+            <UiButton v-if="!restartsLeft && !noteOpen" variant="text" @click="noteOpen = true">Kirim dengan catatan</UiButton>
           </div>
-          <form v-if="noteOpen" class="iv-note iv-mt" @submit.prevent="confirmWithNote">
-            <UiField id="iv-note" label="Catatan untuk HR" hint="Tulis bagian ringkasan yang tidak sesuai, 10-1000 karakter.">
-              <template #default="{ attrs }"><textarea v-bind="attrs" v-model="note" rows="3" class="iv-input" /></template>
+          <form v-if="noteOpen" class="iv-note iv-mt" novalidate @submit.prevent="confirmWithNote">
+            <UiField id="iv-note" :error="noteError || undefined" label="Catatan untuk HR" hint="Tulis bagian ringkasan yang tidak sesuai, 10-1000 karakter.">
+              <template #default="{ attrs }"><textarea v-bind="attrs" v-model="note" rows="3" class="el-input" /></template>
             </UiField>
             <UiButton type="submit" :disabled="busy">Kirim ringkasan dengan catatan</UiButton>
           </form>

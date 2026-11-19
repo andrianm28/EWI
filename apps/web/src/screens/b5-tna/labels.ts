@@ -7,7 +7,6 @@ export const CLASSIFICATION_LABEL: Record<Classification, string> = {
 export const CLASSIFICATION_TONE: Record<Classification, 'training' | 'improvement' | 'review' | 'neutral' | 'success'> = {
   training: 'training', non_training: 'improvement', review: 'review', pending: 'neutral', ok: 'success',
 }
-export const interviewStatus = (r: { interviewedCount: number; assignedCount: number }) =>
-  r.interviewedCount || r.assignedCount ? `${r.interviewedCount} selesai · ${r.assignedCount} berjalan` : 'Belum ada'
+export const interviewStatus = (r: { interviewedCount: number; assignedCount: number }) => `${r.interviewedCount} selesai · ${r.assignedCount} berjalan`
 export const pct = (share: number) => `${Math.round(share * 100)}%`
 export const num = (v: number | null | undefined, unit?: string | null) => (v === null || v === undefined ? '–' : `${Number.isInteger(v) ? v : v.toFixed(2)}${unit ? ` ${unit}` : ''}`)

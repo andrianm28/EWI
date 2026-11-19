@@ -231,7 +231,7 @@ run('B5 Training Needs: gap dan penugasan (Postgres)', () => {
     const okr = (await request(app).get('/api/tna/gaps/okr').set(as('hr'))).body.data.rows[0];
     expect(okr).toMatchObject({ assignedCount: 3, interviewedCount: 0, classification: 'pending' });
     const detail = (await request(app).get(`/api/tna/gaps/detail?${okrQuery}`).set(as('hr'))).body.data;
-    expect(detail.employees.find((e) => e.id === u.a).session).toMatchObject({ id: sa.id, status: 'scheduled' });
+    expect(detail.employees.find((e) => e.id === u.a).session).toMatchObject({ id: sa.id, status: 'scheduled', projectId: T.main.projectId, assignedBy: u.hr, open: true }); // kontrak layar: tombol Batalkan
   });
 
   it('karyawan melihat tenggat, durasi, topik, dan penugas di daftar sesinya; perpanjangan HR menggeser tenggat', async () => {

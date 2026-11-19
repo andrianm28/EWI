@@ -393,7 +393,7 @@ function createLnaStores(sequelize, { cipher } = {}) {
     async gapSessions(tenantId, scope) {
       const rep = { tenantId };
       const sql = `SELECT s.id, s.project_id AS "projectId", s.interviewee_id AS "intervieweeId", s.status,
-                          s.invite_expires_at AS "inviteExpiresAt", s.trigger_record_ids AS "triggerRecordIds",
+                          s.invite_expires_at AS "inviteExpiresAt", s.assigned_by AS "assignedBy", s.trigger_record_ids AS "triggerRecordIds",
                           s.focus_kind AS "focusKind", s.focus_competency_id AS "focusCompetencyId", s.focus_metric_type AS "focusMetricType",
                           s.focus_metric_key AS "focusMetricKey", s.focus_period AS "focusPeriod"
                      FROM lna_interview_sessions s

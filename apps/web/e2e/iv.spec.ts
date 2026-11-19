@@ -113,6 +113,9 @@ test('persetujuan tanpa centang menampilkan ringkasan galat', async ({ page }) =
   await expect(page.getByText('Topik: Analisis insiden')).toBeVisible()
   await page.getByRole('button', { name: 'Lanjut ke wawancara' }).click()
   await expect(page.getByRole('alert')).toContainText('Centang persetujuan untuk melanjutkan')
+  // Ringkasan galat mengambil fokus supaya dibacakan; tautannya membawa ke kotak centang
+  await expect(page.getByRole('alert')).toBeFocused()
+  await page.getByRole('alert').getByRole('link', { name: 'Centang persetujuan untuk melanjutkan' }).click()
   await expect(page.getByTestId('consent-check')).toBeFocused()
 })
 
@@ -160,6 +163,26 @@ test('jatah ulangi habis: kirim dengan catatan tidak sesuai', async ({ page }) =
   expect(sent.find((x) => x.path === 'confirm')?.body).toEqual({ accurate: false, note: 'Temuan kedua tidak sesuai, alatnya sudah diperbaiki.' })
 })
 
+test('catatan terlalu pendek: pesan aturan panjang tampil di ringkasan galat dan field ditandai', async ({ page }) => {
+  const sent = await setup(page, { flags: SUMMARY_ON, state: { status: 'in_progress', restartCount: 2, summaryAt: '2026-11-20T03:00:00.000Z', turns: [{ speaker: 'ai', text: 'Q', at: '' }, { speaker: 'human', text: 'A', at: '' }] } })
+  await page.route('**/api/tna/sessions/s1/summary', (r) => r.fulfill({ json: { data: { findings: FINDINGS, createdAt: '2026-11-20T03:00:00.000Z', confirmedAt: null, state: 'pending' } } }))
+  await page.goto('/iv/s1')
+  await page.getByRole('button', { name: 'Kirim dengan catatan' }).click()
+  await page.getByLabel('Catatan untuk HR').fill('pendek')
+  await page.getByRole('button', { name: 'Kirim ringkasan dengan catatan' }).click()
+  await expect(page.getByRole('alert')).toContainText('Tulis catatan 10-1000 karakter untuk HR')
+  await expect(page.getByLabel('Catatan untuk HR')).toHaveAttribute('aria-invalid', 'true')
+  expect(sent.some((x) => x.path === 'confirm')).toBe(false)
+})
+
+test('ringkasan gagal dimuat: langkah sesi tetap tampil dengan galat', async ({ page }) => {
+  await setup(page, { flags: SUMMARY_ON, state: { status: 'in_progress', summaryAt: '2026-11-20T03:00:00.000Z', turns: [{ speaker: 'ai', text: 'Q', at: '' }, { speaker: 'human', text: 'A', at: '' }] } })
+  await page.route('**/api/tna/sessions/s1/summary', (r) => r.fulfill({ status: 500, json: { error: { code: 'INTERNAL', message: 'Terjadi kesalahan' } } }))
+  await page.goto('/iv/s1')
+  await expect(page.getByRole('heading', { name: 'Ringkasan temuan AI' })).toBeVisible()
+  await expect(page.getByRole('alert')).toContainText('Terjadi kesalahan')
+})
+
 test('flag ringkasan mati: wawancara ditutup dengan tombol lama', async ({ page }) => {
   const sent = await setup(page, { state: { status: 'in_progress', turns: [{ speaker: 'ai', text: 'Q', at: '' }] } })
   await page.goto('/iv/s1')
@@ -173,7 +196,8 @@ test('flag ringkasan mati: wawancara ditutup dengan tombol lama', async ({ page 
 test('HR membuka sesi orang lain: percakapan tidak tampil', async ({ page }) => {
   await setup(page, { role: 'hr_admin', userId: 'u-hr', interviewee: false, state: { status: 'completed' } })
   await page.goto('/iv/s1')
-  await expect(page.getByTestId('transcript-private')).toBeVisible()
+  await expect(page.getByTestId('transcript-private')).toHaveText('Percakapan wawancara hanya bisa dibaca karyawan yang bersangkutan.')
+  await expect(page.getByText('Status: Selesai')).toBeVisible()
   await expect(page.getByTestId('turn-human')).toHaveCount(0)
 })
 

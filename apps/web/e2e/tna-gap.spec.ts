@@ -112,6 +112,8 @@ test('HR: ringkasan KPI, tab gap kompetensi dan OKR dengan label klasifikasi', a
   const comp = page.getByRole('table', { name: 'Gap kompetensi' })
   await expect(comp).toContainText('Analisis insiden')
   await expect(comp).toContainText('Belum diwawancarai')
+  await expect(comp.getByRole('columnheader', { name: 'Status wawancara' })).toBeVisible()
+  await expect(comp).toContainText('0 selesai · 1 berjalan')
   await page.getByRole('tab', { name: 'Gap OKR' }).click()
   const okr = page.getByRole('table', { name: 'Gap OKR' })
   await expect(okr).toContainText('Waktu respons')
@@ -151,7 +153,17 @@ test('HR: galat penugasan dari API ditampilkan', async ({ page }) => {
   const form = page.getByRole('form', { name: 'Tugaskan wawancara' })
   await form.getByLabel('Tenggat').fill('2026-12-05')
   await form.getByRole('button', { name: 'Tugaskan wawancara' }).click()
-  await expect(page.getByRole('alert')).toContainText('Tenggat paling cepat besok')
+  await expect(page.getByRole('alert').getByRole('link', { name: /Tenggat paling cepat besok/ })).toBeVisible()
+})
+
+test('HR: tenggat kosong ditolak di peramban, galat menaut ke field', async ({ page }) => {
+  const sent = await setup(page, { flags: { ...BOARD, 'tna.interview_assignment': true } })
+  await page.goto(`/tna/gap?kind=competency&competencyId=${C1}`)
+  const form = page.getByRole('form', { name: 'Tugaskan wawancara' })
+  await form.getByRole('button', { name: 'Tugaskan wawancara' }).click()
+  await expect(page.getByRole('alert').getByRole('link', { name: 'Pilih tenggat wawancara' })).toBeVisible()
+  await expect(form.getByLabel('Tenggat')).toHaveAttribute('aria-invalid', 'true')
+  expect(sent.some((s) => s.path === '/assignments')).toBe(false)
 })
 
 test('atasan: membatalkan penugasan orang lain ditolak, tombol tinjauan HR tidak ada', async ({ page }) => {

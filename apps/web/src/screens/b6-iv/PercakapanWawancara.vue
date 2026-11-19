@@ -1,7 +1,7 @@
 <script setup lang="ts">
 // Percakapan wawancara teks (mockup layar `iv`, langkah Wawancara). Slot `masukan-suara` disiapkan untuk paket suara B19.
 import { ref } from 'vue'
-import { UiButton } from '@/ui'
+import { UiButton, UiChip } from '@/ui'
 import type { Turn } from './api'
 import './iv.css'
 
@@ -21,16 +21,16 @@ function submit() {
 <template>
   <div class="iv-chat-head">
     <h2 class="iv-h2">Percakapan</h2>
-    <span v-if="questionLimit" class="el-chip el-chip--neutral">Pertanyaan {{ turns.filter((t) => t.speaker === 'ai').length }}, paling banyak {{ questionLimit }}</span>
+    <UiChip v-if="questionLimit">Pertanyaan {{ turns.filter((t) => t.speaker === 'ai').length }}, paling banyak {{ questionLimit }}</UiChip>
   </div>
-  <div class="iv-chat">
+  <div class="iv-chat" role="log" aria-live="polite" aria-label="Percakapan wawancara">
     <div v-for="(t, i) in turns" :key="i" :class="['iv-msg', t.speaker === 'ai' ? 'iv-msg--ai' : 'iv-msg--me']" :data-testid="`turn-${t.speaker}`">
       <small>{{ t.speaker === 'ai' ? 'ELGOS-AI' : 'Anda' }}</small>{{ t.text }}
     </div>
   </div>
   <form v-if="canAnswer" class="iv-answer" @submit.prevent="submit">
-    <label class="sr-only" for="iv-answer">Jawaban</label>
-    <textarea id="iv-answer" v-model="text" rows="2" class="iv-input" placeholder="Tulis jawaban Anda" />
+    <label class="el-sr-only" for="iv-answer">Jawaban</label>
+    <textarea id="iv-answer" v-model="text" rows="2" class="el-input iv-grow" placeholder="Tulis jawaban Anda" />
     <slot name="masukan-suara" />
     <UiButton type="submit" :disabled="busy">Kirim</UiButton>
   </form>

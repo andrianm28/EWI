@@ -69,7 +69,7 @@ const compCols: UiColumn[] = [
   { key: 'actualPct', label: 'Aktual', align: 'right', mono: true },
   { key: 'gapPct', label: 'Gap', sortable: true },
   { key: 'people', label: 'Orang' },
-  { key: 'status', label: 'Wawancara' },
+  { key: 'status', label: 'Status wawancara' },
   { key: 'classification', label: 'Klasifikasi' },
 ]
 const okrCols: UiColumn[] = [
@@ -78,7 +78,7 @@ const okrCols: UiColumn[] = [
   { key: 'actual', label: 'Aktual', align: 'right', mono: true },
   { key: 'diff', label: 'Selisih', align: 'right', mono: true },
   { key: 'people', label: 'Orang' },
-  { key: 'status', label: 'Wawancara' },
+  { key: 'status', label: 'Status wawancara' },
   { key: 'classification', label: 'Klasifikasi' },
 ]
 const detailLink = (row: CompetencyGap | OkrGap) => ({ name: 'tna-gap', query: { ...gapRefOf(row), tab: tab.value } })
@@ -94,7 +94,7 @@ const detailLink = (row: CompetencyGap | OkrGap) => ({ name: 'tna-gap', query: {
       <UiErrorSummary :errors="error ? [{ message: error }] : []" />
       <UiTabs id="tna-tab" v-model="tab" :tabs="TABS" label="Bagian Training Needs" />
 
-      <div v-if="tab === 'ringkasan'" class="tna-panel">
+      <div v-if="tab === 'ringkasan'" id="tna-tab-panel-ringkasan" role="tabpanel" aria-labelledby="tna-tab-tab-ringkasan" class="tna-panel">
         <div class="el-grid el-grid-4">
           <UiKpiCard v-for="k in kpis" :key="k.label" :label="k.label" :value="k.value" :note="k.note" />
         </div>
@@ -120,7 +120,7 @@ const detailLink = (row: CompetencyGap | OkrGap) => ({ name: 'tna-gap', query: {
         </div>
       </div>
 
-      <div v-else-if="tab === 'kompetensi'" class="tna-panel">
+      <div v-else-if="tab === 'kompetensi'" id="tna-tab-panel-kompetensi" role="tabpanel" aria-labelledby="tna-tab-tab-kompetensi" class="tna-panel">
         <UiNote class="tna-gap-b"><b>Gap kompetensi</b> = kesenjangan skor karyawan terhadap target kompetensi jabatan. Buka gap untuk melihat detail dan menugaskan wawancara akar masalah.</UiNote>
         <UiDataTable :columns="compCols" :rows="comps" row-key="key" caption="Gap kompetensi" caption-hidden empty-text="Belum ada gap. Impor data asesmen atau kinerja lebih dulu.">
           <template #cell-name="{ row }"><RouterLink :to="detailLink(row)" class="tna-link">{{ row.name }}</RouterLink></template>
@@ -135,10 +135,10 @@ const detailLink = (row: CompetencyGap | OkrGap) => ({ name: 'tna-gap', query: {
         </UiDataTable>
       </div>
 
-      <div v-else class="tna-panel">
+      <div v-else id="tna-tab-panel-okr" role="tabpanel" aria-labelledby="tna-tab-tab-okr" class="tna-panel">
         <UiNote class="tna-gap-b"><b>Gap OKR</b> = kesenjangan terhadap pencapaian OKR/KPI/SLA. Diperlakukan sama seperti gap kompetensi: dapat diwawancarai dan diberi solusi.</UiNote>
         <label v-if="summary?.periods.length" class="tna-period">Periode
-          <select v-model="period" class="tna-select">
+          <select v-model="period" class="el-input tna-period__select">
             <option v-for="p in summary.periods" :key="p" :value="p">{{ p }}</option>
           </select>
         </label>
