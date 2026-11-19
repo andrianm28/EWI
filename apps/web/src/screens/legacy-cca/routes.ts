@@ -2,5 +2,5 @@
 import type { RouteRecordRaw } from 'vue-router'
 
 export default [
-  { path: '/m/:key(cca)', name: 'legacy-cca', component: () => import('@/views/SubmoduleView.vue'), meta: { title: 'Core Competency Analysis' } },
+  { path: '/m/:key(cca)', name: 'legacy-cca', component: () => import('@/views/SubmoduleView.vue'), meta: { submoduleParam: true, title: 'Core Competency Analysis' } },
 ] satisfies RouteRecordRaw[]
