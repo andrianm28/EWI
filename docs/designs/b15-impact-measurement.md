@@ -93,6 +93,7 @@ baru `lim.reinterview`.
 
 | Metode dan path | Peran | Isi |
 | --- | --- | --- |
+| `GET /options` | HR | pilihan formulir rencana `{ modules: [{ id, code, name }], jobRoles: [{ id, name }] }` (tanpa bergantung pada modul `li`/`dna` menyala) |
 | `GET /plans` | HR, atasan | daftar rencana aktif `{ id, title, jobRoleName, moduleCount, participantCount }`; `?archived=1` ikut arsip (HR). Atasan hanya menerima rencana yang memuat ≥1 anggota timnya, dan `participantCount` dihitung atas timnya |
 | `POST /plans` | HR | buat `{ title, jobRoleId?, periodFrom?, periodUntil?, businessProblem, desiredBehavior, priorityCapabilities, evidencePlan, existingMetrics, baselineLabel?, afterLabel?, moduleIds[] }`; `moduleIds` 1–20, modul tenant lain atau tidak ada → 400 `MODULE_NOT_FOUND`; `jobRoleId` tenant lain → 400 |
 | `PATCH /plans/:id` | HR | ubah field di atas, `valueEstimate`, `factors`, `status`; field yang tidak dikirim tetap |

@@ -63,6 +63,13 @@ function createLimStores(sequelize) {
       if (!ids.length) return 0;
       return (await one('SELECT count(*)::int AS n FROM li_modules WHERE tenant_id = :tenantId AND id IN (:ids)', { tenantId, ids })).n;
     },
+    async options(tenantId) {
+      const [modules, jobRoles] = await Promise.all([
+        select('SELECT id, code, name FROM li_modules WHERE tenant_id = :tenantId ORDER BY code', { tenantId }),
+        select('SELECT id, name FROM lna_job_roles WHERE tenant_id = :tenantId ORDER BY name', { tenantId }),
+      ]);
+      return { modules, jobRoles };
+    },
     async jobRoleExists(tenantId, id) {
       return !!(await one('SELECT 1 AS x FROM lna_job_roles WHERE tenant_id = :tenantId AND id = :id', { tenantId, id }));
     },

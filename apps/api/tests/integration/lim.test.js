@@ -120,6 +120,14 @@ run('B15 Learning Impact Measurement (Postgres)', () => {
     expect((await send('post', '/plans', planBody(), 'spv')).status).toBe(403);
   });
 
+  it('pilihan formulir rencana: modul dan jabatan tenant ini saja (HR)', async () => {
+    const res = await get('/options');
+    expect(res.status).toBe(200);
+    expect(res.body.data.modules.map((m) => m.code)).toEqual(['ST-A2', 'ST-B1']);
+    expect(res.body.data.jobRoles.map((r) => r.name)).toEqual(['Engineer Service Delivery', 'Sales']);
+    expect((await get('/options', 'spv')).status).toBe(403);
+  });
+
   it('HR membuat rencana; modul tenant lain, jabatan tenant lain, dan isian kosong ditolak', async () => {
     expect((await send('post', '/plans', planBody({ moduleIds: [mOther] }))).body.error.code).toBe('MODULE_NOT_FOUND');
     expect((await send('post', '/plans', planBody({ moduleIds: [] }))).status).toBe(400);

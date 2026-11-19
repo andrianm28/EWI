@@ -161,6 +161,7 @@ module.exports = {
     r.get('/', (req, res) => res.json({ module: 'lim', title: 'Learning Impact Measurement', tenantId: req.tenantId, role: req.user.role }));
 
     // --- Rencana ---
+    r.get('/options', hr, wrap(async (req, res) => res.json({ data: await stores.lim.options(req.tenantId) })));
     r.get('/plans', wrap(async (req, res) => {
       const team = await teamOf(req);
       const plans = await stores.lim.listPlans(req.tenantId, { archived: isHr(req) && req.query.archived === '1' });
