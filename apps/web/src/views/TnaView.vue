@@ -5,7 +5,7 @@ import { computed, onMounted, ref } from 'vue'
 import AppShell from '@/components/AppShell.vue'
 import ImportPanel from '@/components/ImportPanel.vue'
 import {
-  lna, PLAN_STATUS_LABEL, PLAN_NEXT, FLAG_TRAINING_REQUEST, FLAG_NON_TRAINING_HR, formatWib,
+  lna, COURSE_STATUS_LABEL, PLAN_STATUS_LABEL, PLAN_NEXT, FLAG_TRAINING_REQUEST, FLAG_NON_TRAINING_HR, formatWib,
   type Finding, type NonTrainingFinding, type NonTrainingGrant, type ParetoRow, type PlanItem, type Project, type Session, type TnaDashboard,
 } from '@/api/lna'
 import { useSessionStore } from '@/stores/session'
@@ -261,8 +261,14 @@ const target = (f: Finding) => (f.metricName ? `${f.metricName}: target ${f.targ
       <ul class="mt-2 divide-y text-sm" data-testid="tna-plan">
         <li v-for="p in plan" :key="p.id" class="flex items-center justify-between gap-3 py-2">
           <div>
-            <div>{{ p.catalogItemTitle ?? p.findingTitle ?? p.note }}<span v-if="!isLearner" class="text-slate-500"> · {{ p.userName }}</span></div>
-            <div class="text-xs text-slate-500">{{ p.origin === 'learner_request' ? 'Diminta karyawan' : 'Usulan' }}<template v-if="p.needsModule"> · perlu modul baru</template></div>
+            <div>
+              <a v-if="p.catalogItemUrl" :href="p.catalogItemUrl" target="_blank" rel="noopener noreferrer" class="text-indigo-700 underline">{{ p.catalogItemTitle }}</a>
+              <template v-else>{{ p.catalogItemTitle ?? p.findingTitle ?? p.note }}</template>
+              <span v-if="!isLearner" class="text-slate-500"> · {{ p.userName }}</span>
+            </div>
+            <div class="text-xs text-slate-500">
+              {{ p.origin === 'learner_request' ? 'Diminta karyawan' : 'Usulan' }}<template v-if="p.needsModule"> · perlu modul baru</template><template v-if="p.courseStatus"> · Course: {{ COURSE_STATUS_LABEL[p.courseStatus] ?? p.courseStatus }}</template>
+            </div>
           </div>
           <select v-if="!isLearner && statusOptions(p).length > 1" :value="p.status" class="rounded border px-2 py-1 text-xs" :aria-label="`Status ${p.id}`" @change="setStatus(p.id, ($event.target as HTMLSelectElement).value)">
             <option v-for="k in statusOptions(p)" :key="k" :value="k">{{ PLAN_STATUS_LABEL[k] ?? k }}</option>

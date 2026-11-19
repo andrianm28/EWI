@@ -26,7 +26,7 @@ export interface Session { id: string; projectId: string; intervieweeId: string;
 export interface Turn { speaker: 'ai' | 'human'; text: string; at: string }
 export interface Finding { id: string; userId: string; userName: string | null; title: string; status: string; competencyName: string | null; metricName: string | null; target: number | null; actual: number | null }
 export interface ParetoRow { key: string; label: string; people: number; avgMiss: number; score: number; share: number; cumulativeShare: number }
-export interface PlanItem { id: string; userId: string; userName: string | null; findingTitle: string | null; origin: string; status: string; catalogItemTitle: string | null; needsModule?: boolean; note: string | null }
+export interface PlanItem { id: string; userId: string; userName: string | null; findingTitle: string | null; origin: string; status: string; catalogItemTitle: string | null; needsModule?: boolean; catalogItemUrl?: string | null; courseStatus?: string | null; note: string | null }
 export interface TnaDashboard { role: string; people: number | null; redTargets: number; sessions: Record<string, number>; trainingFindings: number; planItems: Record<string, number>; reviewPending?: number }
 // PK-14: review hasil AI oleh HR (PD-14 ★A)
 export type ReviewStatus = 'draft' | 'approved' | 'edited' | 'rejected'
@@ -92,6 +92,7 @@ export const ROLE_LABEL: Record<string, string> = {
   hr_admin: 'HR', supervisor: 'Atasan', learner: 'Karyawan', eta_admin: 'Admin ETA',
 }
 // K-3: satu set status rencana (sama dengan apps/api/src/modules/tna/plan-status.js)
+export const COURSE_STATUS_LABEL: Record<string, string> = { passed: 'Lulus', in_progress: 'Berjalan', failed: 'Tidak lulus' }
 export const PLAN_STATUS_LABEL: Record<string, string> = {
   requested: 'Diminta', new: 'Baru', in_progress: 'Berjalan', completed: 'Selesai', rejected: 'Ditolak',
 }

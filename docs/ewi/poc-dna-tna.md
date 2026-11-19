@@ -34,9 +34,11 @@ INA tidak ikut POC (RG-4): temuan non-training tetap direkam, disembunyikan sela
 | Gap & karier | `GET /api/dna/employees`, `GET /api/dna/employees/:id`, `GET /api/dna/promotion-candidates` | Gap = skor terbaru vs skor minimal (0–4). Kandidat promosi (sudah lulus program jenjang berikutnya) hanya bila flag `promotion.recommendation` aktif (G2-A). |
 | Wawancara AI (teks) | `/api/{dna,tna}/sessions` (+ `/:id/consent`, `/:id/turns`, `/:id/complete`) | Persetujuan wajib sebelum pertanyaan pertama. Analisis lewat port AI. Sesi DNA butuh flag `dna.ai_interview` (403 `FEATURE_DISABLED` bila mati). |
 | Data kinerja | `POST /api/tna/performance/import`, `GET /api/tna/performance` | OKR/KPI/SLA, arah target higher/lower, baris tak dikenal ditolak per baris. |
+| Aturan KPI (PK-20) | `GET/PUT /api/tna/kpi-rules` | Arah + toleransi per KPI (PM-1 ★ B). Kolom Toleransi di template kinerja; kosong = aturan tersimpan atau 0. Aturan berubah (lewat impor atau PUT) -> status semua periode KPI itu dihitung ulang dan diaudit (`tna.kpi_rule`). Sesi wawancara yang sudah terjadwal tidak dibatalkan otomatis. |
+| Katalog course (PK-18) | Impor `catalog_courses` dan `catalog_completions` (DNA dan TNA), `GET /api/tna/catalog` | Daftar course Moodle sebagai katalog statis + pemetaan ke kompetensi (nama di kamus). Rencana `needs_module` yang kompetensinya mendapat course langsung terisi (`proposed`). Course lulus -> rencana yang menunjuknya `completed`. |
 | Jadwal TNA | `POST /api/tna/projects/:id/interviews`, `GET /api/tna/job-roles` | Cakupan: `red_only` (default, dari `settings.tna.interviewScope`) atau `all_members` dengan `jobRoleId` wajib. Target merah jadi pemicu yang dibahas. Daftar job role tersedia tanpa modul DNA. |
 | Temuan & prioritas | `GET /api/tna/findings`, `GET /api/tna/pareto`, `GET /api/tna/dashboard` | Pareto untuk HR dan atasan, bukan learner. |
-| Training plan | `POST /api/tna/findings/:id/plan`, `POST /api/tna/training-requests`, `GET/PATCH /api/tna/plan-items` | Modul tak ada di katalog -> `needs_module`. Learner bisa request. |
+| Training plan | `POST /api/tna/findings/:id/plan`, `POST /api/tna/training-requests`, `GET/PATCH /api/tna/plan-items` | Course dicari di katalog (EliteMentor stub, lalu Moodle statis). Tidak ada course -> `needs_module`. Item membawa `catalogItemUrl` dan `courseStatus`. Learner bisa request. |
 
 Visibilitas (RG-3) berlaku di semua endpoint data karyawan: learner dirinya, atasan timnya, HR semua.
 
@@ -52,7 +54,8 @@ Visibilitas (RG-3) berlaku di semua endpoint data karyawan: learner dirinya, ata
 | RG-1g kekhususan klien | Disimpan di `tenants.settings` | `src/core/settings` |
 | BT-30 rumus Pareto | Rumus ★ (meleset × orang × kepentingan), komponen bisa dimatikan | `settings.tna.pareto` |
 | BT-31 alur request training | HR dan atasan sama-sama bisa mengubah status | `PATCH /api/tna/plan-items/:id` |
-| K-1 jalur LMS | Adapter EliteMentor dan Moodle masih stub kosong | `src/integrations/catalog` |
+| K-1 jalur LMS | Adapter EliteMentor masih stub kosong; Moodle dilayani katalog statis hasil impor (PK-18). Sinkron API Moodle menyusul setelah pilot (PO-1 ★ B) | `src/integrations/catalog`, `settings.lms.targets` (default `elitementor`, `moodle`) |
+| PM-1 definisi target meleset | ★ B dipakai: arah + toleransi per KPI, kosong = 0 (setara A) | `src/modules/tna/performance.js`, `lna_kpi_rules` |
 | K-3 set status | Memakai status yang ada di skema (proposed … completed) | `lna_training_plan_items.status` |
 
 ## Keputusan yang sudah masuk kode (cadence 11 Nov)

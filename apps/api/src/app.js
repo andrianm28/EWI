@@ -46,7 +46,7 @@ function createApp({ config, stores, ai, catalog, mailer }) {
     settings,
     ai: ai || createAiProvider(config.ai || config.aiProvider),
     aiConfig: config.ai || {},
-    catalog: catalog || createCatalogService({ elitementor: elitementorAdapter(), moodle: moodleAdapter() }),
+    catalog: catalog || createCatalogService({ elitementor: elitementorAdapter(), moodle: moodleAdapter(stores.catalog) }),
   };
   // PK-14: analisis wawancara berjalan di latar. app.locals.analysis dipakai server (penyapu) dan test (drain).
   deps.analysis = createAnalysisRunner({ stores, ai: deps.ai, aiConfig: deps.aiConfig });
