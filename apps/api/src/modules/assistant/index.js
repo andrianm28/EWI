@@ -10,7 +10,7 @@ const { scopeFor } = require('../../core/rbac/scope');
 const { badRequest, HttpError } = require('../../core/errors');
 const { estimateCost } = require('../../ai');
 const { MAX_ASSISTANT_ANSWER } = require('../../ai/prompts');
-const { resolveView, mentionsOthers, createAliases, restoreNames } = require('./views');
+const { resolveView, factView, mentionsOthers, createAliases, restoreNames, maskNames } = require('./views');
 const { activeBuilders, buildFacts } = require('./facts');
 
 const wrap = (fn) => (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
@@ -21,7 +21,7 @@ const REFUSAL = 'Saya tidak bisa menampilkan data pribadi orang lain. Saya hanya
 
 // Saran dari mockup (SUG); tampil hanya bila fakta topiknya aktif
 const SUGGESTIONS = Object.freeze({
-  karyawan: [['Apa rencana belajar saya?', 'rencanaSaya'], ['Ada undangan wawancara?', 'undanganSaya'], ['Bagaimana hasil kompetensi saya?', 'kompetensiSaya']],
+  karyawan: [['Apa rencana belajar saya?', 'rencanaSaya'], ['Ada wawancara yang perlu saya ikuti?', 'undanganSaya'], ['Bagaimana hasil kompetensi saya?', 'kompetensiSaya']],
   atasan: [['Bagaimana status wawancara tim saya?', 'wawancaraTim'], ['Gap terbesar tim saya apa?', 'gapTim']],
   hr: [['Apa yang perlu saya lakukan hari ini?', 'tinjauan'], ['Gap terbesar apa?', 'gap'], ['Berapa temuan yang menunggu tinjauan?', 'tinjauan']],
 });
@@ -32,11 +32,11 @@ function assistantRouter({ stores, flags, entitlements, settings, audit, ai, aiC
 
   const viewOf = (req, asked) => resolveView(req.user.role, asked);
   const builders = (req, view) => activeBuilders({
-    view,
+    view: factView(view),
     active: (key) => submoduleActive({ entitlements, flags }, req.tenantId, key),
     flagOn: (flag) => flags.isEnabled(req.tenantId, flag),
   });
-  const suggestionsFor = (view, active) => (SUGGESTIONS[view] || []).filter(([, key]) => active.some((b) => b.key === key)).map(([text]) => text);
+  const suggestionsFor = (view, active) => (SUGGESTIONS[factView(view)] || []).filter(([, key]) => active.some((b) => b.key === key)).map(([text]) => text);
 
   r.get('/', wrap(async (req, res) => {
     const v = viewOf(req, req.query.view);
@@ -58,7 +58,11 @@ function assistantRouter({ stores, flags, entitlements, settings, audit, ai, aiC
   async function scopeOf(req, view) {
     if (view === 'karyawan') return { scope: { userIds: [req.user.id] }, team: [] };
     const scope = await scopeFor(req, stores.people);
-    if (view !== 'atasan') return { scope, team: [] };
+    if (view !== 'atasan') {
+      // Penyusun fakta hr menghitung seluruh tenant; tampilan ini hanya sah untuk cakupan seluruh tenant.
+      if (!scope.all) throw new HttpError(403, 'VIEW_FORBIDDEN', 'Tampilan ini tidak tersedia untuk peran Anda');
+      return { scope, team: [] };
+    }
     const ids = (scope.userIds || []).filter((id) => id !== req.user.id);
     return { scope: { userIds: ids }, team: ids.length ? await stores.people.list(req.tenantId, { userIds: ids }) : [] };
   }
@@ -95,12 +99,16 @@ function assistantRouter({ stores, flags, entitlements, settings, audit, ai, aiC
       } else {
         const active = await builders(req, v.view);
         const conf = await settings.get(req.tenantId);
+        // Nama orang di teks pertanyaan diganti kode (anggota tim) atau [[ORANG_LAIN]] sebelum ke model.
+        const teamIds = new Set(team.map((m) => m.id));
+        const people = await stores.people.list(req.tenantId, { all: true });
+        const maskedQuestion = maskNames(question, people, (p) => (teamIds.has(p.id) ? aliases.alias(p) : null));
         const { facts, factKeys, pages } = await buildFacts(active, {
           stores, flags, settings, tenantId: req.tenantId, user: req.user, scope, conf, team, alias: aliases.alias,
         });
         let reply;
         try {
-          reply = await ai.assistantReply({ view: v.view, roleLabel: v.roleLabel, facts, pages, question });
+          reply = await ai.assistantReply({ view: factView(v.view), roleLabel: v.roleLabel, facts, pages, question: maskedQuestion });
         } catch (e) {
           await recordUsage(req, e.usage);
           throw e;
@@ -124,7 +132,7 @@ function assistantRouter({ stores, flags, entitlements, settings, audit, ai, aiC
       }
 
       // Audit dulu (fail closed), baru log diperbarui. Siapa yang datanya ikut terbaca:
-      // karyawan = dirinya; atasan = seluruh tim (angka tim kecil setara data individu); hr = orang yang punya kode samaran.
+      // karyawan = dirinya; atasan = seluruh tim (angka tim kecil setara data individu); hr/super = orang yang punya kode samaran.
       let employeeIds;
       if (v.view === 'karyawan') employeeIds = [req.user.id];
       else if (v.view === 'atasan') employeeIds = team.map((m) => m.id);

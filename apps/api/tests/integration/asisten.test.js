@@ -1,4 +1,4 @@
-// B17 Asisten ELGOS: jawaban dari fakta yang boleh dilihat peran penanya. Model hanya melihat kode samaran.
+// B17 Asisten ELGOS: jawaban dari fakta yang boleh dilihat peran penanya. Model hanya melihat kode samaran [[ORANG_n]].
 // Spek: docs/designs/b17-asisten-elgos.md
 const request = require('supertest');
 const { createDb } = require('../../src/db');
@@ -57,6 +57,7 @@ run('B17 Asisten ELGOS (Postgres)', () => {
     };
     await add('hr', 'hr_admin', 'Hana HR'); await add('spv', 'supervisor', 'Sari Atasan'); await add('sme', 'sme', 'Sena SME');
     await add('ani', 'learner', 'Ani Lestari'); await add('beni', 'learner', 'Beni Saputra'); await add('dodi', 'learner', 'Dodi Luar');
+    await add('eta', 'eta_admin', 'Eka Admin'); await add('pim', 'pimpinan', 'Pia Pimpinan');
     await add('xhr', 'hr_admin', 'Xena Lain', other.id); await add('xl', 'learner', 'Xavi Lain', other.id);
     await db.query('UPDATE users SET supervisor_id = :spv WHERE id IN (:ids)', { replacements: { spv: u.spv, ids: [u.ani, u.beni] } });
     for (const t of [tenant.id, other.id]) {
@@ -92,6 +93,10 @@ run('B17 Asisten ELGOS (Postgres)', () => {
     // Tenant lain punya data yang tidak boleh memengaruhi angka
     const [[{ id: xp }]] = await db.query(`INSERT INTO lna_projects (tenant_id, name) VALUES (:t, 'X') RETURNING id`, { replacements: { t: other.id } });
     await stores.tna.insertFinding(other.id, { projectId: xp, userId: u.xl, category: 'training', title: 'X', reviewStatus: 'draft' });
+    await stores.tna.insertFinding(other.id, { projectId: xp, userId: u.xl, category: 'non_training', title: 'X2', reviewStatus: 'approved' });
+    await stores.interviews.create(other.id, { projectId: xp, submodule: 'tna', intervieweeId: u.xl });
+    await stores.tna.insertPlanItem(other.id, { userId: u.xl, origin: 'hr', status: 'new', catalogItemTitle: 'X' });
+    await stores.dataRequests.createDelete(other.id, u.xl, 'x');
   });
 
   afterAll(async () => {
@@ -118,7 +123,8 @@ run('B17 Asisten ELGOS (Postgres)', () => {
 
   it('tampilan: karyawan tidak boleh hr, tak dikenal 400, sme -> karyawan', async () => {
     expect((await request(app()).get('/api/assistant?view=hr').set(as('ani'))).body.error.code).toBe('VIEW_FORBIDDEN');
-    expect((await ask(app(), 'ani', 'halo', 'super')).status).toBe(400);
+    expect((await ask(app(), 'ani', 'halo', 'xyz')).status).toBe(400);
+    expect((await ask(app(), 'ani', 'halo', 'super')).status).toBe(403);
     expect((await request(app()).get('/api/assistant').set(as('sme'))).body.data.view).toBe('karyawan');
     expect((await ask(app(), 'ani', '   ')).status).toBe(400);
     expect((await ask(app(), 'ani', 'x'.repeat(501))).status).toBe(400);
@@ -157,13 +163,13 @@ run('B17 Asisten ELGOS (Postgres)', () => {
     const res = await ask(app(ai), 'spv', 'Bagaimana status wawancara tim saya?');
     expect(res.status).toBe(200);
     const facts = ai.calls[0].facts;
-    expect(facts.wawancaraTim).toMatchObject({ members: 2, byStatus: { completed: 1, scheduled: 1 }, notCompleted: ['K1'] });
+    expect(facts.wawancaraTim).toMatchObject({ members: 2, byStatus: { completed: 1, scheduled: 1 }, notCompleted: ['[[ORANG_1]]'] });
     expect(facts.gapTim.top).toEqual([{ competency: 'Pemahaman SLA', employees: 2 }, { competency: 'Komunikasi', employees: 1 }]);
     expect(facts.rencanaTim.byStatus).toEqual({ new: 1, in_progress: 1 });
     const sent = JSON.stringify(ai.calls[0]);
     for (const leak of ['Beni', 'Ani', 'Dodi', u.beni, 'TEMUAN']) expect(sent).not.toContain(leak);
     expect(res.body.data.answer).toContain('Beni Saputra');
-    expect(res.body.data.action).toEqual({ page: 'aiv', label: 'Wawancara AI' });
+    expect(res.body.data.action).toEqual({ page: 'tna', label: 'Training Needs' });
     const [a] = await sql(`SELECT meta FROM audit_logs WHERE tenant_id = :t AND resource = 'assistant.answer' ORDER BY id DESC LIMIT 1`, { t: tenant.id });
     expect(a.meta.employeeIds.sort()).toEqual([u.ani, u.beni].sort());
     expect(a.meta.view).toBe('atasan');
@@ -197,6 +203,45 @@ run('B17 Asisten ELGOS (Postgres)', () => {
     expect(own.gap).toBeUndefined();
     expect(own.rencanaSaya).toEqual({ total: 0, items: [] });
     expect(own.undanganSaya.open).toBe(0);
+  });
+
+  it('nama di teks pertanyaan disamarkan sebelum ke model (anggota tim = kodenya, orang lain = [[ORANG_LAIN]])', async () => {
+    const ai = recorder((args) => ({ answer: `${args.question.match(/\[\[ORANG_\d+\]\]/)[0]} belum wawancara.`, page: null, refused: false, usage: [] }));
+    const res = await ask(app(ai), 'spv', 'Apakah Beni Saputra dan dodi luar sudah wawancara?');
+    expect(ai.calls[0].question).toBe('Apakah [[ORANG_1]] dan [[ORANG_LAIN]] sudah wawancara?');
+    expect(JSON.stringify(ai.calls[0])).not.toMatch(/Beni|Dodi|dodi/);
+    expect(res.body.data.answer).toBe('Beni Saputra belum wawancara.');
+    const [a] = await sql(`SELECT meta FROM audit_logs WHERE tenant_id = :t AND resource = 'assistant.answer' ORDER BY id DESC LIMIT 1`, { t: tenant.id });
+    expect(a.meta.employeeIds.sort()).toEqual([u.ani, u.beni].sort());
+
+    const ai2 = recorder();
+    await ask(app(ai2), 'ani', 'apa rencana Dodi Luar?');
+    expect(ai2.calls[0].question).toBe('apa rencana [[ORANG_LAIN]]?');
+  });
+
+  it('penolakan dari model: kode dipulihkan ke nama, tanpa tombol halaman', async () => {
+    const ai = recorder(() => ({ answer: 'Detail skor [[ORANG_1]] tidak bisa saya tampilkan.', page: 'tna', refused: true, usage: [] }));
+    const res = await ask(app(ai), 'spv', 'Berapa skor individu tim saya?');
+    expect(res.body.data).toMatchObject({ outcome: 'refused', action: null, answer: 'Detail skor Beni Saputra tidak bisa saya tampilkan.' });
+  });
+
+  it('pimpinan memakai tampilan atasan dengan cakupan RG-3 (hanya dirinya); Admin ETA memakai super dengan fakta hr', async () => {
+    const g = await request(app()).get('/api/assistant').set(as('pim'));
+    expect(g.body.data).toMatchObject({ view: 'atasan', roleLabel: 'Pimpinan', views: [{ key: 'atasan' }, { key: 'karyawan' }] });
+    const aiP = recorder();
+    await ask(app(aiP), 'pim', 'Bagaimana status wawancara tim saya?');
+    expect(aiP.calls[0].facts.wawancaraTim).toMatchObject({ members: 0, notCompleted: [] });
+
+    const e = await request(app()).get('/api/assistant').set(as('eta'));
+    expect(e.body.data).toMatchObject({ view: 'super', roleLabel: 'Super Admin', views: [{ key: 'super', label: 'Super Admin' }] });
+    expect(e.body.data.suggestions).toContain('Gap terbesar apa?');
+    const aiE = recorder();
+    await ask(app(aiE), 'eta', 'Apa yang perlu saya lakukan hari ini?');
+    expect(aiE.calls[0].facts.tinjauan).toMatchObject({ draft: 1 });
+    expect(aiE.calls[0].view).toBe('hr');
+    const [a] = await sql(`SELECT meta, user_id AS "userId" FROM audit_logs WHERE tenant_id = :t AND resource = 'assistant.answer' ORDER BY id DESC LIMIT 1`, { t: tenant.id });
+    expect(a).toMatchObject({ userId: u.eta, meta: { view: 'super' } });
+    expect((await request(app()).get('/api/assistant?view=hr').set(as('eta'))).body.error.code).toBe('VIEW_FORBIDDEN');
   });
 
   it('answer null -> teks pengganti dan no_answer', async () => {
@@ -243,8 +288,9 @@ run('B17 Asisten ELGOS (Postgres)', () => {
     expect(log).toEqual({ outcome: 'error', answer: null });
   });
 
-  it('job assistant-logs-cleanup memakai retensi per tenant', async () => {
+  it('job assistant-logs-cleanup memakai retensi per tenant; nilai rusak di satu tenant tidak menggagalkan job', async () => {
     await db.query('UPDATE tenants SET settings = :s::jsonb WHERE id = :t', { replacements: { t: tenant.id, s: JSON.stringify({ assistant: { retentionDays: 5 } }) } });
+    await db.query(`UPDATE tenants SET settings = '{"assistant":{"retentionDays":10000000000}}'::jsonb WHERE id = :t`, { replacements: { t: other.id } });
     await ask(app(recorder()), 'ani', 'halo');
     await ask(app(recorder()), 'xl', 'halo');
     await db.query(`UPDATE assistant_logs SET created_at = now() - interval '10 days' WHERE tenant_id IN (:ids)`, { replacements: { ids: [tenant.id, other.id] } });
@@ -252,6 +298,6 @@ run('B17 Asisten ELGOS (Postgres)', () => {
     expect(out.deleted).toBeGreaterThanOrEqual(1);
     expect((await sql('SELECT id FROM assistant_logs WHERE tenant_id = :t', { t: tenant.id }))).toHaveLength(0);
     expect((await sql('SELECT id FROM assistant_logs WHERE tenant_id = :t', { t: other.id }))).toHaveLength(1);
-    await db.query(`UPDATE tenants SET settings = '{}'::jsonb WHERE id = :t`, { replacements: { t: tenant.id } });
+    await db.query(`UPDATE tenants SET settings = '{}'::jsonb WHERE id IN (:ids)`, { replacements: { ids: [tenant.id, other.id] } });
   });
 });

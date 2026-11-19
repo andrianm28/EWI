@@ -1,36 +1,29 @@
 'use strict';
-// B17 Asisten ELGOS: tampilan peran, penolakan pasti, dan kode samaran. Spek: docs/designs/b17-asisten-elgos.md
+// B17 Asisten ELGOS: tampilan peran, penolakan pasti, kode samaran, dan penyamaran nama di pertanyaan.
+// Spek: docs/designs/b17-asisten-elgos.md
 const { HttpError, badRequest } = require('../../core/errors');
 const { ROLES } = require('../../core/rbac/roles');
 
-const VIEW_LABEL = { karyawan: 'Karyawan', atasan: 'Atasan', hr: 'HR' };
+// Kunci dan label tampilan mengikuti B0 §5.1 (docs/designs/b0-fondasi-ui.md)
+const VIEW_LABEL = Object.freeze({ karyawan: 'Karyawan', atasan: 'Atasan', hr: 'HR / L&D', super: 'Super Admin' });
 
-// Peran akun -> label, tampilan bawaan, tampilan yang boleh (bawaan lebih dulu)
-const ROLE_VIEWS = {
+// Peran akun -> label dan tampilan yang boleh (bawaan lebih dulu), sama dengan pemetaan B0 §5.1 dan aturan K2.
+// Super Admin memakai fakta tampilan hr sampai layar Tenant (B12) ada, seperti butir peralihan B0.
+const ROLE_VIEWS = Object.freeze({
   [ROLES.LEARNER]: { label: 'Karyawan', views: ['karyawan'] },
-  [ROLES.SUPERVISOR]: { label: 'Atasan', views: ['atasan', 'karyawan'] },
-  [ROLES.HR_ADMIN]: { label: 'HR', views: ['hr', 'karyawan'] },
-  // requireRole(HR_ADMIN) meloloskan Admin ETA di seluruh kode, jadi asisten mengikutinya (tercatat di audit)
-  [ROLES.ETA_ADMIN]: { label: 'Admin ETA', views: ['hr', 'karyawan'] },
-  [ROLES.PIMPINAN]: { label: 'Pimpinan', views: ['karyawan'] },
-  [ROLES.ROLE_LEADER]: { label: 'Role leader', views: ['karyawan'] },
   [ROLES.SME]: { label: 'SME', views: ['karyawan'] },
-};
+  [ROLES.SUPERVISOR]: { label: 'Atasan', views: ['atasan', 'karyawan'] },
+  [ROLES.PIMPINAN]: { label: 'Pimpinan', views: ['atasan', 'karyawan'] },
+  [ROLES.ROLE_LEADER]: { label: 'Role leader', views: ['atasan', 'karyawan'] },
+  [ROLES.HR_ADMIN]: { label: 'HR / L&D', views: ['hr', 'karyawan'] },
+  [ROLES.ETA_ADMIN]: { label: 'Super Admin', views: ['super'] },
+});
 
-/**
- * Paket lain menambah tampilan (mis. B11 Admin Tenant, B12 Super Admin). roles: { <peran>: { label?, isDefault? } }.
- * Fakta tampilan itu didaftarkan lewat registerFactBuilder di facts.js.
- */
-function registerView(key, label, roles) {
-  if (VIEW_LABEL[key]) throw new Error(`Tampilan sudah ada: ${key}`);
-  VIEW_LABEL[key] = label;
-  for (const [role, opt = {}] of Object.entries(roles || {})) {
-    const conf = ROLE_VIEWS[role] || (ROLE_VIEWS[role] = { label: opt.label || label, views: [] });
-    if (opt.isDefault) { conf.views.unshift(key); if (opt.label) conf.label = opt.label; } else conf.views.push(key);
-  }
-}
+/** Tampilan yang menentukan penyusun fakta: super memakai fakta hr (peralihan B0). */
+const factView = (view) => (view === 'super' ? 'hr' : view);
 
 function resolveView(role, asked) {
+  // Peran tak dikenal -> karyawan (hak paling sempit, B0 §5.1)
   const conf = ROLE_VIEWS[role] || ROLE_VIEWS[ROLES.LEARNER];
   if (asked !== undefined && asked !== null && asked !== '' && !VIEW_LABEL[asked]) {
     throw badRequest(`view harus ${Object.keys(VIEW_LABEL).join(', ')}`);
@@ -49,13 +42,17 @@ function resolveView(role, asked) {
 const OTHERS = /\b(karyawan|pegawai)\s+[a-z]\b|\b(teman|rekan)(\s+(kerja|tim|saya))?\b|\borang\s+lain\b|\bgaji\s+(dia|mereka|teman|rekan|orang|karyawan)\b/i;
 const mentionsOthers = (question) => OTHERS.test(String(question || ''));
 
-/** Kode samaran per pertanyaan: model hanya melihat K1, K2, ...; server mengembalikan nama sesudahnya. */
+/**
+ * Kode samaran per pertanyaan: model hanya melihat [[ORANG_1]], [[ORANG_2]], ...; server mengembalikan nama sesudahnya.
+ * Bentuknya sengaja tidak mungkin muncul alami: istilah seperti "K3" (Keselamatan dan Kesehatan Kerja) tidak tersentuh.
+ */
+const OTHER_PERSON = '[[ORANG_LAIN]]';
 function createAliases() {
   const byId = new Map(); const byCode = new Map();
   return {
     alias(person) {
       if (byId.has(person.id)) return byId.get(person.id);
-      const code = `K${byId.size + 1}`;
+      const code = `[[ORANG_${byId.size + 1}]]`;
       byId.set(person.id, code);
       byCode.set(code, { id: person.id, name: person.name });
       return code;
@@ -67,13 +64,37 @@ function createAliases() {
 
 function restoreNames(text, aliases) {
   const userIds = new Set();
-  const out = String(text).replace(/\bK(\d+)\b/g, (m) => {
+  const out = String(text).replace(/\[\[ORANG_\d+\]\]/g, (m) => {
     const p = aliases.lookup(m);
     if (!p) return m;
     userIds.add(p.id);
     return p.name || '(tanpa nama)';
-  });
+  }).split(OTHER_PERSON).join('orang lain');
   return { text: out, userIds: [...userIds] };
 }
 
-module.exports = { resolveView, mentionsOthers, createAliases, restoreNames, registerView, ROLE_VIEWS, VIEW_LABEL };
+const escapeRe = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+const termRe = (term, flags) => new RegExp(`(^|[^\\p{L}])(${escapeRe(term)})(?![\\p{L}])`, flags);
+
+/**
+ * Samarkan nama orang di teks pertanyaan sebelum dikirim ke model. people = pengguna tenant ({ id, name }).
+ * Nama lengkap (huruf besar/kecil bebas) dan nama depan berhuruf kapital (minimal 4 huruf) diganti dengan
+ * aliasFor(person) bila ada (anggota tim pada tampilan atasan), selain itu [[ORANG_LAIN]].
+ * Sisa risiko: ejaan lain dan nama panggilan tidak tersamarkan (spek bagian Risiko).
+ */
+function maskNames(text, people, aliasFor = () => null) {
+  const terms = [];
+  for (const p of people || []) {
+    const name = String(p.name || '').trim();
+    if (name.length < 3) continue;
+    terms.push({ re: termRe(name, 'giu'), p, len: name.length });
+    const first = name.split(/\s+/)[0];
+    if (first !== name && first.length >= 4 && /^\p{Lu}/u.test(first)) terms.push({ re: termRe(first, 'gu'), p, len: first.length });
+  }
+  terms.sort((a, b) => b.len - a.len);
+  let out = String(text);
+  for (const t of terms) out = out.replace(t.re, (m, pre) => `${pre}${aliasFor(t.p) || OTHER_PERSON}`);
+  return out;
+}
+
+module.exports = { resolveView, factView, mentionsOthers, createAliases, restoreNames, maskNames, ROLE_VIEWS, VIEW_LABEL, OTHER_PERSON };

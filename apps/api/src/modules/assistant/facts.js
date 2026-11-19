@@ -1,7 +1,8 @@
 'use strict';
 // B17 Asisten ELGOS: penyusun fakta per tampilan. Pengaman utama privasi ada di sini: fakta hanya berisi data
 // dalam cakupan peran (RG-3), tanpa nama, email, id, transkrip, atau bukti asesmen. Orang disebut lewat ctx.alias
-// (kode samaran K1..Kn); server mengganti kode itu dengan nama sesudah model menjawab.
+// (kode samaran [[ORANG_n]]); server mengganti kode itu dengan nama sesudah model menjawab.
+// Penyusun baru ditambahkan langsung ke BUILDERS lewat PR paket itu (aturan sama).
 // Spek: docs/designs/b17-asisten-elgos.md bagian "Fakta per tampilan".
 const { FLAGS } = require('../../core/flags');
 const { deliveryFor } = require('../../core/settings');
@@ -14,9 +15,10 @@ const clip = (v) => (v == null ? null : String(v).slice(0, MAX_TEXT));
 const countBy = (rows, key) => rows.reduce((acc, r) => ({ ...acc, [r[key]]: (acc[r[key]] || 0) + 1 }), {});
 const OPEN = ['scheduled', 'in_progress'];
 
-const PAGE_LABEL = {
-  my: 'Hasil saya', li: 'Rencana belajar', aiv: 'Wawancara AI', tna: 'Training Needs', review: 'Tinjauan HR', ina: 'Improvement Needs',
-};
+// Kunci halaman = nama rute B0 §5.2/§5.3. Web hanya menampilkan tombol "Buka" bila routeOpen(page, view) lolos.
+const PAGE_LABEL = Object.freeze({
+  my: 'Hasil saya', li: 'Rencana belajar', iv: 'Wawancara akar masalah', tna: 'Training Needs', review: 'Tinjauan HR', ina: 'Improvement Needs',
+});
 
 const BUILDERS = [
   // --- karyawan: hanya req.user.id ---
@@ -53,7 +55,7 @@ const BUILDERS = [
     },
   },
   {
-    key: 'undanganSaya', views: ['karyawan'], submodule: 'tna', flags: [FLAGS.LEARNER_HOME], page: 'my',
+    key: 'undanganSaya', views: ['karyawan'], submodule: 'tna', flags: [FLAGS.LEARNER_HOME], page: 'iv',
     async build({ stores, tenantId, user }) {
       const now = new Date();
       const open = (await stores.interviews.list(tenantId, 'tna', { userIds: [user.id] })).filter((s) => OPEN.includes(s.status));
@@ -63,7 +65,7 @@ const BUILDERS = [
   },
   // --- atasan: anggota tim dalam cakupan visibleEmployeeScope, tanpa dirinya ---
   {
-    key: 'wawancaraTim', views: ['atasan'], submodule: 'tna', page: 'aiv',
+    key: 'wawancaraTim', views: ['atasan'], submodule: 'tna', page: 'tna',
     async build({ stores, tenantId, team, scope, alias }) {
       const sessions = await stores.interviews.list(tenantId, 'tna', scope);
       const done = new Set(sessions.filter((s) => s.status === 'completed').map((s) => s.intervieweeId));
@@ -84,7 +86,7 @@ const BUILDERS = [
     key: 'rencanaTim', views: ['atasan'], submodule: 'tna', page: 'tna',
     build: ({ stores, tenantId, scope }) => stores.tna.planStatusCounts(tenantId, scope),
   },
-  // --- hr: cakupan visibleEmployeeScope (HR dan Admin ETA = seluruh tenant), angka agregat ---
+  // --- hr (juga super): cakupan seluruh tenant, ditegakkan di index.js (scope.all wajib), angka agregat ---
   {
     key: 'tinjauan', views: ['hr'], submodule: 'tna', page: 'review',
     async build({ stores, tenantId, conf }) {
@@ -95,7 +97,7 @@ const BUILDERS = [
     },
   },
   {
-    key: 'wawancara', views: ['hr'], submodule: 'tna', page: 'aiv',
+    key: 'wawancara', views: ['hr'], submodule: 'tna', page: 'tna',
     async build({ stores, tenantId, scope }) { return { byStatus: countBy(await stores.interviews.list(tenantId, 'tna', scope), 'status') }; },
   },
   {
@@ -117,19 +119,6 @@ const BUILDERS = [
     build: ({ stores, tenantId }) => (stores.dataRequests ? stores.dataRequests.openCounts(tenantId) : null),
   },
 ];
-
-/** Paket lain (B11-B16) menambah fakta lewat sini. Aturan sama: tanpa nama/kontak, orang lewat ctx.alias. */
-function registerFactBuilder(builder) {
-  if (!builder || !builder.key || !Array.isArray(builder.views) || typeof builder.build !== 'function') throw new Error('Penyusun fakta tidak valid');
-  if (BUILDERS.some((b) => b.key === builder.key)) throw new Error(`Kunci fakta sudah dipakai: ${builder.key}`);
-  if (builder.page && !PAGE_LABEL[builder.page]) throw new Error(`Halaman tidak dikenal: ${builder.page}; daftarkan dengan registerPage`);
-  BUILDERS.push(builder);
-}
-
-function registerPage(key, label) {
-  if (PAGE_LABEL[key]) throw new Error(`Halaman sudah ada: ${key}`);
-  PAGE_LABEL[key] = label;
-}
 
 /** Penyusun yang aktif untuk tampilan ini: modul aktif (entitlement + flag) dan semua flag tambahan menyala. */
 async function activeBuilders({ view, active, flagOn }) {
@@ -156,4 +145,4 @@ async function buildFacts(builders, ctx) {
   return { facts, factKeys: Object.keys(facts), pages };
 }
 
-module.exports = { buildFacts, activeBuilders, registerFactBuilder, registerPage, PAGE_LABEL, MAX_TEXT };
+module.exports = { buildFacts, activeBuilders, PAGE_LABEL, MAX_TEXT };

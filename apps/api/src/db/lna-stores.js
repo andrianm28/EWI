@@ -1424,9 +1424,9 @@ function createLnaStores(sequelize, { cipher } = {}) {
       const [rows] = await sequelize.query(`DELETE FROM assistant_logs a USING tenants t
                                              WHERE t.id = a.tenant_id
                                                AND a.created_at < now() - make_interval(days => CASE
-                                                 WHEN jsonb_typeof(t.settings #> '{assistant,retentionDays}') = 'number'
-                                                  AND (t.settings #>> '{assistant,retentionDays}') ~ '^[0-9]+$'
-                                                  AND (t.settings #>> '{assistant,retentionDays}')::int BETWEEN 1 AND 365
+                                                 WHEN jsonb_typeof(t.settings #> '{assistant,retentionDays}') <> 'number'
+                                                   OR (t.settings #>> '{assistant,retentionDays}') !~ '^[0-9]{1,3}$' THEN :defaultDays
+                                                 WHEN (t.settings #>> '{assistant,retentionDays}')::int BETWEEN 1 AND 365
                                                  THEN (t.settings #>> '{assistant,retentionDays}')::int ELSE :defaultDays END)
                                              RETURNING a.id`, { replacements: { defaultDays } });
       return { deleted: rows.length };
