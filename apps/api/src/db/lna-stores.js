@@ -933,9 +933,12 @@ function createLnaStores(sequelize, { cipher } = {}) {
       if (row) row.rows = await cipher.decryptJson(tenantId, row.rows);
       return row;
     },
-    async list(tenantId, submodule) {
+    /** kinds (opsional): batasi jenis di SQL agar batas 100 tidak memotong jenis yang diminta (B11 CD-10). */
+    async list(tenantId, submodule, kinds = null) {
+      const byKind = kinds ? ' AND b.kind IN (:kinds)' : '';
+      if (kinds && !kinds.length) return [];
       return select(`SELECT ${BATCH_COLS} FROM import_batches b LEFT JOIN users u ON u.id = b.created_by
-                      WHERE b.tenant_id = :tenantId AND b.submodule = :submodule ORDER BY b.created_at DESC LIMIT 100`, { tenantId, submodule });
+                      WHERE b.tenant_id = :tenantId AND b.submodule = :submodule${byKind} ORDER BY b.created_at DESC LIMIT 100`, { tenantId, submodule, kinds });
     },
     /** B11: impor yang sudah disimpan untuk jenis tertentu, terbaru dulu (ringkasan Admin Tenant; tanpa baris mentah). */
     async listCommitted(tenantId, kinds) {

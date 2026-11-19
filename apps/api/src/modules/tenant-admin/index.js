@@ -8,6 +8,7 @@ const { ROLES } = require('../../core/rbac/roles');
 const { badRequest, forbidden, notFound, HttpError } = require('../../core/errors');
 const { RATE } = require('../../core/auth/email-link');
 const { importRouter } = require('../imports');
+const { requireSubmodule } = require('../../core/entitlement/guard');
 const { isUniqueViolation } = require('../../db/tenant-admin-stores');
 const { requireTenantAdmin, assignableRoles, roleLabel } = require('./access');
 
@@ -174,6 +175,10 @@ module.exports = {
       const saved = await db.updateUser(req.tenantId, current.id, Object.fromEntries(Object.entries(changes).map(([k, c]) => [k, c.to])));
       if (!saved) throw duplicateUser();
       await audit.record(req, 'update', 'tenant_admin.user', { employeeIds: [current.id], changes });
+      // izin temuan di luar pelatihan hanya berarti untuk atasan; peran berganti → izin dicabut dan tidak kembali sendiri (CD-8)
+      if (changes.role && current.role === ROLES.SUPERVISOR && await stores.tna.revokeNonTraining(req.tenantId, current.id, req.user.id)) {
+        await audit.record(req, 'delete', 'tna.non_training_access', { supervisorId: current.id, employeeIds: [current.id], via: 'tenant-admin', reason: 'role_changed' });
+      }
       return res.json({ data: publicUser(saved) });
     }));
 
@@ -284,25 +289,19 @@ module.exports = {
             return { ...p, lastImport: info };
           }),
           integrations: {
-            elitementor: { status: serverConfigured && organizationMapped ? 'tersambung' : 'belum_dikonfigurasi', organizationMapped, sso, webhookSync },
+            elitementor: { status: serverConfigured && organizationMapped ? 'terkonfigurasi' : 'belum_dikonfigurasi', organizationMapped, sso, webhookSync },
             lms: { targets: conf.lms.targets, gapExport: true },
           },
         },
       });
     }));
 
-    // Alur impor yang sama dengan /api/{dna,tna}/imports, dengan gerbang Admin Tenant. Yang disyaratkan
-    // entitlement submodulnya (bukan flag modul): admin menyiapkan data sebelum modul dinyalakan saat Go/No-Go.
+    // Alur impor yang sama dengan /api/{dna,tna}/imports, dengan gerbang Admin Tenant. Yang disyaratkan entitlement
+    // submodulnya dan saklar darurat global, bukan flag modul tenant (requireSubmodule tenantFlag:false).
     // gerbang Admin Tenant sudah dipasang untuk seluruh router ini (r.use di atas), jadi tidak diulang di importRouter
     const passThrough = (_req, _res, next) => next();
     for (const [sm, only] of Object.entries(IMPORT_KINDS)) {
-      r.use(`/imports/${sm}`, wrap(async (req, _res, next) => {
-        if (!(await entitlements.has(req.tenantId, sm))) throw forbidden('NOT_ENTITLED', `Organisasi Anda belum berlangganan ${sm.toUpperCase()}`);
-        // saklar darurat global (R2-1) tetap dihormati walau flag modul tenant belum menyala
-        const flag = (await flags.detail(req.tenantId)).find((f) => f.key === `module.${sm}`);
-        if (flag && flag.killSwitch) throw forbidden('FEATURE_DISABLED', `${sm.toUpperCase()} sedang dimatikan sementara oleh ETA`);
-        next();
-      }), importRouter({ submodule: sm, stores, audit, guard: passThrough, only, ownDrafts: true }));
+      r.use(`/imports/${sm}`, requireSubmodule(sm, { entitlements, flags }, { tenantFlag: false }), importRouter({ submodule: sm, stores, audit, guard: passThrough, only, ownDrafts: true }));
     }
 
     return r;

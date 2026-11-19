@@ -125,7 +125,7 @@ test('Impor data & integrasi: kamus per jabatan dengan sumber DACUM, ringkasan K
           { jobRoleId: 'j-2', jobRoleName: 'Sales', competencyCount: 0, status: 'belum', lastImport: null },
         ],
         performance: [{ period: '2026-Q4', records: 3, missed: 2, lastImport: { batchId: 'b-2', filename: 'okr_q4_2026.csv', source: 'berkas', uploadedAt: '2026-11-18T04:00:00Z', uploadedByName: null } }],
-        integrations: { elitementor: { status: 'tersambung', organizationMapped: true, sso: true, webhookSync: true }, lms: { targets: ['elitementor', 'moodle'], gapExport: true } },
+        integrations: { elitementor: { status: 'terkonfigurasi', organizationMapped: true, sso: true, webhookSync: true }, lms: { targets: ['elitementor', 'moodle'], gapExport: true } },
       } })
     }
     if (path === '/imports/tna/templates') {

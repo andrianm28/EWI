@@ -25,7 +25,7 @@ export interface ImportSummary {
   competencyModel: { jobRoleId: string; jobRoleName: string; competencyCount: number; status: 'terimpor' | 'belum'; lastImport: (LastImport & { imported: number | null }) | null }[]
   performance: { period: string; records: number; missed: number; lastImport: LastImport | null }[]
   integrations: {
-    elitementor: { status: 'tersambung' | 'belum_dikonfigurasi'; organizationMapped: boolean; sso: boolean; webhookSync: boolean }
+    elitementor: { status: 'terkonfigurasi' | 'belum_dikonfigurasi'; organizationMapped: boolean; sso: boolean; webhookSync: boolean }
     lms: { targets: string[]; gapExport: boolean }
   }
 }

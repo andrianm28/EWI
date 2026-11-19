@@ -41,7 +41,7 @@ const emDetail = computed(() => {
   if (!e) return ''
   // status ini hanya berarti konfigurasi lengkap, bukan uji koneksi langsung
   const parts = [e.sso ? 'SSO' : '', e.webhookSync ? 'sync-back' : ''].filter(Boolean)
-  if (e.status !== 'tersambung') return 'Belum dikonfigurasi'
+  if (e.status !== 'terkonfigurasi') return 'Belum dikonfigurasi'
   return parts.length ? `Terkonfigurasi (${parts.join(' · ')})` : 'Terkonfigurasi'
 })
 </script>
@@ -101,7 +101,7 @@ const emDetail = computed(() => {
       <UiCard class="adm__section" data-testid="cfg-integrasi">
         <h2 class="el-h3">Integrasi pembelajaran</h2>
         <div class="adm__row">
-          <UiChip :tone="em?.status === 'tersambung' ? 'success' : 'neutral'">EliteMentor: {{ emDetail }}</UiChip>
+          <UiChip :tone="em?.status === 'terkonfigurasi' ? 'success' : 'neutral'">EliteMentor: {{ emDetail }}</UiChip>
           <UiChip>Tujuan pembelajaran: {{ summary.integrations.lms.targets.map((t) => LMS_LABEL[t] ?? t).join(', ') || 'belum dipilih' }}</UiChip>
           <UiChip v-if="summary.integrations.lms.gapExport">LMS perusahaan: ekspor gap bila EliteMentor tidak dipakai</UiChip>
         </div>

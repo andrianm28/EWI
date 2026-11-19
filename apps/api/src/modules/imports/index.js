@@ -78,7 +78,7 @@ function importRouter({ submodule, stores, audit, guard, only, ownDrafts = false
   }));
 
   r.get('/batches', wrap(async (req, res) => {
-    res.json({ data: (await stores.imports.list(req.tenantId, submodule)).filter((b) => visible(req, b)).map(batchSummary) });
+    res.json({ data: (await stores.imports.list(req.tenantId, submodule, only ? kinds.map((k) => k.key) : null)).filter((b) => visible(req, b)).map(batchSummary) });
   }));
 
   r.get('/batches/:id', wrap(async (req, res) => {
