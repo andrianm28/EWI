@@ -46,7 +46,7 @@ Visibilitas (RG-3) berlaku di semua endpoint data karyawan: learner dirinya, ata
 
 | Keputusan | Perilaku sekarang | Tempat mengganti |
 |---|---|---|
-| T3 komponen AI | Penyedia `stub` deterministik (tanpa LLM); skor ber-confidence 0,2 dan bertanda "perlu dinilai ulang ETA" | `src/ai/` (`AI_PROVIDER`) |
+| T3 komponen AI | PK-06: `AI_PROVIDER=bedrock` (Amazon Bedrock, Claude, hanya ap-southeast-1; PD-1/PD-2 ★A, belum dijawab) wajib di produksi; `stub` deterministik tetap bawaan untuk test dan di luar produksi. Pemakaian token per panggilan di `ai_usage_logs` (R3-6). Rincian: [ai-teks.md](ai-teks.md) | `src/ai/` (`AI_PROVIDER`, `BEDROCK_MODEL_ID`) |
 | RG-1a sumber kamus kompetensi | Semua sumber boleh masuk, dicatat di kolom `source` | `src/modules/dna` |
 | RG-1b sumber status lulus | Hanya input manual HR; Sync Back belum disambungkan | `lna_program_completions.source` |
 | RG-1c alur wawancara SME/DACUM | `POST /api/dna/dacum/sessions` -> 501 `DECISION_PENDING` | `src/modules/dna` |

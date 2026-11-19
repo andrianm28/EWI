@@ -39,7 +39,15 @@ const send = () => run(async () => {
   if (!answer) return
   turns.value.push({ speaker: 'human', text: answer, at: new Date().toISOString() })
   text.value = ''
-  const r = await lna.answer(key, id, answer)
+  let r
+  try {
+    r = await lna.answer(key, id, answer)
+  } catch (e) {
+    // AI gagal: jawaban tidak tersimpan di server (PK-06), jadi kembalikan ke kotak teks untuk dikirim ulang
+    turns.value.pop()
+    text.value = answer
+    throw e
+  }
   if (r.data.question) turns.value.push(r.data.question)
   done.value = r.data.done
 })

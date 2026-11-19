@@ -7,18 +7,21 @@ const { createApp } = require('../../src/app');
 const { createTokenService } = require('../../src/core/auth/tokens');
 const { createCatalogService, memoryAdapter } = require('../../src/integrations/catalog');
 const { makeConfig } = require('../helpers');
+const { createBedrockProvider } = require('../../src/ai/bedrock-provider');
 
 const run = process.env.DATABASE_URL ? describe : describe.skip;
 
 run('POC DNA + TNA (Postgres)', () => {
-  let db; let app; let tokens; let tenant; let otherTenant; const u = {}; const tok = {};
+  let db; let app; let tokens; let baseConfig; let stores; let tenant; let otherTenant; const u = {}; const tok = {};
   const as = (who) => ({ Authorization: `Bearer ${tok[who]}` });
 
   beforeAll(async () => {
     const config = makeConfig();
+    baseConfig = config;
     db = createDb({ databaseUrl: process.env.DATABASE_URL, dbSchema: process.env.DB_SCHEMA || 'ewi' });
     const catalog = createCatalogService({ elitementor: memoryAdapter('elitementor', [{ ref: 'prog-12', title: 'Membaca Kontrak Proyek', keywords: ['kontrak'] }]) });
-    app = createApp({ config, stores: createStores(db), catalog });
+    stores = createStores(db);
+    app = createApp({ config, stores, catalog });
     tokens = createTokenService(config.jwt);
 
     const slug = `poc-${Date.now()}`;
@@ -154,6 +157,8 @@ run('POC DNA + TNA (Postgres)', () => {
     const complete = await request(app).post(`/api/dna/sessions/${sid}/complete`).set(as('dimas'));
     expect(complete.status).toBe(200);
     expect(complete.body.data).toMatchObject({ status: 'completed', assessments: 3, aiProvider: 'stub' });
+    // R3-6: setiap panggilan AI tercatat per sesi (stub: token 0)
+    expect(complete.body.data.aiUsage).toMatchObject({ calls: 6, inputTokens: 0, outputTokens: 0 }); // 5 panggilan pertanyaan (terakhir = selesai) + 1 penilaian
 
     const detail = await request(app).get(`/api/dna/employees/${u.dimas}`).set(as('dimas'));
     expect(detail.body.data.gap.summary.assessed).toBe(3);
@@ -401,5 +406,66 @@ run('POC DNA + TNA (Postgres)', () => {
     expect(res.body.data.turns.find((x) => x.speaker === 'human').text).not.toMatch(/^enc:/);
     const findings = (await request(app).get('/api/tna/findings').set(as('hr'))).body.data;
     expect(findings.every((x) => !x.title.startsWith('enc:'))).toBe(true);
+  });
+
+  it('PK-06: wawancara TNA ujung ke ujung dengan penyedia Bedrock (respons rekaman), token tercatat, gagal AI tidak menyimpan jawaban', async () => {
+    const fx = (n) => JSON.parse(JSON.stringify(require(`../fixtures/bedrock/${n}.json`)));
+    const responses = [fx('tna-question'), Object.assign(new Error('Too many requests'), { name: 'ThrottlingException' }),
+      fx('tna-question'), fx('tna-question-done'), fx('tna-analysis')];
+    const sent = [];
+    const client = { async send(cmd) { sent.push(cmd.input); const r = responses.shift(); if (r instanceof Error) throw r; return r; } };
+    const aiCfg = { provider: 'bedrock', region: 'ap-southeast-1', modelId: 'anthropic.model-uji', maxQuestions: 8, priceInputPerMTok: 3, priceOutputPerMTok: 15 };
+    const config = { ...baseConfig, ai: aiCfg }; // kunci induk lokal yang sama dengan app utama
+    const bedrockApp = createApp({ config, stores, ai: createBedrockProvider(aiCfg, { client }) }); // store dan kunci tenant yang sama
+
+    const [[row]] = await db.query(
+      `INSERT INTO users (tenant_id, email, name, employee_id, role, status) VALUES (:t, 'tika@elgos.test', 'Tika Rahasia', 'E-tika', 'learner', 'active') RETURNING id`,
+      { replacements: { t: tenant.id } },
+    );
+    const tika = { Authorization: `Bearer ${tokens.sign({ id: row.id, tenantId: tenant.id, role: 'learner', email: 'tika@elgos.test' })}` };
+    const [[p]] = await db.query(`INSERT INTO lna_projects (tenant_id, name) VALUES (:t, 'Uji Bedrock') RETURNING id`, { replacements: { t: tenant.id } });
+    await request(app).post('/api/tna/performance/import').set(as('hr')).send({
+      period: '2026-10', projectId: p.id, rows: [{ employeeId: 'E-tika', metricType: 'sla', name: 'Respons tiket', target: 85, actual: 72 }],
+    }).expect(201);
+    const s = (await request(app).post(`/api/tna/projects/${p.id}/interviews`).set(as('hr')).send({ period: '2026-10' }))
+      .body.data.sessions.find((x) => x.intervieweeId === row.id);
+    // PM-10: target milik karyawan lain yang terselip di sesi tidak boleh sampai ke model
+    const [[other]] = await db.query(`SELECT id FROM lna_performance_records WHERE tenant_id = :t AND user_id <> :u LIMIT 1`, { replacements: { t: tenant.id, u: row.id } });
+    await db.query('UPDATE lna_interview_sessions SET trigger_record_ids = trigger_record_ids || CAST(:o AS uuid) WHERE id = :sid', { replacements: { o: other.id, sid: s.id } });
+
+    const consent = await request(bedrockApp).post(`/api/tna/sessions/${s.id}/consent`).set(tika);
+    expect(consent.status).toBe(200);
+    expect(consent.body.data.question.text).toMatch(/85%.*72%/);
+    const system = sent[0].system[0].text;
+    expect(system).toMatch(/Respons tiket/);
+    expect(system).not.toMatch(/Waktu respons tiket|Tika|tika@/); // KPI orang lain, nama, dan email tidak dikirim
+
+    const failed = await request(bedrockApp).post(`/api/tna/sessions/${s.id}/turns`).set(tika).send({ text: 'Saya belum paham batas SLA di kontrak.' });
+    expect(failed.status).toBe(503);
+    expect(failed.body.error.code).toBe('AI_THROTTLED');
+    const [[{ n }]] = await db.query('SELECT count(*)::int AS n FROM lna_interview_turns WHERE session_id = :sid', { replacements: { sid: s.id } });
+    expect(n).toBe(1); // hanya pertanyaan pembuka; jawaban bisa dikirim ulang
+
+    await request(bedrockApp).post(`/api/tna/sessions/${s.id}/turns`).set(tika).send({ text: 'Saya belum paham batas SLA di kontrak.' }).expect(200);
+    const last = await request(bedrockApp).post(`/api/tna/sessions/${s.id}/turns`).set(tika).send({ text: 'Aplikasi tiket juga sering lambat saat jam sibuk.' });
+    expect(last.body.data).toMatchObject({ question: null, done: true });
+
+    const done = await request(bedrockApp).post(`/api/tna/sessions/${s.id}/complete`).set(tika);
+    expect(done.status).toBe(200);
+    expect(done.body.data).toMatchObject({ findings: 3, aiProvider: 'bedrock', aiModel: 'anthropic.model-uji' });
+    expect(done.body.data.aiUsage).toMatchObject({ calls: 4, inputTokens: 812 * 2 + 1530 + 1904, outputTokens: 46 * 2 + 5 + 231 });
+    expect(done.body.data.aiUsage.costUsd).toBeCloseTo(((812 * 2 + 1530 + 1904) * 3 + (46 * 2 + 5 + 231) * 15) / 1e6, 6);
+
+    const logs = await db.query('SELECT operation, provider, model, user_id AS "userId", project_id AS "projectId" FROM ai_usage_logs WHERE session_id = :sid ORDER BY id',
+      { replacements: { sid: s.id }, type: 'SELECT' });
+    expect(logs.map((l) => l.operation)).toEqual(['next_question', 'next_question', 'next_question', 'analyze_tna']);
+    expect(logs.every((l) => l.provider === 'bedrock' && l.userId === row.id && l.projectId === p.id)).toBe(true);
+
+    const findings = (await request(app).get(`/api/tna/findings?projectId=${p.id}`).set(as('hr'))).body.data;
+    const [rec] = await db.query('SELECT id FROM lna_performance_records WHERE user_id = :u', { replacements: { u: row.id }, type: 'SELECT' });
+    expect(findings.find((f) => f.title.startsWith('Belum memahami klausul SLA'))).toMatchObject({ category: 'training', competencyId: null, performanceRecordId: rec.id });
+    // BT-23: non-training tertaut ke temuan training sebelumnya
+    const [nt] = await db.query(`SELECT linked_finding_id AS "linked" FROM lna_findings WHERE session_id = :sid AND category = 'non_training'`, { replacements: { sid: s.id }, type: 'SELECT' });
+    expect(nt.linked).toBeTruthy();
   });
 });

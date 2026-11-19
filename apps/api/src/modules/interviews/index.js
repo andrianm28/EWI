@@ -1,7 +1,9 @@
 'use strict';
 // Sesi wawancara AI (teks) yang dipakai DNA dan TNA. Suara (voice) di balik flag dan menyusul.
-// Analisis memakai port AI (src/ai); implementasi masih stub sampai T3 diputuskan.
+// Pertanyaan dan analisis memakai port AI (src/ai): Bedrock di produksi, tiruan (stub) di test/dev (PK-06).
+// Setiap panggilan model dicatat di ai_usage_logs (R3-6).
 const express = require('express');
+const { estimateCost } = require('../../ai');
 const { requireRole, ROLES } = require('../../core/rbac');
 const { scopeFor, inScope } = require('../../core/rbac/scope');
 const { badRequest, forbidden, notFound, HttpError } = require('../../core/errors');
@@ -19,15 +21,61 @@ async function buildContext(stores, tenantId, session) {
   return { person, competencies, triggers };
 }
 
-async function analyze({ stores, ai, tenantId, session, transcript, ctx }) {
+/**
+ * Konteks yang boleh dikirim ke model (PM-10 ★A): kompetensi jabatan dan target milik karyawan yang diwawancarai.
+ * Nama, email, dan data karyawan lain tidak ikut. Target milik orang lain dibuang walau ID-nya terselip di sesi.
+ */
+function aiContext(ctx, session) {
+  const competencies = (ctx.competencies || []).map((c) => ({
+    id: c.id, name: c.name, definition: c.definition, indicators: c.indicators, requiredScore: c.requiredScore,
+  }));
+  const triggers = (ctx.triggers || [])
+    .filter((t) => !t.userId || t.userId === session.intervieweeId)
+    .map((t) => ({
+      id: t.id, metricType: t.metricType, name: t.name, target: t.target, actual: t.actual, period: t.period, direction: t.direction, unit: t.unit,
+    }));
+  return { competencies, triggers };
+}
+
+/** Simpan catatan pemakaian AI (R3-6). Gagal mencatat tidak boleh menggagalkan wawancara. */
+async function recordUsage({ stores, aiConfig, tenantId, session }, usage) {
+  if (!stores.aiUsage || !usage) return;
+  for (const u of usage) {
+    try {
+      await stores.aiUsage.record(tenantId, {
+        projectId: session.projectId, sessionId: session.id, userId: session.intervieweeId, submodule: session.submodule,
+        operation: u.operation, provider: u.provider, model: u.model, inputTokens: u.inputTokens, outputTokens: u.outputTokens,
+        latencyMs: u.latencyMs, costUsd: estimateCost(u, aiConfig),
+      });
+    } catch (e) {
+      console.error('Gagal mencatat pemakaian AI:', e.message);
+    }
+  }
+}
+
+/** Panggil AI; catatan pemakaian disimpan juga saat format jawaban gagal (token tetap terpakai). */
+async function callAi(env, fn) {
+  try {
+    const out = await fn();
+    await recordUsage(env, out.usage);
+    return out;
+  } catch (e) {
+    if (e.usage) await recordUsage(env, e.usage);
+    throw e;
+  }
+}
+
+async function analyze({ stores, ai, aiConfig, tenantId, session, transcript, ctx }) {
+  const env = { stores, aiConfig, tenantId, session };
+  const safe = aiContext(ctx, session);
   if (session.submodule === 'dna') {
-    const results = await ai.assessCompetencies({ transcript, competencies: ctx.competencies });
+    const { results } = await callAi(env, () => ai.assessCompetencies({ transcript, competencies: safe.competencies }));
     for (const r of results) {
       await stores.dna.addAssessment(tenantId, { userId: session.intervieweeId, competencyId: r.competencyId, sessionId: session.id, score: r.score, confidence: r.confidence, evidence: r.evidence });
     }
     return { assessments: results.length };
   }
-  const findings = await ai.analyzeTna({ transcript, triggers: ctx.triggers, competencies: ctx.competencies });
+  const { findings } = await callAi(env, () => ai.analyzeTna({ transcript, triggers: safe.triggers, competencies: safe.competencies }));
   let lastTraining = null; let saved = 0;
   for (const f of findings) {
     const row = await stores.tna.insertFinding(tenantId, {
@@ -41,8 +89,19 @@ async function analyze({ stores, ai, tenantId, session, transcript, ctx }) {
   return { findings: saved };
 }
 
-function interviewRouter({ submodule, stores, ai, audit }) {
+function interviewRouter({ submodule, stores, ai, aiConfig = {}, audit }) {
   const r = express.Router();
+  const maxQuestions = aiConfig.maxQuestions || 8;
+
+  /** Pertanyaan berikutnya dari transkrip (termasuk jawaban yang belum disimpan). Batas kuota ditegakkan di sini. */
+  async function nextQuestion(tenantId, session, transcript) {
+    const askedCount = transcript.filter((t) => t.speaker === 'ai').length;
+    if (askedCount >= maxQuestions) return null;
+    const ctx = aiContext(await buildContext(stores, tenantId, session), session);
+    const { question } = await callAi({ stores, aiConfig, tenantId, session },
+      () => ai.nextQuestion({ submodule, transcript, askedCount, context: ctx, maxQuestions }));
+    return question;
+  }
 
   async function loadVisible(req) {
     const s = await stores.interviews.get(req.tenantId, req.params.id);
@@ -92,10 +151,10 @@ function interviewRouter({ submodule, stores, ai, audit }) {
     if (s.status !== 'scheduled') throw new HttpError(409, 'INVALID_STATE', 'Sesi sudah dimulai atau selesai');
     // Q38: undangan berlaku 7 hari. Sesi yang sudah berjalan boleh diselesaikan (BT-28 belum dibangun).
     if (isExpired(s.inviteExpiresAt)) throw new HttpError(409, 'INVITATION_EXPIRED', 'Undangan wawancara sudah berakhir. Minta HR memperpanjang undangan Anda.');
+    // Pertanyaan dibuat dulu: bila AI gagal, sesi tetap 'scheduled' dan persetujuan bisa diulang.
+    const q = await nextQuestion(req.tenantId, s, []);
     const now = new Date();
     await stores.interviews.update(req.tenantId, s.id, { consentAt: now, startedAt: now, status: 'in_progress' });
-    const ctx = await buildContext(stores, req.tenantId, s);
-    const q = ai.nextQuestion({ submodule, askedCount: 0, context: ctx });
     const turn = q ? await stores.interviews.addTurn(req.tenantId, s.id, 'ai', q) : null;
     res.json({ data: { status: 'in_progress', question: turn } });
   }));
@@ -122,10 +181,11 @@ function interviewRouter({ submodule, stores, ai, audit }) {
     if (s.status !== 'in_progress') throw new HttpError(409, 'INVALID_STATE', 'Sesi belum dimulai atau sudah selesai');
     const text = String((req.body || {}).text || '').trim();
     if (!text) throw badRequest('Jawaban tidak boleh kosong');
-    await stores.interviews.addTurn(req.tenantId, s.id, 'human', text.slice(0, 8000));
+    const answer = text.slice(0, 8000);
+    // Pertanyaan dibuat sebelum jawaban disimpan: bila AI gagal, tidak ada yang tersimpan dan jawaban bisa dikirim ulang.
     const turns = await stores.interviews.turns(req.tenantId, s.id);
-    const ctx = await buildContext(stores, req.tenantId, s);
-    const q = ai.nextQuestion({ submodule, askedCount: turns.filter((t) => t.speaker === 'ai').length, context: ctx });
+    const q = await nextQuestion(req.tenantId, s, [...turns, { speaker: 'human', text: answer }]);
+    await stores.interviews.addTurn(req.tenantId, s.id, 'human', answer);
     const turn = q ? await stores.interviews.addTurn(req.tenantId, s.id, 'ai', q) : null;
     res.json({ data: { question: turn, done: !q } });
   }));
@@ -139,12 +199,13 @@ function interviewRouter({ submodule, stores, ai, audit }) {
     const transcript = await stores.interviews.turns(req.tenantId, s.id);
     if (!transcript.some((t) => t.speaker === 'human')) throw badRequest('Belum ada jawaban di sesi ini');
     const ctx = await buildContext(stores, req.tenantId, s);
-    const result = await analyze({ stores, ai, tenantId: req.tenantId, session: s, transcript, ctx });
+    const result = await analyze({ stores, ai, aiConfig, tenantId: req.tenantId, session: s, transcript, ctx });
     await stores.interviews.update(req.tenantId, s.id, { status: 'completed', endedAt: new Date() });
-    res.json({ data: { status: 'completed', ...result, aiProvider: ai.name } });
+    const aiUsage = stores.aiUsage ? await stores.aiUsage.sessionTotals(req.tenantId, s.id) : null;
+    res.json({ data: { status: 'completed', ...result, aiProvider: ai.name, aiModel: ai.model, aiUsage } });
   }));
 
   return r;
 }
 
-module.exports = { interviewRouter, wrap };
+module.exports = { interviewRouter, wrap, aiContext };

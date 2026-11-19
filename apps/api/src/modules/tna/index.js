@@ -28,7 +28,7 @@ const { PLAN_STATUSES, PLAN_STATUS_LABEL, initialStatus, canTransition } = requi
 module.exports = {
   key: 'tna',
   title: 'Training Needs Analysis',
-  router({ stores, ai, settings, catalog, flags, audit } = {}) {
+  router({ stores, ai, aiConfig, settings, catalog, flags, audit } = {}) {
     const r = express.Router();
     const hr = requireRole(ROLES.HR_ADMIN);
 
@@ -128,7 +128,7 @@ module.exports = {
       res.status(201).json({ data: { scope, scheduled: created.length, skipped: picks.length - created.length, sessions: created } });
     }));
 
-    r.use('/sessions', interviewRouter({ submodule: 'tna', stores, ai, audit }));
+    r.use('/sessions', interviewRouter({ submodule: 'tna', stores, ai, aiConfig, audit }));
 
     // PM-6 (jawaban user 17 Nov): temuan "bukan masalah pelatihan" tampil untuk HR secara bawaan, ringkas,
     // tanpa rencana aksi. Atasan langsung melihat temuan timnya hanya bila HR memberinya akses (bisa dicabut,

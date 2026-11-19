@@ -666,7 +666,28 @@ function createLnaStores(sequelize, { cipher } = {}) {
     },
   };
 
-  return { people, settings, dna, interviews, tna, catalog, projectsExtra, imports };
+  // R3-6: pemakaian AI per panggilan model (tanpa isi prompt/jawaban, jadi tidak dienkripsi).
+  const aiUsage = {
+    async record(tenantId, r) {
+      await sequelize.query(`INSERT INTO ai_usage_logs (tenant_id, project_id, session_id, user_id, submodule, operation, provider, model,
+                                                        input_tokens, output_tokens, latency_ms, cost_usd)
+                             VALUES (:tenantId, :projectId, :sessionId, :userId, :submodule, :operation, :provider, :model,
+                                     :inputTokens, :outputTokens, :latencyMs, :costUsd)`,
+      { replacements: withNulls({ tenantId, ...r }, ['projectId', 'sessionId', 'userId', 'submodule', 'latencyMs', 'costUsd']) });
+    },
+    async sessionTotals(tenantId, sessionId) {
+      return one(`SELECT count(*)::int AS calls, COALESCE(sum(input_tokens), 0)::int AS "inputTokens",
+                         COALESCE(sum(output_tokens), 0)::int AS "outputTokens", sum(cost_usd)::float AS "costUsd"
+                    FROM ai_usage_logs WHERE tenant_id = :tenantId AND session_id = :sessionId`, { tenantId, sessionId });
+    },
+    async listForSession(tenantId, sessionId) {
+      return select(`SELECT operation, provider, model, input_tokens AS "inputTokens", output_tokens AS "outputTokens",
+                            latency_ms AS "latencyMs", cost_usd::float AS "costUsd", created_at AS "createdAt"
+                       FROM ai_usage_logs WHERE tenant_id = :tenantId AND session_id = :sessionId ORDER BY id`, { tenantId, sessionId });
+    },
+  };
+
+  return { people, settings, dna, interviews, tna, catalog, projectsExtra, imports, aiUsage };
 }
 
 module.exports = { createLnaStores, scopeSql };
