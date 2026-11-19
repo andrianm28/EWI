@@ -4,7 +4,7 @@
 - Paket: B16 (brief bangun penuh 19 Nov, thread T3). Dibangun di atas B4 (`docs/designs/b4-developmental-needs.md`): migrasi 04 harus jalan sebelum 16 karena `/paths` memakai `lna_competencies.program_tier`.
 - Flag: `promotion.recommendation` (sudah ada, default mati, punya kill switch) untuk semua endpoint bagian 6, di dalam `requireSubmodule('dna')`.
 - Migrasi: blok 16 → `20261119001600-promotion-decisions.js`
-- Cakupan tahap ini: API, domain, store, test. Layar (Vue) menyusul di branch yang sama setelah B0 terbuka.
+- Cakupan: API, domain, store, test, dan layar Vue di atas B0 (`apps/web/src/screens/b16-cp`, rute `cp` di `/cp`, `meta.flag` `promotion.recommendation` dan `submodule: 'dna'`).
 - Reviewer wajib: Andrian (migrasi, `core/settings`, perubahan visibilitas RG-1e).
 - Gerbang: `npm run lint`, `npm test`, `npm run build`, `npm run e2e`; CI menjalankan migrasi naik-turun-naik.
 
@@ -102,7 +102,8 @@ dna: {
 - **C5 Kandidat di tab keputusan** = karyawan dalam scope dengan `nextTierPassed === true` dan `currentTierPassed !== false` (mockup: `nextProg`). Yang OKR-nya belum memenuhi tetap tampil tanpa tindakan.
 - **C6 Keputusan atasan.**
   - Siapa: user berperan `supervisor` yang `id`-nya = `users.supervisor_id` karyawan itu. Bukan untuk dirinya sendiri. `hr_admin` dan `eta_admin` → 403 `ROLE_FORBIDDEN`; `supervisor` lain → 404 (karyawan di luar scope-nya).
-  - Syarat: karyawan `eligible` saat itu (selain itu 409 `NOT_ELIGIBLE`), dan belum ada siklus `approved` untuk jenjang tujuan itu (409 `ALREADY_DECIDED`).
+  - Peran atasan dibaca dari basis data (`users.role` atasan = `supervisor`), bukan dari token; selain itu 403 `ROLE_FORBIDDEN`.
+  - Syarat: karyawan `eligible` saat itu (selain itu 409 `NOT_ELIGIBLE`), dan belum ada siklus `approved` untuk jenjang tujuan itu (409 `ALREADY_DECIDED`). Pengecualian: `hold` atas siklus terbuka selalu boleh, supaya atasan bisa menarik rekomendasinya bila karyawan tidak lagi memenuhi syarat.
   - Nilai `recommend` atau `hold`, `note` opsional (teks ≤ 2000 karakter).
   - Tulis: `INSERT … ON CONFLICT (tenant_id, user_id, to_level_id) WHERE hr_decision IS NULL DO UPDATE` yang memperbarui keputusan, catatan, `supervisor_by/at`, `from_level_id`, dan potret `okr_achievement`. Jadi selama HR belum memutuskan atasan boleh mengganti keputusannya, dan klik ganda tidak membuat baris ganda.
 - **C7 Keputusan HR.**
@@ -115,7 +116,7 @@ dna: {
 - **C10 Karyawan tanpa atasan yang sah.** Bila `supervisor_id` kosong, atau menunjuk user yang perannya bukan `supervisor`, tidak ada yang bisa mengisi tahap atasan: baris menampilkan `blockedReason: 'no_supervisor'` dan HR tidak bisa memutuskan. HR tidak boleh merangkap tahap atasan (pemisahan tugas). `[⚠️ BELUM TERVERIFIKASI]` Mockup tidak membahas kasus ini; diasumsikan HR membetulkan data atasan lewat impor karyawan. K2 (satu akun banyak peran) adalah milik B2.
 - **C11 Visibilitas dan peran.**
   - Semua endpoint: `requireRole(hr_admin, supervisor)`; karyawan dan peran lain → 403. `eta_admin` selalu lolos `requireRole`, jadi ia bisa memanggil GET (melihat) tetapi kedua POST menolaknya secara eksplisit (C6, C7).
-  - Selain itu peran pemanggil harus ada di `settings.dna.promotionVisibleTo` (kecuali `eta_admin`), selain itu 403 `ROLE_FORBIDDEN`. Tenant yang mengisi `['hr_admin']` menutup modul ini untuk atasan; akibatnya tidak ada yang bisa merekomendasi, dan itu pilihan tenant.
+  - Selain itu peran pemanggil harus ada di `settings.dna.promotionVisibleTo` (nilai bukan array dianggap `['hr_admin']`; `okrMin` di luar 0–100 atau bukan angka dianggap 80, `metricTypes` kosong dianggap `['okr']`) (kecuali `eta_admin`), selain itu 403 `ROLE_FORBIDDEN`. Tenant yang mengisi `['hr_admin']` menutup modul ini untuk atasan; akibatnya tidak ada yang bisa merekomendasi, dan itu pilihan tenant.
   - Data dibatasi `scopeFor()` → `visibleEmployeeScope()`: HR semua, atasan bawahan langsungnya. Baris **diri sendiri dikeluarkan** dari semua respons (atasan tidak melihat status promosi dirinya). Karyawan di luar scope, nonaktif, bukan populasi, tenant lain, atau id bukan UUID → 404.
 - **C12 Audit.**
   - Baca peta, bukti, dan daftar keputusan → `audit.readIndividual` (`dna.career_map`, `dna.career_evidence`, `dna.promotion_decisions`; `objectType: 'promotion'`).
@@ -124,7 +125,7 @@ dna: {
 - **C13 Tenant.** Semua query memfilter `tenant_id` dari `req.tenantId`.
 - **C14 Endpoint lama.** `GET /dna/promotion-candidates` dan field `career.promotionCandidate` dipertahankan (dipakai `DnaView.vue` sampai layar baru menggantikannya), masih tanpa OKR. Karena default `promotionVisibleTo` kini memuat `supervisor`, atasan ikut melihatnya untuk timnya; `promotionCandidate` untuk baris diri sendiri selalu disembunyikan. Test lama disesuaikan.
 - **C15 AI.** Tidak ada rekomendasi AI di paket ini. Bukti "Wawancara ulang AI" berasal dari Impact Measurement (B15) yang belum ada → `reinterview: null`.
-- **C16 Catatan keputusan.** `supervisor_note` dan `hr_note` dikembalikan di `/decisions` kepada HR dan atasan karyawan itu (pembacaan tercakup `readIndividual`).
+- **C16 Catatan keputusan.** `supervisor_note` dan `hr_note` dikembalikan di `/decisions` kepada HR dan atasan karyawan itu (pembacaan tercakup `readIndividual`). Super Admin melihat keputusan dengan `note: null`.
 
 ## 6. Endpoint
 
@@ -218,3 +219,17 @@ Review diff B16 oleh subagent baru: 11 temuan, tidak ada yang berat. Perbaikan d
 **Diputuskan (C9 vs C10):** siklus terbuka yang dibuat atasan sah tetap boleh diputuskan HR walau atasan itu kemudian berganti atau perannya dicabut; rekomendasinya sah saat dibuat (C9). `no_supervisor` hanya menghalangi siklus yang belum ada.
 
 **Ditunda (dicatat di PR):** urutan teks periode untuk format campuran (4; tetap `[⚠️ BELUM TERVERIFIKASI]` sampai format OKR Mas Abdan diketahui); siklus usang yang hidup lagi bila karyawan kembali ke jenjang semula (7; kasus langka, HR bisa menunda); test atomisitas audit, balapan nol baris, dan kill switch (10; butuh injeksi kegagalan di store, di luar pola test repo).
+
+## 11. Layar (di atas B0)
+
+- Rute `cp` (`/cp`, `meta.views` hr/atasan/super, flag `promotion.recommendation`, submodul `dna`).
+- Tiga tab mockup: Karyawan per divisi (KPI, filter divisi termasuk "Tanpa divisi", tabel, kartu bukti), Jalur jenjang (kartu per jenjang dengan kalimat aturan, "Cara kerja kenaikan jabatan" mengikuti teks mockup), Keputusan promosi (tabel, catatan opsional, tombol dari `actions`, alasan dari `blockedReason`).
+- Persen OKR dibulatkan untuk tampilan tanpa menyeberangi ambang (79,5 tampil 79%).
+- Teks cakupan atasan memakai "bawahan langsung" (§2).
+
+- [x] `apps/web/src/screens/b16-cp/routes.ts`, `api.ts`, `CareerPromotionView.vue`
+- [x] `apps/web/e2e/b16-cp.spec.ts`
+
+## 12. Cek drift (19 Nov)
+
+Dilakukan manual (plugin egm tidak terpasang di sesi). Dibandingkan: aturan C1–C16 dan §6 dengan `dna/career.js`, `dna/career-routes.js`, store `promotion`, dan migrasi 1600; §11 dengan layar. Yang diselaraskan di spek: C6 (peran atasan dari DB, tarik rekomendasi), C11 (normalisasi konfigurasi), C16 (Super Admin tanpa catatan), indeks `lna_promotion_approved_uq` di §4, `levels[].order` mulai 0 di §6, cakupan layar. Tidak ada perbedaan lain yang ditemukan.

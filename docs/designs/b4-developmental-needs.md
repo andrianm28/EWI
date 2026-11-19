@@ -4,7 +4,7 @@
 - Paket: B4 (brief bangun penuh 19 Nov, thread T3)
 - Flag: `module.dna` (sudah ada). Tidak ada flag baru: seluruh endpoint baru berada di router `dna` yang sudah dipasang lewat `requireSubmodule('dna')`.
 - Migrasi: blok 04 → `20261119000400-dna-developmental-needs.js`
-- Cakupan tahap ini: API, domain, store, impor, test. Layar (Vue) menyusul di branch yang sama setelah B0 terbuka (sesi thread ini hanya boleh push ke satu branch, jadi B4, B16, dan layarnya berada di satu PR dengan commit terpisah).
+- Cakupan: API, domain, store, impor, test, dan layar Vue di atas B0 (`apps/web/src/screens/b4-dna`, rute `dna` di `/dna`). Sesi thread ini hanya boleh push ke satu branch, jadi B4, B16, dan layarnya berada di satu PR dengan commit terpisah.
 - Reviewer wajib: Andrian (migrasi, `core/errors`, kode impor bersama).
 - Gerbang: `npm run lint`, `npm test`, `npm run build`, `npm run e2e` (e2e tidak berubah di tahap backend).
 
@@ -205,3 +205,18 @@ Catatan:
 **Ditolak dengan alasan:** flag baru (3), sama dengan §9a; diminta persetujuan eksplisit Andrian di PR.
 
 **Ditunda:** dua `POST job-functions` tanpa nomor bersamaan, satu mendapat 409 (7; HR tunggal, cukup ulangi); commit impor tanpa `orConflict` (6, bagian impor; ikut penundaan transaksi impor §9a); alias "Level" di file kamus lama (13; dicatat di PR dan template); sisa klaim tanpa test: jalur 23505, `careerLevelId` lintas jabatan, pengguna nonaktif (14).
+
+## 11. Layar (di atas B0)
+
+- Rute `dna` (`/dna`, `meta.views` hr/atasan/super, `submodule: 'dna'`) menggantikan `screens/legacy-dna`. Halaman POC lama tetap di `/m/dna` dengan nama rute `dna-poc` (`menuKey: 'dna'`) sampai impor (B11) dan hasil karyawan (B8) punya layar pengganti; tautan "Buka" di Beranda tetap ke `/m/dna`.
+- Empat tab mockup: Ringkasan, Kamus kompetensi (job function sebagai tombol filter, segmen level), Kurikulum BIA, Kebutuhan pegawai (tabel + rencana). Label status modul: Tercapai, Perlu dikembangkan, Belum dibuka, Belum dinilai. Chip jabatan: Kamus tersedia / Belum tersedia.
+- Tambahan di luar mockup: tombol "Sahkan kamus" untuk HR (A8) dan catatan cakupan "Baru x dari y modul yang dinilai" (A4).
+- Kartu "Agen AI · Validasi kamus kompetensi" tidak dibangun (§2, milik B6/B10).
+
+- [x] `apps/web/src/screens/b4-dna/routes.ts`, `api.ts`, `DevelopmentNeedsView.vue`
+- [x] hapus `apps/web/src/screens/legacy-dna/`
+- [x] `apps/web/e2e/b4-dna.spec.ts`
+
+## 12. Cek drift (19 Nov)
+
+Dilakukan manual (plugin egm tidak terpasang di sesi). Dibandingkan: aturan A1–A13 dan §6 dengan `dna/development.js`, `dna/development-routes.js`, store, impor, dan migrasi 0400; §11 dengan layar. Yang diselaraskan di spek: pemetaan job function tidak mereset pengesahan (§7), `stageDistribution` lima baris nol tanpa jabatan (§6), `assessedCompetencyCount` se-tenant (A7), batas nomor job function 1–999 (§9b), cakupan layar. Tidak ada perbedaan lain yang ditemukan.
