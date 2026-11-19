@@ -65,7 +65,17 @@ kompetensi Tool 1 (`lna_competencies.code`, contoh `ST-A2`, unik per jabatan). S
 Jalur (b) dihitung saat dibaca, bukan disimpan, jadi urutan impor (kamus dulu atau library dulu) dan perubahan kode lewat
 `PATCH /api/dna/competencies/:id` langsung berlaku tanpa impor ulang. Modul tanpa jabatan tidak dicocokkan lewat kode,
 karena kode hanya unik per jabatan. Tidak ada migrasi: kedua jalur memakai tabel yang sudah ada. Jalur nama tetap ada
-untuk kompetensi tanpa kode (kompetensi inti, kamus lama).
+untuk kompetensi tanpa kode (kompetensi inti, kamus lama). Ganti nama kompetensi tetap memutus tautan jalur (a) seperti sebelumnya; jaminan
+"langsung berlaku" hanya untuk jalur (b).
+
+Cakupan dan aturan tambahan jalur (b):
+- Berlaku untuk library, detail modul, dan Pareto B13 saja. Evaluasi LIM (`lim-stores.js` `planCompetencies`,
+  `participations`) tetap membaca `li_module_competencies`; menyamakannya adalah paket susulan pemilik LIM.
+- Tidak bergantung pada flag `dna.development` atau `module.dna`: kode yang sudah tersimpan tetap dibaca walau flag B4
+  dimatikan kemudian, sama seperti jalur nama membaca kamus apa pun keadaan flagnya.
+- Kompetensi dan jabatan modul harus milik tenant yang sama dengan modul (`c.tenant_id = m.tenant_id`,
+  `mj.tenant_id = m.tenant_id`).
+- Modul dengan jabatan A dan B yang sama-sama punya kompetensi `ST-A2` terhubung ke keduanya (dua entri).
 
 `[⚠️ BELUM TERVERIFIKASI]` Bentuk berkas DACUM Tool 2 asli dari Mas Abdan belum dilihat. Pemetaan kolom memakai mesin
 pemetaan impor yang ada, jadi judul kolom berbeda masih bisa dipetakan HR, tetapi berkas yang satu modul per baris
@@ -97,7 +107,9 @@ dengan butir di banyak kolom perlu dirapikan dulu.
    (`modules/tna/pareto.js`) dengan `settings.tna.pareto`. Data diambil lewat query khusus yang tidak membawa judul atau
    rincian temuan; temuan tanpa kompetensi tidak ikut dan dilaporkan sebagai `unlinkedFindings`. Pencocokan memakai nama
    kompetensi yang dinormalkan dari semua kompetensi yang terhubung ke modul (lewat nama atau kode, lihat "Tautan modul
-   ke kompetensi" di §3), dan dibatasi ke satu jabatan bila filter `jobRoleId` dipakai. Kompetensi prioritas = baris dengan
+   ke kompetensi" di §3), dan dibatasi ke satu jabatan bila filter `jobRoleId` dipakai. Kunci Pareto tetap nama, jadi modul yang terhubung lewat kode ke "Komunikasi" jabatan X juga
+   menghitung temuan "Komunikasi" dari jabatan lain; ini sama dengan jalur nama dan diterima sadar (presisi per id
+   kompetensi = paket susulan bila data pilot menunjukkan nama kembar antarjabatan). Kompetensi prioritas = baris dengan
    `cumulativeShare ≤ 0,8`, ditambah baris peringkat 1 (agar tidak kosong bila satu kompetensi > 80%). Modul prioritas
    = modul yang terhubung ke kompetensi prioritas; peringkat modul = peringkat terbaik kompetensinya. Modul tanpa
    kompetensi terhubung atau tanpa temuan = "belum ada data gap". Bila `module.tna` mati untuk tenant, prioritas
@@ -142,7 +154,7 @@ dengan butir di banyak kolom perlu dirapikan dulu.
 | --- | --- | --- |
 | GET | `/api/li/` | probe modul `{ module, title, tenantId, role }` (HR, SME, role leader; dipakai test gerbang) |
 | GET | `/api/li/modules?jobRoleId&priority=pareto&type=K\|S\|A&level&stream` | `{ data: [ringkas], kpis (termasuk `streams`), pareto, filters: { jobRoles, streams }, vendorName }` |
-| GET | `/api/li/modules/:id` | detail + `items` per tipe, `jobRoles`, `competencies: [{ id, code, name, jobRoleId, via: 'code' \| 'name' }]` (kompetensi terhubung; `via = code` bila cocok lewat kode, walau juga disebut namanya), `status`, `priority`, `recommendation`, `request`, `draft` (ringkas) |
+| GET | `/api/li/modules/:id` | detail + `items` per tipe, `jobRoles`, `competencies: [{ id, code, name, jobRoleId, via: 'code' \| 'name' }]` (kompetensi terhubung, diurutkan nama lalu kode; `via = code` bila cocok lewat kode, walau juga disebut namanya; hanya di detail, tidak di baris daftar), `status`, `priority`, `recommendation`, `request`, `draft` (ringkas) |
 | POST | `/api/li/modules/:id/request` | 201 permintaan; 409 `PATH_ACTIVE` |
 | POST | `/api/li/requests/bulk` | `{ scope, jobRoleId?, level? }` → 201 `{ created, skipped, requests }` |
 | GET | `/api/li/requests` | `{ data: { vendor, drafts, candidates }, vendorName }` (kandidat = saran `dev`, status `none`, prioritas dulu) |
@@ -183,7 +195,8 @@ Bentuk galat: `{ error: { code, message } }`.
 - `tests/integration/li.test.js` (tautan lewat kode): modul ber-kode sama dengan kompetensi di jabatannya terhubung tanpa
   kolom Kompetensi, baik kamus diimpor sebelum maupun sesudah library; kode sama di jabatan lain tidak terhubung; modul
   tanpa jabatan tidak dicocokkan; huruf besar/kecil tidak berpengaruh; detail `competencies` dengan `via`; prioritas Pareto
-  ikut tautan kode; mengganti kode kompetensi lewat `PATCH /api/dna/competencies/:id` langsung memindahkan tautan.
+  ikut tautan kode; mengganti kode kompetensi lewat `PATCH /api/dna/competencies/:id` langsung memindahkan tautan. Modul dua jabatan
+  dengan kode sama terhubung ke dua kompetensi; tenant lain dengan kode sama tidak ikut.
 - `tests/integration/alur-li.test.js` (B18, lewat `tests/alur/driver.js`): impor library → wawancara TNA stub menghasilkan gap
   training → gap belum masuk Pareto sebelum HR meninjau → setelah disetujui modul kompetensi itu prioritas Pareto (tanpa
   judul temuan) → minta vendor sampai `installed` dengan course aktif → modul `available`; atasan/karyawan 403; flag
@@ -226,6 +239,8 @@ UI (menumpuk di atas B0):
 Dokumen:
 - [x] `docs/designs/b18-e2e-qa-malam.md` (baris alur B13 di tabel 3.3)
 - [x] `apps/api/tests/integration/alur-li.test.js` dan langkah `li` di `apps/api/tests/alur/driver.js` (test alur B18)
+- [ ] Tautan lewat kode: `apps/api/src/db/li-stores.js` (`competencyKeys` + daftar `competencies` untuk detail),
+  `apps/api/src/modules/li/index.js` (detail memuat `competencies`, daftar tidak), `apps/api/tests/integration/li.test.js`
 
 ## 8. Keputusan triase review egm
 
@@ -285,12 +300,18 @@ indeks unik parsial `assessment_ref`; kunci per tenant di `syncFromCatalog`; tes
 belum dites, webhook tenant ambigu, akun nonaktif di pengingat; kasus tepi status (buka lagi `done`, minta modul yang
 sudah tersedia); helper bersama `li`/`ld`.
 
+Review spek tautan lewat kode (`egm:egm-implementation-readiness`, subagen baru, 19 Nov): 0 Blocker, 4 Major, semuanya
+diperbaiki di §3, §4 aturan 6, §5, §6, §7, dan §9. Keputusannya: cakupan dibatasi ke library, detail, dan Pareto B13
+(LIM = susulan); kunci Pareto tetap nama dan diterima sadar; jalur kode tidak bergantung pada flag B4; `competencies`
+diurutkan dan hanya ada di detail; modul dua jabatan menghasilkan dua entri. Nit isolasi tenant dan kurikulum B4 juga
+dicatat di spek.
+
 ## 9. Batas dengan paket lain
 
 - B4 (Developmental Needs) dan B11 mengimpor DACUM (kompetensi, `code`, `stream`, `program_tier`, job function). B13
   mengimpor library modul KSA (Tool 2) ke tabel `li_*` sendiri dan tidak menambah kolom di `lna_competencies`. Sejak B4
   masuk, modul juga terhubung ke kompetensi lewat `lna_competencies.code` = `li_modules.code` per jabatan (§3), dibaca
-  langsung dari kolom B4; B13 tidak menulis ke tabel B4.
+  langsung dari kolom B4; B13 tidak menulis ke tabel B4. `GET /api/dna/job-roles/:id/curriculum` (B4) tidak berubah.
 - B14 menunjuk `li_modules` dari `ld_trainings.module_id`, dan memetakan course LMS ke modul lewat
   `li_modules.catalog_item_id`.
 - B7/B8 (rencana belajar): membaca `li_modules.catalog_item_id` (boleh kosong, per tenant) sebagai course untuk modul,
