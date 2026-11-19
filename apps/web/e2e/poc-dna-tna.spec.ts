@@ -336,3 +336,58 @@ test('PO-6 A: HR membuka sesi wawancara tanpa melihat percakapan', async ({ page
   await expect(page.getByTestId('transcript-private')).toBeVisible()
   await expect(page.getByTestId('turn-human')).toHaveCount(0)
 })
+
+// PK-14: review hasil AI oleh HR sebelum hasil tampil (PD-14 ★A, PM-5 ★A)
+test('HR: antrean review hasil AI, setujui, ubah, dan tolak dengan alasan', async ({ page }) => {
+  const base = { projectId: 'p1', sessionId: 's1', userId: 'd', userName: 'Dimas', detail: null, competencyName: null, metricName: 'SLA respons', target: 85, actual: 70,
+    reviewedByName: null, reviewedAt: null, reviewNote: null, originalTitle: null, originalDetail: null, originalCategory: null, createdAt: '' }
+  let queue = [
+    { ...base, id: 'f1', category: 'training', title: 'Belum paham batas SLA', confidence: 0.85, scoringAgreement: true, reviewStatus: 'draft' },
+    { ...base, id: 'f2', category: 'non_training', title: 'VPN putus saat shift malam', confidence: 0.4, scoringAgreement: false, reviewStatus: 'draft' },
+    { ...base, id: 'f3', category: 'training', title: 'Format laporan', confidence: 0.6, scoringAgreement: true, reviewStatus: 'draft' },
+  ]
+  const decisions: Record<string, unknown> = {}
+  await page.route('**/api/tna/dashboard', (r) => r.fulfill({ json: { data: { role: 'hr_admin', people: null, redTargets: 3, sessions: { completed: 1 }, trainingFindings: 0, planItems: {}, reviewPending: queue.length } } }))
+  for (const path of ['findings', 'plan-items', 'sessions', 'pareto']) await page.route(`**/api/tna/${path}`, (r) => r.fulfill({ json: { data: [] } }))
+  await page.route('**/api/tna/job-roles', (r) => r.fulfill({ json: { data: [] } }))
+  await page.route('**/api/tna/review?*', (r) => r.fulfill({ json: { data: queue, counts: { draft: queue.length, approved: 0, edited: 0, rejected: 0 } } }))
+  await page.route('**/api/tna/findings/*/review', async (r) => {
+    const id = r.request().url().split('/').at(-2) as string
+    decisions[id] = r.request().postDataJSON()
+    queue = queue.filter((f) => f.id !== id)
+    return r.fulfill({ json: { data: {} } })
+  })
+  await loginAs(page, 'hr_admin')
+  await page.goto('/m/tna')
+  await expect(page.getByTestId('tna-review-banner')).toContainText('3 temuan AI dari wawancara TNA menunggu review')
+  await page.getByTestId('tna-review-banner').getByRole('link', { name: 'Review' }).click()
+  await expect(page).toHaveURL(/\/m\/tna\/review$/)
+  await expect(page.getByTestId('review-item-f1')).toContainText('Keyakinan tinggi (85%)')
+  await expect(page.getByTestId('review-item-f2')).toContainText('Keyakinan rendah (40%)')
+  await expect(page.getByTestId('review-item-f2')).toContainText('Dua penilaian AI berbeda')
+
+  await page.getByTestId('review-item-f1').getByRole('button', { name: 'Setujui' }).click()
+  await expect(page.getByRole('status')).toContainText('Temuan disetujui')
+  await expect(page.getByTestId('review-item-f1')).toHaveCount(0)
+
+  await page.getByTestId('review-item-f2').getByRole('button', { name: 'Tolak' }).click()
+  await page.getByLabel('Alasan penolakan').fill('Sudah ditangani tim IT')
+  await page.getByRole('button', { name: 'Tolak temuan' }).click()
+  await expect(page.getByRole('status')).toContainText('Temuan ditolak')
+
+  await page.getByTestId('review-item-f3').getByRole('button', { name: 'Ubah' }).click()
+  await page.getByLabel('Judul').fill('Belum menguasai format laporan bulanan baru')
+  await page.getByRole('button', { name: 'Simpan dan setujui' }).click()
+  await expect(page.getByTestId('review-empty')).toBeVisible()
+  expect(decisions).toEqual({
+    f1: { decision: 'approve' },
+    f2: { decision: 'reject', note: 'Sudah ditangani tim IT' },
+    f3: { decision: 'edit', title: 'Belum menguasai format laporan bulanan baru', detail: '', category: 'training' },
+  })
+})
+
+test('Karyawan tidak bisa membuka antrean review', async ({ page }) => {
+  await loginAs(page, 'learner')
+  await page.goto('/m/tna/review')
+  await expect(page).toHaveURL(/\/$/)
+})

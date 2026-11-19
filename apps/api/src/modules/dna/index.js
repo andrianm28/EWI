@@ -80,7 +80,7 @@ async function canSeePromotion(req, flags, settings) {
 module.exports = {
   key: 'dna',
   title: 'Development Need Analysis',
-  router({ stores, ai, aiConfig, settings, flags, audit } = {}) {
+  router({ stores, ai, aiConfig, settings, flags, audit, analysis } = {}) {
     const r = express.Router();
     const hr = requireRole(ROLES.HR_ADMIN);
 
@@ -226,7 +226,7 @@ module.exports = {
     }));
 
     r.use('/sessions', requireFlag(flags, FLAGS.DNA_AI_INTERVIEW, 'Wawancara AI DNA belum diaktifkan; gunakan impor hasil wawancara manual'),
-      interviewRouter({ submodule: 'dna', stores, ai, aiConfig, audit }));
+      interviewRouter({ submodule: 'dna', stores, ai, aiConfig, audit, analysis }));
     return r;
   },
 };

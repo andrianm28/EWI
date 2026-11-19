@@ -124,6 +124,16 @@ const target = (f: Finding) => (f.metricName ? `${f.metricName}: target ${f.targ
     <p v-if="error" role="alert" class="mt-3 text-sm text-red-600">{{ error }}</p>
     <p v-if="notice" role="status" class="mt-3 text-sm text-emerald-700">{{ notice }}</p>
 
+    <!-- PK-14: temuan AI menunggu review HR sebelum tampil (PM-5 ★A) -->
+    <section v-if="isHr && dash?.reviewPending" class="mt-4 flex items-center justify-between gap-3 rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm" data-testid="tna-review-banner">
+      <div>
+        <div class="font-medium">{{ dash.reviewPending }} temuan AI dari wawancara TNA menunggu review</div>
+        <div class="text-slate-600">Temuan baru tampil ke atasan dan karyawan, dan baru dihitung di dashboard, setelah Anda setujui.</div>
+      </div>
+      <RouterLink to="/m/tna/review" class="shrink-0 rounded bg-slate-900 px-3 py-1.5 text-white">Review</RouterLink>
+    </section>
+    <p v-else-if="isHr" class="mt-4 text-sm"><RouterLink to="/m/tna/review" class="text-blue-700">Riwayat review hasil AI</RouterLink></p>
+
     <section v-if="mySessions.length" class="mt-4 rounded-lg border border-blue-200 bg-blue-50 p-4" data-testid="tna-my-sessions">
       <h2 class="font-medium">Wawancara untuk Anda</h2>
       <p class="text-sm text-slate-600">Sekitar 30 menit, membahas target yang belum tercapai.</p>
@@ -202,7 +212,7 @@ const target = (f: Finding) => (f.metricName ? `${f.metricName}: target ${f.targ
 
     <section class="mt-4 rounded-lg border bg-white p-4">
       <h2 class="font-medium">{{ isLearner ? 'Hasil TNA Anda' : 'Kebutuhan training' }}</h2>
-      <p v-if="!findings.length" class="mt-2 text-sm text-slate-500">Belum ada hasil.</p>
+      <p v-if="!findings.length" class="mt-2 text-sm text-slate-500">Belum ada hasil.<template v-if="!isHr"> Hasil wawancara tampil setelah direview HR.</template></p>
       <ul class="mt-2 divide-y text-sm" data-testid="tna-findings">
         <li v-for="f in findings" :key="f.id" class="flex items-start justify-between gap-3 py-2">
           <div>
