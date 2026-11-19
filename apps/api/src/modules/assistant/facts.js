@@ -14,9 +14,9 @@ const clip = (v) => (v == null ? null : String(v).slice(0, MAX_TEXT));
 const countBy = (rows, key) => rows.reduce((acc, r) => ({ ...acc, [r[key]]: (acc[r[key]] || 0) + 1 }), {});
 const OPEN = ['scheduled', 'in_progress'];
 
-const PAGE_LABEL = Object.freeze({
+const PAGE_LABEL = {
   my: 'Hasil saya', li: 'Rencana belajar', aiv: 'Wawancara AI', tna: 'Training Needs', review: 'Tinjauan HR', ina: 'Improvement Needs',
-});
+};
 
 const BUILDERS = [
   // --- karyawan: hanya req.user.id ---
@@ -64,8 +64,8 @@ const BUILDERS = [
   // --- atasan: anggota tim dalam cakupan visibleEmployeeScope, tanpa dirinya ---
   {
     key: 'wawancaraTim', views: ['atasan'], submodule: 'tna', page: 'aiv',
-    async build({ stores, tenantId, team, alias }) {
-      const sessions = await stores.interviews.list(tenantId, 'tna', { userIds: team.map((m) => m.id) });
+    async build({ stores, tenantId, team, scope, alias }) {
+      const sessions = await stores.interviews.list(tenantId, 'tna', scope);
       const done = new Set(sessions.filter((s) => s.status === 'completed').map((s) => s.intervieweeId));
       return {
         members: team.length,
@@ -76,15 +76,15 @@ const BUILDERS = [
   },
   {
     key: 'gapTim', views: ['atasan'], submodule: 'tna', page: 'tna',
-    async build({ stores, tenantId, team }) {
-      return { top: (await stores.tna.topTrainingGaps(tenantId, { userIds: team.map((m) => m.id) })).map((g) => ({ ...g, competency: clip(g.competency) })) };
+    async build({ stores, tenantId, scope }) {
+      return { top: (await stores.tna.topTrainingGaps(tenantId, scope)).map((g) => ({ ...g, competency: clip(g.competency) })) };
     },
   },
   {
     key: 'rencanaTim', views: ['atasan'], submodule: 'tna', page: 'tna',
-    build: ({ stores, tenantId, team }) => stores.tna.planStatusCounts(tenantId, { userIds: team.map((m) => m.id) }),
+    build: ({ stores, tenantId, scope }) => stores.tna.planStatusCounts(tenantId, scope),
   },
-  // --- hr: seluruh tenant, angka agregat ---
+  // --- hr: cakupan visibleEmployeeScope (HR dan Admin ETA = seluruh tenant), angka agregat ---
   {
     key: 'tinjauan', views: ['hr'], submodule: 'tna', page: 'review',
     async build({ stores, tenantId, conf }) {
@@ -96,17 +96,17 @@ const BUILDERS = [
   },
   {
     key: 'wawancara', views: ['hr'], submodule: 'tna', page: 'aiv',
-    async build({ stores, tenantId }) { return { byStatus: countBy(await stores.interviews.list(tenantId, 'tna', { all: true }), 'status') }; },
+    async build({ stores, tenantId, scope }) { return { byStatus: countBy(await stores.interviews.list(tenantId, 'tna', scope), 'status') }; },
   },
   {
     key: 'gap', views: ['hr'], submodule: 'tna', page: 'tna',
-    async build({ stores, tenantId }) {
-      return { top: (await stores.tna.topTrainingGaps(tenantId, { all: true })).map((g) => ({ ...g, competency: clip(g.competency) })) };
+    async build({ stores, tenantId, scope }) {
+      return { top: (await stores.tna.topTrainingGaps(tenantId, scope)).map((g) => ({ ...g, competency: clip(g.competency) })) };
     },
   },
   {
     key: 'rencana', views: ['hr'], submodule: 'tna', page: 'tna',
-    build: ({ stores, tenantId }) => stores.tna.planStatusCounts(tenantId, { all: true }),
+    build: ({ stores, tenantId, scope }) => stores.tna.planStatusCounts(tenantId, scope),
   },
   {
     key: 'perbaikan', views: ['hr'], submodule: 'tna', flags: [FLAGS.MODULE_INA, FLAGS.TNA_REVIEW_WORKSPACE], page: 'ina',
@@ -128,7 +128,7 @@ function registerFactBuilder(builder) {
 
 function registerPage(key, label) {
   if (PAGE_LABEL[key]) throw new Error(`Halaman sudah ada: ${key}`);
-  Object.defineProperty(PAGE_LABEL, key, { value: label, enumerable: true });
+  PAGE_LABEL[key] = label;
 }
 
 /** Penyusun yang aktif untuk tampilan ini: modul aktif (entitlement + flag) dan semua flag tambahan menyala. */

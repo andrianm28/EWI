@@ -110,3 +110,16 @@ describe('registerView (perluasan B11/B12)', () => {
     expect(() => registerView('hr', 'HR', {})).toThrow('Tampilan sudah ada');
   });
 });
+
+describe('registerFactBuilder dan registerPage (perluasan B11-B16)', () => {
+  const { registerFactBuilder, registerPage, activeBuilders, buildFacts } = require('../../src/modules/assistant/facts');
+  it('halaman dan fakta baru ikut tersusun hanya untuk tampilannya', async () => {
+    registerPage('uji_hal', 'Halaman uji');
+    registerFactBuilder({ key: 'ujiFakta', views: ['uji_view'], page: 'uji_hal', build: () => ({ n: 1 }) });
+    const builders = await activeBuilders({ view: 'uji_view', active: async () => true, flagOn: async () => true });
+    expect(await buildFacts(builders, {})).toEqual({ facts: { ujiFakta: { n: 1 } }, factKeys: ['ujiFakta'], pages: [{ key: 'uji_hal', label: 'Halaman uji' }] });
+    expect(() => registerPage('my', 'x')).toThrow('Halaman sudah ada');
+    expect(() => registerFactBuilder({ key: 'ujiFakta', views: ['hr'], build: () => null })).toThrow('Kunci fakta sudah dipakai');
+    expect(() => registerFactBuilder({ key: 'lain', views: ['hr'], page: 'tidak_ada', build: () => null })).toThrow('Halaman tidak dikenal');
+  });
+});

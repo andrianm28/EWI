@@ -51,11 +51,16 @@ function assistantRouter({ stores, flags, entitlements, settings, audit, ai, aiC
     });
   }));
 
-  /** Anggota tim atasan dalam cakupan RG-3, tanpa dirinya sendiri. */
-  async function teamOf(req) {
+  /**
+   * Cakupan data per tampilan. karyawan = hanya dirinya (juga untuk HR/atasan yang memilih tampilan ini);
+   * atasan dan hr = visibleEmployeeScope() (RG-3). team = anggota dalam cakupan selain dirinya (tampilan atasan).
+   */
+  async function scopeOf(req, view) {
+    if (view === 'karyawan') return { scope: { userIds: [req.user.id] }, team: [] };
     const scope = await scopeFor(req, stores.people);
+    if (view !== 'atasan') return { scope, team: [] };
     const ids = (scope.userIds || []).filter((id) => id !== req.user.id);
-    return ids.length ? stores.people.list(req.tenantId, { userIds: ids }) : [];
+    return { scope: { userIds: ids }, team: ids.length ? await stores.people.list(req.tenantId, { userIds: ids }) : [] };
   }
 
   async function recordUsage(req, usage) {
@@ -83,7 +88,7 @@ function assistantRouter({ stores, flags, entitlements, settings, audit, ai, aiC
 
     try {
       const aliases = createAliases();
-      const team = v.view === 'atasan' ? await teamOf(req) : [];
+      const { scope, team } = await scopeOf(req, v.view);
       let result;
       if (v.view === 'karyawan' && mentionsOthers(question)) {
         result = { answer: REFUSAL, page: null, outcome: 'refused', factKeys: [], userIds: [] };
@@ -91,7 +96,7 @@ function assistantRouter({ stores, flags, entitlements, settings, audit, ai, aiC
         const active = await builders(req, v.view);
         const conf = await settings.get(req.tenantId);
         const { facts, factKeys, pages } = await buildFacts(active, {
-          stores, tenantId: req.tenantId, user: req.user, conf, team, alias: aliases.alias,
+          stores, flags, settings, tenantId: req.tenantId, user: req.user, scope, conf, team, alias: aliases.alias,
         });
         let reply;
         try {
@@ -103,7 +108,8 @@ function assistantRouter({ stores, flags, entitlements, settings, audit, ai, aiC
         await recordUsage(req, reply.usage);
         const page = reply.page && pages.some((p) => p.key === reply.page) ? reply.page : null;
         if (reply.refused) {
-          result = { answer: reply.answer || REFUSAL, page: null, outcome: 'refused', factKeys, userIds: [] };
+          const restored = reply.answer ? restoreNames(reply.answer, aliases) : { text: REFUSAL, userIds: [] };
+          result = { answer: restored.text.slice(0, MAX_ASSISTANT_ANSWER), page: null, outcome: 'refused', factKeys, userIds: restored.userIds };
         } else if (!reply.answer) {
           const sug = suggestionsFor(v.view, active).slice(0, 2).map((s) => `"${s}"`).join(' atau ');
           result = {

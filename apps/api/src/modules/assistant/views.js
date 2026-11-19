@@ -1,19 +1,20 @@
 'use strict';
 // B17 Asisten ELGOS: tampilan peran, penolakan pasti, dan kode samaran. Spek: docs/designs/b17-asisten-elgos.md
 const { HttpError, badRequest } = require('../../core/errors');
+const { ROLES } = require('../../core/rbac/roles');
 
 const VIEW_LABEL = { karyawan: 'Karyawan', atasan: 'Atasan', hr: 'HR' };
 
 // Peran akun -> label, tampilan bawaan, tampilan yang boleh (bawaan lebih dulu)
 const ROLE_VIEWS = {
-  learner: { label: 'Karyawan', views: ['karyawan'] },
-  supervisor: { label: 'Atasan', views: ['atasan', 'karyawan'] },
-  hr_admin: { label: 'HR', views: ['hr', 'karyawan'] },
+  [ROLES.LEARNER]: { label: 'Karyawan', views: ['karyawan'] },
+  [ROLES.SUPERVISOR]: { label: 'Atasan', views: ['atasan', 'karyawan'] },
+  [ROLES.HR_ADMIN]: { label: 'HR', views: ['hr', 'karyawan'] },
   // requireRole(HR_ADMIN) meloloskan Admin ETA di seluruh kode, jadi asisten mengikutinya (tercatat di audit)
-  eta_admin: { label: 'Admin ETA', views: ['hr', 'karyawan'] },
-  pimpinan: { label: 'Pimpinan', views: ['karyawan'] },
-  role_leader: { label: 'Role leader', views: ['karyawan'] },
-  sme: { label: 'SME', views: ['karyawan'] },
+  [ROLES.ETA_ADMIN]: { label: 'Admin ETA', views: ['hr', 'karyawan'] },
+  [ROLES.PIMPINAN]: { label: 'Pimpinan', views: ['karyawan'] },
+  [ROLES.ROLE_LEADER]: { label: 'Role leader', views: ['karyawan'] },
+  [ROLES.SME]: { label: 'SME', views: ['karyawan'] },
 };
 
 /**
@@ -30,7 +31,7 @@ function registerView(key, label, roles) {
 }
 
 function resolveView(role, asked) {
-  const conf = ROLE_VIEWS[role] || ROLE_VIEWS.learner;
+  const conf = ROLE_VIEWS[role] || ROLE_VIEWS[ROLES.LEARNER];
   if (asked !== undefined && asked !== null && asked !== '' && !VIEW_LABEL[asked]) {
     throw badRequest(`view harus ${Object.keys(VIEW_LABEL).join(', ')}`);
   }
@@ -45,7 +46,7 @@ function resolveView(role, asked) {
 }
 
 // Penghemat panggilan, bukan pengaman utama (pengaman utama = susunan fakta). Lihat spek untuk contoh.
-const OTHERS = /\b(karyawan|pegawai)\s+[a-z]\b(?!\s*[a-z])|\b(teman|rekan)(\s+(kerja|tim|saya))?\b|\borang\s+lain\b|\bgaji\s+(dia|mereka|teman|rekan|orang|karyawan)\b/i;
+const OTHERS = /\b(karyawan|pegawai)\s+[a-z]\b|\b(teman|rekan)(\s+(kerja|tim|saya))?\b|\borang\s+lain\b|\bgaji\s+(dia|mereka|teman|rekan|orang|karyawan)\b/i;
 const mentionsOthers = (question) => OTHERS.test(String(question || ''));
 
 /** Kode samaran per pertanyaan: model hanya melihat K1, K2, ...; server mengembalikan nama sesudahnya. */
