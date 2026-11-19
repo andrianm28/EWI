@@ -27,8 +27,10 @@ describe('PD-10 ★B: login password hanya di luar produksi', () => {
     expect(() => loadConfig({ ...PROD_ENV, AUTH_PASSWORD_LOGIN: 'true' })).toThrow(/AUTH_PASSWORD_LOGIN=true tidak diizinkan di produksi/);
   });
 
-  it('dev/staging: nyala secara default, bisa dimatikan', () => {
-    expect(makeConfig().auth.localLogin).toBe(true);
+  it('di luar produksi: mati secara default (OTP link), hanya nyala bila dinyalakan eksplisit', () => {
+    const base = { NODE_ENV: 'development', EWI_JWT_SECRET: SECRET, DATABASE_URL: 'postgres://x/y', EWI_LOCAL_MASTER_KEY: 'a'.repeat(64) };
+    expect(loadConfig(base).auth.localLogin).toBe(false);
+    expect(loadConfig({ ...base, AUTH_PASSWORD_LOGIN: 'true' }).auth.localLogin).toBe(true);
     expect(makeConfig({ AUTH_PASSWORD_LOGIN: 'false' }).auth.localLogin).toBe(false);
   });
 
