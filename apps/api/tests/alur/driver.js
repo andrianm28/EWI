@@ -72,6 +72,36 @@ function langkah(app, masuk) {
       async tempatkan(hr, pengguna, role, level = role.levels[0]) {
         await kirim('put', `/api/dna/employees/${pengguna.id}/position`, hr, { jobRoleId: role.id, careerLevelId: level.id }).expect(200);
       },
+      /**
+       * Impor file DNA lewat layar impor: unggah CSV (`baris` = baris teks, baris pertama judul kolom) dengan
+       * saran pemetaan, lalu simpan dengan `opsi`. Mengembalikan ringkasan batch ({ status, result }).
+       */
+      async impor(hr, jenis, baris, opsi = {}) {
+        const up = await request(app).post(`/api/dna/imports/${jenis}?filename=${jenis}.csv`).set(masuk(hr))
+          .set('Content-Type', 'application/octet-stream').send(Buffer.from(`${baris.join('\n')}\n`)).expect(201);
+        return (await kirim('post', `/api/dna/imports/batches/${up.body.data.id}/commit`, hr, { options: opsi }).expect(200)).body.data;
+      },
+      /** B4: kamus per jabatan beserta job function (flag dna.development). */
+      async kamus(siapa, roleId) {
+        return (await kirim('get', `/api/dna/job-roles/${roleId}/dictionary`, siapa).expect(200)).body.data;
+      },
+      /** B4: HR mengesahkan kamus jabatan. Mengembalikan { approved }. */
+      async sahkanKamus(hr, roleId) {
+        return (await kirim('post', `/api/dna/job-roles/${roleId}/dictionary/approve`, hr).expect(200)).body.data;
+      },
+      /** B4 Developmental Needs. Respons mentah, karena alurnya juga memeriksa penolakan per peran. */
+      pengembangan: {
+        ringkasan: (siapa, roleId) => kirim('get', `/api/dna/development/overview${roleId ? `?jobRoleId=${roleId}` : ''}`, siapa),
+        kebutuhan: (siapa, roleId) => kirim('get', `/api/dna/development/employees?jobRoleId=${roleId}`, siapa),
+        rencana: (siapa, pegawai) => kirim('get', `/api/dna/employees/${pegawai.id}/development-plan`, siapa),
+      },
+      /** B16 Career & Promotion (flag promotion.recommendation). Respons mentah. */
+      karier: {
+        peta: (siapa) => kirim('get', '/api/dna/career/map', siapa),
+        keputusan: (siapa) => kirim('get', '/api/dna/career/decisions', siapa),
+        putusanAtasan: (atasan, karyawan, decision, note) => kirim('post', `/api/dna/career/decisions/${karyawan.id}/supervisor`, atasan, { decision, note }),
+        putusanHr: (hr, karyawan, decision, note) => kirim('post', `/api/dna/career/decisions/${karyawan.id}/hr`, hr, { decision, note }),
+      },
     },
     tna: {
       async imporKinerja(hr, { period, projectId, rows }) {
