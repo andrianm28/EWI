@@ -77,28 +77,30 @@ const paretoNote = computed(() => {
 
 // Urutan, teks, dan tujuan butir "Perlu tindakan" (spek bagian 3.5). Tombol hanya muncul bila layarnya bisa dibuka.
 const ACTIONS: { key: ActionKey; text: (n: number) => string; desc: string; cta: string; routes: string[] }[] = [
-  { key: 'review_pending', text: (n) => `${n} temuan AI menunggu tinjauan HR`, desc: 'Temuan belum terlihat atasan dan karyawan sebelum ditinjau.', cta: 'Tinjau', routes: ['review', 'tna-review'] },
+  { key: 'review_pending', text: (n) => `${n} temuan menunggu tinjauan HR`, desc: 'Temuan belum terlihat atasan dan karyawan sebelum ditinjau.', cta: 'Tinjau', routes: ['review', 'tna-review'] },
   { key: 'interviews_open', text: (n) => `${n} wawancara akar masalah belum selesai`, desc: 'Terjadwal atau sedang berjalan.', cta: 'Lihat', routes: ['tna'] },
   { key: 'plan_needs_module', text: (n) => `${n} rencana belajar butuh modul baru`, desc: 'Belum ada materi di katalog yang cocok.', cta: 'Lihat', routes: ['tna'] },
+  { key: 'non_training_findings', text: (n) => `${n} temuan Improvement Needs (di luar pelatihan)`, desc: 'Untuk diketahui: ditindaklanjuti di luar program belajar.', cta: 'Lihat', routes: ['ina'] },
   { key: 'competencies_unapproved', text: (n) => `${n} kompetensi di kamus belum disetujui`, desc: 'Kamus kompetensi menunggu persetujuan HR.', cta: 'Lihat', routes: ['dna'] },
-  { key: 'non_training_findings', text: (n) => `${n} temuan di luar pelatihan (Improvement Needs)`, desc: 'Untuk diketahui: ditindaklanjuti di luar program belajar.', cta: 'Lihat', routes: ['ina'] },
 ]
-const actions = computed(() => ACTIONS.flatMap((a) => {
-  const item = data.value?.actions.find((x) => x.key === a.key)
-  if (!item) return []
+// Urutan butir mengikuti API (spek 3.5); kunci yang belum dikenal layar dilewati
+const actions = computed(() => (data.value?.actions ?? []).flatMap((item) => {
+  const a = ACTIONS.find((x) => x.key === item.key)
+  if (!a) return []
   return [{ key: a.key, text: a.text(item.count), desc: a.desc, cta: a.cta, to: a.routes.find((r) => routeOpen(r, session.activeView, session)) }]
 }))
 
 const PART_LABEL: Record<string, string> = { cca: 'CCA', dna: 'DNA', tna: 'TNA', ina: 'INA' }
 
-const modules = computed(() => (data.value?.modules ?? []).map((m) => {
-  const info = MODULE_INFO[m.key]!
-  return {
+const modules = computed(() => (data.value?.modules ?? []).flatMap((m) => {
+  const info = MODULE_INFO[m.key]
+  if (!info) return [] // modul baru dari API sebelum layar mengenalnya
+  return [{
     ...m,
     ...info,
     parts: (m.parts ?? []).filter((p) => p.active).map((p) => PART_LABEL[p.key] ?? p.key).join(' · '),
     open: m.active ? info.routes.find((r) => routeOpen(r, session.activeView, session)) : undefined,
-  }
+  }]
 }))
 </script>
 
