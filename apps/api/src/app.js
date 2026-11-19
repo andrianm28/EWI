@@ -18,6 +18,7 @@ const { createReadiness, readyHandler } = require('./core/health');
 const projects = require('./modules/projects');
 const { employeeRouter } = require('./modules/employees');
 const { myRouter } = require('./modules/my');
+const { assistantRouter } = require('./modules/assistant');
 const { webhookRouter } = require('./integrations/elitementor/webhook');
 const { createElitementorClient } = require('./integrations/elitementor/client');
 const { createAssignmentService } = require('./integrations/elitementor/assignments');
@@ -92,6 +93,8 @@ function createApp({ config, stores, ai, catalog, mailer, readiness, assignments
   if (stores.people && stores.interviews) api.use('/employees', employeeRouter({ stores, flags, audit }));
   // B8: beranda karyawan. Bukan submodul; tiap bagian memeriksa modulnya sendiri (flag learner.home).
   if (stores.people && stores.dataRequests) api.use('/my', myRouter({ stores, flags, entitlements, settings, audit }));
+  // B17: Asisten ELGOS. Bukan submodul; tiap penyusun fakta memeriksa modulnya sendiri (flag assistant).
+  if (stores.people && stores.assistant) api.use('/assistant', assistantRouter({ ...deps, entitlements }));
   if (stores.loginLinks) api.use('/invitations', invitationRoutes({ users: stores.users, links, audit }));
   for (const m of SUBMODULE_MODULES) {
     api.use(`/${m.key}`, requireSubmodule(m.key, { entitlements, flags }), m.router(deps));

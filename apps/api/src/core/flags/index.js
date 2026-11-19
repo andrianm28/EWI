@@ -28,6 +28,8 @@ const FLAGS = Object.freeze({
   TNA_REVIEW_WORKSPACE: 'tna.review_workspace',
   // B8 (19 Nov): beranda karyawan (Hasil saya, Rencana belajar)
   LEARNER_HOME: 'learner.home',
+  // B17 (19 Nov): Asisten ELGOS, jawaban dari data yang boleh dilihat peran penanya
+  ASSISTANT: 'assistant',
 });
 
 const KNOWN = new Set(Object.values(FLAGS));

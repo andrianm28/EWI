@@ -6,7 +6,7 @@ const { BedrockRuntimeClient, ConverseCommand } = require('@aws-sdk/client-bedro
 const { AiError, AI_ERRORS } = require('./errors');
 const P = require('./prompts');
 
-const MAX_TOKENS = { next_question: 400, assess_competencies: 2000, analyze_tna: 3000 };
+const MAX_TOKENS = { next_question: 400, assess_competencies: 2000, analyze_tna: 3000, assistant_reply: 500 };
 
 /** Ubah galat SDK menjadi AiError dengan pesan yang jelas. */
 function mapError(err, modelId, region) {
@@ -120,6 +120,15 @@ function createBedrockProvider(config, { client } = {}) {
       const { value, usage } = await converseParsed('analyze_tna', { system: p.system, messages: [{ role: 'user', text: p.user }] },
         (raw) => P.parseTnaFindings(raw, p.codes), 'analisis TNA');
       return { findings: value, usage };
+    },
+
+    // B17: jawaban Asisten ELGOS dari fakta yang sudah disaring server
+    async assistantReply({ roleLabel, facts, pages, question }) {
+      const p = P.assistantPrompt({ roleLabel, facts, pages, question });
+      const keys = (pages || []).map((x) => x.key);
+      const { value, usage } = await converseParsed('assistant_reply', { system: p.system, messages: [{ role: 'user', text: p.user }] },
+        (raw) => P.parseAssistantReply(raw, keys), 'Asisten ELGOS');
+      return { ...value, usage };
     },
   };
 }

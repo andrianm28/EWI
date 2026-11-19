@@ -30,6 +30,10 @@ const DEFAULTS = Object.freeze({
     // Id organisasi tenant di EliteMentor; kosong = penugasan langsung belum bisa dipakai
     elitementorOrganizationId: null,
   },
+  assistant: {
+    // B17: lama log Asisten ELGOS disimpan, dalam hari (1-365). [⏳ DITERIMA] 90 belum diputuskan pemilik produk
+    retentionDays: 90,
+  },
 });
 
 const INTERVIEW_SCOPES = Object.freeze(['all_members', 'red_only']);
@@ -51,10 +55,11 @@ const DELIVERIES = Object.freeze(['elitementor', 'lms_export']);
 function normalize(raw) {
   // tenants.settings bisa berisi bentuk yang salah (mis. "lms": null); bagian itu memakai default seutuhnya
   const conf = { ...raw };
-  for (const key of ['tna', 'lms']) if (!isPlainObject(conf[key])) conf[key] = DEFAULTS[key];
+  for (const key of ['tna', 'lms', 'assistant']) if (!isPlainObject(conf[key])) conf[key] = DEFAULTS[key];
   const days = conf.tna.reviewTargetDays;
   const name = typeof conf.lms.lmsName === 'string' ? conf.lms.lmsName.trim() : '';
   const org = conf.lms.elitementorOrganizationId;
+  const retention = conf.assistant.retentionDays;
   return {
     ...conf,
     tna: { ...conf.tna, reviewTargetDays: Number.isInteger(days) && days >= 1 && days <= 30 ? days : DEFAULTS.tna.reviewTargetDays },
@@ -64,6 +69,7 @@ function normalize(raw) {
       lmsName: name || DEFAULTS.lms.lmsName,
       elitementorOrganizationId: org == null || String(org).trim() === '' ? null : String(org).trim(),
     },
+    assistant: { ...conf.assistant, retentionDays: Number.isInteger(retention) && retention >= 1 && retention <= 365 ? retention : DEFAULTS.assistant.retentionDays },
   };
 }
 
