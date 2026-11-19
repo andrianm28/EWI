@@ -29,7 +29,7 @@ function advice(stage, focus) {
   if (stage === 'not_assessed') return 'Belum ada hasil asesmen untuk pegawai ini.';
   if (stage === 'done') return 'Semua modul yang dinilai tercapai. Pertimbangkan peran mentor dan pemetaan ke jenjang karier.';
   const tier = TIER_LABEL[stage];
-  return `Fokus pada modul ${tier} yang belum tercapai: ${focus.join(', ')}. Modul level berikutnya dibuka setelah semua modul ${tier} tercapai.`;
+  return `Fokus pada modul ${tier} yang belum tercapai: ${focus.join(', ')}. Modul level berikutnya dibuka setelah semua modul ${tier} yang dinilai tercapai.`;
 }
 
 /**

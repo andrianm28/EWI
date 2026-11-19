@@ -76,7 +76,7 @@ describe('DNA: tahap dan rencana pengembangan (B4)', () => {
   it('fokus = kode modul develop pada tahap pegawai; saran menyebut tingkat dan kode', () => {
     const p = plan([a('b1', 2), a('b2', 2), a('i1', 1)]);
     expect(p.focus).toEqual(['ST-B1', 'ST-B4']);
-    expect(p.advice).toBe('Fokus pada modul Basic yang belum tercapai: ST-B1, ST-B4. Modul level berikutnya dibuka setelah semua modul Basic tercapai.');
+    expect(p.advice).toBe('Fokus pada modul Basic yang belum tercapai: ST-B1, ST-B4. Modul level berikutnya dibuka setelah semua modul Basic yang dinilai tercapai.');
     expect(plan([a('b1', 3)]).advice).toMatch(/^Semua modul yang dinilai tercapai/);
   });
 

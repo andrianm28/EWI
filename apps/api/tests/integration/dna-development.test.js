@@ -57,6 +57,20 @@ run('B4 Developmental Needs (Postgres)', () => {
 
   let role; let emptyRole; let otherRole; const c = {}; const jf = {};
 
+  it('flag dna.development mati (default): endpoint B4 403 FEATURE_DISABLED, endpoint POC DNA tetap jalan', async () => {
+    const off = await get('/development/overview', 'hr');
+    expect(off.status).toBe(403);
+    expect(off.body.error.code).toBe('FEATURE_DISABLED');
+    const anyId = '00000000-0000-4000-8000-000000000000';
+    expect((await post(`/job-roles/${anyId}/job-functions`, 'hr', { name: 'JF', order: 1 })).status).toBe(403);
+    expect((await get(`/job-roles/${anyId}/dictionary`, 'hr')).status).toBe(403);
+    expect((await get('/job-roles', 'hr')).status).toBe(200); // POC DNA tetap
+    for (const t of [tenant.id, otherTenant.id]) {
+      await db.query(`INSERT INTO feature_flags (tenant_id, key, enabled) VALUES (:t, 'dna.development', true)`, { replacements: { t } });
+    }
+    expect((await get('/development/overview', 'hr')).status).toBe(200);
+  });
+
   it('HR menyusun jabatan, kamus berkode dengan tingkat BIA, dan job function', async () => {
     role = (await post('/job-roles', 'hr', { name: 'Engineer Service Delivery', division: 'IT Service Delivery', levels: [{ name: 'Junior', programTier: 'basic' }, { name: 'Senior', programTier: 'intermediate' }] })).body.data;
     emptyRole = (await post('/job-roles', 'hr', { name: 'Solution Architect' })).body.data;
@@ -243,6 +257,14 @@ run('B4 Developmental Needs (Postgres)', () => {
     expect((await get('/development/overview', 'ani')).status).toBe(403);
     const luar = await get('/development/overview', 'luar');
     expect(luar.body.data.jobs.map((j) => j.name)).toEqual(['Jabatan tenant lain']);
+  });
+
+  it('pilihan jabatan default mengutamakan kamus yang punya kurikulum (Level Program), bukan kamus POC tanpa tingkat', async () => {
+    const poc = (await post('/job-roles', 'hr', { name: 'Analis POC' })).body.data;
+    expect((await post('/competencies', 'hr', { kind: 'job', jobRoleId: poc.id, name: 'Kompetensi tanpa tingkat' })).status).toBe(201);
+    const hr = await get('/development/overview', 'hr');
+    expect(hr.body.data.jobs.find((j) => j.id === poc.id).dictionary).toBe('available');
+    expect(hr.body.data.selectedJobRoleId).toBe(role.id);
   });
 
   it('audit baca: daftar dan rencana selalu dicatat; ringkasan dicatat hanya untuk atasan', async () => {

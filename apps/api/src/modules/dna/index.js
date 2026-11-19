@@ -186,7 +186,7 @@ module.exports = {
     }));
 
     // B4: kamus per job function, kurikulum BIA, tahap dan rencana pengembangan
-    developmentRoutes(r, { stores, audit });
+    developmentRoutes(r, { stores, audit, flags });
 
     // RG-1c terbuka: wawancara SME -> DACUM belum dibangun.
     r.post('/dacum/sessions', hr, (_req, _res, next) => next(new HttpError(501, 'DECISION_PENDING',

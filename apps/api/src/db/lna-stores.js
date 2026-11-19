@@ -259,7 +259,8 @@ function createLnaStores(sequelize, { cipher } = {}) {
     },
     /** Jumlah kompetensi jabatan per job role (status kamus di pilihan jabatan). */
     async dictionaryCounts(tenantId) {
-      return select(`SELECT c.job_role_id AS "jobRoleId", count(*)::int AS "competencyCount" FROM lna_competencies c
+      return select(`SELECT c.job_role_id AS "jobRoleId", count(*)::int AS "competencyCount",
+                            count(*) FILTER (WHERE c.program_tier IS NOT NULL)::int AS "tieredCount" FROM lna_competencies c
                       WHERE c.tenant_id = :tenantId AND c.kind = 'job' AND c.job_role_id IS NOT NULL GROUP BY c.job_role_id`, { tenantId });
     },
     async assessedCompetencyCount(tenantId, jobRoleId) {

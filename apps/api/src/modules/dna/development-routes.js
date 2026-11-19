@@ -2,6 +2,7 @@
 // B4 Developmental Needs: endpoint kamus per job function, kurikulum BIA, tahap dan rencana pengembangan.
 // Spek dan aturan A1-A13: docs/designs/b4-developmental-needs.md. Dipasang di router `dna` (requireSubmodule('dna')).
 const { requireRole, ROLES } = require('../../core/rbac');
+const { FLAGS, requireFlag } = require('../../core/flags');
 const { scopeFor, inScope } = require('../../core/rbac/scope');
 const { badRequest, notFound, conflict } = require('../../core/errors');
 const { wrap } = require('../interviews');
@@ -20,7 +21,9 @@ async function orConflict(promise, message) {
 const jobFunctionView = (f) => ({ id: f.id, jobRoleId: f.jobRoleId, order: f.order, name: f.name, competencyIds: f.competencyIds || [] });
 const sameText = (a, b) => String(a).trim().toLowerCase() === String(b).trim().toLowerCase();
 
-function developmentRoutes(r, { stores, audit }) {
+function developmentRoutes(r, { stores, audit, flags }) {
+  // R1 review egm: semua endpoint B4 di balik flag baru (aturan arsitektur 3); endpoint POC DNA tidak terpengaruh
+  const on = requireFlag(flags, FLAGS.DNA_DEVELOPMENT, 'Developmental Needs (kamus per job function dan kurikulum) belum diaktifkan untuk organisasi Anda');
   const hr = requireRole(ROLES.HR_ADMIN);
   const viewer = requireRole(ROLES.HR_ADMIN, ROLES.SUPERVISOR);
 
@@ -55,20 +58,25 @@ function developmentRoutes(r, { stores, audit }) {
     if (order != null && others.some((f) => f.order === order)) throw conflict(`Nomor job function ${order} sudah dipakai di jabatan ini`);
   }
 
-  /** Jabatan terpilih: dari query (harus milik tenant, selain itu 400) atau jabatan berkamus pertama menurut nama. */
+  /**
+   * A14. Jabatan terpilih: dari query (harus milik tenant, selain itu 400). Tanpa query: jabatan pertama menurut nama yang
+   * kamusnya punya kurikulum (Level Program), lalu jabatan berkamus pertama. Kamus POC tanpa tingkat tidak dipilih lebih dulu,
+   * karena semua pegawainya akan tampil "Belum dinilai".
+   */
   async function pickJobRole(req, jobs) {
     const q = req.query.jobRoleId;
-    if (q === undefined || q === '') return jobs.find((j) => j.dictionary === 'available') || null;
+    if (q === undefined || q === '') return jobs.find((j) => j.tieredCount > 0) || jobs.find((j) => j.dictionary === 'available') || null;
     const job = jobs.find((j) => j.id === q);
     if (!job) throw badRequest('jobRoleId bukan jabatan di organisasi ini');
     return job;
   }
   async function jobsWithDictionary(tenantId) {
     const [roles, counts] = await Promise.all([stores.dna.listJobRoles(tenantId), stores.dna.dictionaryCounts(tenantId)]);
-    const byRole = new Map(counts.map((c) => [c.jobRoleId, c.competencyCount]));
+    const byRole = new Map(counts.map((c) => [c.jobRoleId, c]));
     return roles.map((j) => {
-      const competencyCount = byRole.get(j.id) || 0;
-      return { id: j.id, name: j.name, division: j.division || null, dictionary: competencyCount ? 'available' : 'none', competencyCount };
+      const { competencyCount = 0, tieredCount = 0 } = byRole.get(j.id) || {};
+      // tieredCount hanya untuk pickJobRole; tidak dikirim di respons (bentuk respons §6 tetap)
+      return Object.defineProperty({ id: j.id, name: j.name, division: j.division || null, dictionary: competencyCount ? 'available' : 'none', competencyCount }, 'tieredCount', { value: tieredCount, enumerable: false });
     });
   }
   /** Rencana semua pegawai jabatan itu dalam scope pemanggil (A4, A9, A13). */
@@ -82,7 +90,7 @@ function developmentRoutes(r, { stores, audit }) {
   }
 
   // --- Ringkasan ---
-  r.get('/development/overview', viewer, wrap(async (req, res) => {
+  r.get('/development/overview', on, viewer, wrap(async (req, res) => {
     const jobs = await jobsWithDictionary(req.tenantId);
     const job = await pickJobRole(req, jobs);
     const base = { jobs, selectedJobRoleId: job ? job.id : null };
@@ -107,7 +115,7 @@ function developmentRoutes(r, { stores, audit }) {
   }));
 
   // --- Kamus kompetensi per job function ---
-  r.get('/job-roles/:id/dictionary', viewer, wrap(async (req, res) => {
+  r.get('/job-roles/:id/dictionary', on, viewer, wrap(async (req, res) => {
     const role = await roleFromPath(req);
     const { jobFunctionId, tier } = req.query;
     if (tier !== undefined && !TIERS.includes(tier)) throw badRequest('tier harus basic, intermediate, atau advanced');
@@ -130,7 +138,7 @@ function developmentRoutes(r, { stores, audit }) {
     });
   }));
 
-  r.post('/job-roles/:id/job-functions', hr, wrap(async (req, res) => {
+  r.post('/job-roles/:id/job-functions', on, hr, wrap(async (req, res) => {
     const role = await roleFromPath(req);
     const { name, order, competencyIds = [] } = req.body || {};
     checkJobFunctionFields({ name, order }, { nameRequired: true });
@@ -141,7 +149,7 @@ function developmentRoutes(r, { stores, audit }) {
     res.status(201).json({ data: jobFunctionView(row) });
   }));
 
-  r.patch('/job-functions/:id', hr, wrap(async (req, res) => {
+  r.patch('/job-functions/:id', on, hr, wrap(async (req, res) => {
     const f = await jobFunctionFromPath(req);
     const { name, order } = req.body || {};
     if (name === undefined && order === undefined) throw badRequest('Isi name atau order');
@@ -153,13 +161,13 @@ function developmentRoutes(r, { stores, audit }) {
     res.json({ data: jobFunctionView(row) });
   }));
 
-  r.delete('/job-functions/:id', hr, wrap(async (req, res) => {
+  r.delete('/job-functions/:id', on, hr, wrap(async (req, res) => {
     const f = await jobFunctionFromPath(req);
     await stores.dna.deleteJobFunction(req.tenantId, f.id);
     res.status(204).end();
   }));
 
-  r.put('/job-functions/:id/competencies', hr, wrap(async (req, res) => {
+  r.put('/job-functions/:id/competencies', on, hr, wrap(async (req, res) => {
     const f = await jobFunctionFromPath(req);
     const ids = await checkCompetencyIds(req.tenantId, f.jobRoleId, (req.body || {}).competencyIds);
     let row;
@@ -172,7 +180,7 @@ function developmentRoutes(r, { stores, audit }) {
     res.json({ data: jobFunctionView(row) });
   }));
 
-  r.post('/job-roles/:id/dictionary/approve', hr, wrap(async (req, res) => {
+  r.post('/job-roles/:id/dictionary/approve', on, hr, wrap(async (req, res) => {
     const role = await roleFromPath(req);
     const approved = await stores.dna.approveDictionary(req.tenantId, role.id, req.user.id);
     // audit_logs.action dibatasi CHECK (read/create/update/delete/export/login): pengesahan = update dengan event di meta
@@ -181,7 +189,7 @@ function developmentRoutes(r, { stores, audit }) {
   }));
 
   // --- Kurikulum Basic / Intermediate / Advanced ---
-  r.get('/job-roles/:id/curriculum', viewer, wrap(async (req, res) => {
+  r.get('/job-roles/:id/curriculum', on, viewer, wrap(async (req, res) => {
     const role = await roleFromPath(req);
     const competencies = await stores.dna.listJobCompetencies(req.tenantId, role.id);
     const tiers = TIERS.map((tier) => {
@@ -192,7 +200,7 @@ function developmentRoutes(r, { stores, audit }) {
   }));
 
   // --- Kebutuhan pengembangan pegawai ---
-  r.get('/development/employees', viewer, wrap(async (req, res) => {
+  r.get('/development/employees', on, viewer, wrap(async (req, res) => {
     const job = await pickJobRole(req, await jobsWithDictionary(req.tenantId));
     if (!job) return res.json({ data: [] });
     const competencies = await stores.dna.listJobCompetencies(req.tenantId, job.id);
@@ -201,7 +209,7 @@ function developmentRoutes(r, { stores, audit }) {
     return res.json({ data: rows.map(({ person, plan }) => ({ id: person.id, name: person.name, stage: plan.stage, met: plan.met, assessed: plan.assessed, total: plan.total, focus: plan.focus })) });
   }));
 
-  r.get('/employees/:userId/development-plan', wrap(async (req, res) => {
+  r.get('/employees/:userId/development-plan', on, wrap(async (req, res) => {
     const userId = String(req.params.userId).toLowerCase();
     const scope = await scopeFor(req, stores.people);
     if (!isUuid(userId) || !inScope(scope, userId)) throw notFound('Karyawan tidak ditemukan');
