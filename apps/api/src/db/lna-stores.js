@@ -942,7 +942,7 @@ function createLnaStores(sequelize, { cipher } = {}) {
   };
 
   const BATCH_COLS = `b.id, b.submodule, b.kind, b.filename, b.status, b.row_count AS "rowCount", b.headers, b.mapping, b.options,
-    b.result, b.created_at AS "createdAt", b.committed_at AS "committedAt", u.name AS "createdByName"`;
+    b.result, b.created_at AS "createdAt", b.committed_at AS "committedAt", b.created_by AS "createdBy", u.name AS "createdByName"`;
   const imports = {
     async create(tenantId, b) {
       await sequelize.query(
@@ -958,9 +958,19 @@ function createLnaStores(sequelize, { cipher } = {}) {
       if (row) row.rows = await cipher.decryptJson(tenantId, row.rows);
       return row;
     },
-    async list(tenantId, submodule) {
+    /** kinds (opsional): batasi jenis di SQL agar batas 100 tidak memotong jenis yang diminta (B11 CD-10). */
+    async list(tenantId, submodule, kinds = null) {
+      const byKind = kinds ? ' AND b.kind IN (:kinds)' : '';
+      if (kinds && !kinds.length) return [];
       return select(`SELECT ${BATCH_COLS} FROM import_batches b LEFT JOIN users u ON u.id = b.created_by
-                      WHERE b.tenant_id = :tenantId AND b.submodule = :submodule ORDER BY b.created_at DESC LIMIT 100`, { tenantId, submodule });
+                      WHERE b.tenant_id = :tenantId AND b.submodule = :submodule${byKind} ORDER BY b.created_at DESC LIMIT 100`, { tenantId, submodule, kinds });
+    },
+    /** B11: impor yang sudah disimpan untuk jenis tertentu, terbaru dulu (ringkasan Admin Tenant; tanpa baris mentah). */
+    async listCommitted(tenantId, kinds) {
+      if (!kinds || !kinds.length) return [];
+      return select(`SELECT ${BATCH_COLS} FROM import_batches b LEFT JOIN users u ON u.id = b.created_by
+                      WHERE b.tenant_id = :tenantId AND b.status = 'committed' AND b.kind IN (:kinds)
+                      ORDER BY b.committed_at DESC NULLS LAST, b.created_at DESC LIMIT 1000`, { tenantId, kinds });
     },
     async update(tenantId, id, patch) {
       const sets = []; const rep = { tenantId, id };

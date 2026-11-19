@@ -97,3 +97,34 @@ describe('projects', () => {
     expect(res.body.data).toEqual([]);
   });
 });
+
+describe('requireSubmodule { tenantFlag: false } (B11 IZ-2)', () => {
+  const { requireSubmodule } = require('../../src/core/entitlement/guard');
+  const run = (mw, req = { tenantId: 't-1' }) => new Promise((resolve) => { mw(req, {}, (err) => resolve(err || null)); });
+  const deps = ({ entitled = true, tenantEnabled = false, killSwitch = false } = {}) => ({
+    entitlements: { has: async () => entitled },
+    flags: {
+      isEnabled: async () => tenantEnabled && !killSwitch,
+      detail: async () => [{ key: 'module.dna', tenantEnabled, killSwitch, effective: tenantEnabled && !killSwitch }],
+    },
+  });
+
+  it('membuka akses bila entitlement ada walau flag modul tenant masih mati', async () => {
+    expect(await run(requireSubmodule('dna', deps(), { tenantFlag: false }))).toBeNull();
+  });
+
+  it('tetap menolak tanpa entitlement', async () => {
+    const err = await run(requireSubmodule('dna', deps({ entitled: false }), { tenantFlag: false }));
+    expect(err.code).toBe('NOT_ENTITLED');
+  });
+
+  it('tetap menghormati saklar darurat global', async () => {
+    const err = await run(requireSubmodule('dna', deps({ killSwitch: true }), { tenantFlag: false }));
+    expect(err.code).toBe('FEATURE_DISABLED');
+  });
+
+  it('tanpa opsi, perilaku lama: flag modul tenant wajib menyala', async () => {
+    const err = await run(requireSubmodule('dna', deps()));
+    expect(err.code).toBe('FEATURE_DISABLED');
+  });
+});

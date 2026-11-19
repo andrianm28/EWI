@@ -23,6 +23,7 @@ const { createSettingsService } = require('./core/settings');
 const { createAiProvider } = require('./ai');
 const { createAnalysisRunner } = require('./modules/interviews/analysis');
 const { createCatalogService, elitementorAdapter, moodleAdapter } = require('./integrations/catalog');
+const tenantAdmin = require('./modules/tenant-admin');
 const { createStorage } = require('./integrations/storage');
 const { createLdSync } = require('./modules/ld/sync');
 const SUBMODULE_MODULES = ['cca', 'dna', 'tna', 'ina', 'li', 'ld'].map((k) => require(`./modules/${k}`));
@@ -101,6 +102,8 @@ function createApp({ config, stores, ai, catalog, mailer, readiness, storage }) 
       dashboardRouter({ stores, flags, entitlements, settings, audit }));
   }
   if (stores.loginLinks) api.use('/invitations', invitationRoutes({ users: stores.users, links, audit }));
+  // B11: layar Admin Tenant, di balik flag admin.tenant (bukan submodul berbayar)
+  api.use('/tenant-admin', tenantAdmin.router({ ...deps, entitlements, links, elitementor: config.elitementor }));
   for (const m of SUBMODULE_MODULES) {
     api.use(`/${m.key}`, requireSubmodule(m.key, { entitlements, flags }), m.router(deps));
   }

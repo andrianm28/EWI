@@ -28,7 +28,7 @@ async function loginAs(page: Page, o: Opts = {}) {
 const nav = (page: Page) => page.getByRole('navigation', { name: 'Navigasi utama' })
 
 test('HR: menu berisi Beranda dan grup Learning Needs Analysis; modul yang flag-nya mati tidak tampil', async ({ page }) => {
-  await loginAs(page, { routes: [{ name: 'ina', submodule: 'ina' }, { name: 'lim', flag: 'module.lim' }] })
+  await loginAs(page, { routes: [{ name: 'lim', flag: 'module.lim' }] })
   await expect(nav(page).getByRole('link')).toHaveText(['Beranda', 'Developmental Needs', 'Training Needs'])
   await expect(nav(page).getByRole('button', { name: 'Learning Needs Analysis' })).toHaveAttribute('aria-expanded', 'true')
   await expect(nav(page).getByRole('link', { name: 'Beranda' })).toHaveAttribute('aria-current', 'page')
@@ -40,12 +40,14 @@ test('HR: menu berisi Beranda dan grup Learning Needs Analysis; modul yang flag-
 
 test('HR: butir muncul begitu rutenya terdaftar dan flag-nya menyala', async ({ page }) => {
   await loginAs(page, {
-    flags: { 'module.ina': true, 'module.lim': true },
-    routes: [{ name: 'ina', submodule: 'ina' }, { name: 'lim', flag: 'module.lim' }, { name: 'cp', flag: 'promotion.recommendation' }],
+    flags: { 'module.ina': true, 'ina.dashboard': true, 'module.lim': true },
+    routes: [{ name: 'lim', flag: 'module.lim' }, { name: 'cp', flag: 'promotion.recommendation' }],
   })
+  // Improvement Needs memakai rute asli B9 (nama 'ina'); API-nya cukup dijawab kosong
+  await page.route(/\/api\/ina\//, (r) => r.fulfill({ json: { data: [] } }))
   await expect(nav(page).getByRole('link')).toHaveText(['Beranda', 'Developmental Needs', 'Training Needs', 'Improvement Needs', 'Learning Impact Measurement'])
   await nav(page).getByRole('link', { name: 'Improvement Needs' }).click()
-  await expect(page.getByRole('heading', { level: 1, name: 'Layar uji: ina' })).toBeVisible()
+  await expect(page).toHaveURL(/\/ina$/)
   await expect(page.getByTestId('judul-layar')).toHaveText('Improvement Needs')
   await expect(page).toHaveTitle('Improvement Needs · ELGOS')
   // Rute dengan flag mati tidak bisa dibuka lewat alamat langsung
@@ -261,9 +263,9 @@ test.describe('layar sempit', () => {
 
   test('drawer menutup saat pindah antar layar yang memakai komponen sama, dan lewat klik scrim', async ({ page }) => {
     // Dua rute uji memakai komponen yang sama, jadi kerangka tidak dipasang ulang: yang menutup adalah kodenya
-    await loginAs(page, { flags: { 'module.ina': true, 'module.lim': true }, routes: [{ name: 'ina', submodule: 'ina' }, { name: 'lim', flag: 'module.lim' }] })
+    await loginAs(page, { flags: { 'module.lim': true, 'promotion.recommendation': true }, routes: [{ name: 'cp', flag: 'promotion.recommendation' }, { name: 'lim', flag: 'module.lim' }] })
     const menu = page.getByRole('button', { name: 'Menu' })
-    await page.goto('/uji/ina')
+    await page.goto('/uji/cp')
     await menu.click()
     await nav(page).getByRole('link', { name: 'Learning Impact Measurement' }).click()
     await expect(page).toHaveURL(/\/uji\/lim$/)
