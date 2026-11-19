@@ -1,7 +1,7 @@
 # B12 · Super Admin: tenant, modul, dan konfigurasi platform
 
 - **Penulis:** Claude (thread T2), untuk review Andrian
-- **Status:** Draft (spek v4, setelah egm-review tahap 5, 6, dan 7; tahap 8–9 menyusul)
+- **Status:** Draft (spek v5, setelah egm-review tahap 5–8; tahap 9 menyusul)
 - **Tanggal:** 2026-11-19
 - **Paket:** B12 dalam brief bangun penuh 19 Nov (bagian T2). Menumpuk di atas B1 ([`b1-login.md`](b1-login.md)) dan B2 ([`b2-peran.md`](b2-peran.md)) di branch yang sama.
 - **ADR:** [`docs/adr/0002-konsol-platform-lintas-tenant.md`](../adr/0002-konsol-platform-lintas-tenant.md) (diusulkan). Istilah: bagian "Platform" di [`CONTEXT.md`](../../CONTEXT.md).
@@ -85,7 +85,7 @@ Paket ini membangun dua layar Super Admin dari mockup final, yaitu **Tenant** da
 
 - **Given**: `sessionIdleMinutes = 30`.
 - **When**: Super Admin mengubahnya menjadi 15 di layar Konfigurasi platform dan mengonfirmasi peringatan "Sesi yang sudah diam lebih dari 15 menit akan berakhir".
-- **Then**: log audit platform mencatat `update platform.setting` dengan `from: 30, to: 15`; dalam paling lama 60 detik semua proses API memakai nilai baru.
+- **Then**: log audit platform mencatat `update platform.setting` dengan `from: 30, to: 15`; API langsung memakai nilai baru (cache dikosongkan saat update; API berjalan satu proses per lingkungan di etavm2).
 
 ### CUJ 5: Sesi diam berakhir
 
@@ -172,8 +172,8 @@ Aturan panel modul:
 - "Akses awal" hanya label mockup (modul dalam tahap akses awal); tidak memberi akses. Tenant baru dibuat tanpa modul (`products: []`).
 - Modul tersedia bila flag-nya terdaftar di `FLAGS`. Pada base branch ini: `module.cca`, `module.dna`, `module.tna`, `module.ina`, `promotion.recommendation` (flag G2-A yang sudah ada, bukan pola `module.*`). Flag B13/B14/B15 ditulis ke registri saat paket itu digabung, satu baris per modul `[⚠️ BELUM TERVERIFIKASI]`. Kartu "Modul tersedia" menghitung modul yang tersedia; penyebut "x / 8" tetap delapan.
 - Menyalakan modul yang belum tersedia menjawab 400 `MODULE_UNAVAILABLE`.
-- Kolom panel: `entitled` dihitung lewat layanan entitlement yang sudah ada (jadi `full_suite` dihitung), `flagOn` = flag tenant, `killSwitch` = saklar darurat global, `effective` = keduanya sama seperti `requireSubmodule()`. Layar menampilkan "Akses", "Aktif", dan tanda kill switch, supaya layar menampilkan keadaan apa adanya.
-- `setModule` menulis flag, entitlement (bila perlu), audit tenant sasaran, dan log audit platform dalam **satu transaksi**. Fungsi bersama `ensureEntitlement(db, tenantId, product, source)` (dari onboarding) tidak menambah baris bila produk itu atau `full_suite` sudah aktif.
+- Kolom panel dibaca dari layanan yang sudah ada, tanpa SQL baru: `entitled` dari `entitlements.submodules(tenantId)` (jadi `full_suite` dihitung), `flagOn`/`killSwitch`/`effective` dari `flags.detail(tenantId)`. Layar menampilkan "Akses", "Aktif", dan tanda kill switch, supaya layar menampilkan keadaan apa adanya.
+- `setModule` memakai jalur tulis yang sama dengan `core/flags/admin-routes.js` (sesuai brief "memakai `flags/admin-routes`"): `ensureEntitlement` (bila menyala), `flags.setTenantFlag`, `audit.record` untuk tenant sasaran, lalu log audit platform, berurutan. Atomisitasnya sama dengan rute flag hari ini `[⏳ DITERIMA]`: bila audit gagal, request gagal (R2-2) tetapi flag yang sudah ditulis tidak dibatalkan; mengulang saklar aman karena idempoten. Fungsi bersama `ensureEntitlement(db, tenantId, product, source)` (dari onboarding) tidak menambah baris bila produk itu atau `full_suite` sudah aktif.
 - Pelaku di audit tenant sasaran: `user_id` kosong (akun Super Admin milik tenant lain), `meta.actor = 'Super Admin ELGOS'`, `meta.actorUserId`, `meta.via = 'api/platform'`.
 
 ### Membuat tenant
@@ -215,13 +215,16 @@ Baris lain adalah teks tetap atau hitungan, tidak disimpan di tabel ini:
 | Autentikasi | Verifikasi dua langkah | lihat Open Questions |
 | Autentikasi | Batas waktu sesi | isian `sessionIdleMinutes` + jumlah tenant dengan `auth.session_idle` menyala |
 
-Getter `platformSettings.get(key)` (`src/core/platform-settings/index.js`) dengan cache dalam proses 60 detik; paket lain membaca lewat getter ini. `PUT /settings` memvalidasi semua kunci sekaligus, menulis dalam satu transaksi, dan mencatat satu baris log audit platform per kunci yang berubah (`from`, `to`). Migrasi menulis dua baris bawaan. Nilai berlaku untuk semua tenant; layar menyatakan ini dan meminta konfirmasi saat batas sesi diturunkan.
+Getter `platformSettings.get(key)` (`src/core/platform-settings/index.js`) dengan cache dalam proses yang dikosongkan saat `update`; paket lain membaca lewat getter ini. `PUT /settings` memvalidasi semua kunci sekaligus, menulis dalam satu transaksi, dan mencatat satu baris log audit platform per kunci yang berubah (`from`, `to`). Migrasi menulis dua baris bawaan. Nilai berlaku untuk semua tenant; layar menyatakan ini dan meminta konfirmasi saat batas sesi diturunkan.
 
-### Sesi diam
+### Sesi diam (tahap 2, commit terpisah)
 
-- **Aktivitas** = request API yang dipicu pengguna, ditambah tanda aktivitas web: selama ada interaksi (ketik, klik, gulir), web memanggil `POST /api/sessions/heartbeat` paling sering sekali per 5 menit. Web tidak punya polling latar hari ini; request latar yang ditambah kemudian wajib mengirim header `X-Background: 1`, yang tidak dihitung sebagai aktivitas.
+Tahap ini menyentuh jalur auth yang dilalui setiap request, jadi dibangun dan direview sebagai irisan sendiri setelah konsol (tahap 1) selesai, dengan commit terpisah supaya Andrian bisa mereviewnya terpisah. Tahap 1 sudah menyimpan `sessionIdleMinutes` dan menampilkannya; sampai tahap 2 masuk, baris "Batas waktu sesi" menampilkan "Belum ditegakkan (sesi berlaku 8 jam)".
+
+
+- **Aktivitas** = request API apa pun, ditambah tanda aktivitas web selama ada interaksi (paling sering sekali per 5 menit). Web tidak punya polling latar hari ini; request latar yang ditambah kemudian harus membawa penanda supaya tidak dihitung (dibuat bersama request latar pertama).
 - Kolom baru `auth_sessions.last_seen_at`, diisi `now()` saat migrasi, supaya jam diam mulai dari deploy.
-- `sessions.check(claims)`: bila flag `auth.session_idle` tenant sesi menyala dan diam melewati `sessionIdleMinutes`, sesi dicabut dan jawabannya `{ ok: false, code: 'SESSION_IDLE' }`; middleware menjawab 401 `SESSION_IDLE`. Selain itu `last_seen_at` diperbarui paling sering sekali per 60 detik per sesi.
+- `sessions.check(claims)`: bila diam melewati `sessionIdleMinutes` (dibaca dari baris sesi yang sudah dimuat) **dan** flag `auth.session_idle` tenant sesi menyala (flag hanya dibaca saat batas terlewati), sesi dicabut dan jawabannya `{ ok: false, code: 'SESSION_IDLE' }`; middleware menjawab 401 `SESSION_IDLE`. Selain itu `last_seen_at` diperbarui paling sering sekali per 60 detik per sesi.
 - Web: `api/client.ts` mengenali `SESSION_IDLE` dan mengarahkan ke login dengan pesan di CUJ 5.
 
 ### Kesepakatan AI–HR (PM-2 bagian C)
@@ -272,11 +275,11 @@ api
 - **Cons**: harus diubah manual setiap akun berubah dan butuh layar ubah status.
 - **Reason for Rejection**: Rejected by author: tidak ada keputusan bisnis yang meminta status manual; status turunan selalu sesuai data akun, dan kolom `tenants.status` yang ada sudah menutup penangguhan.
 
-### Alternative B: Konfigurasi platform di env/deploy saja
+### Alternative B: Konfigurasi platform di env/deploy, atau di `tenants.settings` tenant ETA
 
-- **Pros**: tanpa tabel dan tanpa layar ubah.
+- **Pros**: tanpa tabel baru (`core/settings` sudah menyimpan jsonb di `tenants.settings`), atau tanpa layar ubah sama sekali (env).
 - **Cons**: mockup menulis "Perubahan dicatat di log audit platform", jadi ada perubahan dari layar; mengubah env butuh deploy oleh infra.
-- **Reason for Rejection**: Rejected by author: batas sesi perlu diubah tanpa deploy bila 30 menit terbukti terlalu ketat selama pilot. Hanya dua kunci dengan pemakai yang dibuat bisa diubah.
+- **Reason for Rejection**: Rejected by author: batas sesi perlu diubah tanpa deploy bila 30 menit terbukti terlalu ketat selama pilot. Menyimpan di `tenants.settings` tenant ETA ditolak dengan alasan yang sama dengan G2: mencampur nilai seluruh platform dengan pengaturan ETA sendiri. Hanya dua kunci dengan pemakai yang dibuat bisa diubah.
 
 ### Alternative C: Tenant dibuat dengan SQL langsung di rute
 
@@ -310,6 +313,11 @@ Ringkasan ADR 0002: login ulang ke tiap tenant (ditolak: akun `eta_admin` harus 
 - **H1 (dipilih)**: tabel hitungan per jam.
 - **H2**: log proses/metrik. Tanpa skema, tetapi etavm2 belum punya pengumpul metrik dan Super Admin tidak bisa melihatnya di layar.
 
+### Tambahan di luar mockup (disadari)
+
+- Tombol "Periksa" (dryRun) di formulir tenant: slug tidak bisa diganti setelah dibuat, jadi Super Admin melihatnya dulu. Murah karena onboarding sudah punya `dryRun`.
+- Kartu log audit platform dan hitungan percobaan di layar Konfigurasi platform: mockup hanya menyebut "Perubahan dicatat di log audit platform"; tanpa kartu, log tidak bisa dibaca tanpa SQL.
+
 --------------------------------------------------------------------------------
 
 ## Risks & Mitigations
@@ -319,8 +327,7 @@ Ringkasan ADR 0002: login ulang ke tiap tenant (ditolak: akun `eta_admin` harus 
 | Pengecualian aturan 2 dipakai untuk membaca data karyawan lintas tenant | Hanya di `src/modules/platform` (ADR 0002); test 403 untuk setiap rute platform dan peran selain `eta_admin`; test kunci terlarang (`answer`, `transcript`, `text`, `quote`, `summary`) di setiap jawaban |
 | Dua request membuat tenant dengan slug sama dan saling menimpa | Mode `create` di onboarding + pemetaan pelanggaran unik ke 409 |
 | Sesi diam mengeluarkan pengguna yang sedang menulis | Tanda aktivitas web; flag per tenant `auth.session_idle`; konfirmasi saat batas diturunkan |
-| Sesi diam dinyalakan sebelum konsol bisa melonggarkannya | Enforcement di balik flag tenant (default mati); `platform.console` dinyalakan untuk tenant ETA sebelum `auth.session_idle` dinyalakan di tenant mana pun (urutan di runbook PR) |
-| Nilai konfigurasi berbeda antar proses sampai 60 detik | `[⏳ DITERIMA]`; dinyatakan di CUJ 4 |
+| Sesi diam dinyalakan sebelum konsol bisa melonggarkannya (tahap 2) | Enforcement di balik flag tenant (default mati); `platform.console` dinyalakan untuk tenant ETA sebelum `auth.session_idle` dinyalakan di tenant mana pun (urutan di runbook PR) |
 | Produksi butuh Terraform sebelum tenant dibuat | Non-Goal tertulis; pesan galat onboarding menyebut langkah infra |
 | Undangan gagal terkirim | `invitation: 'failed'` + kirim ulang (CUJ 2) |
 | Angka kesepakatan AI–HR menggelembung | Hanya temuan AI; n < 10 tidak diberi tanda |
@@ -347,15 +354,15 @@ Ringkasan ADR 0002: login ulang ke tiap tenant (ditolak: akun `eta_admin` harus 
 - [ ] `apps/api/src/core/rbac/guards.js` (baru): `onlyEtaAdmin`; `core/flags/admin-routes.js` mengimpornya (perilaku sama).
 - [ ] `apps/api/src/core/tenant/onboarding.js`: `tenant_admin` di `ADMIN_ROLES`; syarat pengelola; `products` boleh kosong; `actor`; `beforeCommit`; mode `create`; `ensureEntitlement` diekspor dan mengenali `full_suite`.
 - [ ] `apps/api/src/core/tenant/client.js` (baru): `withOnboardingClient(config, fn)` dari `scripts/onboard-tenant.js` (pg.Client + `SET search_path`); skrip memakainya.
-- [ ] `apps/api/src/core/platform-settings/index.js` (baru): dua kunci, validasi, `get/all/update`, cache 60 detik.
+- [ ] `apps/api/src/core/platform-settings/index.js` (baru): dua kunci, validasi, `get/all/update`, cache dalam proses yang dikosongkan saat update.
 - [ ] `apps/api/src/core/platform-log/index.js` (baru): `record(actor, action, resource, { targetTenantId, meta }, { db })`, `countAttempt(outcome)` (best-effort), `recent(limit)`, `attemptsByDay(days)`.
-- [ ] `apps/api/src/core/auth/sessions.js` + store di `apps/api/src/db/stores.js`: `last_seen_at`; pemeriksaan diam bila flag tenant menyala; sentuh paling sering 60 detik (`UPDATE auth_sessions SET last_seen_at = now() WHERE id = :id AND last_seen_at < now() - interval '60 seconds'`); request dengan `X-Background: 1` tidak menyentuh; memory store ikut.
-- [ ] `apps/api/src/core/auth/session-routes.js`: `POST /sessions/heartbeat` (204).
-- [ ] `apps/api/src/core/auth/middleware.js`: kode `SESSION_IDLE` diteruskan seperti `ROLE_VIEW_CHANGED`.
+- [ ] **Tahap 2** `apps/api/src/core/auth/sessions.js` + store di `apps/api/src/db/stores.js`: `findActive` mengembalikan `lastSeenAt`; pemeriksaan diam (flag dibaca hanya saat batas terlewati); sentuh paling sering 60 detik (`UPDATE auth_sessions SET last_seen_at = now() WHERE id = :id AND last_seen_at < now() - interval '60 seconds'`); memory store ikut.
+- [ ] **Tahap 2** `apps/api/src/core/auth/session-routes.js`: `POST /sessions/heartbeat` (204).
+- [ ] **Tahap 2** `apps/api/src/core/auth/middleware.js`: kode `SESSION_IDLE` diteruskan seperti `ROLE_VIEW_CHANGED`.
 - [ ] `apps/api/src/core/auth/attempts.js`: bila `who.tenantId` kosong dan `platformLog` ada, panggil `countAttempt(meta.outcome)` tanpa `await` di jalur jawaban. Pemanggil baru: `core/auth/email-link.js` (slug tak dikenal → `unknown_org`, email tak dikenal → `unknown_account`, token tak valid → `invalid_link`) dan `core/auth/routes.js` (login sandi non-produksi dengan tenant/akun tak dikenal).
 - [ ] `apps/api/src/modules/platform/modules.js` (baru): registri delapan modul.
 - [ ] `apps/api/src/modules/platform/service.js` (baru): `createPlatformService`.
-- [ ] `apps/api/src/modules/platform/store.js` (baru): query agregat Postgres.
+- [ ] `apps/api/src/modules/platform/store.js` (baru): query agregat Postgres (daftar tenant, kesepakatan AI–HR, biaya); modul memakai `flags.detail` dan `entitlements.submodules`.
 - [ ] `apps/api/src/modules/platform/routes.js` (baru): kontrak endpoint; batas query; CSV. Slug: NFKD lalu buang tanda diakritik, huruf kecil, karakter selain `a-z0-9` menjadi `-`, `-` berulang dipadatkan, `-` di ujung dibuang, dipotong 64; hasil kosong → 400 "Nama perusahaan harus memuat huruf atau angka".
 - [ ] `apps/api/src/app.js`: pasang `/api/platform` sebelum `/api`; `platformLog` ke `createAttemptLog`; `platformSettings` dan `flags` ke sesi.
 - [ ] `apps/api/src/core/rbac/menu.js`: butir `tenants` dan `platform` untuk tampilan `super` di balik `platform.console`.
@@ -366,15 +373,15 @@ Ringkasan ADR 0002: login ulang ke tiap tenant (ditolak: akun `eta_admin` harus 
 - [ ] `apps/web/src/screens/b12-super-admin/routes.ts` (baru): rute `tenants` (beranda tampilan Super Admin) dan `platform`, gerbang `views: ['super']`, `flag: 'platform.console'` (tabel menu `b0-fondasi-ui.md`).
 - [ ] `apps/web/src/screens/b12-super-admin/TenantsView.vue` (baru): tiga KPI, tabel tenant (status, kirim ulang undangan), panel modul (Akses, Aktif, kill switch), formulir "Buat tenant baru" (nama, email; kolom ID bila `encryptionProvider = 'kms'`; tombol Periksa → slug).
 - [ ] `apps/web/src/screens/b12-super-admin/PlatformView.vue` (baru): empat kartu mockup sesuai tabel kartu, dua isian dengan konfirmasi saat batas sesi diturunkan, kartu Kesepakatan AI–HR, Biaya token mingguan (unduh CSV), Log audit platform, Percobaan masuk tanpa tenant.
-- [ ] `apps/web/src/api/client.ts`: tangani `SESSION_IDLE`; tanda aktivitas (listener `keydown`, `pointerdown`, `scroll`, heartbeat paling sering 5 menit saat login).
+- [ ] **Tahap 2** `apps/web/src/api/client.ts`: tangani `SESSION_IDLE`; tanda aktivitas (listener `keydown`, `pointerdown`, `scroll`, heartbeat paling sering 5 menit saat login).
 - [ ] `apps/web/e2e/super-admin.spec.ts` (baru) dengan API mock; perbarui `loginAs` di `e2e/poc-dna-tna.spec.ts` dan `e2e/gating.spec.ts`: Super Admin dengan `platform.console` menyala mendarat di `tenants`, bukan `/`.
 
 ### Test yang ditulis lebih dulu (tdd)
 
-- [ ] `tests/integration/platform.test.js` (Postgres): 403 `ROLE_FORBIDDEN` untuk `tenant_admin`, `hr_admin`, `learner` (flag menyala dan mati); 403 `FEATURE_DISABLED` untuk Super Admin saat flag mati; status turunan termasuk `suspended` dan `disabled`; buat tenant (akun `tenant_admin` invited, undangan, audit tenant berpelaku, log platform, 409 slug ganda tanpa mengubah tenant lama, dryRun tidak menyimpan, kegagalan log platform membatalkan tenant); kirim ulang (409 aktif, 429); modul (flag, entitlement `platform`, `full_suite` tidak digandakan, kill switch tampil, audit tenant sasaran, `MODULE_UNAVAILABLE`, satu transaksi); kunci terlarang tidak muncul.
-- [ ] `tests/integration/platform-settings.test.js`: validasi rentang, kunci tak dikenal 400, log per kunci, getter memakai nilai baru setelah cache habis.
+- [ ] `tests/integration/platform.test.js` (Postgres): 403 `ROLE_FORBIDDEN` untuk `tenant_admin`, `hr_admin`, `learner` (flag menyala dan mati); 403 `FEATURE_DISABLED` untuk Super Admin saat flag mati; status turunan termasuk `suspended` dan `disabled`; buat tenant (akun `tenant_admin` invited, undangan, audit tenant berpelaku, log platform, 409 slug ganda tanpa mengubah tenant lama, dryRun tidak menyimpan, kegagalan log platform membatalkan tenant); kirim ulang (409 aktif, 429); modul (flag, entitlement `platform`, `full_suite` tidak digandakan, kill switch tampil, audit tenant sasaran, `MODULE_UNAVAILABLE`); kunci terlarang tidak muncul.
+- [ ] `tests/integration/platform-settings.test.js`: validasi rentang, kunci tak dikenal 400, log per kunci, getter langsung memakai nilai baru setelah update.
 - [ ] `tests/integration/platform-ai.test.js`: kesepakatan 34/40 = 85% memenuhi; temuan tanpa `analysis_job_id` tidak dihitung; n < 10; biaya mingguan; CSV sama dengan JSON dan sel formula diberi awalan.
-- [ ] `tests/unit/sessions-idle.test.js`: flag mati → tidak pernah diam; flag menyala dan lewat batas → `SESSION_IDLE` dan dicabut; sentuh paling sering 60 detik; `X-Background` tidak menyentuh; heartbeat menyentuh.
+- [ ] **Tahap 2** `tests/unit/sessions-idle.test.js`: flag mati → tidak pernah diam; flag menyala dan lewat batas → `SESSION_IDLE` dan dicabut; sentuh paling sering 60 detik; heartbeat menyentuh.
 - [ ] `tests/unit/attempts.test.js`: percobaan tanpa tenant menaikkan hitungan, tidak menulis audit tenant, kegagalan hitungan tidak mengubah jawaban.
 - [ ] `tests/unit/onboarding.test.js`: `tenant_admin` diterima; tanpa pengelola ditolak; `products` kosong; `actor` tercatat; `beforeCommit` gagal → ROLLBACK; mode `create` menolak tenant yang ada.
 
