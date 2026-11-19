@@ -9,8 +9,10 @@
     "test": "jest",
     "lint": "eslint .",
     "migrate": "node scripts/ensure-schema.js && sequelize-cli db:migrate",
-    "migrate:undo": "sequelize-cli db:migrate:undo",
-    "seed:dev": "node scripts/seed-dev.js"
+    "migrate:undo": "node scripts/migrate-undo.js",
+    "seed:dev": "node scripts/seed-dev.js",
+    "migrate:undo:all": "node scripts/migrate-undo.js --all",
+    "db:grant-app": "node scripts/grant-app-role.js"
   },
   "dependencies": {
     "@aws-sdk/client-bedrock-runtime": "^3.1170.0",
