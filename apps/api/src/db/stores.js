@@ -4,6 +4,7 @@ const { QueryTypes } = require('sequelize');
 const crypto = require('crypto');
 const { createLnaStores } = require('./lna-stores');
 const { createTenantAdminStores } = require('./tenant-admin-stores');
+const { createInaStores } = require('./ina-stores');
 const { createFieldCipher, createProvider } = require('../core/crypto');
 
 /** Penyimpan DEK terbungkus per tenant (R2-3). */
@@ -45,6 +46,7 @@ function createStores(sequelize, { encryption } = {}) {
     cipher,
     ...createLnaStores(sequelize, { cipher }),
     ...createTenantAdminStores(sequelize),
+    ...createInaStores(sequelize, { cipher }),
     users: {
       async listActiveTenants() {
         return q(`SELECT slug, name FROM tenants WHERE status = 'active' ORDER BY name`);
