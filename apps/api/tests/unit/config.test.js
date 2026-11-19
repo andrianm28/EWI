@@ -43,15 +43,19 @@ describe('loadConfig', () => {
       expect(() => loadConfig({ ...prod, AI_PROVIDER: 'stub' })).toThrow(/AI_PROVIDER=stub tidak boleh di produksi/);
       expect(() => loadConfig(prod)).toThrow(/BEDROCK_MODEL_ID wajib/);
       const cfg = loadConfig({ ...prod, BEDROCK_MODEL_ID: 'anthropic.model-uji' });
-      expect(cfg.ai).toMatchObject({ provider: 'bedrock', region: 'ap-southeast-1', modelId: 'anthropic.model-uji', maxQuestions: 8 });
+      expect(cfg.ai).toMatchObject({ provider: 'bedrock', region: 'ap-southeast-3', modelId: 'anthropic.model-uji', maxQuestions: 8, processing: 'in-region:ap-southeast-3' });
     });
-    it('PD-2: hanya Singapura, profil lintas region ditolak kecuali diizinkan', () => {
+    it('PD-2b: Jakarta lalu Singapura in-region, atau profil apac.; profil di luar APAC ditolak kecuali diizinkan', () => {
       const t = { ...base, NODE_ENV: 'test', AI_PROVIDER: 'bedrock' };
-      expect(() => loadConfig({ ...t, BEDROCK_MODEL_ID: 'm', BEDROCK_REGION: 'us-east-1' })).toThrow(/ap-southeast-1/);
-      for (const id of ['global.anthropic.x', 'apac.anthropic.x', 'arn:aws:bedrock:ap-southeast-1:1:inference-profile/us.anthropic.x']) {
-        expect(() => loadConfig({ ...t, BEDROCK_MODEL_ID: id })).toThrow(/lintas region/);
+      expect(loadConfig({ ...t, BEDROCK_MODEL_ID: 'm' }).ai.region).toBe('ap-southeast-3');
+      expect(loadConfig({ ...t, BEDROCK_MODEL_ID: 'm', BEDROCK_REGION: 'ap-southeast-1' }).ai.processing).toBe('in-region:ap-southeast-1');
+      expect(loadConfig({ ...t, BEDROCK_MODEL_ID: 'apac.anthropic.x', BEDROCK_REGION: 'ap-southeast-1' }).ai.processing).toBe('cross-region:apac');
+      expect(() => loadConfig({ ...t, BEDROCK_MODEL_ID: 'm', BEDROCK_REGION: 'us-east-1' })).toThrow(/ap-southeast-3, ap-southeast-1/);
+      for (const id of ['global.anthropic.x', 'us.anthropic.x', 'arn:aws:bedrock:ap-southeast-1:1:inference-profile/eu.anthropic.x']) {
+        expect(() => loadConfig({ ...t, BEDROCK_MODEL_ID: id })).toThrow(/profil lintas region/);
       }
       expect(loadConfig({ ...t, BEDROCK_MODEL_ID: 'global.anthropic.x', AI_ALLOW_CROSS_REGION: 'true' }).ai.modelId).toBe('global.anthropic.x');
+      expect(loadConfig({ ...t, BEDROCK_MODEL_ID: 'm', BEDROCK_REGION: 'ap-southeast-1', AI_ALLOWED_REGIONS: 'ap-southeast-1' }).ai.allowedRegions).toEqual(['ap-southeast-1']);
     });
     it('menolak penyedia tak dikenal, angka dan JSON yang tidak valid', () => {
       const t = { ...base, NODE_ENV: 'test' };
