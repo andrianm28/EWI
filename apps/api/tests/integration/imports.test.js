@@ -42,7 +42,7 @@ run('Impor file R3-3 (Postgres)', () => {
     }
     for (const t of [tenant.id, other.id]) {
       await db.query(`INSERT INTO entitlements (tenant_id, product) VALUES (:t, 'full_suite')`, { replacements: { t } });
-      await db.query(`INSERT INTO feature_flags (tenant_id, key, enabled) VALUES (:t, 'module.dna', true), (:t, 'module.tna', true)`, { replacements: { t } });
+      await db.query(`INSERT INTO feature_flags (tenant_id, key, enabled) VALUES (:t, 'module.dna', true), (:t, 'module.tna', true), (:t, 'dna.development', true)`, { replacements: { t } });
     }
   });
 
