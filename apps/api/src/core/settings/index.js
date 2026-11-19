@@ -22,6 +22,12 @@ const DEFAULTS = Object.freeze({
     // HR) ikut dicari; tenant tanpa katalog impor tidak terpengaruh karena hasilnya kosong.
     targets: ['elitementor', 'moodle'],
   },
+  li: {
+    // K4: vendor modul per tenant (bukan hardcode). ELGOS hanya mencatat permintaan; tidak mengirim apa pun ke vendor.
+    vendorName: 'Mahaka Institute',
+    // Rumpun yang spesifik proses perusahaan: disarankan dikembangkan sendiri, bukan diminta ke vendor (usulan awal).
+    devStreams: ['Specific Technical'],
+  },
 });
 
 const INTERVIEW_SCOPES = Object.freeze(['all_members', 'red_only']);

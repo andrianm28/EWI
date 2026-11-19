@@ -117,6 +117,8 @@ function importRouter({ submodule, stores, audit, guard, only, ownDrafts = false
     if (b.status !== 'uploaded') throw new HttpError(409, 'INVALID_STATE', 'Impor ini sudah disimpan');
     const { kind, mapping, options, accepted, rejected } = await run(req, b);
     if (!accepted.length) throw badRequest('Tidak ada baris valid untuk disimpan');
+    // Jenis impor yang mengganti seluruh data lama (kind.allOrNothing) hanya disimpan bila semua baris valid
+    if (kind.allOrNothing && rejected.length) throw badRequest(`Impor ini mengganti seluruh data lama, jadi semua baris harus valid. Perbaiki ${rejected.length} baris yang ditolak, lalu unggah ulang.`);
     const boundAudit = { record: (action, resource, meta) => audit.record(req, action, resource, meta) };
     const summary = await commitRows(kind, accepted, { stores, tenantId: req.tenantId, options, batchId: b.id, user: req.user, audit: boundAudit });
     const result = { imported: accepted.length, rejectedCount: rejected.length, rejected: rejected.slice(0, MAX_REJECTED).map(({ row, reason }) => ({ row, reason })), ...summary };
