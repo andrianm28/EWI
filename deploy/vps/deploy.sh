@@ -3,14 +3,18 @@
 # (runner self-hosted etavm2), bisa juga manual oleh user elgos-deploy:
 #   ELGOS_ENV=staging deploy/vps/deploy.sh <sha>
 #
-# Tahap: pull image -> backup DB -> cek konfigurasi -> migrasi -> ganti container -> health check.
-# Gagal setelah backup = rollback otomatis: image sebelumnya dipasang lagi, schema ewi direstore dari
-# backup bila migrasi sempat mengubah skema. Diadaptasi dari deploy/dev-public/deploy.sh (PR #5).
+# Tahap: cek konfigurasi -> pull image -> backup DB (+ verifikasi) -> migrasi (pemilik skema) ->
+# role aplikasi -> ganti container -> kesiapan (/api/ready) lokal + publik.
+# Gagal setelah backup = rollback otomatis: image sebelumnya dipasang lagi; schema ewi dipulihkan
+# dari backup HANYA bila migrasi sempat jalan dan backup sudah terverifikasi terbaca (N-5).
+# Aturan migrasi (I-1): tambah dulu, hapus di rilis berikutnya, supaya image lama tetap jalan
+# di atas skema baru. Lihat docs/infra/alur-rilis.md.
 #
 # Status di /srv/elgos-<env>:
-#   .env              secret + konfigurasi lingkungan (tidak di repo)
+#   .env              konfigurasi + secret aplikasi (masuk ke container API)
+#   db.env            POSTGRES_PASSWORD pemilik skema (hanya container db dan migrasi)
 #   current.env       image yang sedang jalan; previous.env = sebelum deploy sukses terakhir
-#   backups/*.dump    pg_dump format custom (deploy + harian, lihat backup.sh)
+#   backups/*.dump    pg_dump format custom (deploy + terjadwal, lihat backup.sh)
 #   deploy.log        riwayat deploy
 set -Eeuo pipefail
 
@@ -20,26 +24,41 @@ case "$ENV" in staging | prod) ;; *) echo "ELGOS_ENV harus staging atau prod"; e
 DIR="${ELGOS_DIR:-/srv/elgos-$ENV}"
 PREFIX="${IMAGE_PREFIX:-ghcr.io/andrianm28/ewi}"
 SEED="${SEED:-skip}"                 # hanya staging: auto = bila tenant demo belum ada; force; skip
-KEEP_BACKUPS="${KEEP_BACKUPS:-20}"
+KEEP_DAYS="${KEEP_DAYS:-30}"         # retensi backup sebelum-deploy berdasarkan umur (PK-17)
+APP_DB_USER=elgos_app                # role aplikasi (DB_USER di .env)
+MIG_DB_USER=elgos_owner              # pemilik schema, migrasi (DB_MIGRATION_USER di db.env)
+SUPER_DB_USER=elgos                  # superuser bawaan container: bootstrap role, backup, restore
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 COMPOSE_FILE="$REPO_ROOT/deploy/vps/docker-compose.yml"
-export ELGOS_ENV="$ENV" ELGOS_ENV_FILE="$DIR/.env"
+export ELGOS_ENV="$ENV" ELGOS_ENV_FILE="$DIR/.env" ELGOS_DB_ENV_FILE="$DIR/db.env"
 
 log() { printf '[%s] [%s] %s\n' "$(date -u +%FT%TZ)" "$ENV" "$*" | tee -a "$DIR/deploy.log" >&2; }
 dc() { docker compose -f "$COMPOSE_FILE" --env-file "$ELGOS_ENV_FILE" "$@"; }
-psql_db() { dc exec -T db psql -U elgos -d elgos -v ON_ERROR_STOP=1 -tAc "$1"; }
-envval() { sed -n "s/^$1=//p" "$ELGOS_ENV_FILE" | tail -1 | sed 's/[[:space:]]*#.*$//' | tr -d '"'"'"'\r'; }
+psql_db() { dc exec -T db psql -U "$SUPER_DB_USER" -d elgos -v ON_ERROR_STOP=1 -tAc "$1"; }
+fileval() { sed -n "s/^$2=//p" "$1" | tail -1 | sed 's/[[:space:]]*#.*$//' | tr -d '"'"'"'\r'; }
+envval() { fileval "$ELGOS_ENV_FILE" "$1"; }
 
-[ -f "$ELGOS_ENV_FILE" ] || { echo "::error::$ELGOS_ENV_FILE tidak ada (lihat deploy/vps/README.md)"; exit 1; }
+for f in "$ELGOS_ENV_FILE" "$ELGOS_DB_ENV_FILE"; do
+  [ -f "$f" ] || { echo "::error::$f tidak ada (lihat docs/infra/vps-etavm2.md)"; exit 1; }
+done
 mkdir -p "$DIR/backups"
 
 # Konfigurasi wajib. API di produksi menolak boot tanpa KMS/SES; gagal di sini lebih jelas.
 missing=()
-for v in PUBLIC_URL WEB_PORT POSTGRES_PASSWORD EWI_JWT_SECRET AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY KMS_KEY_ALIAS_PREFIX MAIL_FROM; do
+for v in PUBLIC_URL WEB_PORT DB_PASSWORD EWI_JWT_SECRET AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY KMS_KEY_ALIAS_PREFIX MAIL_FROM BEDROCK_MODEL_ID; do
   [ -n "$(envval "$v")" ] || missing+=("$v")
 done
-[ "${#missing[@]}" = 0 ] || { echo "::error::Kosong di $ELGOS_ENV_FILE: ${missing[*]}"; exit 1; }
+[ -n "$(envval TRUST_PROXY)" ] || missing+=("TRUST_PROXY (Caddy + nginx = 2)")
+[ "$ENV" != prod ] || [ -n "$(envval ETA_ADMIN_EMAILS)" ] || missing+=("ETA_ADMIN_EMAILS (tanpa ini tidak ada Admin ETA yang bisa masuk)")
+[ -n "$(fileval "$ELGOS_DB_ENV_FILE" POSTGRES_PASSWORD)" ] || missing+=("POSTGRES_PASSWORD (db.env)")
+[ -n "$(fileval "$ELGOS_DB_ENV_FILE" DB_MIGRATION_PASSWORD)" ] || missing+=("DB_MIGRATION_PASSWORD (db.env)")
+[ "$(envval DB_USER)" = "$APP_DB_USER" ] || missing+=("DB_USER=$APP_DB_USER")
+[ "${#missing[@]}" = 0 ] || { echo "::error::Kosong: ${missing[*]}"; exit 1; }
+if grep -Eq '^(POSTGRES_PASSWORD|DB_MIGRATION_PASSWORD)=' "$ELGOS_ENV_FILE"; then
+  echo "::error::POSTGRES_PASSWORD dan DB_MIGRATION_PASSWORD harus di db.env, bukan .env (password superuser/pemilik tidak boleh masuk container API)"
+  exit 1
+fi
 PUBLIC_URL="$(envval PUBLIC_URL)"; PUBLIC_URL="${PUBLIC_URL%/}"
 LOCAL_URL="http://127.0.0.1:$(envval WEB_PORT)"
 [[ "$(envval KMS_KEY_ALIAS_PREFIX)" == "elgos-$ENV-tenant" ]] || log "PERINGATAN: KMS_KEY_ALIAS_PREFIX bukan elgos-$ENV-tenant"
@@ -55,16 +74,42 @@ OLD_WEB="${ELGOS_WEB_IMAGE:-}"
 OLD_SHA="${ELGOS_SHA:-tidak ada}"
 
 BACKUP=""
+BACKUP_OK=0
 MIGRATED=0
 ROLLING_BACK=0
 
-health() {
-  local url="$1" tries="${2:-30}"
+# Kesiapan: /api/ready (DB terjangkau, migrasi lengkap, KMS/SES siap; dibangun thread B2). Image
+# lama tanpa /api/ready (404, atau 401 karena rute tak dikenal ada di balik auth) jatuh ke /api/health.
+ready() {
+  local url="$1" tries="${2:-30}" code
   for _ in $(seq "$tries"); do
-    if [[ "$(curl -fsS --max-time 5 "$url/api/health" 2>/dev/null)" == *'"ok"'* ]]; then return 0; fi
+    code="$(curl -s -o /dev/null -w '%{http_code}' --max-time 5 "$url/api/ready" || true)"
+    [ "$code" = 200 ] && return 0
+    if [[ "$code" =~ ^40[0-9]$ ]] && [[ "$(curl -fsS --max-time 5 "$url/api/health" 2>/dev/null)" == *'"ok"'* ]]; then
+      return 0
+    fi
     sleep 2
   done
+  echo "Tidak siap: $url (HTTP terakhir ${code:-?})" >&2
   return 1
+}
+
+# Backup yang tidak bisa dibaca pg_restore tidak boleh dipakai untuk menghapus skema (N-5).
+verify_backup() {
+  [ -s "$1" ] && dc exec -T db pg_restore --list < "$1" | grep -q 'TABLE ewi '
+}
+
+# Buat/perbarui role pemilik + aplikasi, pindahkan kepemilikan objek ewi ke pemilik, pasang hak.
+# Dijalankan sebagai superuser sebelum migrasi, sesudah migrasi, dan sesudah restore.
+apply_db_roles() {
+  local out
+  out="$({ printf '\\set owner_user %s\n\\set owner_password %s\n\\set app_user %s\n\\set app_password %s\n\\set db_name elgos\n' \
+             "$MIG_DB_USER" "$(fileval "$ELGOS_DB_ENV_FILE" DB_MIGRATION_PASSWORD)" "$APP_DB_USER" "$(envval DB_PASSWORD)"
+           cat "$REPO_ROOT/deploy/vps/ops/app-role.sql"; } \
+         | dc exec -T db psql -U "$SUPER_DB_USER" -d elgos -q -tA -v ON_ERROR_STOP=1)"
+  # Baris terakhir: bisa_ddl|bisa_ubah_audit|bisa_hapus_audit|ada_superuser|tabel_bukan_milik_owner = f.
+  [ "$(tail -1 <<<"$out")" = "f|f|f|f|f" ] || { echo "::error::Hak role database tidak sesuai: $out"; return 1; }
+  log "Role $MIG_DB_USER (pemilik) dan $APP_DB_USER (tanpa DDL, audit_logs hanya INSERT/SELECT) diperbarui"
 }
 
 rollback() {
@@ -76,21 +121,25 @@ rollback() {
   log "GAGAL (exit $code) saat deploy $TAG. Rollback ke $OLD_SHA."
   dc logs --no-color --tail 80 api web >&2 || true
   if [ "$MIGRATED" = 1 ]; then
-    log "Migrasi sudah jalan: kembalikan schema ewi dari ${BACKUP:-<tidak ada backup>}"
-    dc stop api web || true
-    if [ -n "$BACKUP" ]; then
-      dc exec -T db psql -U elgos -d elgos -v ON_ERROR_STOP=1 -c 'DROP SCHEMA IF EXISTS ewi CASCADE' >&2 || true
-      dc exec -T db pg_restore -U elgos -d elgos --no-owner < "$BACKUP" >&2 || log "PERINGATAN: pg_restore melaporkan error, cek manual"
+    if [ "$BACKUP_OK" = 1 ] && verify_backup "$BACKUP"; then
+      log "Migrasi sudah jalan: pulihkan schema ewi dari $BACKUP"
+      dc stop api web || true
+      dc exec -T db psql -U "$SUPER_DB_USER" -d elgos -v ON_ERROR_STOP=1 -c 'DROP SCHEMA IF EXISTS ewi CASCADE' >&2 || true
+      dc exec -T db pg_restore -U "$SUPER_DB_USER" -d elgos --no-owner --no-privileges < "$BACKUP" >&2 \
+        || log "PERINGATAN: pg_restore melaporkan error, cek manual"
+      apply_db_roles || log "PERINGATAN: role database gagal diperbarui setelah restore"
+    else
+      log "Migrasi sudah jalan tetapi backup tidak ada/tidak terbaca: skema TIDAK dihapus. Image lama dipasang di atas skema baru (aturan migrasi tambah-dulu)."
     fi
   fi
   if [ -z "$OLD_API" ]; then
     log "Tidak ada versi sebelumnya untuk rollback (deploy pertama). Container dihentikan."
     dc stop api web || true
   elif ELGOS_API_IMAGE="$OLD_API" ELGOS_WEB_IMAGE="$OLD_WEB" dc up -d --wait --wait-timeout 180 api web >&2 \
-     && health "$LOCAL_URL" 15; then
+     && ready "$LOCAL_URL" 15; then
     log "Rollback ke $OLD_SHA berhasil."
   else
-    log "Rollback juga GAGAL. Perlu penanganan manual di etavm2."
+    log "Rollback juga GAGAL. Perlu penanganan manual di etavm2 (runbook: docs/infra/runbook-insiden.md)."
   fi
   echo "::error::Deploy $TAG ke $ENV gagal dan sudah di-rollback ke $OLD_SHA. Lihat log di atas."
   exit 1
@@ -103,36 +152,52 @@ docker pull -q "$NEW_API" >/dev/null
 docker pull -q "$NEW_WEB" >/dev/null
 export ELGOS_API_IMAGE="$NEW_API" ELGOS_WEB_IMAGE="$NEW_WEB"
 
-# 2. Pastikan DB jalan, lalu backup schema ewi.
+# 2. Pastikan DB jalan, lalu backup schema ewi dan pastikan backup terbaca.
 dc up -d --wait db
 if [ "$(psql_db "SELECT count(*) FROM pg_namespace WHERE nspname = 'ewi'")" = 1 ]; then
   BACKUP="$DIR/backups/elgos-$ENV-$(date -u +%Y%m%dT%H%M%SZ)-before-${TAG:0:12}.dump"
-  dc exec -T db pg_dump -U elgos -d elgos -n ewi -Fc > "$BACKUP"
-  log "Backup DB: $BACKUP ($(du -h "$BACKUP" | cut -f1))"
+  (umask 077 && dc exec -T db pg_dump -U "$SUPER_DB_USER" -d elgos -n ewi -Fc > "$BACKUP")
+  verify_backup "$BACKUP" || { echo "::error::Backup $BACKUP tidak terbaca; deploy dibatalkan sebelum ada perubahan"; exit 1; }
+  BACKUP_OK=1
+  log "Backup DB terverifikasi: $BACKUP ($(du -h "$BACKUP" | cut -f1))"
 else
   log "DB masih kosong (schema ewi belum ada), backup dilewati"
 fi
-find "$DIR/backups" -name '*-before-*.dump' -printf '%T@ %p\n' | sort -rn | tail -n +"$((KEEP_BACKUPS + 1))" | cut -d' ' -f2- | xargs -r rm -f
+find "$DIR/backups" -maxdepth 1 -name '*-before-*.dump' -mtime +"$KEEP_DAYS" -delete
 
 trap rollback ERR
 
-# 3. Migrasi dengan image baru, sebelum container lama diganti.
-MIG_OUT="$(dc run --rm --no-deps -T api npm run migrate 2>&1)" || { echo "$MIG_OUT" >&2; false; }
+# 3. Role + kepemilikan dulu (pemilik bukan superuser harus memiliki schema sebelum migrasi), lalu
+#    migrasi dengan image baru sebagai pemilik, sebelum container lama diganti (P1-7).
+#    Password pemilik hanya dari db.env, diberikan ke container migrasi sekali jalan, tidak ke API.
+#    DB_MIGRATION_* untuk API baru (PD-8), DB_USER/DB_PASSWORD untuk image lama.
+apply_db_roles
+DB_PASSWORD="$(fileval "$ELGOS_DB_ENV_FILE" DB_MIGRATION_PASSWORD)"
+export DB_PASSWORD DB_MIGRATION_PASSWORD="$DB_PASSWORD"
+MIG_OUT="$(dc run --rm --no-deps -T \
+  -e DB_USER="$MIG_DB_USER" -e DB_PASSWORD -e DB_MIGRATION_USER="$MIG_DB_USER" -e DB_MIGRATION_PASSWORD \
+  -e DB_REQUIRE_NON_SUPERUSER=false \
+  api npm run migrate 2>&1)" || { echo "$MIG_OUT" >&2; false; }
+unset DB_PASSWORD DB_MIGRATION_PASSWORD
 echo "$MIG_OUT" >&2
 if grep -q ': migrated' <<<"$MIG_OUT"; then MIGRATED=1; log "Migrasi baru diterapkan"; else log "Tidak ada migrasi baru"; fi
 
-# 4. Ganti container, tunggu healthcheck compose, lalu cek lewat web lokal dan URL publik.
+# 4. Hak aplikasi untuk tabel baru (default privileges sudah mencakup; diulang sebagai bukti di log).
+apply_db_roles
+
+# 5. Ganti container, tunggu healthcheck compose, lalu cek kesiapan lokal dan publik.
 dc up -d --wait --wait-timeout 180 api web
-health "$LOCAL_URL"
-log "Health lokal OK ($LOCAL_URL)"
+ready "$LOCAL_URL"
+log "Siap lokal ($LOCAL_URL)"
 if [ "${SKIP_PUBLIC_CHECK:-0}" != 1 ]; then
-  health "$PUBLIC_URL" 15
-  log "Health publik OK ($PUBLIC_URL)"
+  ready "$PUBLIC_URL" 15
+  log "Siap publik ($PUBLIC_URL)"
 fi
 
 trap - ERR
 
-# 5. Seed data demo hanya di staging, setelah deploy dinyatakan sukses (gagal seed = peringatan). Prod tidak pernah di-seed (data nyata, R2-4).
+# 6. Seed data demo hanya di staging, setelah deploy dinyatakan sukses (gagal seed = peringatan).
+#    Prod tidak pernah di-seed (data nyata, R2-4).
 if [ "$ENV" = staging ] && [ "$SEED" != skip ]; then
   HAS_DEMO="$(psql_db "SELECT count(*) FROM ewi.tenants WHERE slug = 'demo'" 2>/dev/null || echo 0)"
   if [ "$SEED" = force ] || [ "$HAS_DEMO" = 0 ]; then
@@ -149,11 +214,12 @@ if [ "$ENV" = staging ] && [ "$SEED" != skip ]; then
   fi
 fi
 
-
-# 6. Catat versi. previous.env dipakai untuk rollback manual.
-[ -f "$DIR/current.env" ] && cp "$DIR/current.env" "$DIR/previous.env"
+# 7. Salin berkas operasional (dipakai timer systemd) dan catat versi.
+install -d -m 750 "$DIR/ops"
 install -m 644 "$COMPOSE_FILE" "$DIR/docker-compose.yml"
-install -m 755 "$REPO_ROOT/deploy/vps/backup.sh" "$DIR/backup.sh"
+install -m 755 "$REPO_ROOT"/deploy/vps/ops/*.sh "$DIR/ops/"
+install -m 644 "$REPO_ROOT/deploy/vps/ops/app-role.sql" "$DIR/ops/"
+[ -f "$DIR/current.env" ] && cp "$DIR/current.env" "$DIR/previous.env"
 printf 'ELGOS_API_IMAGE=%s\nELGOS_WEB_IMAGE=%s\nELGOS_SHA=%s\n' "$NEW_API" "$NEW_WEB" "$TAG" > "$DIR/current.env"
 docker image prune -f --filter "until=336h" >/dev/null || true
 log "Deploy $TAG selesai"

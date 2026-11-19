@@ -67,6 +67,7 @@ function kmsProvider({ region, aliasPrefix, client }) {
  */
 function createFieldCipher({ provider, keyStore, now = () => Date.now() }) {
   const cache = new Map(); // tenantId -> { version, dek, at }
+  let healthyUntil = 0;
   const keys = new Map(); // `${tenantId}:${version}` -> dek
 
   async function current(tenantId) {
@@ -122,6 +123,25 @@ function createFieldCipher({ provider, keyStore, now = () => Date.now() }) {
       const list = Array.isArray(rows) ? rows : [rows];
       for (const r of list) for (const f of fields) if (r[f] !== undefined) r[f] = await cipher.decrypt(tenantId, r[f]);
       return rows;
+    },
+    /**
+     * PK-07 / I-6: pemeriksaan kesiapan. Membuka satu DEK tersimpan dengan kunci induk (KMS atau lokal), sehingga
+     * kredensial/izin KMS yang hilang atau EWI_LOCAL_MASTER_KEY yang salah terdeteksi sebelum menerima trafik.
+     * Belum ada kunci tenant: penyedia lokal diuji bungkus-buka; KMS dianggap siap (belum ada yang perlu dibuka).
+     * Hasil sukses di-cache 30 detik supaya probe beruntun tidak memanggil KMS terus-menerus.
+     */
+    async healthCheck() {
+      if (now() < healthyUntil) return;
+      const row = keyStore.any ? await keyStore.any() : null;
+      if (row) {
+        await provider.decryptDataKey(row.tenantId, row.wrappedKey, row.keyRef);
+      } else if (provider.name === 'local') {
+        const probe = '00000000-0000-0000-0000-000000000000';
+        const gen = await provider.generateDataKey(probe);
+        const back = await provider.decryptDataKey(probe, gen.wrapped, gen.keyRef);
+        if (!back.equals(gen.plaintext)) throw new Error('uji bungkus-buka kunci lokal gagal');
+      }
+      healthyUntil = now() + 30 * 1000;
     },
     async encryptJson(tenantId, obj) { return cipher.encrypt(tenantId, JSON.stringify(obj)); },
     async decryptJson(tenantId, value) {
