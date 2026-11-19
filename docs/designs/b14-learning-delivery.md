@@ -236,6 +236,17 @@ MP4 yang diterima sebagai video (HEIC, MOV, M4A ditolak); `occurredAt` kosong at
 Ditunda: skor asesmen yang datang sebelum karyawan dijadikan peserta tidak diisi ulang otomatis (tercatat di
 `ld_sync_events` sebagai `not_participant_or_stale`); test balapan, batas 60 berkas, dan batas ukuran body.
 
+### Code review (skill `mattpocock-skills:code-review`, dua sumbu, setelah layar selesai)
+
+Sumbu standar: tidak ada pelanggaran CLAUDE.md maupun kontrak B0; label jenis berkas dipindah ke peta `DOC_KIND_LABEL`.
+Sumbu spek, diperbaiki: pelatihan offline bisa diubah setelah dibuat (judul, vendor, tempat, tanggal, jumlah sesi, sesi
+berjalan); tanggal mulai dan batas pelatihan online bisa diisi dari tab Sedang berjalan; tombol "Ambil skor dari
+EliteMentor" terkunci saat flag `em.webhook_sync` mati (`/options` kini mengirim `webhookSync`); tombol kehadiran
+disembunyikan untuk pelatihan yang selesai atau batal; catatan "akan datang" di KPI dihapus.
+
+Ditunda: `OfflinePanel` memakai tabel sendiri karena berisi input skor dan tombol per baris; `raw()` di klien `ld`
+mengulang logika `api/client.ts` untuk unggah dan unduh berkas (perlu opsi non-JSON di klien bersama).
+
 ## 9. Batas dengan paket lain
 
 - B13: `ld_trainings.module_id` menunjuk `li_modules`; B14 tidak mengubah tabel B13.

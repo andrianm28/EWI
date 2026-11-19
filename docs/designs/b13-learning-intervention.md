@@ -129,6 +129,7 @@ dengan butir di banyak kolom perlu dirapikan dulu.
 | GET | `/api/li/programs?jobRoleId&level` | `{ jobRoles, levels: [{ level, count }], kpis, groups: [{ stream, modules }] , pareto }` |
 | POST | `/api/li/modules/:id/draft` | 201 draf baru, atau 200 draf yang sudah ada |
 | PATCH | `/api/li/modules/:id` | `{ catalogItemId \| null }` tautkan course katalog |
+| GET | `/api/li/catalog` | course aktif di katalog tenant, untuk menautkan modul |
 | GET | `/api/li/drafts` | antrean tinjauan untuk `sme`/`role_leader`/HR |
 | GET/PUT/DELETE | `/api/li/drafts/:id` | baca / sunting / hapus |
 | POST | `/api/li/drafts/:id/submit` | → `sme_review`; 400 bila belum terukur |
@@ -193,6 +194,18 @@ untuk modul yang sudah punya draf diperjelas.
 
 Ditunda: menarik kembali draf yang sudah disetujui SME (belum ada jalan mundur dari `approved`), test balapan dengan
 permintaan bersamaan.
+
+### Code review (skill `mattpocock-skills:code-review`, dua sumbu, setelah layar selesai)
+
+Sumbu standar: tidak ada pelanggaran CLAUDE.md maupun kontrak B0. Sumbu spek, diperbaiki: layar kini bisa menautkan
+course katalog ke modul (`GET /api/li/catalog` baru, pilih course saat permintaan dipasang dan di detail Library),
+sehingga rancangan yang disetujui SME bisa menjadi tersedia; draf `draft`/`returned` bisa dihapus dari layar.
+
+Ditunda: layar tinjauan untuk peran `sme`/`role_leader` (mockup hanya memberi menu ke HR; API sudah mendukung), helper
+bersama untuk `wrap`/`UUID`/pesan galat di `li` dan `ld`, dan menggabungkan store `li`/`ld` langsung di `createStores`
+alih-alih lewat `lna-stores.js`. Ketegangan kontrak: B0 menganggap modul 2–5 cukup memakai flag, sedangkan API `li`
+juga memeriksa entitlement `full_suite` (CLAUDE.md aturan 3). Tenant dengan flag menyala tanpa `full_suite` akan
+melihat menu lalu mendapat 403; diteruskan ke pemilik B0.
 
 ## 9. Batas dengan paket lain
 
