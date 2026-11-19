@@ -58,7 +58,7 @@ const fmtWib = (d) => new Intl.DateTimeFormat('id-ID', {
 
 const SUBMODULE_LABEL = { tna: 'TNA', dna: 'DNA', cca: 'CCA', ina: 'INA' };
 
-function reminderMessage({ kind, name, tenantName, submodule, inviteExpiresAt, appBaseUrl }) {
+function reminderMessage({ kind, name, tenantName, submodule, inviteExpiresAt, appBaseUrl, durationMinutes }) {
   const label = SUBMODULE_LABEL[submodule] || submodule.toUpperCase();
   const when = kind === 'h1' ? 'besok atau hari ini' : 'dalam 3 hari';
   return {
@@ -66,12 +66,12 @@ function reminderMessage({ kind, name, tenantName, submodule, inviteExpiresAt, a
     text: `Halo ${name || ''},\n\n`
       + `Undangan wawancara ${label}${tenantName ? ` dari ${tenantName}` : ''} di ELGOS belum Anda selesaikan. `
       + `Undangan berlaku sampai ${fmtWib(inviteExpiresAt)} WIB.\n\n`
-      + `Wawancara berlangsung sekitar 30 menit. Masuk lewat ${appBaseUrl}/masuk lalu minta link masuk ke email Anda.\n\n`
+      + `Wawancara berlangsung sekitar ${durationMinutes || 30} menit. Masuk lewat ${appBaseUrl}/masuk lalu minta link masuk ke email Anda.\n\n`
       + 'Bila undangan sudah berakhir, hubungi HR untuk memperpanjangnya.\n',
   };
 }
 
 module.exports = {
-  DAY_MS, INVITE_DAYS, EXTEND_DEFAULT_DAYS, EXTEND_MAX_DAYS, OPEN_STATUSES,
+  DAY_MS, WIB_OFFSET_MS, wibDay, INVITE_DAYS, EXTEND_DEFAULT_DAYS, EXTEND_MAX_DAYS, OPEN_STATUSES,
   inviteExpiry, isExpired, extendedExpiry, parseExtendDays, daysLeft, dueReminder, reminderMessage,
 };
