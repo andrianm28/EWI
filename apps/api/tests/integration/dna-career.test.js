@@ -266,9 +266,11 @@ run('B16 Career & Promotion (Postgres)', () => {
     expect([a.status, b.status].sort()).toEqual([200, 409]);
     expect((a.status === 409 ? a : b).body.error.code).toBe('ALREADY_DECIDED');
     const row = rowOf(await get('/decisions', 'hr'), 'ani');
-    expect(row).toMatchObject({ hr: { decision: 'approved', note: 'SK menyusul' }, actions: [], blockedReason: 'approved' });
+    // pemenang balapan tidak tentu: catatan mengikuti permintaan yang 200
+    const winnerNote = a.status === 200 ? 'SK menyusul' : null;
+    expect(row).toMatchObject({ hr: { decision: 'approved', note: winnerNote }, actions: [], blockedReason: 'approved' });
     const [{ hr_note: hrNote }] = await q(`SELECT hr_note FROM lna_promotion_decisions WHERE user_id = :u AND hr_decision = 'approved'`, { u: u.ani });
-    expect(hrNote).not.toContain('SK menyusul');
+    if (winnerNote) expect(hrNote).not.toContain('SK menyusul');
     // balapan atasan setelah approved: siklus terbuka baru yang tersisip tetap tidak bisa diputuskan HR
     await q(`INSERT INTO lna_promotion_decisions (tenant_id, user_id, from_level_id, to_level_id, supervisor_decision, supervisor_by, supervisor_at)
              VALUES (:t, :u, :f, :to, 'recommend', :s, now())`, { t: tenant.id, u: u.ani, f: L.junior, to: L.senior, s: u.spv });
