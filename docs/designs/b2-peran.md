@@ -79,7 +79,7 @@ Keputusan user 19 Nov 20.30 WIB (kartu keputusan, pilihan "Seperti sekarang"): S
 | `admin` | `users` Pengguna & peran `group` · `jobs` Jabatan & kamus kompetensi `badge` · `cfg` Impor data & integrasi `upload_file` |
 | `super` | `tenants` Tenant `apartment` · `platform` Konfigurasi platform `tune` |
 
-`enabled`: butir tanpa flag selalu true. Butir berflag: true bila flag terdaftar (`flags.isKnown`) dan menyala untuk tenant; flag yang belum terdaftar (dibuat paket lain: `module.li`, `module.ld`, `module.lim`) → false tanpa galat. Butir modul `cc`/`dna`/`tna`/`ina` juga mensyaratkan entitlement submodulnya (`entitlements.submodules`). Judul grup `enabled` bila ada anaknya yang enabled.
+`enabled`: butir tanpa flag selalu true. Butir berflag: true bila flag terdaftar (`flags.isKnown`) dan menyala untuk tenant; flag yang belum terdaftar (dibuat paket lain: `module.li`, `module.ld`, `module.lim`) → false tanpa galat. Butir modul `cc`/`dna`/`tna`/`ina`, wawancara AI `aiv` (CCA), dan wawancara `iv` (TNA) juga mensyaratkan entitlement submodulnya (`entitlements.submodules`). Judul grup `enabled` bila ada anaknya yang enabled.
 
 ## Data dan migrasi (blok 02)
 
@@ -180,3 +180,34 @@ Satu review diff untuk B1 + B2 (lihat juga `b1-login.md`). Tidak ada temuan bera
 | D10 | Hak pemberi peran tidak dicek ulang di dalam kunci | Ditunda: jendela sangat sempit, butuh dua admin bertindak bersamaan; dicatat untuk B11 |
 | D12 | Menu `admin` memuat "Impor data" tetapi impor masih `hr_admin` saja | Ditunda ke B11 (pemilik layar Admin Tenant): perlu keputusan apakah Admin Tenant boleh mengimpor data kinerja. Kode `accountOf` vs `rolesOf` di spek: diselaraskan |
 | D13 | Celah test | Ditambah: batas MFA enable/disable, target terlindung, audit `rate` sekali per jendela, balapan ganti tampilan. Sisanya (perilaku `down` dengan data, penurunan atasan lewat impor) dicatat |
+
+## Code review (mattpocock-skills:code-review, 19 Nov)
+
+Dua sub-agen paralel pada `git diff origin/claude/project-thread-scbrmb...HEAD -- apps/api` (sumbu Standar terhadap CLAUDE.md + daftar smell Fowler; sumbu Spek terhadap `b1-login.md` dan `b2-peran.md`). Berlaku untuk B1 dan B2.
+
+**Sumbu Spek**
+
+| # | Temuan | Keputusan |
+|---|---|---|
+| S1 | Admin Tenant pertama di tenant klien tidak bisa dibuat lewat `PUT roles` (token Super Admin bertenant ETA) | [⏳ DITERIMA] Dibuat oleh skrip onboarding PR #9 sekarang, oleh layar Tenant B12 nanti |
+| S2 | `GET/PUT roles` membungkus `{ data }` dan menambah `views` | Diterima: pola `{ data }` dipakai semua rute bersesi; `views` dipakai layar B11 |
+| S3 | Menu mensyaratkan entitlement juga untuk `aiv` (CCA) dan `iv` (TNA) | Diterima, spek disesuaikan (lihat Menu per peran); peta `SUBMODULE` menampung keduanya |
+| S4 | Penjaga flag `r.use` menutup semua `/api/users/*` | Diperbaiki: penjaga per rute |
+| S5 | Super Admin ditolak saat mereset MFA Admin Tenant, padahal tabel endpoint B1 bilang `eta_admin` lolos | Diperbaiki: `canResetMfa` di `rbac/roles.js` (Admin Tenant oleh Admin Tenant atau Super Admin) |
+| S6 | Ganti ke peran yang sedang aktif menjawab `ROLE_NOT_ASSIGNED` | Diperbaiki: 200 dengan token yang sama, tanpa audit |
+| S7 | Audit login lewat MFA tidak membawa `purpose` link | Ditunda: challenge belum menyimpan `purpose`; dampak kecil |
+| S8 | Reset MFA akun nonaktif menjawab 404 | Diterima: akun nonaktif sudah tidak bisa masuk; aktifkan dulu lalu reset |
+
+**Sumbu Standar**
+
+| # | Temuan | Keputusan |
+|---|---|---|
+| T1 | Aturan 2: subquery `user_roles` tanpa `tenant_id` | Diperbaiki di `findById` dan dua `EXISTS` di `lna-stores.js`. Rute akun MFA memakai `req.user.tenantId` (nilai sama dengan `req.tenantId`; dipasang sebelum `tenantContext`) [⏳ DITERIMA] |
+| T2 | Aturan 3: `denyRoles` Super Admin pada `turns`/`complete` dan field baru `/me/access` tanpa flag | [⏳ DITERIMA] sebagai pengecualian: penolakan Super Admin adalah keputusan user (PO-6/"seperti sekarang"), field `/me/access` hanya tambahan baca. Sesi PK-16 dan batas laju: pengetatan keamanan, tanpa flag |
+| T3 | Aturan 7: diff menyentuh auth, kode bersama, migrasi | Andrian sudah jadi assignee PR; tidak bisa diminta review karena penulis PR |
+| T4 | Literal peran istimewa berulang; `attempts < 5` mengulang `MAX_ATTEMPTS`; peta `aiv`/`iv` | Diperbaiki (`PRIVILEGED_ROLES`, `MAX_ATTEMPTS`, peta `SUBMODULE`) |
+| T5 | Logika hierarki reset MFA di rute (Feature Envy) | Diperbaiki: `canResetMfa` di `rbac/roles.js` |
+| T6 | JSDoc yatim di `email-link.js`/`tokens.js`, `require('../errors')` ganda, nama `next` | Diperbaiki |
+| T7 | `wrap` didefinisikan ulang per file, `pub` di `email-link.js`, data clump dependensi auth, `isActive` tak terpakai, guard opsional, middle man di `sessions.js` | Ditunda: pola `wrap` lokal sudah dipakai semua modul sebelum B1; perapian lintas modul bukan cakupan paket ini |
+
+D12 (menu "Impor data" Admin Tenant) terjawab oleh B11: Admin Tenant mengimpor lewat `/api/tenant-admin/imports/{dna,tna}/...` (PR #17, kamus kompetensi dan KPI saja); rute impor HR tetap `hr_admin`.

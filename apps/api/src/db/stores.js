@@ -5,6 +5,7 @@ const crypto = require('crypto');
 const { createLnaStores } = require('./lna-stores');
 const { createFieldCipher, createProvider } = require('../core/crypto');
 const { PRIVILEGED_ROLES, ROLES } = require('../core/rbac/roles');
+const { MAX_ATTEMPTS } = require('../core/auth/mfa');
 
 /** Penyimpan DEK terbungkus per tenant (R2-3). */
 function tenantKeyStore(sequelize) {
@@ -147,8 +148,8 @@ function mfaStore(q) {
     async attemptChallenge(tokenHash) {
       const [row] = await q(
         `UPDATE auth_mfa_challenges SET attempts = attempts + 1
-          WHERE token_hash = :tokenHash AND used_at IS NULL AND expires_at > now() AND attempts < 5
-          RETURNING id, tenant_id AS "tenantId", user_id AS "userId", method`, { tokenHash });
+          WHERE token_hash = :tokenHash AND used_at IS NULL AND expires_at > now() AND attempts < :maxAttempts
+          RETURNING id, tenant_id AS "tenantId", user_id AS "userId", method`, { tokenHash, maxAttempts: MAX_ATTEMPTS });
       return row || null;
     },
     async useChallenge(id) {
@@ -256,7 +257,7 @@ function createStores(sequelize, { encryption } = {}) {
         if (!UUID_RE.test(String(id))) return null;
         const [row] = await q(
           `SELECT u.id, u.tenant_id AS "tenantId", u.email, u.name, u.role,
-                  ARRAY(SELECT ur.role FROM user_roles ur WHERE ur.user_id = u.id ORDER BY ur.role) AS roles
+                  ARRAY(SELECT ur.role FROM user_roles ur WHERE ur.tenant_id = u.tenant_id AND ur.user_id = u.id ORDER BY ur.role) AS roles
              FROM users u JOIN tenants t ON t.id = u.tenant_id
             WHERE u.tenant_id = :tenantId AND u.id = :id AND u.status <> 'disabled' AND t.status = 'active'`,
           { tenantId, id },

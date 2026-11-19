@@ -190,6 +190,15 @@ describe('reset MFA oleh admin (pemulihan)', () => {
     expect([a.status, a.body.error.code, b.status, b.body.error.code]).toEqual([403, 'ROLE_PROTECTED', 403, 'ROLE_PROTECTED']);
   });
 
+  it('Super Admin bisa mereset MFA Admin Tenant (jalan pulih bila Admin Tenant tunggal kehilangan autentikator)', async () => {
+    const { canResetMfa } = require('../../src/core/rbac/roles');
+    expect(canResetMfa('eta_admin', ['tenant_admin'])).toBe(true);
+    expect(canResetMfa('tenant_admin', ['tenant_admin', 'learner'])).toBe(true);
+    expect(canResetMfa('hr_admin', ['learner', 'tenant_admin'])).toBe(false);
+    expect(canResetMfa('eta_admin', ['eta_admin'])).toBe(false);
+    expect(canResetMfa('hr_admin', ['supervisor'])).toBe(true);
+  });
+
   it('tidak bisa untuk diri sendiri, akun tenant lain, atau oleh karyawan', async () => {
     const { app } = build();
     const { body: { token: hr } } = await login(app);

@@ -14,20 +14,21 @@ const shape = (r) => ({ primary: r.primary, roles: r.roles, views: describeRoles
 function roleRoutes({ userRoles, audit, flags }) {
   const r = express.Router();
   // Aturan 3 CLAUDE.md: fitur baru di balik flag (default mati). Peran tambahan ikut flag auth.multi_role.
-  r.use(wrap(async (req, res, next) => {
+  // Dipasang per rute (bukan r.use) supaya rute lain di /api/users tidak ikut tertutup
+  const needFlag = wrap(async (req, res, next) => {
     if (!flags || !(await flags.isEnabled(req.tenantId, FLAGS.AUTH_MULTI_ROLE))) {
       throw forbidden('FEATURE_DISABLED', 'Pengaturan peran belum diaktifkan untuk organisasi Anda');
     }
     next();
-  }));
+  });
 
-  r.get('/:id/roles', requireRole(ROLES.HR_ADMIN, ROLES.TENANT_ADMIN), wrap(async (req, res) => {
+  r.get('/:id/roles', needFlag, requireRole(ROLES.HR_ADMIN, ROLES.TENANT_ADMIN), wrap(async (req, res) => {
     const row = await userRoles.get(req.tenantId, req.params.id);
     if (!row) throw notFound('Pengguna tidak ditemukan');
     res.json({ data: shape(row) });
   }));
 
-  r.put('/:id/roles', requireRole(ROLES.TENANT_ADMIN), wrap(async (req, res) => {
+  r.put('/:id/roles', needFlag, requireRole(ROLES.TENANT_ADMIN), wrap(async (req, res) => {
     const { roles, primary } = req.body || {};
     if (!Array.isArray(roles) || roles.length < 1 || roles.length > 4 || new Set(roles).size !== roles.length) {
       throw badRequest('roles harus berisi 1 sampai 4 peran yang berbeda');

@@ -1,12 +1,11 @@
 'use strict';
 const express = require('express');
 const bcrypt = require('bcryptjs');
-const { unauthorized, badRequest, notFound, forbidden } = require('../errors');
+const { unauthorized, badRequest, notFound, forbidden, HttpError } = require('../errors');
 const { limitByIp } = require('./rate-limit');
 const { finishFirstFactor } = require('./mfa');
 const { FLAGS } = require('../flags');
 const { viewOf } = require('../rbac/roles');
-const { HttpError } = require('../errors');
 
 const wrap = (fn) => (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
 const publicUser = (u) => ({ id: u.id, tenantId: u.tenantId, email: u.email, name: u.name, role: u.role });
@@ -88,12 +87,18 @@ function authRoutes({ users, sessions, policy, audit, requireAuth, limits, mfa, 
       throw forbidden('FEATURE_DISABLED', 'Ganti tampilan peran belum diaktifkan untuk organisasi Anda');
     }
     const from = req.user.role;
-    const next = role === from ? null : await sessions.switchRole(req.user, role);
-    if (!next) throw forbidden('ROLE_NOT_ASSIGNED', 'Peran itu tidak diberikan ke akun Anda');
-    if (next.conflict) throw new HttpError(409, 'ROLE_VIEW_CHANGED', 'Tampilan sudah berganti di tab lain. Muat ulang halaman.');
-    await audit.record({ tenantId: req.user.tenantId, user: { ...req.user, role } }, 'update', 'auth.role_view', { from, to: role });
     const { id, tenantId, email } = req.user;
-    res.json({ token: next.token, user: { id, tenantId, email, role, roles: next.roles, view: viewOf(role), primaryRole: req.user.primaryRole } });
+    // Peran yang sedang aktif: tanpa perubahan, token yang sama dikembalikan, tidak dicatat audit
+    if (role === from) {
+      const current = String(req.get('authorization') || '').replace(/^Bearer\s+/i, '');
+      res.json({ token: current, user: { id, tenantId, email, role, roles: req.user.roles, view: viewOf(role), primaryRole: req.user.primaryRole } });
+      return;
+    }
+    const switched = await sessions.switchRole(req.user, role);
+    if (!switched) throw forbidden('ROLE_NOT_ASSIGNED', 'Peran itu tidak diberikan ke akun Anda');
+    if (switched.conflict) throw new HttpError(409, 'ROLE_VIEW_CHANGED', 'Tampilan sudah berganti di tab lain. Muat ulang halaman.');
+    await audit.record({ tenantId: req.user.tenantId, user: { ...req.user, role } }, 'update', 'auth.role_view', { from, to: role });
+    res.json({ token: switched.token, user: { id, tenantId, email, role, roles: switched.roles, view: viewOf(role), primaryRole: req.user.primaryRole } });
   }));
 
   // Keluar: cabut sesi ini saja

@@ -53,17 +53,17 @@ function createEmailLinkService({ stores, mailer, appBaseUrl, now = () => new Da
   };
 }
 
-/**
- * Rute publik: minta link & tukar token.
- * PK-16: batas per akun (RATE, di database) ditambah batas per IP (`limits.linkIp`, `limits.verifyIp`);
- * kebijakan login (daftar email Admin ETA) dicek saat link dikirim dan saat ditukar; penukaran membuat sesi.
- */
 /** true untuk kejadian pertama kunci ini dalam jendela limiter auditOnce (tanpa limiter: selalu true). */
 function firstInWindow(limits, key) {
   if (!limits || !limits.auditOnce) return true;
   try { limits.auditOnce.consume(key); return true; } catch { return false; }
 }
 
+/**
+ * Rute publik: minta link & tukar token.
+ * PK-16: batas per akun (RATE, di database) ditambah batas per IP (`limits.linkIp`, `limits.verifyIp`);
+ * kebijakan login (daftar email Admin ETA) dicek saat link dikirim dan saat ditukar; penukaran membuat sesi.
+ */
 function emailLinkRoutes({ users, links, sessions, policy, audit, limits, mfa, attempts }) {
   const r = express.Router();
   const GENERIC = 'Bila email terdaftar di organisasi ini, link masuk sudah dikirim. Periksa kotak masuk Anda.';

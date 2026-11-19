@@ -4,8 +4,8 @@ const jwt = require('jsonwebtoken');
 function createTokenService(jwtConfig) {
   const { secret, audience, issuer, ttl } = jwtConfig;
   return {
-    /** sid = id baris auth_sessions (PK-16). Token tanpa sid ditolak oleh requireAuth bila sesi dicek. */
     /**
+     * PK-16: `sid` = id baris auth_sessions; token tanpa sid ditolak oleh requireAuth bila sesi dicek.
      * B2: `role` = peran aktif sesi, `rv` = versi peran sesi (naik tiap ganti tampilan).
      * `expiresAt` (Date) dipakai saat token diterbitkan ulang untuk sesi yang sama, supaya masa sesi tidak bertambah.
      */

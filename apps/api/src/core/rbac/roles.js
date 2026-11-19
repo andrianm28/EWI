@@ -55,4 +55,14 @@ function describeRoles(roles) {
   });
 }
 
-module.exports = { ROLES, ALL_ROLES, VIEWS, viewOf, PRIVILEGED_ROLES, ASSIGNABLE_ROLES, switchableRoles, describeRoles };
+/**
+ * Review egm D4: siapa boleh mereset verifikasi dua langkah akun lain. targetRoles = peran utama + user_roles.
+ * Super Admin tidak bisa direset dari tenant; Admin Tenant hanya oleh Admin Tenant atau Super Admin.
+ */
+function canResetMfa(actorRole, targetRoles) {
+  if (targetRoles.includes(ROLES.ETA_ADMIN)) return false;
+  if (targetRoles.includes(ROLES.TENANT_ADMIN)) return actorRole === ROLES.TENANT_ADMIN || actorRole === ROLES.ETA_ADMIN;
+  return true;
+}
+
+module.exports = { canResetMfa, ROLES, ALL_ROLES, VIEWS, viewOf, PRIVILEGED_ROLES, ASSIGNABLE_ROLES, switchableRoles, describeRoles };

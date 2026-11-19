@@ -56,10 +56,13 @@ describe('ganti tampilan', () => {
     expect(jwt.decode(a2)).toMatchObject({ sid: jwt.decode(a1).sid, rv: 2, role: 'hr_admin' });
   });
 
-  it('peran yang tidak dimiliki, peran yang sama, dan Super Admin ditolak', async () => {
-    const { app } = build();
+  it('peran yang tidak dimiliki dan Super Admin ditolak; peran yang sedang aktif = tanpa perubahan', async () => {
+    const { app, stores } = build();
     const hr = await login(app);
-    for (const role of ['tenant_admin', 'eta_admin', 'hr_admin', '', 'ngawur']) {
+    const same = await switchTo(app, hr, 'hr_admin');
+    expect([same.status, same.body.token, same.body.user.role]).toEqual([200, hr, 'hr_admin']);
+    expect(stores.audit.rows.filter((r) => r.resource === 'auth.role_view')).toHaveLength(0);
+    for (const role of ['tenant_admin', 'eta_admin', '', 'ngawur']) {
       const r = await switchTo(app, hr, role);
       expect([r.status, r.body.error.code]).toEqual([403, 'ROLE_NOT_ASSIGNED']);
     }

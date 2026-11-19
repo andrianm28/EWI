@@ -2,6 +2,7 @@
 // PK-16: daftar sesi sendiri dan pencabutan sesi user lain oleh HR (tenant sendiri) atau Admin ETA.
 const express = require('express');
 const { requireRole, ROLES } = require('../rbac');
+const { canResetMfa } = require('../rbac/roles');
 const { forbidden, notFound } = require('../errors');
 
 const wrap = (fn) => (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
@@ -31,9 +32,7 @@ function sessionRoutes({ sessions, audit, mfa, users }) {
     const target = await users.findById(req.tenantId, userId);
     if (!target) throw notFound('Pengguna tidak ditemukan');
     // Review egm: faktor kedua akun yang lebih tinggi tidak boleh dihapus oleh akun di bawahnya
-    const targetRoles = new Set([target.role, ...(target.roles || [])]);
-    const protectedTarget = targetRoles.has(ROLES.ETA_ADMIN) || (targetRoles.has(ROLES.TENANT_ADMIN) && req.user.role !== ROLES.TENANT_ADMIN);
-    if (protectedTarget) throw forbidden('ROLE_PROTECTED', 'Verifikasi dua langkah akun admin hanya bisa direset oleh admin yang setingkat');
+    if (!canResetMfa(req.user.role, [target.role, ...(target.roles || [])])) throw forbidden('ROLE_PROTECTED', 'Verifikasi dua langkah akun admin hanya bisa direset oleh admin yang setingkat');
     const removed = await mfa.adminReset(req.tenantId, userId);
     const n = await sessions.revokeAllForUser(req.tenantId, userId, { revokedBy: req.user.id, reason: 'mfa_reset' });
     await audit.record(req, 'delete', 'auth.mfa', { reason: 'admin_reset', employeeIds: [userId], removed, sessionsRevoked: n });

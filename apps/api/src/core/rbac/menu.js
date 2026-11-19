@@ -7,7 +7,8 @@ const F = { cc: FLAGS.MODULE_CCA, dna: FLAGS.MODULE_DNA, tna: FLAGS.MODULE_TNA, 
 // Flag modul yang didaftarkan paket lain (B13, B14, B15). Belum terdaftar = butir tampil nonaktif.
 const LATER = { li: 'module.li', ld: 'module.ld', lim: 'module.lim' };
 // Butir yang juga butuh entitlement submodul
-const SUBMODULE = { cc: 'cca', dna: 'dna', tna: 'tna', ina: 'ina' };
+// Butir menu yang mensyaratkan entitlement submodul (wawancara AI ikut CCA, wawancara TNA ikut TNA)
+const SUBMODULE = { cc: 'cca', aiv: 'cca', dna: 'dna', tna: 'tna', iv: 'tna', ina: 'ina' };
 
 const DNA = ['dna', 'Developmental Needs', 'account_tree', F.dna];
 const TNA = ['tna', 'Training Needs', 'fact_check', F.tna];
@@ -56,7 +57,7 @@ const MENUS = Object.freeze({
  */
 function buildMenu(view, { flags = {}, submodules = [] } = {}) {
   const leaf = ([key, label, icon, flag], level) => {
-    const sub = key === 'aiv' ? 'cca' : (key === 'iv' ? 'tna' : SUBMODULE[key]);
+    const sub = SUBMODULE[key];
     const enabled = (!flag || flags[flag] === true) && (!sub || submodules.includes(sub));
     return { key, label, icon, level, group: null, enabled };
   };
