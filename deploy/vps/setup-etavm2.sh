@@ -214,6 +214,11 @@ sudo systemctl enable --now elgos-backup@prod-hourly.timer elgos-backup@prod-nig
 for ENV in staging prod; do
   sudo "$SRC/ops/install-job.sh" "$ENV" interview-reminders '*-*-* 01:00:00 UTC' >/dev/null
   sudo "$SRC/ops/install-job.sh" "$ENV" import-batches-cleanup '*-*-* 20:30:00 UTC' >/dev/null
+  # Kunci GCP suara (B19) bila sudah dipasang thread suara. Prod hanya bila GCP_KEY_PROD=1
+  # (project elgos-dev belum dipisah untuk produksi).
+  if sudo test -s /etc/elgos/gcp-voice.json && { [ "$ENV" = staging ] || [ "${GCP_KEY_PROD:-0}" = 1 ]; }; then
+    sudo "$SRC/ops/pasang-kunci-gcp.sh" "$ENV"
+  fi
 done
 
 # 9. Dev per worktree. Daemon Docker rootless milik elgos-dev: container dev tidak bisa melihat atau

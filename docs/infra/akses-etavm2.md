@@ -30,6 +30,12 @@ Login password dan login root dimatikan oleh `setup-etavm2.sh`. Kunci SSH baru d
 | `elgos-qa-malam` | role OIDC GitHub (environment `qa-malam`, hanya main) | `bedrock:InvokeModel` model QA saja | – | – |
 | `elgos-restore` | IAM user, tanpa kunci tetap | baca backup | dibuat per pemulihan | dihapus sesudahnya |
 
+## Google Cloud (suara, B19)
+
+| Identitas | Jenis | Izin | Kunci dibuat | Rotasi berikutnya |
+|---|---|---|---|---|
+| `elgos-voice@elgos-dev` | service account, kunci JSON di etavm2 (`/etc/elgos`, salinan staging) | `roles/aiplatform.user` | 19 Nov 2026 | +90 hari |
+
 ## GitHub
 
 | Orang | Peran repo | Penyetuju environment |

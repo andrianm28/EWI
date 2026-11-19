@@ -31,7 +31,11 @@ SUPER_DB_USER=elgos                  # superuser bawaan container: bootstrap rol
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 COMPOSE_FILE="$REPO_ROOT/deploy/vps/docker-compose.yml"
-export ELGOS_ENV="$ENV" ELGOS_ENV_FILE="$DIR/.env" ELGOS_DB_ENV_FILE="$DIR/db.env"
+export ELGOS_ENV="$ENV" ELGOS_ENV_FILE="$DIR/.env" ELGOS_DB_ENV_FILE="$DIR/db.env" ELGOS_SECRETS_DIR="$DIR/secrets"
+# Tanpa berkas, Docker membuat direktori di titik mount. Placeholder kosong (tidak terbaca container)
+# dipakai sampai ops/pasang-kunci-gcp.sh memasang kunci suara.
+[ -d "$ELGOS_SECRETS_DIR" ] || install -d -m 750 "$ELGOS_SECRETS_DIR"
+[ -e "$ELGOS_SECRETS_DIR/gcp-voice.json" ] || install -m 400 /dev/null "$ELGOS_SECRETS_DIR/gcp-voice.json"
 
 log() { printf '[%s] [%s] %s\n' "$(date -u +%FT%TZ)" "$ENV" "$*" | tee -a "$DIR/deploy.log" >&2; }
 dc() { docker compose -f "$COMPOSE_FILE" --env-file "$ELGOS_ENV_FILE" "$@"; }

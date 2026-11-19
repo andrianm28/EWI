@@ -132,6 +132,16 @@ mati, ufw 22/80/443, fail2ban, Docker 29 + rotasi log, AWS CLI 2, user `elgos-de
 Catatan server: `/tmp` di-mount noexec dan umask admin 0027 (skrip sudah menanganinya). Belum: Caddy
 (DNS + `ACME_EMAIL`), runner (`RUNNER_TOKEN`), isi `.env`/`ops.env` (menunggu akun AWS ELGOS).
 
+## Kunci GCP suara (B19)
+
+Thread suara memasang `/etc/elgos/gcp-voice.json` (root 0600; project `elgos-dev`, SA `elgos-voice`,
+hanya `roles/aiplatform.user`). `sudo ops/pasang-kunci-gcp.sh <env>` menyalinnya ke
+`/srv/elgos-<env>/secrets/gcp-voice.json` milik uid 1000 (user `node` di image API), 0400; compose
+memasangnya hanya-baca di `/run/secrets/gcp-voice.json`. Aktif bila `.env` berisi
+`GOOGLE_APPLICATION_CREDENTIALS=/run/secrets/gcp-voice.json`. Setup memasangnya untuk staging; prod
+hanya dengan `GCP_KEY_PROD=1` sampai ada project GCP produksi. Dev per worktree tidak mendapat kunci
+ini (elgos-dev tidak bisa membaca `/etc/elgos`).
+
 ## QA malam dengan AI sungguhan (B18)
 
 Keputusan user 19 Nov: akun Bedrock siap 24 Nov, QA malam 24–26 Nov untuk Go/No-Go 27 Nov.
