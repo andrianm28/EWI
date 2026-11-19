@@ -23,7 +23,9 @@ onMounted(async () => {
   }
 })
 
-const isTeam = computed(() => session.activeView === 'atasan')
+// Label dan kartu mengikuti cakupan data yang benar-benar dikirim API (peran utama), bukan tampilan aktif:
+// pengguna multi-peran di tampilan Atasan bisa saja menerima data seluruh tenant (spek B3 bagian 4).
+const isTeam = computed(() => (data.value ? data.value.scope === 'team' : session.activeView === 'atasan'))
 const DASH = '–'
 const OFF = 'Modul belum aktif'
 const num = (n: number | null) => (n == null ? DASH : n.toLocaleString('id-ID'))
