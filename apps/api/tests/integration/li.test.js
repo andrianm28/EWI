@@ -271,6 +271,9 @@ run('Learning Intervention (Postgres)', () => {
     for (const who of ['atasan', 'dimas', 'sme']) expect((await get('/modules', who)).status).toBe(403);
     expect((await post('/requests/bulk', { scope: 'pareto' }, 'dimas')).status).toBe(403);
     expect((await get('/drafts', 'dimas')).status).toBe(403);
+    // probe modul: HR dan peninjau (SME) boleh, karyawan tidak
+    expect((await get('/', 'sme')).status).toBe(200);
+    expect((await get('/', 'dimas')).status).toBe(403);
     const m = await byCode('ST-A2');
     expect((await get('/modules', 'luar')).body.data).toEqual([]);
     expect((await get(`/modules/${m.id}`, 'luar')).status).toBe(404);

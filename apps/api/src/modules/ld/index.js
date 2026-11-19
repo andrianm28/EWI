@@ -209,6 +209,7 @@ module.exports = {
       const t = await loadOne(req); manualOnly(t);
       if (!storage) throw new HttpError(501, 'STORAGE_NOT_CONFIGURED', 'Penyimpanan berkas belum dikonfigurasi di server ini');
       if (!DOC_KINDS.includes(String(req.query.kind || 'photo'))) throw badRequest('Jenis dokumen harus material, photo, atau video');
+      // cek murah sebelum membaca body; insertDocument menghitung ulang di bawah kunci baris untuk unggahan bersamaan
       if (t.photoDocs + t.materialDocs >= MAX_DOCS) throw docLimit();
       if (Number(req.headers['content-length']) > maxBytes) throw tooLarge();
       req.training = t;

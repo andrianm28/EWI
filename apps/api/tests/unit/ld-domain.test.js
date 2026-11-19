@@ -104,6 +104,11 @@ describe('KPI dan insight', () => {
     expect(insights[0].detail).toMatch(/^1 dari 6 peserta belum selesai/);
     expect(actions[0].title).toBe('Kirim pengingat ke 1 peserta Ticket Life Cycle');
   });
+  it('peserta tidak aktif hanya diperingatkan untuk pelatihan online yang sudah berjalan', () => {
+    const upcoming = decorate(online({ id: 'f', status: 'scheduled', startsOn: '2026-12-20', endsOn: '2027-01-20', inactive: 3 }), TODAY);
+    expect(upcoming.group).toBe('upcoming');
+    expect(buildInsights([upcoming], TODAY).insights).toEqual([]);
+  });
   it('tidak ada insight bila semua sesuai jadwal', () => {
     expect(buildInsights([decorate(online(), TODAY), decorate(offline(), TODAY)], TODAY)).toEqual({ insights: [], actions: [] });
   });

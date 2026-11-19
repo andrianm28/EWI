@@ -11,7 +11,7 @@ const { importRouter } = require('../imports');
 const { evaluate } = require('../tna/performance');
 const { rankTrainingNeeds } = require('../tna/pareto');
 const {
-  LEVELS, ITEM_KINDS, REQUEST_FLOW, moduleStatus, canRequestTransition, recommendedSource, priorityFromPareto, modulePriority, countItems, byPriorityThenCode, norm,
+  LEVELS, ITEM_KINDS, REQUEST_STATUSES, moduleStatus, canRequestTransition, recommendedSource, priorityFromPareto, modulePriority, countItems, byPriorityThenCode, norm,
 } = require('./domain');
 const { generateDraft, validateDraft, sanitizeDraftPatch } = require('./design');
 
@@ -178,8 +178,7 @@ module.exports = {
       const { status, note, catalogItemId } = req.body || {};
       const current = await stores.li.getRequest(req.tenantId, req.params.id);
       if (!current) throw notFound('Permintaan tidak ditemukan');
-      const statuses = [...REQUEST_FLOW, 'cancelled'];
-      if (!statuses.includes(status)) throw badRequest(`Status harus salah satu dari ${statuses.join(', ')}`);
+      if (!REQUEST_STATUSES.includes(status)) throw badRequest(`Status harus salah satu dari ${REQUEST_STATUSES.join(', ')}`);
       if (!canRequestTransition(current.status, status)) throw conflict('INVALID_TRANSITION', `Status tidak bisa diubah dari ${current.status} ke ${status}`);
       if (catalogItemId !== undefined && catalogItemId !== null) {
         if (status !== 'installed') throw badRequest('Course katalog hanya diisi saat modul dipasang');

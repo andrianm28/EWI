@@ -157,8 +157,10 @@ menjawab 501 `STORAGE_NOT_CONFIGURED`; bagian lain tetap berjalan.
    `in_progress` di pelatihan berjalan), `avgProgress` (rata-rata progres pelatihan berjalan), `attention` (pelatihan
    berjalan atau akan datang dengan status `watch` atau `late`). Layar menampilkan empat kartu: berjalan, peserta aktif,
    rata-rata progres, perlu perhatian.
-   Peserta **tidak aktif**: status `enrolled`/`in_progress` dan aktivitas terakhir (atau, bila belum pernah aktif, waktu
-   terdaftar) lebih dari 14 hari lalu.
+   Peserta **tidak aktif** (hanya pelatihan online; offline selalu 0): status `enrolled`/`in_progress` dan aktivitas
+   terakhir (atau, bila belum pernah aktif, waktu terdaftar di ELGOS) lebih dari 14 hari lalu.
+   `[⏳ DITERIMA]` Untuk course LMS, "waktu terdaftar" adalah saat peserta pertama kali tersinkron ke ELGOS, karena impor
+   status course tidak membawa tanggal daftar di LMS.
 9. **Insight dan saran tindakan** (fungsi murni `buildInsights`), dibuat dari aturan, bukan LLM. Hanya pelatihan
    berjalan dan akan datang. Per pelatihan, aturan A dievaluasi berurutan dan berhenti di yang pertama cocok; aturan B
    dievaluasi terpisah (satu pelatihan bisa mendapat satu insight A dan satu insight B). "Belum selesai" = peserta
@@ -168,7 +170,7 @@ menjawab 501 `STORAGE_NOT_CONFIGURED`; bagian lain tetap berjalan.
    | --- | --- | --- | --- |
    | A1 | online, `late` | `late` "tertinggal dari jadwal" | `remind` bila ada yang belum selesai |
    | A2 | offline, `late` | `late` "belum ditutup" | `open_training` (lengkapi kehadiran, asesmen, status) |
-   | A3 | online, ada peserta tidak aktif | `inactive` | `remind` |
+   | A3 | online berjalan (bukan akan datang), ada peserta tidak aktif | `inactive` | `remind` |
    | A4 | online, `watch` | `behind` "di bawah jadwal" | `remind` bila ada yang belum selesai |
    | B1 | offline, mulai hari ini sampai 14 hari lagi, asesmen belum dipilih | `assessment` | `open_training` |
    | B2 | offline, mulai hari ini sampai 14 hari lagi, asesmen sudah dipilih tetapi Jadwal/Materi/Peserta belum lengkap | `readiness` | `open_training` |

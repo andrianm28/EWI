@@ -79,7 +79,7 @@ function createLdStores(sequelize) {
                  count(*) FILTER (WHERE lp.attendance) AS present,
                  count(*) FILTER (WHERE lp.score IS NOT NULL AND (lp.attendance IS NOT FALSE)) AS scored,
                  count(*) FILTER (WHERE lp.score IS NOT NULL AND lp.attendance) AS scored_present,
-                 count(*) FILTER (WHERE lp.status IN ('enrolled','in_progress') AND COALESCE(lp.last_activity_at, lp.created_at) < :inactiveBefore) AS inactive
+                 count(*) FILTER (WHERE t.mode = 'online' AND lp.status IN ('enrolled','in_progress') AND COALESCE(lp.last_activity_at, lp.created_at) < :inactiveBefore) AS inactive
             FROM ld_participants lp WHERE lp.training_id = t.id AND lp.tenant_id = t.tenant_id
         ) p ON true
         WHERE t.tenant_id = :tenantId`;

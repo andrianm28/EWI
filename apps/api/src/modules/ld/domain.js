@@ -141,7 +141,7 @@ function buildInsights(rows, today) {
     } else if (r.health === 'late') {
       add(r, 'late', `${r.title} belum ditutup`, `Tanggal pelatihan ${fmt(r.endsOn)} sudah lewat. Catat sesi, kehadiran, dan asesmen, lalu tandai selesai.`,
         { kind: 'open_training', title: `Lengkapi data ${r.title}`, detail: 'Kehadiran, asesmen, dan status selesai' });
-    } else if (r.mode === 'online' && n(r.inactive) > 0) {
+    } else if (r.mode === 'online' && r.group === 'running' && n(r.inactive) > 0) {
       add(r, 'inactive', `${n(r.inactive)} peserta ${r.title} tidak aktif`, `Tidak ada aktivitas belajar selama ${INACTIVE_DAYS} hari terakhir.`,
         { kind: 'remind', title: `Kirim pengingat ke peserta ${r.title}`, detail: `${n(r.inactive)} peserta tidak aktif ${INACTIVE_DAYS} hari` });
     } else if (r.health === 'watch' && r.mode === 'online') {
