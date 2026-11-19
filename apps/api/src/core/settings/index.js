@@ -12,6 +12,8 @@ const DEFAULTS = Object.freeze({
     interviewJobRoleId: null,
     // BT-30 terbuka: komponen skor Pareto yang dipakai
     pareto: { useMiss: true, useImportance: true },
+    // PM-3 A: target tinjauan hasil AI oleh HR, dalam hari kerja (1-30)
+    reviewTargetDays: 2,
   },
   dna: {
     // RG-1e terbuka untuk atasan; default paling sempit: hanya HR yang melihat saran kandidat promosi
@@ -21,6 +23,12 @@ const DEFAULTS = Object.freeze({
     // K-1 terbuka: EliteMentor jalur default (adapter masih kosong). PK-18: katalog statis 'moodle' (hasil impor
     // HR) ikut dicari; tenant tanpa katalog impor tidak terpengaruh karena hasilnya kosong.
     targets: ['elitementor', 'moodle'],
+    // K4 (B7/B8): tempat karyawan belajar. 'elitementor' = penugasan lewat API EliteMentor; 'lms_export' = klien
+    // memakai LMS sendiri dan gap diekspor. Berbeda dari `targets` (urutan katalog saat mencocokkan course).
+    delivery: 'elitementor',
+    lmsName: 'LMS perusahaan',
+    // Id organisasi tenant di EliteMentor; kosong = penugasan langsung belum bisa dipakai
+    elitementorOrganizationId: null,
   },
 });
 
@@ -37,14 +45,44 @@ function merge(base, override) {
   return out;
 }
 
+const DELIVERIES = Object.freeze(['elitementor', 'lms_export']);
+
+/** Nilai setting yang tidak valid jatuh ke default, supaya salah isi di tenants.settings tidak mematahkan endpoint. */
+function normalize(conf) {
+  const days = conf.tna.reviewTargetDays;
+  const name = typeof conf.lms.lmsName === 'string' ? conf.lms.lmsName.trim() : '';
+  const org = conf.lms.elitementorOrganizationId;
+  return {
+    ...conf,
+    tna: { ...conf.tna, reviewTargetDays: Number.isInteger(days) && days >= 1 && days <= 30 ? days : DEFAULTS.tna.reviewTargetDays },
+    lms: {
+      ...conf.lms,
+      delivery: DELIVERIES.includes(conf.lms.delivery) ? conf.lms.delivery : DEFAULTS.lms.delivery,
+      lmsName: name || DEFAULTS.lms.lmsName,
+      elitementorOrganizationId: org == null || String(org).trim() === '' ? null : String(org).trim(),
+    },
+  };
+}
+
+/**
+ * Tempat belajar untuk satu rencana (K4). Sumber course rencana menang; rencana tanpa course mengikuti
+ * setting tenant. Dipakai B7 (label solusi) dan B8 (kartu rencana belajar).
+ */
+function deliveryFor(conf, catalogSource) {
+  const em = { target: 'elitementor', label: 'EliteMentor' };
+  const lms = { target: 'lms', label: conf.lms.lmsName };
+  if (catalogSource) return catalogSource === 'elitementor' ? em : lms;
+  return conf.lms.delivery === 'elitementor' ? em : lms;
+}
+
 /** store: { getTenantSettings(tenantId) -> Promise<object> } */
 function createSettingsService(store) {
   return {
     async get(tenantId) {
       const raw = store && store.getTenantSettings ? await store.getTenantSettings(tenantId) : {};
-      return merge(DEFAULTS, raw || {});
+      return normalize(merge(DEFAULTS, raw || {}));
     },
   };
 }
 
-module.exports = { DEFAULTS, INTERVIEW_SCOPES, merge, createSettingsService };
+module.exports = { DEFAULTS, INTERVIEW_SCOPES, DELIVERIES, merge, normalize, deliveryFor, createSettingsService };

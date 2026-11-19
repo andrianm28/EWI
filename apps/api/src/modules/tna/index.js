@@ -24,6 +24,7 @@ const { importRouter } = require('../imports');
 const { getKind } = require('../imports/kinds');
 const { validateRows, commitRows } = require('../imports/engine');
 const { PLAN_STATUSES, PLAN_STATUS_LABEL, initialStatus, canTransition } = require('./plan-status');
+const { reviewWorkspaceRouter, toReviewItem } = require('./review-workspace');
 
 const REVIEW_DECISIONS = { approve: 'approved', edit: 'edited', reject: 'rejected' };
 const REVIEWED = ['approved', 'edited'];
@@ -32,7 +33,7 @@ const CATEGORIES = ['training', 'non_training'];
 module.exports = {
   key: 'tna',
   title: 'Training Needs Analysis',
-  router({ stores, ai, aiConfig, settings, catalog, flags, audit, analysis } = {}) {
+  router({ stores, ai, aiConfig, settings, catalog, flags, audit, analysis, assignments } = {}) {
     const r = express.Router();
     const hr = requireRole(ROLES.HR_ADMIN);
 
@@ -145,12 +146,25 @@ module.exports = {
       const status = req.query.status || 'draft';
       const statuses = status === 'all' ? ['draft', ...Object.values(REVIEW_DECISIONS)] : status === 'reviewed' ? Object.values(REVIEW_DECISIONS) : [status];
       if (!statuses.every((x) => ['draft', ...Object.values(REVIEW_DECISIONS)].includes(x))) throw badRequest('status harus draft, approved, edited, rejected, reviewed, atau all');
-      const [rows, counts] = await Promise.all([
+      const [rows, counts, conf] = await Promise.all([
         stores.tna.reviewQueue(req.tenantId, { projectId: req.query.projectId, statuses }),
         stores.tna.reviewCounts(req.tenantId, { projectId: req.query.projectId }),
+        settings.get(req.tenantId),
       ]);
+      // B7 (PM-3 A): target tinjauan dalam hari kerja. held/overdue dihitung dari seluruh draf dalam cakupan
+      // proyek yang sama, bukan hanya baris yang difilter status.
+      const targetDays = conf.tna.reviewTargetDays;
+      const now = new Date();
+      const data = rows.map((f) => toReviewItem(f, targetDays, now));
+      const drafts = statuses.includes('draft')
+        ? data.filter((f) => f.reviewStatus === 'draft')
+        : (await stores.tna.reviewQueue(req.tenantId, { projectId: req.query.projectId, statuses: ['draft'] })).map((f) => toReviewItem(f, targetDays, now));
       await audit.readIndividual(req, 'tna.review_queue', { employeeIds: rows.map((f) => f.userId), objectType: 'tna_finding', objectIds: rows.map((f) => f.id) });
-      res.json({ data: rows, counts });
+      res.json({
+        data,
+        counts: { ...counts, held: drafts.filter((f) => f.held).length, overdue: drafts.filter((f) => f.overdue).length },
+        targetDays,
+      });
     }));
 
     r.post('/findings/:id/review', hr, wrap(async (req, res) => {
@@ -175,8 +189,11 @@ module.exports = {
       await audit.record(req, 'update', 'tna.finding_review', {
         employeeIds: [current.userId], objectType: 'tna_finding', objectIds: [current.id], decision: status, confidence: current.confidence,
       });
-      res.json({ data: out });
+      res.json({ data: toReviewItem(out, (await settings.get(req.tenantId)).tna.reviewTargetDays) });
     }));
+
+    // B7: klasifikasi tiga tombol, solusi, penugasan, ekspor gap, serah ke Improvement Needs (flag tna.review_workspace)
+    r.use(reviewWorkspaceRouter({ stores, settings, catalog, flags, audit, assignments, wrap }));
 
     // PM-6 (jawaban user 17 Nov): temuan "bukan masalah pelatihan" tampil untuk HR secara bawaan, ringkas,
     // tanpa rencana aksi. Atasan langsung melihat temuan timnya hanya bila HR memberinya akses (bisa dicabut,

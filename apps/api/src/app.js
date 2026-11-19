@@ -17,6 +17,8 @@ const { errorHandler, notFound } = require('./core/errors');
 const projects = require('./modules/projects');
 const { employeeRouter } = require('./modules/employees');
 const { webhookRouter } = require('./integrations/elitementor/webhook');
+const { createElitementorClient } = require('./integrations/elitementor/client');
+const { createAssignmentService } = require('./integrations/elitementor/assignments');
 const { createSettingsService } = require('./core/settings');
 const { createAiProvider } = require('./ai');
 const { createAnalysisRunner } = require('./modules/interviews/analysis');
@@ -26,9 +28,9 @@ const SUBMODULE_MODULES = ['cca', 'dna', 'tna', 'ina'].map((k) => require(`./mod
 /**
  * Bangun aplikasi Express. Semua akses data lewat `stores` agar bisa diganti di test.
  * stores: { users, flags, audit, entitlements, projects, people, settings, dna, interviews, tna, projectsExtra }
- * ai / catalog bisa diganti di test; default mengikuti config (AI_PROVIDER, PK-06; K-1 masih terbuka).
+ * ai / catalog / assignments bisa diganti di test; default mengikuti config (AI_PROVIDER, PK-06; K-1 masih terbuka).
  */
-function createApp({ config, stores, ai, catalog, mailer }) {
+function createApp({ config, stores, ai, catalog, mailer, assignments }) {
   const app = express();
   const tokens = createTokenService(config.jwt);
   const flags = createFlagService(stores.flags);
@@ -48,6 +50,11 @@ function createApp({ config, stores, ai, catalog, mailer }) {
     aiConfig: config.ai || {},
     catalog: catalog || createCatalogService({ elitementor: elitementorAdapter(), moodle: moodleAdapter(stores.catalog) }),
   };
+  // B7: penugasan ke EliteMentor hanya terpasang bila dinyalakan lewat env (kontrak FR-EM belum final);
+  // tanpa adapter, endpoint penugasan menjawab ASSIGN_UNAVAILABLE.
+  const em = config.elitementor || {};
+  deps.assignments = assignments
+    || (em.assignmentsEnabled && em.baseUrl && em.tokenUrl ? createAssignmentService({ client: createElitementorClient(em) }) : null);
   // PK-14: analisis wawancara berjalan di latar. app.locals.analysis dipakai server (penyapu) dan test (drain).
   deps.analysis = createAnalysisRunner({ stores, ai: deps.ai, aiConfig: deps.aiConfig });
   app.locals.analysis = deps.analysis;

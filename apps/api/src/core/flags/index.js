@@ -23,6 +23,11 @@ const FLAGS = Object.freeze({
   TNA_TRAINING_REQUEST: 'tna.training_request',
   // PM-6 (17 Nov): daftar ringkas temuan non-training untuk HR; atasan bila diberi akses HR. Mati = disembunyikan
   TNA_NON_TRAINING_HR: 'tna.non_training_hr',
+  // B7 (19 Nov): tinjauan HR versi mockup Pak Eji: klasifikasi tiga tombol, solusi pelatihan, penugasan, ekspor gap,
+  // dan serah temuan ke Improvement Needs
+  TNA_REVIEW_WORKSPACE: 'tna.review_workspace',
+  // B8 (19 Nov): beranda karyawan (Hasil saya, Rencana belajar)
+  LEARNER_HOME: 'learner.home',
 });
 
 const KNOWN = new Set(Object.values(FLAGS));

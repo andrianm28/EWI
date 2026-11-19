@@ -1,0 +1,374 @@
+// B7 Tinjauan HR (mockup Pak Eji): klasifikasi tiga tombol, target 2 hari kerja, solusi pelatihan,
+// penugasan ke EliteMentor, ekspor gap, dan serah temuan ke Improvement Needs. Spek: docs/designs/b7-tinjauan-hr.md
+const request = require('supertest');
+const { createDb } = require('../../src/db');
+const { createStores } = require('../../src/db/stores');
+const { createApp } = require('../../src/app');
+const { createTokenService } = require('../../src/core/auth/tokens');
+const { makeConfig } = require('../helpers');
+
+const run = process.env.DATABASE_URL ? describe : describe.skip;
+
+run('B7 tinjauan HR (Postgres)', () => {
+  let db; let stores; let tokens; let config; let tenant; let other; let projectId; let competencyId; let sessionId;
+  const u = {}; const tok = {}; const f = {};
+  const as = (who) => ({ Authorization: `Bearer ${tok[who]}` });
+  const catalog = {
+    async match({ competency }) {
+      return competency && competency.name === 'Pemahaman SLA'
+        ? { source: 'elitementor', ref: 'EM-101', title: 'Dasar SLA', url: 'https://em.test/c/101' } : null;
+    },
+  };
+  const makeAssignments = (impl) => {
+    const svc = { calls: [], async assign(args) { svc.calls.push(args); return impl ? impl(args, svc.calls.length) : { ref: `EM-A-${svc.calls.length}` }; } };
+    return svc;
+  };
+  const app = (extra = {}) => createApp({ config, stores, catalog, ...extra });
+  const setFlag = (key, enabled, t = tenant.id) => db.query(
+    `INSERT INTO feature_flags (tenant_id, key, enabled) VALUES (:t, :key, :enabled)
+     ON CONFLICT (tenant_id, key) DO UPDATE SET enabled = EXCLUDED.enabled`, { replacements: { t, key, enabled } });
+  const setSettings = (settings) => db.query('UPDATE tenants SET settings = :s::jsonb WHERE id = :t', { replacements: { t: tenant.id, s: JSON.stringify(settings) } });
+  const audits = async (resource) => db.query('SELECT action, meta FROM audit_logs WHERE tenant_id = :t AND resource = :r ORDER BY id', { replacements: { t: tenant.id, r: resource }, type: 'SELECT' });
+  const finding = (who, over = {}) => stores.tna.insertFinding(tenant.id, {
+    projectId, userId: u[who], category: 'training', title: 'Belum paham SLA', detail: 'Rincian', competencyId, sessionId, ...over,
+  });
+  const setAi = (id, confidence, agreement = true) => db.query('UPDATE lna_findings SET confidence = :c, scoring_agreement = :a WHERE id = :id', { replacements: { id, c: confidence, a: agreement } });
+  const classify = (a, id, classification, who = 'hr', note) => request(a).post(`/api/tna/findings/${id}/classify`).set(as(who)).send({ classification, note });
+
+  beforeAll(async () => {
+    config = makeConfig();
+    db = createDb({ databaseUrl: process.env.DATABASE_URL, dbSchema: process.env.DB_SCHEMA || 'ewi' });
+    stores = createStores(db);
+    tokens = createTokenService(config.jwt);
+    const stamp = Date.now();
+    [[tenant]] = await db.query(`INSERT INTO tenants (slug, name) VALUES (:slug, 'Tinjauan uji') RETURNING id`, { replacements: { slug: `b7-${stamp}` } });
+    [[other]] = await db.query(`INSERT INTO tenants (slug, name) VALUES (:slug, 'Tenant lain') RETURNING id`, { replacements: { slug: `b7x-${stamp}` } });
+    const add = async (key, role, t = tenant.id) => {
+      const [[row]] = await db.query(
+        `INSERT INTO users (tenant_id, email, name, employee_id, role, status) VALUES (:t, :email, :name, :emp, :role, 'active') RETURNING id`,
+        { replacements: { t, email: `${key}@b7.test`, name: key === 'ani' ? '=Ani' : key, emp: `E-${key}`, role } },
+      );
+      u[key] = row.id;
+      tok[key] = tokens.sign({ id: row.id, tenantId: t, role, email: `${key}@b7.test` });
+    };
+    await add('hr', 'hr_admin'); await add('hr2', 'hr_admin'); await add('spv', 'supervisor'); await add('ani', 'learner'); await add('beni', 'learner');
+    await add('xhr', 'hr_admin', other.id); await add('xl', 'learner', other.id);
+    await db.query('UPDATE users SET supervisor_id = :spv WHERE id IN (:ids)', { replacements: { spv: u.spv, ids: [u.ani, u.beni] } });
+    for (const t of [tenant.id, other.id]) {
+      await db.query(`INSERT INTO entitlements (tenant_id, product) VALUES (:t, 'full_suite')`, { replacements: { t } });
+      await setFlag('module.tna', true, t);
+      await setFlag('tna.review_workspace', true, t);
+    }
+    const [[p]] = await db.query(`INSERT INTO lna_projects (tenant_id, name) VALUES (:t, 'B7') RETURNING id`, { replacements: { t: tenant.id } });
+    projectId = p.id;
+    const [[c]] = await db.query(`INSERT INTO lna_competencies (tenant_id, kind, name) VALUES (:t, 'job', 'Pemahaman SLA') RETURNING id`, { replacements: { t: tenant.id } });
+    competencyId = c.id;
+    const s = await stores.interviews.create(tenant.id, { projectId, submodule: 'tna', intervieweeId: u.ani });
+    sessionId = s.id;
+    await db.query(`UPDATE lna_interview_sessions SET status = 'completed', ended_at = now() WHERE id = :id`, { replacements: { id: sessionId } });
+    await stores.interviews.addTurn(tenant.id, sessionId, 'human', 'RAHASIA-TRANSKRIP');
+    const [[xp]] = await db.query(`INSERT INTO lna_projects (tenant_id, name) VALUES (:t, 'X') RETURNING id`, { replacements: { t: other.id } });
+    f.x = (await stores.tna.insertFinding(other.id, { projectId: xp.id, userId: u.xl, category: 'non_training', title: 'Milik tenant lain', reviewStatus: 'approved' })).id;
+  });
+
+  afterAll(async () => {
+    await db.transaction(async (transaction) => {
+      await db.query("SET LOCAL ewi.audit_maintenance = 'on'", { transaction });
+      await db.query('DELETE FROM tenants WHERE id IN (:ids)', { replacements: { ids: [tenant.id, other.id] }, transaction });
+    });
+    await db.close();
+  });
+
+  describe('klasifikasi tiga tombol', () => {
+    it('flag mati -> 403; hanya HR; tenant lain 404; isian salah 400', async () => {
+      const a = app();
+      f.t1 = (await finding('ani')).id;
+      await setAi(f.t1, 0.9);
+      await setFlag('tna.review_workspace', false);
+      expect((await classify(a, f.t1, 'training')).body.error.code).toBe('FEATURE_DISABLED');
+      expect((await request(a).get('/api/tna/review/solutions').set(as('hr'))).status).toBe(403);
+      expect((await request(a).get('/api/tna/plan-items/export.csv').set(as('hr'))).status).toBe(403);
+      expect((await request(a).post('/api/tna/review/improvement-handoff').set(as('hr')).send({ findingIds: [f.t1] })).status).toBe(403);
+      await setFlag('tna.review_workspace', true);
+      expect((await classify(a, f.t1, 'training', 'spv')).status).toBe(403);
+      expect((await classify(a, f.t1, 'training', 'ani')).status).toBe(403);
+      expect((await classify(a, f.t1, 'training', 'xhr')).status).toBe(404);
+      expect((await classify(a, 'bukan-uuid', 'training')).status).toBe(404);
+      expect((await classify(a, f.t1, 'lainnya')).status).toBe(400);
+      expect((await classify(a, f.t1, 'training', 'hr', 'x'.repeat(2001))).status).toBe(400);
+    });
+
+    it('Training Needs tanpa mengubah kategori AI -> approved', async () => {
+      const res = await classify(app(), f.t1, 'training');
+      expect(res.status).toBe(200);
+      expect(res.body.data).toMatchObject({ id: f.t1, reviewStatus: 'approved', category: 'training', held: false, suggestedClassification: 'training' });
+    });
+
+    it('mengubah ke Improvement Needs -> edited dan kategori asli tersimpan', async () => {
+      f.t2 = (await finding('beni', { sessionId: null })).id;
+      const res = await classify(app(), f.t2, 'improvement');
+      expect(res.body.data).toMatchObject({ reviewStatus: 'edited', category: 'non_training', originalCategory: 'training' });
+    });
+
+    it('Perlu ditinjau HR: tetap draf dan ditahan, tidak tampil di luar antrean, lalu bisa diklasifikasi', async () => {
+      const a = app();
+      f.h = (await finding('ani', { title: 'Ragu-ragu' })).id;
+      await setAi(f.h, 0.3);
+      const hold = await classify(a, f.h, 'needs_review', 'hr', 'Tanya atasannya dulu');
+      expect(hold.status).toBe(200);
+      expect(hold.body.data).toMatchObject({ reviewStatus: 'draft', held: true, heldByName: 'hr', holdNote: 'Tanya atasannya dulu', suggestedClassification: 'needs_review' });
+      const [[raw]] = await db.query('SELECT review_hold_note AS n FROM lna_findings WHERE id = :id', { replacements: { id: f.h } });
+      expect(raw.n).not.toContain('Tanya atasannya'); // terenkripsi
+      const list = await request(a).get('/api/tna/findings').set(as('hr'));
+      expect(list.body.data.map((x) => x.id)).not.toContain(f.h);
+      const queue = await request(a).get('/api/tna/review').set(as('hr'));
+      expect(queue.body.counts).toMatchObject({ held: 1 });
+      expect(queue.body.data.find((x) => x.id === f.h)).toMatchObject({ held: true });
+      // menahan lagi memperbarui catatan
+      expect((await classify(a, f.h, 'needs_review', 'hr2', 'Catatan baru')).body.data).toMatchObject({ heldByName: 'hr2', holdNote: 'Catatan baru' });
+      const done = await classify(a, f.h, 'improvement', 'hr2');
+      expect(done.body.data).toMatchObject({ reviewStatus: 'edited', category: 'non_training', held: false });
+      expect(done.body.data.heldAt).toBeTruthy(); // jejak tahan tidak dihapus
+      expect((await classify(a, f.h, 'needs_review')).body.error.code).toBe('ALREADY_REVIEWED');
+    });
+
+    it('koreksi salah klik: boleh pindah kategori selama belum ditindaklanjuti', async () => {
+      const a = app();
+      const back = await classify(a, f.t2, 'training');
+      expect(back.body.data).toMatchObject({ reviewStatus: 'edited', category: 'training', originalCategory: 'training' });
+      const same = await classify(a, f.t2, 'training');
+      expect(same.status).toBe(200);
+      // setelah ada rencana -> terkunci
+      const plan = await request(a).post(`/api/tna/findings/${f.t2}/plan`).set(as('hr')).send({});
+      expect(plan.status).toBe(201);
+      f.planT2 = plan.body.data.id;
+      expect((await classify(a, f.t2, 'improvement')).body.error.code).toBe('ALREADY_ACTIONED');
+    });
+
+    it('temuan ditolak final; dua HR bersamaan tidak saling timpa', async () => {
+      const a = app();
+      const rej = (await finding('ani', { title: 'Salah tangkap' })).id;
+      await request(a).post(`/api/tna/findings/${rej}/review`).set(as('hr')).send({ decision: 'reject', note: 'Tidak relevan' });
+      expect((await classify(a, rej, 'training')).body.error.code).toBe('ALREADY_REVIEWED');
+      const race = (await finding('ani', { title: 'Balapan' })).id;
+      const [x, y] = await Promise.all([classify(a, race, 'training', 'hr'), classify(a, race, 'improvement', 'hr2')]);
+      // yang kalah mendapat 409 atau, bila tiba setelah yang pertama selesai, menjadi klasifikasi ulang yang sah
+      expect([x.status, y.status]).toContain(200);
+      const [[row]] = await db.query('SELECT review_status AS s FROM lna_findings WHERE id = :id', { replacements: { id: race } });
+      expect(['approved', 'edited']).toContain(row.s);
+      f.race = race;
+    });
+
+    it('audit mencatat keputusan', async () => {
+      const rows = await audits('tna.finding_review');
+      const decisions = rows.map((r) => r.meta.decision);
+      expect(decisions).toEqual(expect.arrayContaining(['approved', 'edited', 'hold', 'reclassified', 'rejected']));
+      expect(rows.find((r) => r.meta.decision === 'hold').meta).toMatchObject({ classification: 'needs_review', employeeIds: [u.ani] });
+    });
+  });
+
+  describe('target tinjauan 2 hari kerja', () => {
+    it('reviewDueAt dari sesi selesai; overdue dan counts', async () => {
+      const a = app();
+      const late = (await finding('ani', { title: 'Terlambat' })).id;
+      const fresh = (await finding('beni', { title: 'Baru', sessionId: null })).id;
+      await db.query(`UPDATE lna_interview_sessions SET ended_at = now() - interval '10 days' WHERE id = :id`, { replacements: { id: sessionId } });
+      const res = await request(a).get('/api/tna/review').set(as('hr'));
+      expect(res.body.targetDays).toBe(2);
+      const l = res.body.data.find((x) => x.id === late); const n = res.body.data.find((x) => x.id === fresh);
+      expect(l.overdue).toBe(true);
+      expect(new Date(l.reviewDueAt).getTime()).toBeLessThan(Date.now());
+      expect(n.overdue).toBe(false);
+      expect(new Date(n.reviewDueAt).getTime()).toBeGreaterThan(Date.now());
+      expect(l).not.toHaveProperty('sessionEndedAt');
+      expect(res.body.counts.overdue).toBe(1);
+      // counts dihitung dari seluruh draf walau daftar difilter status lain
+      const reviewed = await request(a).get('/api/tna/review?status=reviewed').set(as('hr'));
+      expect(reviewed.body.counts).toMatchObject({ overdue: 1, held: 0 });
+      // target dari setting tenant
+      await setSettings({ tna: { reviewTargetDays: 30 } });
+      const relaxed = await request(a).get('/api/tna/review').set(as('hr'));
+      expect(relaxed.body.targetDays).toBe(30);
+      expect(relaxed.body.counts.overdue).toBe(0);
+      await setSettings({});
+      f.late = late; f.fresh = fresh;
+    });
+  });
+
+  describe('solusi pelatihan', () => {
+    it('rekomendasi dari katalog, planItem setelah rencana dibuat, tanpa transkrip', async () => {
+      const a = app();
+      f.noComp = (await finding('beni', { title: 'Tanpa course', competencyId: null, sessionId: null })).id;
+      await classify(a, f.noComp, 'training');
+      const res = await request(a).get('/api/tna/review/solutions').set(as('hr'));
+      expect(res.status).toBe(200);
+      const { training, improvement, delivery, inaEnabled } = res.body.data;
+      expect(training.find((x) => x.findingId === f.t1)).toMatchObject({
+        userId: u.ani, title: 'Belum paham SLA', competencyName: 'Pemahaman SLA', planItem: null,
+        recommendation: { source: 'elitementor', ref: 'EM-101', title: 'Dasar SLA', url: 'https://em.test/c/101' },
+      });
+      expect(training.find((x) => x.findingId === f.noComp)).toMatchObject({ recommendation: null, planItem: null });
+      expect(training.find((x) => x.findingId === f.t2)).toMatchObject({ recommendation: null, planItem: { id: f.planT2, status: 'new', needsModule: false, catalogItemRef: 'EM-101', assignmentStatus: null } });
+      expect(improvement.map((x) => x.findingId)).toContain(f.h);
+      expect(training.map((x) => x.findingId)).not.toContain(f.late); // draf tidak ikut
+      expect(delivery).toEqual({ target: 'elitementor', label: 'EliteMentor', assignAvailable: false });
+      expect(inaEnabled).toBe(false);
+      expect(JSON.stringify(res.body)).not.toContain('RAHASIA-TRANSKRIP');
+      expect((await request(a).get('/api/tna/review/solutions').set(as('spv'))).status).toBe(403);
+      expect((await audits('tna.review_solutions')).length).toBeGreaterThan(0);
+    });
+  });
+
+  describe('penugasan ke EliteMentor', () => {
+    const assign = (a, id, who = 'hr') => request(a).post(`/api/tna/plan-items/${id}/assign`).set(as(who));
+    const ready = async () => { await setFlag('em.gaps_autosend', true); await setSettings({ lms: { elitementorOrganizationId: 'org-9' } }); };
+
+    it('tabel keputusan: tiap alasan menolak', async () => {
+      const svc = makeAssignments();
+      const a = app({ assignments: svc });
+      expect((await assign(a, '00000000-0000-4000-8000-000000000000')).status).toBe(404);
+      expect((await assign(a, f.planT2, 'xhr')).status).toBe(404);
+      expect((await assign(a, f.planT2, 'spv')).status).toBe(403);
+      // rencana tanpa course
+      const p2 = await request(a).post(`/api/tna/findings/${f.noComp}/plan`).set(as('hr')).send({});
+      f.planNoCourse = p2.body.data.id;
+      expect((await assign(a, f.planNoCourse)).body.error.code).toBe('NEEDS_MODULE');
+      // lms_export
+      await setSettings({ lms: { delivery: 'lms_export', elitementorOrganizationId: 'org-9' } });
+      await setFlag('em.gaps_autosend', true);
+      expect((await assign(a, f.planT2)).body.error.code).toBe('ASSIGN_VIA_EXPORT');
+      // flag mati, organisasi kosong, adapter tidak terpasang
+      await setSettings({ lms: { elitementorOrganizationId: 'org-9' } });
+      await setFlag('em.gaps_autosend', false);
+      expect((await assign(a, f.planT2)).body.error.code).toBe('ASSIGN_UNAVAILABLE');
+      await setFlag('em.gaps_autosend', true);
+      await setSettings({});
+      expect((await assign(a, f.planT2)).body.error.code).toBe('ASSIGN_UNAVAILABLE');
+      await ready();
+      expect((await assign(app(), f.planT2)).body.error.code).toBe('ASSIGN_UNAVAILABLE');
+      // course bukan dari EliteMentor
+      await db.query(`UPDATE lna_training_plan_items SET catalog_source = 'moodle' WHERE id = :id`, { replacements: { id: f.planT2 } });
+      expect((await assign(a, f.planT2)).body.error.code).toBe('COURSE_NOT_IN_TARGET');
+      await db.query(`UPDATE lna_training_plan_items SET catalog_source = 'elitementor' WHERE id = :id`, { replacements: { id: f.planT2 } });
+      // status rencana tidak aktif
+      await db.query(`UPDATE lna_training_plan_items SET status = 'rejected' WHERE id = :id`, { replacements: { id: f.planT2 } });
+      expect((await assign(a, f.planT2)).body.error.code).toBe('INVALID_STATE');
+      await db.query(`UPDATE lna_training_plan_items SET status = 'new' WHERE id = :id`, { replacements: { id: f.planT2 } });
+      expect(svc.calls).toHaveLength(0);
+      const sol = await request(a).get('/api/tna/review/solutions').set(as('hr'));
+      expect(sol.body.data.delivery.assignAvailable).toBe(true);
+    });
+
+    it('gagal -> 502 dan failed; coba lagi sukses; sesudahnya tidak mengirim ulang', async () => {
+      await ready();
+      const svc = makeAssignments((_args, n) => { if (n === 1) throw new Error('timeout'); return { ref: 'EM-A-77' }; });
+      const a = app({ assignments: svc });
+      const fail = await assign(a, f.planT2);
+      expect(fail.status).toBe(502);
+      expect(fail.body.error.code).toBe('EM_ASSIGN_FAILED');
+      const [[row]] = await db.query('SELECT assignment_status AS s FROM lna_training_plan_items WHERE id = :id', { replacements: { id: f.planT2 } });
+      expect(row.s).toBe('failed');
+      const ok = await assign(a, f.planT2);
+      expect(ok.status).toBe(200);
+      expect(ok.body.data).toMatchObject({ id: f.planT2, status: 'new', assignmentStatus: 'sent', assignmentTarget: 'elitementor', assignmentRef: 'EM-A-77' });
+      expect(ok.body.data.assignedAt).toBeTruthy();
+      expect(svc.calls[1]).toEqual({
+        organizationId: 'org-9', employee: { employeeId: 'E-beni', email: 'beni@b7.test' }, course: { ref: 'EM-101', title: 'Dasar SLA' }, planItemId: f.planT2,
+      });
+      const again = await assign(a, f.planT2);
+      expect(again.status).toBe(200);
+      expect(svc.calls).toHaveLength(2);
+      const log = await audits('tna.plan_assignment');
+      expect(log.map((r) => r.meta.result)).toEqual(['failed', 'sent']);
+      expect(log[1].meta).toMatchObject({ employeeIds: [u.beni], target: 'elitementor' });
+    });
+
+    it('dua permintaan bersamaan hanya mengirim sekali; klaim basi bisa diambil ulang', async () => {
+      await ready();
+      const a0 = app();
+      const plan = await request(a0).post(`/api/tna/findings/${f.t1}/plan`).set(as('hr')).send({});
+      f.planT1 = plan.body.data.id;
+      let release; const gate = new Promise((r) => { release = r; });
+      const svc = makeAssignments(async () => { await gate; return { ref: 'EM-A-1' }; });
+      const a = app({ assignments: svc });
+      const first = assign(a, f.planT1).then((r) => r);
+      // tunggu sampai permintaan pertama memegang klaim
+      for (let i = 0; i < 50 && svc.calls.length === 0; i += 1) await new Promise((r) => setTimeout(r, 20));
+      const second = await assign(a, f.planT1, 'hr2');
+      expect(second.body.error.code).toBe('ASSIGN_IN_PROGRESS');
+      release();
+      expect((await first).status).toBe(200);
+      expect(svc.calls).toHaveLength(1);
+
+      // klaim 'sending' yang macet lebih dari 5 menit bisa diambil ulang
+      await db.query(`UPDATE lna_training_plan_items SET assignment_status = 'sending', assignment_claimed_at = now() - interval '6 minutes', assignment_ref = NULL WHERE id = :id`, { replacements: { id: f.planT1 } });
+      const svc2 = makeAssignments();
+      const retry = await assign(app({ assignments: svc2 }), f.planT1);
+      expect(retry.status).toBe(200);
+      expect(svc2.calls).toHaveLength(1);
+    });
+  });
+
+  describe('ekspor gap ke LMS klien', () => {
+    it('CSV: kolom, sel formula dinetralkan, hanya tenant sendiri, tidak mengubah data, audit', async () => {
+      const a = app();
+      await setSettings({ lms: { delivery: 'lms_export' } });
+      const before = await db.query('SELECT id, status, updated_at FROM lna_training_plan_items WHERE tenant_id = :t ORDER BY id', { replacements: { t: tenant.id }, type: 'SELECT' });
+      const res = await request(a).get('/api/tna/plan-items/export.csv').set(as('hr'));
+      expect(res.status).toBe(200);
+      expect(res.headers['content-type']).toMatch(/text\/csv/);
+      expect(res.headers['content-disposition']).toMatch(/attachment; filename="gap-pelatihan-\d{4}-\d{2}-\d{2}\.csv"/);
+      const lines = res.text.replace(/^\uFEFF/, '').trim().split('\r\n');
+      expect(lines[0]).toBe('ID Karyawan,Nama,Email,Kompetensi,Kode Course,Judul Course,Program,Status Rencana');
+      expect(lines).toHaveLength(4);
+      expect(lines).toContain("E-ani,'=Ani,ani@b7.test,Pemahaman SLA,EM-101,Dasar SLA,,Baru");
+      expect(lines.some((l) => l.startsWith('E-beni,beni,beni@b7.test,,,,,'))).toBe(true); // rencana tanpa course ikut
+      const after = await db.query('SELECT id, status, updated_at FROM lna_training_plan_items WHERE tenant_id = :t ORDER BY id', { replacements: { t: tenant.id }, type: 'SELECT' });
+      expect(after).toEqual(before);
+      const log = await audits('tna.plan_items');
+      expect(log.filter((r) => r.action === 'export').pop().meta).toMatchObject({ count: 3 });
+      expect((await request(a).get('/api/tna/plan-items/export.csv').set(as('spv'))).status).toBe(403);
+      const x = await request(a).get('/api/tna/plan-items/export.csv').set(as('xhr'));
+      expect(x.text.replace(/^\uFEFF/, '').trim().split('\r\n')).toHaveLength(1);
+      await setSettings({});
+    });
+  });
+
+  describe('serah ke Improvement Needs', () => {
+    const handoff = (a, ids, who = 'hr') => request(a).post('/api/tna/review/improvement-handoff').set(as(who)).send({ findingIds: ids });
+
+    it('INA mati -> 409; isian salah 400', async () => {
+      const a = app();
+      expect((await handoff(a, [f.h])).body.error.code).toBe('INA_DISABLED');
+      await setFlag('module.ina', true);
+      expect((await handoff(a, [])).status).toBe(400);
+      expect((await handoff(a, ['bukan-uuid'])).status).toBe(400);
+      expect((await handoff(a, [f.h], 'spv')).status).toBe(403);
+    });
+
+    it('meneruskan yang memenuhi syarat; sisanya already atau skipped; terkunci dari klasifikasi ulang', async () => {
+      const a = app();
+      const res = await handoff(a, [f.h, f.t1, f.late, f.x, f.h]);
+      expect(res.status).toBe(200);
+      expect(res.body.data.handedOff).toEqual([f.h]);
+      expect(res.body.data.already).toEqual([]);
+      expect(res.body.data.skipped.sort()).toEqual([f.t1, f.late, f.x].sort());
+      const again = await handoff(a, [f.h]);
+      expect(again.body.data).toEqual({ handedOff: [], already: [f.h], skipped: [] });
+      expect((await classify(a, f.h, 'training')).body.error.code).toBe('ALREADY_ACTIONED');
+      const sol = await request(a).get('/api/tna/review/solutions').set(as('hr'));
+      expect(sol.body.data.inaEnabled).toBe(true);
+      expect(sol.body.data.improvement.find((x) => x.findingId === f.h).handedOffAt).toBeTruthy();
+      expect((await audits('tna.improvement_handoff'))[0].meta).toMatchObject({ objectIds: [f.h] });
+    });
+
+    it('kontrak B9: listImprovementHandoffs tanpa data individu', async () => {
+      const rows = await stores.tna.listImprovementHandoffs(tenant.id);
+      expect(rows).toHaveLength(1);
+      expect(Object.keys(rows[0]).sort()).toEqual(['findingId', 'handedOffAt', 'handedOffBy', 'metricName', 'projectId', 'title']);
+      expect(rows[0]).toMatchObject({ findingId: f.h, projectId, title: 'Ragu-ragu', handedOffBy: u.hr });
+      expect(await stores.tna.listImprovementHandoffs(tenant.id, { since: new Date(Date.now() + 60000) })).toEqual([]);
+      expect(await stores.tna.listImprovementHandoffs(other.id)).toEqual([]);
+    });
+  });
+});

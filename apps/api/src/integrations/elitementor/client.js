@@ -18,10 +18,11 @@ function createElitementorClient({ baseUrl, tokenUrl, clientId, clientSecret, sc
     return cached.token;
   }
 
-  async function request(method, path, { organizationId, body } = {}) {
-    const headers = { Authorization: `Bearer ${await accessToken()}`, 'Content-Type': 'application/json' };
+  /** headers: header tambahan (mis. Idempotency-Key); signal: AbortSignal untuk batas waktu. */
+  async function request(method, path, { organizationId, body, headers: extra, signal } = {}) {
+    const headers = { ...(extra || {}), Authorization: `Bearer ${await accessToken()}`, 'Content-Type': 'application/json' };
     if (organizationId) headers['X-Organization-Id'] = String(organizationId);
-    const res = await fetchImpl(`${baseUrl}${path}`, { method, headers, body: body ? JSON.stringify(body) : undefined });
+    const res = await fetchImpl(`${baseUrl}${path}`, { method, headers, body: body ? JSON.stringify(body) : undefined, signal });
     if (!res.ok) throw new Error(`EliteMentor ${method} ${path} gagal: ${res.status}`);
     return res.status === 204 ? null : res.json();
   }
