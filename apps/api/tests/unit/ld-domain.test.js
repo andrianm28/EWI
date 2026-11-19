@@ -98,6 +98,12 @@ describe('KPI dan insight', () => {
     expect(insights[0]).toMatchObject({ source: 'EliteMentor', detail: expect.stringMatching(/3 dari 6 peserta belum selesai. Batas 09\/12\/2026/) });
     expect(actions.map((a) => `${a.kind}:${a.trainingId}`)).toEqual(['remind:a', 'remind:b', 'open_training:c']);
   });
+  it('peserta yang gagal tidak dihitung "belum selesai" dan tidak diingatkan', () => {
+    const late = decorate(online({ id: 'e', startsOn: '2026-11-01', endsOn: '2026-12-09', completed: 4, failed: 1 }), TODAY);
+    const { insights, actions } = buildInsights([late], TODAY);
+    expect(insights[0].detail).toMatch(/^1 dari 6 peserta belum selesai/);
+    expect(actions[0].title).toBe('Kirim pengingat ke 1 peserta Ticket Life Cycle');
+  });
   it('tidak ada insight bila semua sesuai jadwal', () => {
     expect(buildInsights([decorate(online(), TODAY), decorate(offline(), TODAY)], TODAY)).toEqual({ insights: [], actions: [] });
   });

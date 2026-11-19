@@ -134,7 +134,7 @@ function buildInsights(rows, today) {
     if (action) actions.push({ key: `${action.kind}:${r.id}`, trainingId: r.id, ...action });
   };
   for (const r of rows.filter((x) => ['running', 'upcoming'].includes(x.group))) {
-    const pending = n(r.participants) - n(r.completed);
+    const pending = n(r.participants) - n(r.completed) - n(r.failed); // peserta gagal sudah tuntas, tidak diingatkan
     if (r.health === 'late' && r.mode === 'online') {
       add(r, 'late', `${r.title} tertinggal dari jadwal`, `${pending} dari ${n(r.participants)} peserta belum selesai. Batas ${fmt(r.endsOn)} sudah lewat.`,
         pending > 0 ? { kind: 'remind', title: `Kirim pengingat ke ${pending} peserta ${r.title}`, detail: `Batas ${fmt(r.endsOn)} sudah lewat` } : null);
@@ -169,10 +169,6 @@ const str = (v, max) => (v === null || v === undefined ? '' : String(v).trim().s
 const pct = (v) => (v === null || v === undefined || v === '' ? null : Number(v));
 const inRange = (v) => v === null || (Number.isFinite(v) && v >= 0 && v <= 100);
 
-/**
- * Rapikan event webhook EliteMentor ke bentuk internal. Satu-satunya tempat yang tahu bentuk payload
- * (kontrak belum disepakati, spek §3). Return { event } atau { error }.
- */
 const PG_INT_MAX = 2147483647;
 /** Id dari EliteMentor (angka atau string angka) ke bilangan bulat 1..int4 Postgres; selain itu null. */
 function intId(v) {
@@ -181,6 +177,10 @@ function intId(v) {
   return n >= 1 && n <= PG_INT_MAX ? n : null;
 }
 
+/**
+ * Rapikan event webhook EliteMentor ke bentuk internal. Satu-satunya tempat yang tahu bentuk payload
+ * (kontrak belum disepakati, spek §3). Return { event } atau { error }.
+ */
 function normalizeEvent(raw, now = new Date()) {
   if (!raw || typeof raw !== 'object') return { error: 'payload bukan objek' };
   const id = str(raw.id, 128); const type = str(raw.type, 64);
