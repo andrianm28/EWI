@@ -158,7 +158,7 @@ Unit (`apps/api/tests/unit/dashboard.test.js`, store tiruan yang mencatat cakupa
 
 Integrasi Postgres (`apps/api/tests/integration/dashboard.test.js`): karyawan nonaktif dan temuan non-pelatihan (penyebut `people`, "dianalisis"), `aiReviewCounts` (temuan lama tanpa reviewer tidak dihitung), `analysisDurations` (sesi dengan draf dikecualikan, cakupan), HR ujung ke ujung tanpa data tenant lain, atasan ujung ke ujung dengan audit id bawahan, karyawan ditolak.
 
-E2E (`apps/web/e2e/dashboard.spec.ts`, 14 test): multi-peran di tampilan Atasan memakai label dari `scope`; HR mendarat dengan empat KPI; atasan dua KPI; angka kosong dengan alasan; status modul dan tombol Buka; atasan tiga modul; Pareto dengan chip Prioritas dan kosong; Perlu tindakan dan kosong; galat API; flag mati → Beranda lama; `pimpinan` tetap di Beranda; snapshot terang dan gelap.
+E2E (`apps/web/e2e/dashboard.spec.ts`, 15 test): kunci modul tak dikenal dilewati; Pareto `null` (TNA tertutup); multi-peran di tampilan Atasan memakai label dari `scope`; HR mendarat dengan empat KPI; atasan dua KPI; angka kosong dengan alasan; status modul dan tombol Buka; atasan tiga modul; Pareto dengan chip Prioritas dan kosong; Perlu tindakan dan kosong; galat API; flag mati → Beranda lama; `pimpinan` tetap di Beranda; snapshot terang dan gelap.
 
 Gerbang: `npm run lint`, `npm test`, `npm run build`, `npm run e2e`.
 
