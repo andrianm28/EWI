@@ -44,6 +44,10 @@ describe('entitlement + feature flag gating', () => {
     app = makeApp({ entitlements: { 't-1': ['tna', 'dna'], 't-2': ['full_suite'] } });
     access = await request(app).get('/api/me/access').set('Authorization', `Bearer ${await tokenFor(app)}`);
     expect(access.body.products).toEqual(['dna', 'tna']);
+    // Tanpa entitlement aktif: daftar kosong, bukan field hilang (web gagal-tertutup pada keduanya)
+    app = makeApp({ entitlements: { 't-2': ['full_suite'] } });
+    access = await request(app).get('/api/me/access').set('Authorization', `Bearer ${await tokenFor(app)}`);
+    expect(access.body.products).toEqual([]);
   });
 
   it.each([['li', 'module.li'], ['ld', 'module.ld']])('modul %s (B13/B14) butuh full_suite dan flag-nya', async (mod, flagKey) => {

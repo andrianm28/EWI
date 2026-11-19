@@ -1,4 +1,5 @@
 'use strict';
+const { evaluate } = require('./performance');
 // Prioritas kebutuhan training (Pareto). BT-30 masih terbuka; rumus ★ (target meleset × jumlah orang ×
 // kepentingan kompetensi) dipakai dengan komponen yang bisa dimatikan lewat settings.tna.pareto.
 
@@ -27,4 +28,15 @@ function rankTrainingNeeds(findings, { useMiss = true, useImportance = true } = 
 
 const round = (n) => Math.round(n * 100) / 100;
 
-module.exports = { rankTrainingNeeds };
+/**
+ * Peringkat dari baris temuan apa adanya (hasil stores.tna.listFindings): menghitung missRatio tiap temuan
+ * lalu memeringkatnya. Dipakai GET /tna/pareto dan dashboard utama supaya keduanya selalu sama.
+ */
+function rankFindings(findings, cfg) {
+  return rankTrainingNeeds(findings.map((f) => ({
+    ...f,
+    missRatio: f.target != null ? evaluate({ target: f.target, actual: f.actual, direction: f.direction, tolerance: f.tolerance }).missRatio : null,
+  })), cfg);
+}
+
+module.exports = { rankTrainingNeeds, rankFindings };
