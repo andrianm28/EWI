@@ -234,6 +234,13 @@ run('Learning Intervention (Postgres)', () => {
     expect(log[4].meta).toMatchObject({ reviewerName: 'Pak Budi (SME)', recordedByHr: true });
   });
 
+  it('katalog course untuk menautkan modul hanya milik tenant ini', async () => {
+    const list = (await get('/catalog')).body.data;
+    expect(list.map((c) => c.id)).toContain(catalogItem.id);
+    expect(list.map((c) => c.id)).not.toContain(otherCatalogItem.id);
+    expect((await get('/catalog', 'dimas')).status).toBe(403);
+  });
+
   it('program per jabatan dan level', async () => {
     const p = await get(`/programs?jobRoleId=${role.id}&level=advanced`);
     expect(p.status).toBe(200);

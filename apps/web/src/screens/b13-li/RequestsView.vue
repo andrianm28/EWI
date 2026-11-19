@@ -1,22 +1,27 @@
 <script setup lang="ts">
 // Permintaan & pengembangan modul (mockup, layar `req`): jalur vendor dan jalur pengembangan bersama ELGOS.
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import AppShell from '@/components/AppShell.vue'
 import { ApiError } from '@/api/client'
 import { UiButton, UiCard, UiChip, UiNote, UiStatus } from '@/ui'
-import { li, type RequestStatus, type Requests, type VendorRequest } from './api'
+import { li, type CatalogItem, type RequestStatus, type Requests, type VendorRequest } from './api'
 import { DRAFT_LABEL, NEXT_REQUEST, REQUEST_LABEL, priorityLabel } from './labels'
 
 const router = useRouter()
 const res = ref<Requests | null>(null)
 const error = ref('')
 const busy = ref(false)
+const catalog = ref<CatalogItem[]>([])
+const course = reactive<Record<string, string>>({})
 
 async function load() {
   try { res.value = await li.requests(); error.value = '' } catch (e) { error.value = e instanceof ApiError ? e.message : 'Daftar tidak bisa dimuat' }
 }
-onMounted(load)
+onMounted(async () => {
+  await load()
+  try { catalog.value = (await li.catalog()).data } catch { /* tanpa katalog */ }
+})
 const vendor = computed(() => res.value?.vendorName ?? 'vendor')
 const active = computed(() => (res.value?.data.vendor ?? []).filter((r) => r.status !== 'cancelled'))
 
@@ -24,7 +29,7 @@ async function act(fn: () => Promise<unknown>) {
   busy.value = true; error.value = ''
   try { await fn(); await load() } catch (e) { error.value = e instanceof ApiError ? e.message : 'Tindakan gagal' } finally { busy.value = false }
 }
-const move = (r: VendorRequest, to: RequestStatus) => act(() => li.moveRequest(r.id, to))
+const move = (r: VendorRequest, to: RequestStatus) => act(() => li.moveRequest(r.id, to, to === 'installed' ? course[r.id] || undefined : undefined))
 async function develop(moduleId: string) {
   busy.value = true; error.value = ''
   try { const { data } = await li.startDraft(moduleId); await router.push({ name: 'req-draf', params: { id: data.id } }) }
@@ -48,6 +53,9 @@ async function develop(moduleId: string) {
             <span><span class="el-mono">{{ r.moduleCode }}</span> <b>{{ r.moduleName }}</b></span>
             <UiStatus :tone="r.status === 'installed' ? 'success' : 'info'">{{ REQUEST_LABEL[r.status] }}</UiStatus>
           </div>
+          <label v-if="r.status === 'delivered' && catalog.length" class="el-label li-gap">Course di katalog (opsional)
+            <select v-model="course[r.id]" class="el-input"><option value="">Belum ada</option><option v-for="c in catalog" :key="c.id" :value="c.id">{{ c.title }}</option></select>
+          </label>
           <div v-if="r.status !== 'installed'" class="li-actions">
             <UiButton v-if="NEXT_REQUEST[r.status]" variant="tonal" size="sm" :disabled="busy" @click="move(r, NEXT_REQUEST[r.status]!.to)">{{ NEXT_REQUEST[r.status]!.label }}</UiButton>
             <UiButton variant="text" size="sm" :disabled="busy" @click="move(r, 'cancelled')">Batalkan</UiButton>

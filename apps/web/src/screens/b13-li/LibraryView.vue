@@ -5,7 +5,7 @@ import { useRoute, useRouter } from 'vue-router'
 import AppShell from '@/components/AppShell.vue'
 import { ApiError } from '@/api/client'
 import { UiButton, UiCard, UiChip, UiKpiCard, UiNote, UiStatus } from '@/ui'
-import { li, type Library, type ModuleDetail, type ModuleRow } from './api'
+import { li, type CatalogItem, type Library, type ModuleDetail, type ModuleRow } from './api'
 import { KIND_LABEL, LEVEL_LABEL, jobLabel, pct, priorityLabel, statusLabel } from './labels'
 
 const route = useRoute()
@@ -16,6 +16,8 @@ const error = ref('')
 const notice = ref('')
 const busy = ref(false)
 const filter = reactive({ jobRoleId: '', priority: '', type: '', level: '', stream: '' })
+const catalog = ref<CatalogItem[]>([])
+const courseId = ref('')
 
 async function load() {
   try {
@@ -30,7 +32,10 @@ async function load() {
 async function pick(m: ModuleRow) {
   try { detail.value = (await li.module(m.id, filter.jobRoleId || undefined)).data } catch (e) { error.value = e instanceof ApiError ? e.message : 'Modul tidak bisa dimuat' }
 }
-onMounted(load)
+onMounted(async () => {
+  await load()
+  try { catalog.value = (await li.catalog()).data } catch { /* tanpa katalog, tautan course disembunyikan */ }
+})
 watch(filter, load)
 
 const vendor = computed(() => lib.value?.vendorName ?? 'vendor')
@@ -52,6 +57,7 @@ const requestPriority = () => act(async () => {
   const { data } = await li.requestBulk({ scope: 'pareto', jobRoleId: filter.jobRoleId || undefined })
   return data.created ? `${data.created} permintaan dicatat.` : 'Tidak ada modul prioritas generik yang masih tanpa sumber.'
 })
+const linkCourse = (m: ModuleDetail, id: string | null) => act(async () => { await li.linkCourse(m.id, id); courseId.value = ''; return id ? 'Course ditautkan. Modul kini tersedia.' : 'Tautan course dilepas.' })
 async function develop(m: ModuleDetail) {
   busy.value = true; error.value = ''
   try { const { data } = await li.startDraft(m.id); await router.push({ name: 'req-draf', params: { id: data.id } }) }
@@ -149,7 +155,21 @@ async function develop(m: ModuleDetail) {
           <div v-else-if="detail.draft" class="li-actions">
             <UiButton variant="tonal" :to="{ name: 'req-draf', params: { id: detail.draft.id } }">Buka rancangan modul</UiButton>
           </div>
-          <p v-else-if="detail.request" class="el-muted">Permintaan sudah dicatat. Pantau di <RouterLink :to="{ name: 'req' }">Permintaan &amp; pengembangan</RouterLink>.</p>
+          <p v-else-if="detail.request && detail.request.status !== 'installed'" class="el-muted">Permintaan sudah dicatat. Pantau di <RouterLink :to="{ name: 'req' }">Permintaan &amp; pengembangan</RouterLink>.</p>
+          <section v-if="catalog.length" class="li-gap" aria-label="Course di katalog">
+            <h3 class="el-h3">Course di katalog</h3>
+            <p v-if="detail.catalogItemId" class="li-row">
+              <span>Tertaut ke {{ catalog.find((c) => c.id === detail!.catalogItemId)?.title ?? 'course katalog' }}.</span>
+              <UiButton variant="text" size="sm" :disabled="busy" @click="linkCourse(detail, null)">Lepas tautan</UiButton>
+            </p>
+            <div v-else class="li-filters">
+              <p class="el-muted li-small">Tautkan course yang sudah dipasang di LMS atau EliteMentor supaya modul ini tersedia di rencana belajar.</p>
+              <label class="el-label">Pilih course
+                <select v-model="courseId" class="el-input"><option value="">Pilih course</option><option v-for="c in catalog" :key="c.id" :value="c.id">{{ c.title }}</option></select>
+              </label>
+              <UiButton variant="tonal" size="sm" :disabled="busy || !courseId" @click="linkCourse(detail, courseId)">Tautkan course</UiButton>
+            </div>
+          </section>
         </UiCard>
       </div>
     </template>

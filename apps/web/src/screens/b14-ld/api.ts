@@ -30,7 +30,7 @@ export interface Dashboard {
   actions: { key: string; trainingId: string; kind: 'remind' | 'open_training'; title: string; detail: string }[]
   generatedBy: string
 }
-export interface Options { jobRoles: { id: string; name: string; people: number }[]; employees: { id: string; name: string | null; email: string; jobRoleName: string | null }[]; vendorName: string; storageReady: boolean }
+export interface Options { jobRoles: { id: string; name: string; people: number }[]; employees: { id: string; name: string | null; email: string; jobRoleName: string | null }[]; vendorName: string; storageReady: boolean; webhookSync: boolean }
 
 const token = () => useSessionStore().token
 const call = <T>(path: string, init: RequestInit = {}) => api<T>(`/ld${path}`, init, token())

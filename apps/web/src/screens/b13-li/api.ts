@@ -2,6 +2,7 @@
 import { api } from '@/api/client'
 import { useSessionStore } from '@/stores/session'
 
+export interface CatalogItem { id: string; title: string; source: string; externalRef: string }
 export type Level = 'basic' | 'intermediate' | 'advanced'
 export type ItemKind = 'K' | 'S' | 'A'
 export type StatusKey = 'available' | 'dev_approved' | 'dev_review' | 'dev_draft' | 'delivered' | 'confirmed' | 'requested' | 'none'
@@ -59,7 +60,10 @@ export const li = {
   requestModule: (id: string) => send<{ data: VendorRequest }>('POST', `/modules/${id}/request`),
   requestBulk: (body: { scope: 'pareto' | 'program'; jobRoleId?: string; level?: Level }) => send<{ data: { created: number; skipped: number } }>('POST', '/requests/bulk', body),
   requests: () => call<Requests>('/requests'),
-  moveRequest: (id: string, status: RequestStatus) => send<{ data: VendorRequest }>('PATCH', `/requests/${id}`, { status }),
+  moveRequest: (id: string, status: RequestStatus, catalogItemId?: string) => send<{ data: VendorRequest }>('PATCH', `/requests/${id}`, catalogItemId ? { status, catalogItemId } : { status }),
+  catalog: () => call<{ data: CatalogItem[] }>('/catalog'),
+  linkCourse: (moduleId: string, catalogItemId: string | null) => send<{ data: ModuleRow }>('PATCH', `/modules/${moduleId}`, { catalogItemId }),
+  deleteDraft: (id: string) => call<unknown>(`/drafts/${id}`, { method: 'DELETE' }),
   programs: (f: { jobRoleId?: string | null; level?: Level } = {}) => call<Programs>(`/programs${qs(f)}`),
   startDraft: (moduleId: string) => send<{ data: Draft }>('POST', `/modules/${moduleId}/draft`),
   draft: (id: string) => call<{ data: Draft }>(`/drafts/${id}`),

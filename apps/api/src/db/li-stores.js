@@ -163,6 +163,11 @@ function createLiStores(sequelize) {
       if (jobRoleId) { sql += ' AND f.user_id IN (SELECT u.id FROM users u WHERE u.tenant_id = :tenantId AND u.job_role_id = :jobRoleId)'; rep.jobRoleId = jobRoleId; }
       return select(sql, rep);
     },
+    /** Course aktif di katalog LMS/EliteMentor tenant (pilihan saat menautkan modul). */
+    async listCatalogItems(tenantId) {
+      return select(`SELECT id, title, source, external_ref AS "externalRef" FROM lna_catalog_items
+                      WHERE tenant_id = :tenantId AND active ORDER BY title`, { tenantId });
+    },
     /** Tautkan modul ke course katalog (atau lepas dengan null). Return false bila modul/course bukan milik tenant. */
     async setCatalogItem(tenantId, moduleId, catalogItemId) {
       const rows = await write(

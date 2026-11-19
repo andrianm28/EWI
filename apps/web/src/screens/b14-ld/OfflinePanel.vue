@@ -4,7 +4,7 @@ import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { ApiError } from '@/api/client'
 import { UiButton, UiCard, UiErrorSummary, UiField, UiNote, UiStatus } from '@/ui'
 import { ld, type AssessmentMode, type Doc, type Options, type Training, type TrainingDetail } from './api'
-import { ASSESSMENT, CHECK_LABEL, groupLabel, tanggal } from './labels'
+import { ASSESSMENT, CHECK_LABEL, DOC_KIND_LABEL, groupLabel, tanggal } from './labels'
 
 const props = defineProps<{ trainings: Training[] }>()
 const emit = defineEmits<{ changed: [] }>()
@@ -22,6 +22,7 @@ const assessmentRef = ref('')
 const scores = reactive<Record<string, string>>({})
 const fileInput = ref<HTMLInputElement | null>(null)
 const docKind = ref<Doc['kind']>('photo')
+const edit = reactive({ title: '', vendorName: '', venue: '', startsOn: '', endsOn: '', sessionCount: 1, sessionsDone: 0 })
 
 onMounted(async () => {
   try { options.value = (await ld.options()).data; form.vendorName = options.value.vendorName } catch { /* form tetap bisa dipakai tanpa pilihan */ }
@@ -34,6 +35,8 @@ async function loadDetail() {
     detail.value = (await ld.detail(id)).data
     selected.value = id
     assessmentRef.value = detail.value.assessmentRef ?? ''
+    const t = detail.value
+    Object.assign(edit, { title: t.title, vendorName: t.vendorName ?? '', venue: t.venue ?? '', startsOn: t.startsOn ?? '', endsOn: t.endsOn ?? '', sessionCount: t.sessionCount ?? 1, sessionsDone: t.sessionsDone ?? 0 })
     for (const p of detail.value.participantList) scores[p.userId] = p.score == null ? '' : String(p.score)
   } catch (e) { error.value = e instanceof ApiError ? e.message : 'Pelatihan tidak bisa dimuat' }
 }
@@ -81,6 +84,7 @@ async function download(doc: Doc) {
   } catch (e) { error.value = e instanceof ApiError ? e.message : 'Berkas tidak bisa diunduh' }
 }
 const removeDoc = (doc: Doc) => act(() => ld.removeDoc(doc.id), 'Berkas dihapus.')
+const saveEdit = () => patch({ ...edit, vendorName: edit.vendorName || null, venue: edit.venue || null, endsOn: edit.endsOn || null }, 'Data pelatihan disimpan.')
 const attendanceLabel = (v: boolean | null) => (v === true ? 'Hadir' : v === false ? 'Tidak hadir' : 'Belum dicatat')
 </script>
 
@@ -121,6 +125,20 @@ const attendanceLabel = (v: boolean | null) => (v === true ? 'Hadir' : v === fal
         <UiButton variant="text" size="sm" :disabled="busy" @click="patch({ status: 'cancelled' }, 'Pelatihan dibatalkan.')">Batalkan pelatihan</UiButton>
       </div>
 
+      <details v-if="!closed" class="ld-gap">
+        <summary>Ubah jadwal dan data pelatihan</summary>
+        <form class="ld-form ld-gap" @submit.prevent="saveEdit">
+          <UiField id="ld-ubah-judul" v-slot="{ attrs }" label="Judul"><input v-bind="attrs" v-model="edit.title" class="el-input" type="text"></UiField>
+          <UiField id="ld-ubah-vendor" v-slot="{ attrs }" label="Vendor atau penyedia"><input v-bind="attrs" v-model="edit.vendorName" class="el-input" type="text"></UiField>
+          <UiField id="ld-ubah-tempat" v-slot="{ attrs }" label="Tempat"><input v-bind="attrs" v-model="edit.venue" class="el-input" type="text"></UiField>
+          <UiField id="ld-ubah-mulai" v-slot="{ attrs }" label="Tanggal mulai"><input v-bind="attrs" v-model="edit.startsOn" class="el-input" type="date"></UiField>
+          <UiField id="ld-ubah-selesai" v-slot="{ attrs }" label="Tanggal selesai"><input v-bind="attrs" v-model="edit.endsOn" class="el-input" type="date"></UiField>
+          <UiField id="ld-ubah-sesi" v-slot="{ attrs }" label="Jumlah sesi"><input v-bind="attrs" v-model.number="edit.sessionCount" class="el-input" type="number" min="1" max="100"></UiField>
+          <UiField id="ld-ubah-selesai-sesi" v-slot="{ attrs }" label="Sesi yang sudah berjalan"><input v-bind="attrs" v-model.number="edit.sessionsDone" class="el-input" type="number" min="0" :max="edit.sessionCount"></UiField>
+          <UiButton type="submit" variant="tonal" :disabled="busy">Simpan data pelatihan</UiButton>
+        </form>
+      </details>
+
       <h3 class="el-h3 ld-gap">Kelengkapan data</h3>
       <ul class="ld-list" aria-label="Kelengkapan data">
         <li v-for="c in d.readiness" :key="c.key" class="ld-item">
@@ -158,8 +176,8 @@ const attendanceLabel = (v: boolean | null) => (v === true ? 'Hadir' : v === fal
                 <span v-else>{{ p.score ?? '–' }}</span>
               </td>
               <td class="ld-chips">
-                <UiButton variant="text" size="sm" :disabled="busy" @click="mark(p.userId, true)">Hadir</UiButton>
-                <UiButton variant="text" size="sm" :disabled="busy" @click="mark(p.userId, false)">Tidak hadir</UiButton>
+                <UiButton v-if="!closed" variant="text" size="sm" :disabled="busy" @click="mark(p.userId, true)">Hadir</UiButton>
+                <UiButton v-if="!closed" variant="text" size="sm" :disabled="busy" @click="mark(p.userId, false)">Tidak hadir</UiButton>
                 <UiButton v-if="!closed" variant="text" size="sm" :disabled="busy" :aria-label="`Hapus ${p.name ?? p.email} dari peserta`" @click="removeOne(p.userId)">Hapus</UiButton>
               </td>
             </tr>
@@ -167,7 +185,7 @@ const attendanceLabel = (v: boolean | null) => (v === true ? 'Hadir' : v === fal
         </table>
       </div>
       <div v-if="d.participantList.length" class="ld-actions">
-        <UiButton variant="outlined" size="sm" :disabled="busy" @click="allPresent">Catat semua hadir</UiButton>
+        <UiButton v-if="!closed" variant="outlined" size="sm" :disabled="busy" @click="allPresent">Catat semua hadir</UiButton>
         <UiButton v-if="d.assessmentMode === 'vendor_manual'" size="sm" :disabled="busy" @click="saveScores">Simpan skor</UiButton>
       </div>
 
@@ -175,11 +193,11 @@ const attendanceLabel = (v: boolean | null) => (v === true ? 'Hadir' : v === fal
       <UiCard tonal>
         <p><b>{{ ASSESSMENT[d.assessmentStatus].label }}</b></p>
         <p class="el-muted ld-small">{{ ASSESSMENT[d.assessmentStatus].text }}</p>
-        <UiField id="ld-kode-asesmen" v-slot="{ attrs }" label="Kode asesmen di EliteMentor" hint="Diperlukan bila skor diambil dari EliteMentor">
+        <UiField id="ld-kode-asesmen" v-slot="{ attrs }" label="Kode asesmen di EliteMentor" :hint="options?.webhookSync ? 'Diperlukan bila skor diambil dari EliteMentor' : 'Sinkron skor dari EliteMentor belum diaktifkan. Pakai input skor dari vendor.'">
           <input v-bind="attrs" v-model="assessmentRef" class="el-input" type="text">
         </UiField>
         <div class="ld-actions">
-          <UiButton variant="tonal" size="sm" :disabled="busy || !assessmentRef.trim()" @click="setMode('elitementor')">Ambil skor dari EliteMentor</UiButton>
+          <UiButton variant="tonal" size="sm" :disabled="busy || !assessmentRef.trim() || !options?.webhookSync" @click="setMode('elitementor')">Ambil skor dari EliteMentor</UiButton>
           <UiButton variant="tonal" size="sm" :disabled="busy" @click="setMode('vendor_manual')">Input skor dari vendor</UiButton>
           <UiButton v-if="d.assessmentMode !== 'none'" variant="text" size="sm" :disabled="busy" @click="setMode('none')">Tanpa asesmen</UiButton>
         </div>
@@ -190,7 +208,7 @@ const attendanceLabel = (v: boolean | null) => (v === true ? 'Hadir' : v === fal
       <p v-if="!d.documents.length" class="el-muted">Belum ada berkas.</p>
       <ul class="ld-list" aria-label="Berkas dokumentasi">
         <li v-for="doc in d.documents" :key="doc.id" class="ld-item ld-row">
-          <span>{{ doc.filename }} <span class="el-muted ld-small">· {{ doc.kind === 'material' ? 'materi' : doc.kind === 'photo' ? 'foto' : 'video' }} · {{ Math.max(1, Math.round(doc.sizeBytes / 1024)) }} KB</span></span>
+          <span>{{ doc.filename }} <span class="el-muted ld-small">· {{ DOC_KIND_LABEL[doc.kind] }} · {{ Math.max(1, Math.round(doc.sizeBytes / 1024)) }} KB</span></span>
           <span class="ld-chips">
             <UiButton variant="text" size="sm" icon="download" @click="download(doc)">Unduh</UiButton>
             <UiButton variant="text" size="sm" :disabled="busy" @click="removeDoc(doc)">Hapus</UiButton>

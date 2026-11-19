@@ -1,4 +1,4 @@
-import type { AssessmentStatus, CheckKey, Health, Training } from './api'
+import type { AssessmentStatus, CheckKey, Doc, Health, Training } from './api'
 
 type Tone = 'success' | 'warning' | 'critical' | 'info' | 'neutral'
 export const SOURCE_LABEL: Record<Training['source'], string> = { manual: 'Input HR', elitementor: 'EliteMentor', lms: 'LMS klien' }
@@ -24,3 +24,4 @@ export function groupLabel(t: Training): { text: string; tone: Tone } {
   if (t.group === 'upcoming') return { text: 'Akan datang', tone: 'info' }
   return { text: 'Berjalan', tone: 'info' }
 }
+export const DOC_KIND_LABEL: Record<Doc['kind'], string> = { material: 'materi', photo: 'foto', video: 'video' }

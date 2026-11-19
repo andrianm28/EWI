@@ -128,6 +128,9 @@ module.exports = {
       res.json({ data: summary(rows.find((x) => x.id === req.params.id)) });
     }));
 
+    // Pilihan course katalog untuk menautkan modul (tanpa data individu)
+    r.get('/catalog', hr, wrap(async (req, res) => res.json({ data: await stores.li.listCatalogItems(req.tenantId) })));
+
     // --- Permintaan ke vendor ---
     async function requestModule(req, moduleId, vendorName) {
       const out = await stores.li.createRequest(req.tenantId, moduleId, { vendorName, userId: req.user.id });

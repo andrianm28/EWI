@@ -17,6 +17,14 @@ const error = ref('')
 const notice = ref('')
 const busy = ref(false)
 const openId = ref<string | null>(null)
+const dates = ref({ id: '', startsOn: '', endsOn: '' })
+const onlineRows = computed(() => rows.value.filter((t) => t.source !== 'manual' && ['running', 'upcoming'].includes(t.group)))
+function pickDates(id: string) { const t = rows.value.find((x) => x.id === id); dates.value = { id, startsOn: t?.startsOn ?? '', endsOn: t?.endsOn ?? '' } }
+async function saveDates() {
+  busy.value = true; error.value = ''; notice.value = ''
+  try { await ld.patch(dates.value.id, { startsOn: dates.value.startsOn || null, endsOn: dates.value.endsOn || null }); notice.value = 'Tanggal pelatihan disimpan.'; await load() }
+  catch (e) { error.value = e instanceof ApiError ? e.message : 'Tanggal tidak bisa disimpan' } finally { busy.value = false }
+}
 
 async function load() {
   try {
@@ -67,7 +75,7 @@ async function runAction(a: Dashboard['actions'][number]) {
         <UiKpiCard label="Program berjalan" :value="dash.kpis.running" :note="`${dash.kpis.online} online · ${dash.kpis.offline} offline`" />
         <UiKpiCard label="Peserta aktif" :value="dash.kpis.activeLearners" note="belum selesai" />
         <UiKpiCard label="Rata-rata progres" :value="`${dash.kpis.avgProgress}%`" />
-        <UiKpiCard label="Perlu perhatian" :value="dash.kpis.attention" :note="`${dash.kpis.upcoming} akan datang`" />
+        <UiKpiCard label="Perlu perhatian" :value="dash.kpis.attention"  />
       </div>
       <div class="el-grid el-grid-2 ld-gap">
         <UiCard as="section" aria-label="Insight">
@@ -101,6 +109,18 @@ async function runAction(a: Dashboard['actions'][number]) {
         <template #cell-health="{ row }"><UiStatus :tone="HEALTH[asTraining(row).health].tone">{{ HEALTH[asTraining(row).health].text }}</UiStatus></template>
         <template #cell-endsOn="{ row }">{{ tanggal(asTraining(row).endsOn) }}</template>
       </UiDataTable>
+      <UiCard v-if="onlineRows.length" tonal class="ld-gap" as="section" aria-label="Atur tanggal pelatihan online">
+        <h2 class="el-h3">Atur tanggal pelatihan online</h2>
+        <p class="el-muted ld-small">Data lain datang dari EliteMentor atau LMS. Batas yang diisi HR tidak ditimpa sinkron.</p>
+        <form class="ld-dates" @submit.prevent="saveDates">
+          <label class="el-label">Pelatihan
+            <select v-model="dates.id" class="el-input" @change="pickDates(dates.id)"><option value="">Pilih pelatihan</option><option v-for="t in onlineRows" :key="t.id" :value="t.id">{{ t.title }}</option></select>
+          </label>
+          <label class="el-label">Tanggal mulai<input v-model="dates.startsOn" class="el-input" type="date" :disabled="!dates.id"></label>
+          <label class="el-label">Batas<input v-model="dates.endsOn" class="el-input" type="date" :disabled="!dates.id"></label>
+          <UiButton type="submit" variant="tonal" size="sm" :disabled="busy || !dates.id">Simpan tanggal</UiButton>
+        </form>
+      </UiCard>
       <p class="el-muted ld-small ld-gap">Data pelatihan online masuk otomatis; progres, skor, dan kehadiran offline berasal dari input HR di tab Pelatihan offline.</p>
     </div>
 
@@ -131,4 +151,5 @@ async function runAction(a: Dashboard['actions'][number]) {
 .ld-chips { display: flex; gap: 8px; flex-wrap: wrap; }
 .ld-bar { display: flex; gap: 8px; align-items: center; min-width: 140px; }
 .ld-bar > :first-child { flex: 1; }
+.ld-dates { display: flex; gap: 12px; flex-wrap: wrap; align-items: end; }
 </style>

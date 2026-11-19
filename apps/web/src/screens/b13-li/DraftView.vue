@@ -1,7 +1,7 @@
 <script setup lang="ts">
 // Pengembangan modul (mockup, layar `lidev`): tujuan → rancangan materi → asesmen → tinjau dan ajukan ke SME.
 import { computed, onMounted, ref } from 'vue'
-import { useRoute } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import AppShell from '@/components/AppShell.vue'
 import { ApiError } from '@/api/client'
 import { UiAuditLine, UiButton, UiCard, UiErrorSummary, UiField, UiNote, UiStatus, UiStepper } from '@/ui'
@@ -9,6 +9,7 @@ import { li, type Draft } from './api'
 import { DRAFT_LABEL, KIND_LABEL, LEVEL_LABEL } from './labels'
 
 const route = useRoute()
+const router = useRouter()
 const draft = ref<Draft | null>(null)
 const error = ref('')
 const notice = ref('')
@@ -45,6 +46,11 @@ const save = () => act(() => li.saveDraft(draft.value!.id, { objectives: draft.v
 async function submit() {
   await save()
   if (!error.value) await act(() => li.submitDraft(draft.value!.id), 'Draf diajukan untuk tinjauan SME.')
+}
+async function remove() {
+  busy.value = true; error.value = ''
+  try { await li.deleteDraft(draft.value!.id); await router.push({ name: 'req' }) }
+  catch (e) { error.value = e instanceof ApiError ? e.message : 'Draf tidak bisa dihapus' } finally { busy.value = false }
 }
 const review = (decision: 'approved' | 'returned') => act(
   () => li.reviewDraft(draft.value!.id, { decision, note: reviewNote.value, reviewerName: reviewerName.value }),
@@ -125,6 +131,7 @@ const review = (decision: 'approved' | 'returned') => act(
           <UiButton v-if="step !== 'ajukan'" @click="go(1)">Lanjut</UiButton>
           <UiButton v-else-if="editable" :disabled="busy || vague > 0" @click="submit">Kirim ke SME untuk tinjauan</UiButton>
           <UiButton variant="text" :to="{ name: 'req' }">Ke daftar permintaan</UiButton>
+          <UiButton v-if="editable" variant="text" :disabled="busy" @click="remove">Hapus draf</UiButton>
         </div>
         <UiAuditLine class="li-gap" :items="['Draf awal dari templat ELGOS', 'Sumber: DACUM Tool 1 dan Tool 2', 'Perlu persetujuan SME sebelum dipakai']" />
       </UiCard>

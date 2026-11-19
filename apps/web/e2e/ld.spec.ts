@@ -44,8 +44,9 @@ async function setup(page: Page, calls: { method: string; url: string; body: unk
       } } })
     }
     if (path === '/trainings' && req.method() === 'GET') return r.fulfill({ json: { data: [ONLINE, OFFLINE, ...created] } })
-    if (path === '/options') return r.fulfill({ json: { data: { vendorName: 'Mahaka Institute', storageReady: true, jobRoles: [{ id: 'jr-1', name: 'Engineer', people: 2 }], employees: [{ id: 'u-s', name: 'Sari', email: 's@demo.test', jobRoleName: null }] } } })
+    if (path === '/options') return r.fulfill({ json: { data: { vendorName: 'Mahaka Institute', storageReady: true, webhookSync: false, jobRoles: [{ id: 'jr-1', name: 'Engineer', people: 2 }], employees: [{ id: 'u-s', name: 'Sari', email: 's@demo.test', jobRoleName: null }] } } })
     if (path === '/trainings' && req.method() === 'POST') { const t = { ...OFFLINE, id: 't-3', title: body.title }; created.push(t); return r.fulfill({ status: 201, json: { data: t } }) }
+    if (path === '/trainings/t-1' && req.method() === 'PATCH') return r.fulfill({ json: { data: ONLINE } })
     if (path === '/trainings/t-1/reminders') return r.fulfill({ status: 201, json: { data: { recipients: 3, sent: 3, failed: 0 } } })
     if (path.startsWith('/trainings/t-2') || path.startsWith('/trainings/t-3')) {
       if (path.endsWith('/attendance')) detail = { ...detail, participantList: detail.participantList.map((p) => ({ ...p, attendance: true })) }
@@ -86,6 +87,11 @@ test('Sedang berjalan dan Akan datang: filter jenis, status, dan cek kesiapan', 
   await expect(table.getByRole('row').nth(1)).toContainText('ITIL Foundation')
   await expect(table).toContainText('Terlambat')
   await expect(table).toContainText('LMS klien')
+  const dates = page.getByRole('region', { name: 'Atur tanggal pelatihan online' })
+  await dates.getByLabel('Pelatihan').selectOption('t-1')
+  await dates.getByLabel('Batas').fill('2026-12-20')
+  await dates.getByRole('button', { name: 'Simpan tanggal' }).click()
+  await expect(page.getByTestId('info')).toHaveText('Tanggal pelatihan disimpan.')
   await page.getByRole('group', { name: 'Jenis' }).getByRole('button', { name: 'Offline' }).click()
   await expect(table).toContainText('Belum ada pelatihan yang berjalan.')
 
@@ -105,8 +111,8 @@ test('Pelatihan offline: validasi form, kehadiran, asesmen dari vendor, skor, da
   await page.getByRole('tab', { name: 'Pelatihan offline' }).click()
   await page.getByRole('button', { name: 'Tambahkan' }).click()
   await expect(page.getByRole('alert')).toContainText('Isi judul pelatihan')
-  await expect(page.getByLabel('Vendor atau penyedia')).toHaveValue('Mahaka Institute')
-  await page.getByLabel('Judul pelatihan').fill('Kelas Komunikasi')
+  await expect(page.locator('#ld-vendor')).toHaveValue('Mahaka Institute')
+  await page.locator('#ld-judul').fill('Kelas Komunikasi')
   await page.getByLabel('Tanggal', { exact: true }).fill('2026-12-01')
   await page.getByRole('button', { name: 'Tambahkan' }).click()
   await expect.poll(() => calls.find((c) => c.method === 'POST' && c.url === '/trainings')?.body).toMatchObject({ title: 'Kelas Komunikasi', startsOn: '2026-12-01', vendorName: 'Mahaka Institute' })
@@ -114,6 +120,12 @@ test('Pelatihan offline: validasi form, kehadiran, asesmen dari vendor, skor, da
   await page.getByRole('button', { name: /Workshop RCA/ }).click()
   const d = page.getByTestId('detail-pelatihan')
   await expect(d).toContainText('Daftar kehadiran: belum lengkap')
+  // sinkron EliteMentor mati: pilihan skor dari EliteMentor terkunci
+  await expect(page.getByRole('button', { name: 'Ambil skor dari EliteMentor' })).toBeDisabled()
+  await d.getByText('Ubah jadwal dan data pelatihan').click()
+  await page.locator('#ld-ubah-tempat').fill('Ruang Rajawali')
+  await page.getByRole('button', { name: 'Simpan data pelatihan' }).click()
+  await expect.poll(() => calls.find((c) => c.method === 'PATCH' && c.url === '/trainings/t-2')?.body).toMatchObject({ venue: 'Ruang Rajawali', title: 'Workshop RCA' })
   await page.getByRole('button', { name: 'Catat semua hadir' }).click()
   await expect(d.getByRole('table')).toContainText('Hadir')
   await page.getByRole('button', { name: 'Input skor dari vendor' }).click()

@@ -76,7 +76,8 @@ module.exports = {
     // Pilihan peserta (jabatan dan karyawan). HR melihat semua karyawan tenant (RG-3).
     r.get('/options', wrap(async (req, res) => {
       const conf = await settings.get(req.tenantId);
-      res.json({ data: { ...(await stores.ld.participantOptions(req.tenantId)), vendorName: conf.li.vendorName, storageReady: !!storage } });
+      const webhookSync = await flags.isEnabled(req.tenantId, FLAGS.WEBHOOK_SYNC);
+      res.json({ data: { ...(await stores.ld.participantOptions(req.tenantId)), vendorName: conf.li.vendorName, storageReady: !!storage, webhookSync } });
     }));
 
     // --- Pelatihan offline ---

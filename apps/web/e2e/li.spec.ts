@@ -40,7 +40,7 @@ async function setup(page: Page, calls: { method: string; url: string; body: unk
       } })
     }
     const m = path.match(/^\/modules\/(m-\d)$/)
-    if (m) {
+    if (m && req.method() === 'GET') {
       const row = m[1] === 'm-1' ? RCA : ITIL
       return r.fulfill({ json: { data: { ...row, objective: 'Tujuan modul', vendorName: VENDOR, items: [{ kind: 'K', text: 'Konsep dasar' }, { kind: 'S', text: 'Praktik' }, { kind: 'A', text: 'Teliti' }] } } })
     }
@@ -54,6 +54,9 @@ async function setup(page: Page, calls: { method: string; url: string; body: unk
         candidates: [],
       } } })
     }
+    if (path === '/catalog') return r.fulfill({ json: { data: [{ id: 'c-1', title: 'Course RCA di LMS', source: 'moodle', externalRef: 'C-1' }] } })
+    if (path === '/modules/m-1' && req.method() === 'PATCH') return r.fulfill({ json: { data: RCA } })
+    if (path === '/drafts/d-1' && req.method() === 'DELETE') return r.fulfill({ status: 204, body: '' })
     if (path === '/requests/rq-1') return r.fulfill({ json: { data: { id: 'rq-1', status: body.status } } })
     if (path === '/programs') {
       return r.fulfill({ json: { vendorName: VENDOR, data: {
@@ -126,6 +129,13 @@ test('Kembangkan dengan ELGOS: draf melewati empat tahap, diajukan, lalu keputus
   await page.getByRole('button', { name: 'Catat: disetujui SME' }).click()
   await expect(page.getByTestId('status-draf')).toHaveText('Disetujui SME')
   expect(calls.find((c) => c.url === '/drafts/d-1/review')?.body).toMatchObject({ decision: 'approved', reviewerName: 'Budi' })
+
+  // rancangan disetujui: modul menjadi tersedia setelah course katalog ditautkan
+  await page.goto('/lib')
+  await page.getByLabel('Pilih course').selectOption('c-1')
+  await page.getByRole('button', { name: 'Tautkan course' }).click()
+  await expect(page.getByTestId('info')).toHaveText('Course ditautkan. Modul kini tersedia.')
+  expect(calls.find((c) => c.method === 'PATCH' && c.url === '/modules/m-1')?.body).toEqual({ catalogItemId: 'c-1' })
 })
 
 test('Program & Course dan Permintaan: kamus belum ada, permintaan massal, dan langkah vendor dicatat', async ({ page }) => {
