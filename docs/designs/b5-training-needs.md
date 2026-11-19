@@ -414,4 +414,5 @@ Dua sumbu paralel atas `git diff 3bf15c2...HEAD` (layar B5/B6 dan kolom API deta
 | Spec | Teks pengantar, judul "Perlu dikerjakan"/"Riwayat", label "Ditugaskan"/"Undangan berakhir" tidak disebut spek | **Terima**: dari mockup, tidak mengubah kontrak |
 | Spec | Perubahan `gating.spec.ts`/`shell.spec.ts` di luar spek | **Terima**: dipaksa judul `Training Needs` dan menu `iv` baru; dicatat di sini |
 | Standards | Duplikasi `call`/`post`, `ALL_VIEWS`, pola `ApiError ? message : …`; `tna.css` dipakai B6 | **Tunda** ke `/mattpocock-skills:to-tickets` bersama tipe Gap bersama |
+| Integrasi | Antarmuka `e2e/support/` B18 rilis (scbrmb `2d0f231`) | **Perbaiki**: `tna-gap.spec.ts` dan `iv.spec.ts` memakai `loginSebagai` + `mockApi`/`cocok`, dengan `afterEach` memeriksa `permintaanBelumDimock` kosong; test atasan kini memeriksa tombol Batalkan tidak tampil untuk penugasan HR, dan test baru HR membatalkan dengan galat API |
 | Standards | `assignedBy` (id pengguna) ikut terkirim ke atasan | **Terima**: id saja, tanpa nama; dibutuhkan untuk tombol Batalkan atasan penugas |

@@ -1,9 +1,10 @@
-import { test, expect, type Page, type Route } from '@playwright/test'
+import { test, expect, type Page } from '@playwright/test'
+import { loginSebagai, type Peran } from './support/sesi'
+import { mockApi, cocok, permintaanBelumDimock, type ResponsApi } from './support/api'
 
 // B6 Wawancara akar masalah: daftar sesi dan alur persetujuan → wawancara → ringkasan → selesai.
 // Spek: docs/designs/b6-wawancara-akar-masalah.md bagian 15. API di-mock.
 
-const ACCESS = { submodules: ['cca', 'dna', 'tna', 'ina'], flags: { 'module.dna': true, 'module.tna': true } as Record<string, boolean> }
 const SUMMARY_ON = { 'tna.interview_summary': true }
 
 interface State {
@@ -28,71 +29,70 @@ function summaryStateOf(s: State) {
   return s.summaryAt ? 'pending' : 'not_applicable'
 }
 
-async function setup(page: Page, o: { role?: string; userId?: string; flags?: Record<string, boolean>; state?: Partial<State>; interviewee?: boolean } = {}) {
-  const role = o.role ?? 'learner'
-  const userId = o.userId ?? 'u-1'
+/** Masuk lewat support/ B18 (loginSebagai + mockApi) dengan sesi s1 berstate. Mengembalikan permintaan tulis yang dikirim layar. */
+async function setup(page: Page, o: { peran?: Peran; flags?: Record<string, boolean>; state?: Partial<State>; interviewee?: boolean; summary?: ResponsApi } = {}) {
+  const peran = o.peran ?? 'karyawan'
+  const me = `u-${peran}`
   const sent: Sent[] = []
   const s: State = { status: 'scheduled', summaryAt: null, restartCount: 0, summaryConfirmedAt: null, summaryDisputed: false, turns: [], ...o.state }
-  const ok = (r: Route, data: unknown, status = 200) => r.fulfill({ status, json: { data } })
-  const user = { id: userId, tenantId: 't-1', email: `${role}@demo.test`, role }
-  await page.route('**/api/auth/login', (r) => r.fulfill({ json: { token: 't', user } }))
-  await page.route('**/api/auth/me', (r) => r.fulfill({ json: { user } }))
-  await page.route('**/api/me/access', (r) => r.fulfill({ json: { ...ACCESS, flags: { ...ACCESS.flags, ...(o.flags ?? {}) } } }))
-  await page.route('**/api/tna/sessions', (r) => ok(r, [
-    { id: 's1', projectId: 'p1', intervieweeId: 'u-1', intervieweeName: 'Dimas', status: s.status, triggerCount: 0, focusKind: 'competency', focusLabel: 'Analisis insiden', durationMinutes: 15, inviteExpiresAt: '2026-12-05T16:59:59.000Z' },
-    { id: 's0', projectId: 'p1', intervieweeId: 'u-1', intervieweeName: 'Dimas', status: 'completed', triggerCount: 1, focusKind: null, focusLabel: null, durationMinutes: null, inviteExpiresAt: '2026-11-10T16:59:59.000Z' },
-  ]))
-  await page.route('**/api/tna/sessions/s1', (r) => {
-    const base = { id: 's1abcdef-0000-4000-8000-000000000000', status: s.status, step: stepOf(s), summaryState: summaryStateOf(s), focusLabel: 'Analisis insiden', durationMinutes: 15 }
-    if (o.interviewee === false) return ok(r, { ...base, transcriptVisible: false })
-    return ok(r, {
-      ...base, transcriptVisible: true, turns: s.turns, consentVersionRequired: 'tna-consent-id-v1.0',
-      answerCount: s.turns.filter((t) => t.speaker === 'human').length, questionLimit: 5, restartCount: s.restartCount, restartsLeft: 2 - s.restartCount,
-      summaryAt: s.summaryAt, summaryConfirmedAt: s.summaryConfirmedAt, aiLabel: 'ELGOS-AI', sessionCode: 'S1ABCDEF',
-    })
+  const data = (d: unknown, status = 200): ResponsApi => ({ status, json: { data: d } })
+  const ringkasan = () => ({ findings: FINDINGS, createdAt: s.summaryAt, confirmedAt: null, state: 'pending' })
+  await mockApi(page, (req) => {
+    if (cocok(req, 'GET /tna/sessions')) return data([
+      { id: 's1', projectId: 'p1', intervieweeId: me, intervieweeName: 'Dimas', status: s.status, triggerCount: 0, focusKind: 'competency', focusLabel: 'Analisis insiden', durationMinutes: 15, inviteExpiresAt: '2026-12-05T16:59:59.000Z' },
+      { id: 's0', projectId: 'p1', intervieweeId: me, intervieweeName: 'Dimas', status: 'completed', triggerCount: 1, focusKind: null, focusLabel: null, durationMinutes: null, inviteExpiresAt: '2026-11-10T16:59:59.000Z' },
+    ])
+    if (cocok(req, 'GET /tna/sessions/s1')) {
+      const base = { id: 's1abcdef-0000-4000-8000-000000000000', status: s.status, step: stepOf(s), summaryState: summaryStateOf(s), focusLabel: 'Analisis insiden', durationMinutes: 15 }
+      if (o.interviewee === false) return data({ ...base, transcriptVisible: false })
+      return data({
+        ...base, transcriptVisible: true, turns: s.turns, consentVersionRequired: 'tna-consent-id-v1.0',
+        answerCount: s.turns.filter((t) => t.speaker === 'human').length, questionLimit: 5, restartCount: s.restartCount, restartsLeft: 2 - s.restartCount,
+        summaryAt: s.summaryAt, summaryConfirmedAt: s.summaryConfirmedAt, aiLabel: 'ELGOS-AI', sessionCode: 'S1ABCDEF',
+      })
+    }
+    if (cocok(req, 'POST /tna/sessions/s1/consent')) {
+      sent.push({ path: 'consent', body: req.body })
+      s.status = 'in_progress'
+      const q = { speaker: 'ai' as const, text: 'Ceritakan analisis insiden terakhir yang Anda kerjakan.', at: '' }
+      s.turns.push(q)
+      return data({ status: 'in_progress', consentVersion: 'tna-consent-id-v1.0', question: q })
+    }
+    if (cocok(req, 'POST /tna/sessions/s1/turns')) {
+      const body = req.body as { text: string }
+      sent.push({ path: 'turns', body })
+      s.turns.push({ speaker: 'human', text: body.text, at: '' })
+      return data({ question: null, done: true })
+    }
+    if (cocok(req, 'GET /tna/sessions/s1/summary')) return o.summary ?? data(ringkasan())
+    if (cocok(req, 'POST /tna/sessions/s1/summary')) {
+      sent.push({ path: 'summary', body: null })
+      s.summaryAt = s.summaryAt ?? '2026-11-20T03:00:00.000Z'
+      return data(ringkasan(), 201)
+    }
+    if (cocok(req, 'POST /tna/sessions/s1/summary/confirm')) {
+      sent.push({ path: 'confirm', body: req.body })
+      s.status = 'completed'; s.summaryConfirmedAt = '2026-11-20T03:05:00.000Z'; s.summaryDisputed = (req.body as { accurate?: boolean }).accurate === false
+      return data({ status: 'completed', analysis: { status: 'queued' }, summaryState: summaryStateOf(s) }, 202)
+    }
+    if (cocok(req, 'POST /tna/sessions/s1/restart')) {
+      sent.push({ path: 'restart', body: null })
+      s.status = 'scheduled'; s.summaryAt = null; s.turns = []; s.restartCount += 1
+      return data({ status: 'scheduled', restartCount: s.restartCount, restartsLeft: 2 - s.restartCount })
+    }
+    if (cocok(req, 'POST /tna/sessions/s1/complete')) {
+      sent.push({ path: 'complete', body: null })
+      s.status = 'completed'
+      return data({ status: 'completed', analysis: { status: 'queued' } }, 202)
+    }
+    return undefined
   })
-  await page.route('**/api/tna/sessions/s1/consent', (r) => {
-    sent.push({ path: 'consent', body: r.request().postDataJSON() })
-    s.status = 'in_progress'
-    const q = { speaker: 'ai' as const, text: 'Ceritakan analisis insiden terakhir yang Anda kerjakan.', at: '' }
-    s.turns.push(q)
-    return ok(r, { status: 'in_progress', consentVersion: 'tna-consent-id-v1.0', question: q })
-  })
-  await page.route('**/api/tna/sessions/s1/turns', (r) => {
-    const body = r.request().postDataJSON() as { text: string }
-    sent.push({ path: 'turns', body })
-    s.turns.push({ speaker: 'human', text: body.text, at: '' })
-    return ok(r, { question: null, done: true })
-  })
-  await page.route('**/api/tna/sessions/s1/summary', (r) => {
-    sent.push({ path: 'summary', body: null })
-    s.summaryAt = s.summaryAt ?? '2026-11-20T03:00:00.000Z'
-    return ok(r, { findings: FINDINGS, createdAt: s.summaryAt, confirmedAt: null, state: 'pending' }, 201)
-  })
-  await page.route('**/api/tna/sessions/s1/summary/confirm', (r) => {
-    const body = r.request().postDataJSON()
-    sent.push({ path: 'confirm', body })
-    s.status = 'completed'; s.summaryConfirmedAt = '2026-11-20T03:05:00.000Z'; s.summaryDisputed = (body as { accurate?: boolean }).accurate === false
-    return ok(r, { status: 'completed', analysis: { status: 'queued' }, summaryState: summaryStateOf(s) }, 202)
-  })
-  await page.route('**/api/tna/sessions/s1/restart', (r) => {
-    sent.push({ path: 'restart', body: null })
-    s.status = 'scheduled'; s.summaryAt = null; s.turns = []; s.restartCount += 1
-    return ok(r, { status: 'scheduled', restartCount: s.restartCount, restartsLeft: 2 - s.restartCount })
-  })
-  await page.route('**/api/tna/sessions/s1/complete', (r) => {
-    sent.push({ path: 'complete', body: null })
-    s.status = 'completed'
-    return ok(r, { status: 'completed', analysis: { status: 'queued' } }, 202)
-  })
-  await page.goto('/login')
-  await page.getByLabel('Organisasi').fill('demo')
-  await page.getByLabel('Email').fill(user.email)
-  await page.getByLabel('Password').fill(`pw-${Date.now()}`)
-  await page.getByRole('button', { name: 'Masuk' }).click()
-  await expect(page.getByTestId('card-dna')).toBeVisible()
+  await loginSebagai(page, peran, { submodules: ['cca', 'dna', 'tna', 'ina'], flags: o.flags })
   return sent
 }
+
+// Layar tidak boleh bergantung pada endpoint yang tidak di-mock (jaring pengaman support/api.ts)
+test.afterEach(({ page }) => { expect(permintaanBelumDimock(page)).toEqual([]) })
 
 test('daftar wawancara menampilkan topik, durasi, tenggat, dan riwayat', async ({ page }) => {
   await setup(page)
@@ -143,7 +143,6 @@ test('alur lengkap: persetujuan, jawaban, ringkasan, kirim ke HR', async ({ page
 
 test('ulangi wawancara kembali ke langkah persetujuan', async ({ page }) => {
   const sent = await setup(page, { flags: SUMMARY_ON, state: { status: 'in_progress', summaryAt: '2026-11-20T03:00:00.000Z', turns: [{ speaker: 'ai', text: 'Q', at: '' }, { speaker: 'human', text: 'A', at: '' }] } })
-  await page.route('**/api/tna/sessions/s1/summary', (r) => r.fulfill({ json: { data: { findings: FINDINGS, createdAt: '2026-11-20T03:00:00.000Z', confirmedAt: null, state: 'pending' } } }))
   await page.goto('/iv/s1')
   await expect(page.getByRole('heading', { name: 'Ringkasan temuan AI' })).toBeVisible()
   await page.getByRole('button', { name: /Ulangi wawancara/ }).click()
@@ -153,7 +152,6 @@ test('ulangi wawancara kembali ke langkah persetujuan', async ({ page }) => {
 
 test('jatah ulangi habis: kirim dengan catatan tidak sesuai', async ({ page }) => {
   const sent = await setup(page, { flags: SUMMARY_ON, state: { status: 'in_progress', restartCount: 2, summaryAt: '2026-11-20T03:00:00.000Z', turns: [{ speaker: 'ai', text: 'Q', at: '' }, { speaker: 'human', text: 'A', at: '' }] } })
-  await page.route('**/api/tna/sessions/s1/summary', (r) => r.fulfill({ json: { data: { findings: FINDINGS, createdAt: '2026-11-20T03:00:00.000Z', confirmedAt: null, state: 'pending' } } }))
   await page.goto('/iv/s1')
   await expect(page.getByRole('button', { name: /Ulangi wawancara/ })).toBeDisabled()
   await page.getByRole('button', { name: 'Kirim dengan catatan' }).click()
@@ -165,7 +163,6 @@ test('jatah ulangi habis: kirim dengan catatan tidak sesuai', async ({ page }) =
 
 test('catatan terlalu pendek: pesan aturan panjang tampil di ringkasan galat dan field ditandai', async ({ page }) => {
   const sent = await setup(page, { flags: SUMMARY_ON, state: { status: 'in_progress', restartCount: 2, summaryAt: '2026-11-20T03:00:00.000Z', turns: [{ speaker: 'ai', text: 'Q', at: '' }, { speaker: 'human', text: 'A', at: '' }] } })
-  await page.route('**/api/tna/sessions/s1/summary', (r) => r.fulfill({ json: { data: { findings: FINDINGS, createdAt: '2026-11-20T03:00:00.000Z', confirmedAt: null, state: 'pending' } } }))
   await page.goto('/iv/s1')
   await page.getByRole('button', { name: 'Kirim dengan catatan' }).click()
   await page.getByLabel('Catatan untuk HR').fill('pendek')
@@ -176,8 +173,10 @@ test('catatan terlalu pendek: pesan aturan panjang tampil di ringkasan galat dan
 })
 
 test('ringkasan gagal dimuat: langkah sesi tetap tampil dengan galat', async ({ page }) => {
-  await setup(page, { flags: SUMMARY_ON, state: { status: 'in_progress', summaryAt: '2026-11-20T03:00:00.000Z', turns: [{ speaker: 'ai', text: 'Q', at: '' }, { speaker: 'human', text: 'A', at: '' }] } })
-  await page.route('**/api/tna/sessions/s1/summary', (r) => r.fulfill({ status: 500, json: { error: { code: 'INTERNAL', message: 'Terjadi kesalahan' } } }))
+  await setup(page, {
+    flags: SUMMARY_ON, summary: { status: 500, json: { error: { code: 'INTERNAL', message: 'Terjadi kesalahan' } } },
+    state: { status: 'in_progress', summaryAt: '2026-11-20T03:00:00.000Z', turns: [{ speaker: 'ai', text: 'Q', at: '' }, { speaker: 'human', text: 'A', at: '' }] },
+  })
   await page.goto('/iv/s1')
   await expect(page.getByRole('heading', { name: 'Ringkasan temuan AI' })).toBeVisible()
   await expect(page.getByRole('alert')).toContainText('Terjadi kesalahan')
@@ -194,7 +193,7 @@ test('flag ringkasan mati: wawancara ditutup dengan tombol lama', async ({ page 
 })
 
 test('HR membuka sesi orang lain: percakapan tidak tampil', async ({ page }) => {
-  await setup(page, { role: 'hr_admin', userId: 'u-hr', interviewee: false, state: { status: 'completed' } })
+  await setup(page, { peran: 'hr', interviewee: false, state: { status: 'completed' } })
   await page.goto('/iv/s1')
   await expect(page.getByTestId('transcript-private')).toHaveText('Percakapan wawancara hanya bisa dibaca karyawan yang bersangkutan.')
   await expect(page.getByText('Status: Selesai')).toBeVisible()

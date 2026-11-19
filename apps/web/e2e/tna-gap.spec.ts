@@ -1,9 +1,10 @@
-import { test, expect, type Page, type Route } from '@playwright/test'
+import { test, expect, type Page } from '@playwright/test'
+import { loginSebagai, PERAN_API, type Peran } from './support/sesi'
+import { mockApi, cocok, permintaanBelumDimock, type ResponsApi } from './support/api'
 
 // B5 Training Needs: papan gap, detail gap, dan penugasan wawancara. Spek: docs/designs/b5-training-needs.md bagian 16.
 // API di-mock; flag papan dan penugasan bawaan mati di produksi, di sini dinyalakan per test.
 
-const ACCESS = { submodules: ['cca', 'dna', 'tna', 'ina'], flags: { 'module.dna': true, 'module.tna': true } as Record<string, boolean> }
 const C1 = '11111111-1111-4111-8111-111111111111'
 const E1 = 'e1111111-1111-4111-8111-111111111111'
 const E2 = 'e2222222-2222-4222-8222-222222222222'
@@ -32,58 +33,48 @@ const DETAIL = {
   employees: [
     { id: E1, name: 'Dimas', jobRoleId: 'jr1', jobRoleName: 'Service Delivery L1', value: 2, target: 3, gap: 1, self: false, assignable: true, session: null },
     { id: E2, name: 'Sari', jobRoleId: 'jr1', jobRoleName: 'Service Delivery L1', value: 2, target: 3, gap: 1, self: false, assignable: true,
-      session: { id: 's-open', status: 'scheduled', inviteExpiresAt: '2026-12-01T16:59:59.000Z', projectId: P1, assignedBy: 'u-1', open: true } },
+      session: { id: 's-open', status: 'scheduled', inviteExpiresAt: '2026-12-01T16:59:59.000Z', projectId: P1, assignedBy: 'u-hr', open: true } },
   ],
 }
 
-interface Opts { role?: string; flags?: Record<string, boolean>; assign?: (r: Route) => Promise<void> | void; cancel?: (r: Route) => Promise<void> | void }
+interface Opts { peran?: Peran; flags?: Record<string, boolean>; assign?: ResponsApi; cancel?: ResponsApi }
 interface Sent { path: string; body: unknown }
 
+/** Masuk lewat support/ B18 (loginSebagai + mockApi). Mengembalikan daftar permintaan tulis yang dikirim layar. */
 async function setup(page: Page, o: Opts = {}): Promise<Sent[]> {
-  const role = o.role ?? 'hr_admin'
   const sent: Sent[] = []
-  const ok = (r: Route, data: unknown) => r.fulfill({ json: { data } })
-  for (const sm of ['dna', 'tna']) {
-    await page.route(`**/api/${sm}/imports/templates`, (r) => ok(r, []))
-    await page.route(`**/api/${sm}/imports/batches`, (r) => ok(r, []))
-  }
-  const user = { id: 'u-1', tenantId: 't-1', email: `${role}@demo.test`, role }
-  await page.route('**/api/auth/login', (r) => r.fulfill({ json: { token: 't', user } }))
-  await page.route('**/api/auth/me', (r) => r.fulfill({ json: { user } }))
-  await page.route('**/api/me/access', (r) => r.fulfill({ json: { ...ACCESS, flags: { ...ACCESS.flags, ...(o.flags ?? {}) } } }))
-  // Pengelolaan TNA lama
-  await page.route('**/api/tna/dashboard', (r) => ok(r, { role, people: null, redTargets: 1, sessions: {}, trainingFindings: 0, planItems: {} }))
-  await page.route('**/api/tna/findings', (r) => ok(r, [{ id: 'f1', userId: 'd', userName: 'Dimas', title: 'Kesulitan analisis insiden', status: 'open', competencyName: null, metricName: null, target: null, actual: null }]))
-  await page.route('**/api/tna/pareto', (r) => ok(r, []))
-  await page.route('**/api/tna/plan-items', (r) => ok(r, []))
-  await page.route('**/api/tna/sessions', (r) => ok(r, []))
-  await page.route('**/api/tna/job-roles', (r) => r.fulfill({ json: { data: [{ id: 'jr1', name: 'Service Delivery L1' }], defaults: { scope: 'red_only', jobRoleId: null } } }))
-  await page.route('**/api/projects', (r) => ok(r, [{ id: P1, name: 'Pilot L1', status: 'active' }, { id: 'p-closed', name: 'Lama', status: 'closed' }]))
-  // Papan gap B5
-  await page.route(/\/api\/tna\/gaps\/summary/, (r) => ok(r, SUMMARY))
-  await page.route(/\/api\/tna\/gaps\/competencies/, (r) => ok(r, { rows: [COMP], unapprovedCompetencies: 2 }))
-  await page.route(/\/api\/tna\/gaps\/okr/, (r) => ok(r, { rows: [OKR], period: '2026-11', periods: SUMMARY.periods }))
-  await page.route(/\/api\/tna\/gaps\/detail/, (r) => ok(r, DETAIL))
-  await page.route('**/api/tna/assignments', async (r) => {
-    sent.push({ path: '/assignments', body: r.request().postDataJSON() })
-    if (o.assign) return o.assign(r)
-    return r.fulfill({ status: 201, json: { data: { assigned: [{ sessionId: 's-new', employeeId: E1, inviteExpiresAt: '2026-12-05T16:59:59.000Z', durationMinutes: 15, replaced: false }], skipped: [] } } })
+  const data = (d: unknown, status = 200): ResponsApi => ({ status, json: { data: d } })
+  await mockApi(page, (req) => {
+    if (cocok(req, 'GET /:sm/imports/templates') || cocok(req, 'GET /:sm/imports/batches')) return data([])
+    // Pengelolaan TNA lama
+    if (cocok(req, 'GET /tna/dashboard')) return data({ role: PERAN_API[o.peran ?? 'hr'], people: null, redTargets: 1, sessions: {}, trainingFindings: 0, planItems: {} })
+    if (cocok(req, 'GET /tna/findings')) return data([{ id: 'f1', userId: 'd', userName: 'Dimas', title: 'Kesulitan analisis insiden', status: 'open', competencyName: null, metricName: null, target: null, actual: null }])
+    if (cocok(req, 'GET /tna/pareto') || cocok(req, 'GET /tna/plan-items') || cocok(req, 'GET /tna/sessions')) return data([])
+    if (cocok(req, 'GET /tna/job-roles')) return { json: { data: [{ id: 'jr1', name: 'Service Delivery L1' }], defaults: { scope: 'red_only', jobRoleId: null } } }
+    if (cocok(req, 'GET /projects')) return data([{ id: P1, name: 'Pilot L1', status: 'active' }, { id: 'p-closed', name: 'Lama', status: 'closed' }])
+    // Papan gap B5
+    if (cocok(req, 'GET /tna/gaps/summary')) return data(SUMMARY)
+    if (cocok(req, 'GET /tna/gaps/competencies')) return data({ rows: [COMP], unapprovedCompetencies: 2 })
+    if (cocok(req, 'GET /tna/gaps/okr')) return data({ rows: [OKR], period: '2026-11', periods: SUMMARY.periods })
+    if (cocok(req, 'GET /tna/gaps/detail')) return data(DETAIL)
+    if (cocok(req, 'POST /tna/assignments')) {
+      sent.push({ path: '/assignments', body: req.body })
+      return o.assign ?? data({ assigned: [{ sessionId: 's-new', employeeId: E1, inviteExpiresAt: '2026-12-05T16:59:59.000Z', durationMinutes: 15, replaced: false }], skipped: [] }, 201)
+    }
+    if (cocok(req, 'POST /tna/assignments/:id/cancel')) {
+      sent.push({ path: `/api${req.path}`, body: null })
+      return o.cancel ?? data({ id: 's-open', status: 'abandoned' })
+    }
+    return undefined
   })
-  await page.route('**/api/tna/assignments/*/cancel', async (r) => {
-    sent.push({ path: new URL(r.request().url()).pathname, body: null })
-    if (o.cancel) return o.cancel(r)
-    return r.fulfill({ json: { data: { id: 's-open', status: 'abandoned' } } })
-  })
-  await page.goto('/login')
-  await page.getByLabel('Organisasi').fill('demo')
-  await page.getByLabel('Email').fill(user.email)
-  await page.getByLabel('Password').fill(`pw-${Date.now()}`)
-  await page.getByRole('button', { name: 'Masuk' }).click()
-  await expect(page.getByTestId('card-dna')).toBeVisible()
+  await loginSebagai(page, o.peran ?? 'hr', { submodules: ['cca', 'dna', 'tna', 'ina'], flags: o.flags })
   return sent
 }
 
 const BOARD = { 'tna.gap_board': true }
+
+// Layar tidak boleh bergantung pada endpoint yang tidak di-mock (jaring pengaman support/api.ts)
+test.afterEach(({ page }) => { expect(permintaanBelumDimock(page)).toEqual([]) })
 
 test('flag papan mati: halaman Training Needs hanya berisi pengelolaan TNA lama', async ({ page }) => {
   await setup(page)
@@ -147,7 +138,7 @@ test('HR: klik gap membuka detail, lalu tugaskan wawancara untuk karyawan terpil
 test('HR: galat penugasan dari API ditampilkan', async ({ page }) => {
   await setup(page, {
     flags: { ...BOARD, 'tna.interview_assignment': true },
-    assign: (r) => r.fulfill({ status: 400, json: { error: { code: 'DUE_DATE_OUT_OF_RANGE', message: 'Tenggat paling cepat besok dan paling lama 30 hari lagi' } } }),
+    assign: { status: 400, json: { error: { code: 'DUE_DATE_OUT_OF_RANGE', message: 'Tenggat paling cepat besok dan paling lama 30 hari lagi' } } },
   })
   await page.goto(`/tna/gap?kind=competency&competencyId=${C1}`)
   const form = page.getByRole('form', { name: 'Tugaskan wawancara' })
@@ -166,17 +157,23 @@ test('HR: tenggat kosong ditolak di peramban, galat menaut ke field', async ({ p
   expect(sent.some((s) => s.path === '/assignments')).toBe(false)
 })
 
-test('atasan: membatalkan penugasan orang lain ditolak, tombol tinjauan HR tidak ada', async ({ page }) => {
-  const sent = await setup(page, {
-    role: 'supervisor',
-    flags: { ...BOARD, 'tna.interview_assignment': true },
-    cancel: (r) => r.fulfill({ status: 403, json: { error: { code: 'NOT_ASSIGNER', message: 'Hanya penugas atau HR yang bisa membatalkan penugasan ini' } } }),
-  })
+test('atasan: penugasan dari HR tidak bisa dibatalkan, tombol tinjauan HR tidak ada', async ({ page }) => {
+  await setup(page, { peran: 'atasan', flags: { ...BOARD, 'tna.interview_assignment': true } })
   await page.goto(`/tna/gap?kind=competency&competencyId=${C1}`)
+  await expect(page.getByRole('heading', { level: 1, name: 'Analisis insiden' })).toBeVisible()
   await expect(page.getByRole('link', { name: 'Langsung ke tinjauan HR' })).toHaveCount(0)
   await expect(page.getByRole('radio', { name: 'Semua karyawan di jabatan' })).toHaveCount(0)
+  await expect(page.getByRole('button', { name: 'Batalkan penugasan Sari' })).toHaveCount(0)
+})
+
+test('HR membatalkan penugasan; penolakan API tampil di ringkasan galat', async ({ page }) => {
+  const sent = await setup(page, {
+    flags: { ...BOARD, 'tna.interview_assignment': true },
+    cancel: { status: 409, json: { error: { code: 'INVALID_STATE', message: 'Wawancara sudah dimulai, penugasan tidak bisa dibatalkan' } } },
+  })
+  await page.goto(`/tna/gap?kind=competency&competencyId=${C1}`)
   await page.getByRole('button', { name: 'Batalkan penugasan Sari' }).click()
-  await expect(page.getByRole('alert')).toContainText('Hanya penugas atau HR')
+  await expect(page.getByRole('alert')).toContainText('Wawancara sudah dimulai')
   expect(sent.some((s) => s.path === '/api/tna/assignments/s-open/cancel')).toBe(true)
 })
 
