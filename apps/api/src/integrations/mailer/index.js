@@ -30,10 +30,40 @@ function sesMailer({ from, region }) {
   };
 }
 
-function createMailer(config = {}) {
-  if (config.provider === 'ses') return sesMailer(config);
-  if (config.provider === 'memory') return memoryMailer();
-  return logMailer();
+function recipientDomain(to) {
+  const m = /@([^@>\s]+)>?\s*$/.exec(String(to || ''));
+  return m ? m[1].toLowerCase() : '';
 }
 
-module.exports = { createMailer, memoryMailer };
+/**
+ * PK-07 / I-5: batasi penerima ke domain yang diizinkan (MAIL_ALLOWED_DOMAINS). Subdomain ikut diizinkan.
+ * Email ke domain lain tidak dikirim dan tidak melempar error (alur undangan di staging tetap jalan);
+ * hanya dicatat ke log tanpa isi email (isi berisi link masuk).
+ */
+function withDomainAllowlist(mailer, allowedDomains = [], logger = console) {
+  if (!allowedDomains.length) return mailer;
+  const allowed = (d) => allowedDomains.some((a) => d === a || d.endsWith(`.${a}`));
+  return {
+    ...mailer,
+    name: mailer.name,
+    allowedDomains,
+    async send(msg) {
+      const domain = recipientDomain(msg.to);
+      if (!allowed(domain)) {
+        logger.warn(`[mail:diblokir] domain "${domain || '?'}" tidak ada di MAIL_ALLOWED_DOMAINS; email "${msg.subject}" tidak dikirim`);
+        return { blocked: true };
+      }
+      return mailer.send(msg);
+    },
+  };
+}
+
+function createMailer(config = {}) {
+  let base;
+  if (config.provider === 'ses') base = sesMailer(config);
+  else if (config.provider === 'memory') base = memoryMailer();
+  else base = logMailer();
+  return withDomainAllowlist(base, config.allowedDomains || []);
+}
+
+module.exports = { createMailer, memoryMailer, withDomainAllowlist, recipientDomain };

@@ -89,6 +89,7 @@ export const useSessionStore = defineStore('session', () => {
   }
 
   const role = computed(() => user.value?.role ?? '')
+  const hasFlag = (key: string) => access.value?.flags[key] === true
 
   /** Hapus sesi di browser saja (tanpa memanggil API). */
   function clear() {
@@ -119,5 +120,5 @@ export const useSessionStore = defineStore('session', () => {
 
   if (token.value) scheduleExpiry()
 
-  return { token, user, role, access, isAuthenticated, canOpen, login, loginWithEmailLink, loadAccess, logout, clear, expire, setExpiredHandler }
+  return { token, user, role, access, isAuthenticated, canOpen, hasFlag, login, loginWithEmailLink, loadAccess, logout, clear, expire, setExpiredHandler }
 })

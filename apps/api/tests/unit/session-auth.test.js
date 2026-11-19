@@ -10,7 +10,7 @@ const { makeConfig, makeStores, TEST_PASSWORD, SECRET } = require('../helpers');
 
 const PROD_ENV = {
   NODE_ENV: 'production', EWI_JWT_SECRET: SECRET, DATABASE_URL: 'postgres://x/y',
-  MAIL_PROVIDER: 'ses', MAIL_FROM: 'noreply@elgos.test', ENCRYPTION_PROVIDER: 'kms',
+  MAIL_PROVIDER: 'ses', MAIL_FROM: 'noreply@elgos.test', ENCRYPTION_PROVIDER: 'kms', BEDROCK_MODEL_ID: 'anthropic.model-uji',
 };
 
 function build(env = {}, { stores = makeStores(), rateLimits } = {}) {

@@ -7,7 +7,7 @@ Status: spek untuk dibangun, sudah direview (lihat "Review spek" di akhir). Pake
 1. ELGOS punya lima tampilan peran sesuai mockup Pak Eji dan default K2: HR / L&D, Atasan, Karyawan, Admin Tenant, Super Admin.
 2. Satu akun boleh memegang beberapa peran dan berpindah tampilan di bilah atas.
 3. Peran yang sedang aktif menentukan menu dan cakupan data.
-4. Super Admin mengelola konfigurasi dan tidak membuka transkrip wawancara.
+4. Super Admin mengelola konfigurasi dan tidak membuka transkrip atau percakapan wawancara.
 
 ## Layar mockup yang dicakup
 
@@ -57,8 +57,8 @@ Flag baru `auth.multi_role` (default mati, per tenant): bila mati, `switchableRo
 Keputusan user 19 Nov 20.30 WIB (kartu keputusan, pilihan "Seperti sekarang"): Super Admin tetap melihat hasil karyawan, termasuk kutipan jawaban yang tersimpan di hasil analisis (`evidence`, `detail`); **hanya transkrip mentah yang ditutup**.
 
 - `visibleEmployeeScope` untuk `eta_admin` tidak berubah (`{ all: true }`).
-- `requireRole(...)` tetap meloloskan `eta_admin`. Middleware baru `denyRoles(...)` dipasang di rute transkrip dan percakapan wawancara (`GET /:id`, `POST /:id/turns`, `POST /:id/complete` di `modules/interviews`, dipasang sebagai `/api/<submodul>/sessions`) → 403 `INTERVIEW_CONTENT_PRIVATE`. Middleware ini bisa dipakai B6, B10, B17.
-- PR #11 (PK-15) memperketat transkrip menjadi hanya untuk yang diwawancarai; saat keduanya masuk branch integrasi, aturan PR #11 berlaku dan `denyRoles` tetap sebagai lapis kedua.
+- Transkrip: sudah ditutup oleh PR #11 (PK-15, kini di branch integrasi). `GET /:id/transcript` menjawab 403 `TRANSCRIPT_PRIVATE` untuk semua orang selain yang diwawancarai, termasuk Super Admin; `GET /:id` hanya memberi status sesi. B2 tidak mengubah kontrak itu.
+- `requireRole(...)` tetap meloloskan `eta_admin`. Middleware baru `denyRoles(...)` dipasang di `POST /:id/turns` dan `POST /:id/complete` (`modules/interviews`, dipasang sebagai `/api/<submodul>/sessions`) → 403 `INTERVIEW_CONTENT_PRIVATE`: Super Admin tidak ikut percakapan dan tidak menutup sesi orang lain. Middleware ini bisa dipakai B6, B10, B17.
 
 ## Menu per peran
 
@@ -133,7 +133,7 @@ K2, RG-3 (`visibleEmployeeScope`), PO-6, aturan CLAUDE.md 2, 3, 4, 5, 6, 7.
 
 - Unit `roles.test.js`: tampilan dan `switchableRoles` (HR → +Karyawan; `eta_admin` tunggal; `pimpinan`), label, `denyRoles`; menu tiap tampilan sama dengan mockup; `enabled` mengikuti flag, flag tak terdaftar, dan entitlement.
 - Unit `switch-role.test.js` (store memori): pindah tampilan mengubah `req.user.role`, menu, dan hak rute; token lama 401 `ROLE_VIEW_CHANGED` termasuk setelah A→B→A; peran yang tidak dimiliki 403; flag mati 403; `exp` tidak bertambah; audit; peran dicabut → 401.
-- Integrasi `user-roles.test.js` (Postgres): trigger sinkron, FK komposit, `PUT roles` (validasi, diri sendiri, admin terakhir termasuk dua permintaan bersamaan, isolasi tenant 404), penjaga impor/undangan untuk akun istimewa, sesi dengan peran aktif, `eta_admin` 403 pada tiga rute isi wawancara.
+- Integrasi `user-roles.test.js` (Postgres): trigger sinkron, FK komposit, `PUT roles` (validasi, diri sendiri, admin terakhir termasuk dua permintaan bersamaan, isolasi tenant 404), penjaga impor/undangan untuk akun istimewa, sesi dengan peran aktif, `eta_admin` 403 pada rute percakapan wawancara.
 
 ## Daftar perubahan
 

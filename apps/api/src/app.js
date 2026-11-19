@@ -23,19 +23,22 @@ const { createAuditService, memoryAuditStore } = require('./core/audit');
 const { createEntitlementService } = require('./core/entitlement');
 const { requireSubmodule } = require('./core/entitlement/guard');
 const { errorHandler, notFound } = require('./core/errors');
+const { createReadiness, readyHandler } = require('./core/health');
 const projects = require('./modules/projects');
+const { employeeRouter } = require('./modules/employees');
 const { webhookRouter } = require('./integrations/elitementor/webhook');
 const { createSettingsService } = require('./core/settings');
 const { createAiProvider } = require('./ai');
+const { createAnalysisRunner } = require('./modules/interviews/analysis');
 const { createCatalogService, elitementorAdapter, moodleAdapter } = require('./integrations/catalog');
 const SUBMODULE_MODULES = ['cca', 'dna', 'tna', 'ina'].map((k) => require(`./modules/${k}`));
 
 /**
  * Bangun aplikasi Express. Semua akses data lewat `stores` agar bisa diganti di test.
  * stores: { users, flags, audit, entitlements, projects, people, settings, dna, interviews, tna, projectsExtra }
- * ai / catalog bisa diganti di test; default mengikuti config (T3 dan K-1 masih terbuka).
+ * ai / catalog bisa diganti di test; default mengikuti config (AI_PROVIDER, PK-06; K-1 masih terbuka).
  */
-function createApp({ config, stores, ai, catalog, mailer, rateLimits }) {
+function createApp({ config, stores, ai, catalog, mailer, rateLimits, readiness }) {
   const app = express();
   const tokens = createTokenService(config.jwt);
   const flags = createFlagService(stores.flags);
@@ -65,9 +68,13 @@ function createApp({ config, stores, ai, catalog, mailer, rateLimits }) {
     flags,
     audit,
     settings,
-    ai: ai || createAiProvider(config.aiProvider),
-    catalog: catalog || createCatalogService({ elitementor: elitementorAdapter(), moodle: moodleAdapter() }),
+    ai: ai || createAiProvider(config.ai || config.aiProvider),
+    aiConfig: config.ai || {},
+    catalog: catalog || createCatalogService({ elitementor: elitementorAdapter(), moodle: moodleAdapter(stores.catalog) }),
   };
+  // PK-14: analisis wawancara berjalan di latar. app.locals.analysis dipakai server (penyapu) dan test (drain).
+  deps.analysis = createAnalysisRunner({ stores, ai: deps.ai, aiConfig: deps.aiConfig });
+  app.locals.analysis = deps.analysis;
 
   if (config.trustProxy) app.set('trust proxy', config.trustProxy);
   app.use(helmet());
@@ -78,7 +85,14 @@ function createApp({ config, stores, ai, catalog, mailer, rateLimits }) {
   }
   app.use(express.json({ limit: '1mb' }));
 
+  // Liveness ringan (tanpa I/O). Kesiapan (DB + enkripsi) di /api/ready, dipakai deploy (PK-07, I-6).
   app.get('/api/health', (_req, res) => res.json({ status: 'ok', service: 'ewi-api' }));
+  app.get('/api/ready', readyHandler(readiness || createReadiness({
+    checks: {
+      ...(stores.ping ? { database: () => stores.ping() } : {}),
+      ...(stores.cipher?.healthCheck ? { encryption: () => stores.cipher.healthCheck() } : {}),
+    },
+  })));
   if (stores.loginLinks) app.use('/api/auth/email-link', emailLinkRoutes({ users: stores.users, links, sessions, policy, audit, limits, mfa, attempts }));
   app.use('/api/auth/mfa', mfaPublicRoutes({ mfa, users: stores.users, sessions, policy, audit, attempts, limits, publicUser }));
   app.use('/api/auth/mfa', auth, mfaAccountRoutes({ mfa, flags, audit, users: stores.users }));
@@ -104,6 +118,7 @@ function createApp({ config, stores, ai, catalog, mailer, rateLimits }) {
   api.use('/admin', flagAdminRouter({ flags, audit }));
   if (stores.userRoles) api.use('/users', roleRoutes({ userRoles: stores.userRoles, audit }));
   api.use('/sessions', sessionRoutes({ sessions, audit, mfa, users: stores.users }));
+  if (stores.people && stores.interviews) api.use('/employees', employeeRouter({ stores, flags, audit }));
   if (stores.loginLinks) api.use('/invitations', invitationRoutes({ users: stores.users, links, audit }));
   for (const m of SUBMODULE_MODULES) {
     api.use(`/${m.key}`, requireSubmodule(m.key, { entitlements, flags }), m.router(deps));

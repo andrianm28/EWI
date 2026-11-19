@@ -122,14 +122,15 @@ run('B2 peran (Postgres)', () => {
     expect(invitees).not.toContain(u.hr);
   });
 
-  it('Super Admin tidak membuka isi wawancara; HR tetap lewat pemeriksaan biasa', async () => {
+  it('Super Admin tidak ikut percakapan wawancara atau menutup sesi; status sesi tetap lewat pemeriksaan biasa', async () => {
     const id = '00000000-0000-4000-8000-000000000000';
     const eta = await sign('eta', 'a', 'eta_admin');
-    for (const [method, path] of [['get', ''], ['post', '/turns'], ['post', '/complete']]) {
-      const r = await request(app)[method](`/api/tna/sessions/${id}${path}`).set(bearer(eta)).send({});
+    for (const path of ['/turns', '/complete']) {
+      const r = await request(app).post(`/api/tna/sessions/${id}${path}`).set(bearer(eta)).send({});
       expect([r.status, r.body.error.code]).toEqual([403, 'INTERVIEW_CONTENT_PRIVATE']);
     }
-    expect((await request(app).get(`/api/tna/sessions/${id}`).set(bearer(await sign('hr', 'a', 'hr_admin')))).status).toBe(404);
+    expect((await request(app).get(`/api/tna/sessions/${id}`).set(bearer(eta))).status).toBe(404); // status sesi: bukan 403
+    expect((await request(app).get(`/api/tna/sessions/${id}/transcript`).set(bearer(await sign('hr', 'a', 'hr_admin')))).status).toBe(404);
     expect((await request(app).get('/api/tna/sessions').set(bearer(eta))).status).toBe(200);
   });
 });

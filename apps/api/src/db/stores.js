@@ -10,6 +10,12 @@ const { PRIVILEGED_ROLES, ROLES } = require('../core/rbac/roles');
 function tenantKeyStore(sequelize) {
   const cols = 'version, key_ref AS "keyRef", wrapped_key AS "wrappedKey"';
   return {
+    /** Satu DEK apa saja (terbaru), untuk pemeriksaan kesiapan penyedia enkripsi. */
+    async any() {
+      const [row] = await sequelize.query(`SELECT tenant_id AS "tenantId", ${cols} FROM tenant_keys ORDER BY created_at DESC LIMIT 1`,
+        { type: QueryTypes.SELECT });
+      return row || null;
+    },
     async get(tenantId) {
       const [row] = await sequelize.query(`SELECT ${cols} FROM tenant_keys WHERE tenant_id = :tenantId ORDER BY version DESC LIMIT 1`,
         { replacements: { tenantId }, type: QueryTypes.SELECT });
@@ -217,6 +223,15 @@ function createStores(sequelize, { encryption } = {}) {
 
   return {
     cipher,
+    /** PK-07: kesiapan database (kueri sungguhan, bukan sekadar koneksi terbuka). */
+    async ping() { await sequelize.query('SELECT 1', { type: QueryTypes.SELECT }); },
+    /** PK-07 / P1-7: siapa user koneksi aplikasi dan apakah superuser (diperiksa saat boot). */
+    async dbRole() {
+      const [row] = await sequelize.query(
+        `SELECT current_user AS "user", r.rolsuper AS superuser FROM pg_roles r WHERE r.rolname = current_user`,
+        { type: QueryTypes.SELECT });
+      return row;
+    },
     ...createLnaStores(sequelize, { cipher }),
     users: {
       async listActiveTenants() {

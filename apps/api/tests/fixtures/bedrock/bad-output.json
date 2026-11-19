@@ -1,0 +1,7 @@
+{
+  "$metadata": { "httpStatusCode": 200 },
+  "output": { "message": { "role": "assistant", "content": [ { "text": "Maaf, berikut ringkasannya: karyawan butuh pelatihan." } ] } },
+  "stopReason": "end_turn",
+  "usage": { "inputTokens": 1900, "outputTokens": 14, "totalTokens": 1914 },
+  "metrics": { "latencyMs": 900 }
+}

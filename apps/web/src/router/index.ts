@@ -10,6 +10,7 @@ const router = createRouter({
     { path: '/', name: 'home', component: () => import('@/views/HomeView.vue') },
     { path: '/m/dna', name: 'dna', component: () => import('@/views/DnaView.vue'), meta: { submodule: 'dna' } },
     { path: '/m/tna', name: 'tna', component: () => import('@/views/TnaView.vue'), meta: { submodule: 'tna' } },
+    { path: '/m/tna/review', name: 'tna-review', component: () => import('@/views/ReviewView.vue'), meta: { submodule: 'tna', hrOnly: true } },
     { path: '/m/:key(dna|tna)/sessions/:id', name: 'interview', component: () => import('@/views/InterviewView.vue') },
     { path: '/m/:key(cca|ina)', name: 'submodule', component: () => import('@/views/SubmoduleView.vue') },
   ],
@@ -24,6 +25,7 @@ router.beforeEach(async (to) => {
   }
   const key = (to.meta.submodule ?? to.params.key) as SubmoduleKey | undefined
   if (key && !session.canOpen(key)) return { name: 'home' }
+  if (to.meta.hrOnly && !['hr_admin', 'eta_admin'].includes(session.role)) return { name: 'home' }
   return true
 })
 

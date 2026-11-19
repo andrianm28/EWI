@@ -1,6 +1,8 @@
 'use strict';
 // Data karyawan & posisi: membuat/memperbarui akun karyawan (tanpa kata sandi; masuk lewat link email, R3-2),
 // atasan langsung (RG-3), dan posisi job role + jenjang (DNA). Akun HR/Admin tidak bisa diubah lewat impor.
+// PD-19 butir 7 (R-6): email adalah kunci masuk (link email), jadi perubahan email lewat impor dicatat di audit
+// beserta alamat lama dan baru. Pemberitahuan ke alamat lama menyusul (butuh mailer di alur impor).
 const v = require('../values');
 const { PRIVILEGED_ROLES } = require('../../../core/rbac/roles');
 
@@ -62,9 +64,17 @@ module.exports = {
       }
     } else if (!v.blank(row.careerLevel)) return { error: 'Jenjang butuh Job Role' };
     ctx.seenIds.add(employeeId); ctx.seenEmails.add(email);
-    return { value: { id: current ? current.id : null, employeeId, name, email, role, supervisorEmployeeId: sup || null, jobRoleId, careerLevelId } };
+    const previousEmail = current && current.email && current.email !== email ? current.email : null;
+    return { value: { id: current ? current.id : null, employeeId, name, email, previousEmail, role, supervisorEmployeeId: sup || null, jobRoleId, careerLevelId } };
   },
-  async commit({ stores, tenantId, values }) {
-    return stores.people.importEmployees(tenantId, values);
+  async commit({ stores, tenantId, values, batchId, audit }) {
+    const changes = values.filter((x) => x.id && x.previousEmail);
+    // fail closed (R2-2): tanpa jejak audit, email tidak boleh berubah
+    if (changes.length && !audit) throw new Error('Perubahan email lewat impor wajib dicatat di audit (PD-19 butir 7)');
+    const result = await stores.people.importEmployees(tenantId, values);
+    for (const c of changes) {
+      await audit.record('update', 'user.email', { userId: c.id, employeeId: c.employeeId, from: c.previousEmail, to: c.email, via: 'import', batchId });
+    }
+    return { ...result, emailsChanged: changes.length };
   },
 };

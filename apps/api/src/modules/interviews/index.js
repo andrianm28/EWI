@@ -1,47 +1,31 @@
 'use strict';
 // Sesi wawancara AI (teks) yang dipakai DNA dan TNA. Suara (voice) di balik flag dan menyusul.
-// Analisis memakai port AI (src/ai); implementasi masih stub sampai T3 diputuskan.
+// Pertanyaan dan analisis memakai port AI (src/ai): Bedrock di produksi, tiruan (stub) di test/dev (PK-06).
+// Setiap panggilan model dicatat di ai_usage_logs (R3-6). Analisis setelah sesi ditutup berjalan sebagai job
+// terpisah (analysis.js, PK-14 / PD-13 ★A); hasil TNA berstatus draf sampai direview HR.
 const express = require('express');
+const { buildContext, aiContext, callAi } = require('./ai-calls');
 const { requireRole, denyRoles, ROLES } = require('../../core/rbac');
 const { scopeFor, inScope } = require('../../core/rbac/scope');
 const { badRequest, forbidden, notFound, HttpError } = require('../../core/errors');
+const { currentConsentVersion, isAcceptedConsentVersion } = require('../../core/consent');
+const { inviteExpiry, isExpired, extendedExpiry, parseExtendDays, OPEN_STATUSES, EXTEND_MAX_DAYS } = require('./invitation');
 
 const wrap = (fn) => (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
 
-/** Konteks pertanyaan & analisis: kompetensi posisi karyawan (DNA/TNA) + target merah pemicu (TNA). */
-async function buildContext(stores, tenantId, session) {
-  const person = await stores.people.get(tenantId, session.intervieweeId);
-  const competencies = person && person.jobRoleId
-    ? await stores.dna.competenciesForPosition(tenantId, { jobRoleId: person.jobRoleId, careerLevelId: person.careerLevelId })
-    : [];
-  const triggers = session.submodule === 'tna' ? await stores.tna.performanceByIds(tenantId, session.triggerRecordIds) : [];
-  return { person, competencies, triggers };
-}
-
-async function analyze({ stores, ai, tenantId, session, transcript, ctx }) {
-  if (session.submodule === 'dna') {
-    const results = await ai.assessCompetencies({ transcript, competencies: ctx.competencies });
-    for (const r of results) {
-      await stores.dna.addAssessment(tenantId, { userId: session.intervieweeId, competencyId: r.competencyId, sessionId: session.id, score: r.score, confidence: r.confidence, evidence: r.evidence });
-    }
-    return { assessments: results.length };
-  }
-  const findings = await ai.analyzeTna({ transcript, triggers: ctx.triggers, competencies: ctx.competencies });
-  let lastTraining = null; let saved = 0;
-  for (const f of findings) {
-    const row = await stores.tna.insertFinding(tenantId, {
-      projectId: session.projectId, userId: session.intervieweeId, sessionId: session.id, category: f.category,
-      title: f.title, detail: f.detail, competencyId: f.competencyId || null, performanceRecordId: f.performanceRecordId || null,
-      linkedFindingId: f.category === 'non_training' && lastTraining ? lastTraining.id : null,
-    });
-    if (f.category === 'training') lastTraining = row;
-    saved += 1;
-  }
-  return { findings: saved };
-}
-
-function interviewRouter({ submodule, stores, ai, audit }) {
+function interviewRouter({ submodule, stores, ai, aiConfig = {}, audit, analysis }) {
   const r = express.Router();
+  const maxQuestions = aiConfig.maxQuestions || 8;
+
+  /** Pertanyaan berikutnya dari transkrip (termasuk jawaban yang belum disimpan). Batas kuota ditegakkan di sini. */
+  async function nextQuestion(tenantId, session, transcript) {
+    const askedCount = transcript.filter((t) => t.speaker === 'ai').length;
+    if (askedCount >= maxQuestions) return null;
+    const ctx = aiContext(await buildContext(stores, tenantId, session), session);
+    const { question } = await callAi({ stores, aiConfig, tenantId, session },
+      () => ai.nextQuestion({ submodule, transcript, askedCount, context: ctx, maxQuestions }));
+    return question;
+  }
 
   async function loadVisible(req) {
     const s = await stores.interviews.get(req.tenantId, req.params.id);
@@ -71,33 +55,76 @@ function interviewRouter({ submodule, stores, ai, audit }) {
         if (open.has(id)) continue;
         const person = await stores.people.get(req.tenantId, id);
         if (!person) continue;
-        created.push(await stores.interviews.create(req.tenantId, { projectId, submodule, intervieweeId: id, jobRoleId: person.jobRoleId }));
+        created.push(await stores.interviews.create(req.tenantId, { projectId, submodule, intervieweeId: id, jobRoleId: person.jobRoleId, inviteExpiresAt: inviteExpiry() }));
       }
       res.status(201).json({ data: created });
     }));
   }
 
-  // B2: Super Admin tidak membuka transkrip atau percakapan wawancara (mengelola konfigurasi, bukan isi jawaban)
+  // PO-6 A (17 Nov): transkrip mentah hanya untuk karyawan yang diwawancarai. Atasan, HR, dan Admin ETA
+  // tetap melihat status sesi, tetapi tidak percakapannya; mereka melihat temuan lewat /findings.
+  const isInterviewee = (req, s) => s.intervieweeId === req.user.id;
+
+  // B2: lapis kedua di atas PO-6 (transkrip sudah TRANSCRIPT_PRIVATE untuk semua selain yang diwawancarai).
+  // Super Admin tetap melihat status sesi, tetapi tidak ikut dalam percakapan atau menutup sesi.
   const noSuperAdmin = denyRoles([ROLES.ETA_ADMIN], 'INTERVIEW_CONTENT_PRIVATE', 'Isi wawancara tidak dibuka untuk Super Admin');
 
-  r.get('/:id', noSuperAdmin, wrap(async (req, res) => {
+  r.get('/:id', wrap(async (req, res) => {
     const s = await loadVisible(req);
+    if (!isInterviewee(req, s)) {
+      return res.json({ data: { ...s, turns: undefined, transcriptVisible: false } });
+    }
     const turns = await stores.interviews.turns(req.tenantId, s.id);
-    // R2-2: baca transkrip individu selalu dicatat (termasuk atasan dan Admin ETA)
+    // R2-2: baca transkrip individu selalu dicatat
     await audit.readIndividual(req, `${submodule}.interview_transcript`, { employeeIds: [s.intervieweeId], objectType: 'interview_session', objectIds: [s.id] });
-    res.json({ data: { ...s, turns } });
+    return res.json({ data: { ...s, turns, transcriptVisible: true, consentVersionRequired: currentConsentVersion(submodule) } });
   }));
 
+  r.get('/:id/transcript', wrap(async (req, res) => {
+    const s = await loadVisible(req);
+    if (!isInterviewee(req, s)) throw forbidden('TRANSCRIPT_PRIVATE', 'Transkrip wawancara hanya bisa dibaca karyawan yang diwawancarai');
+    const turns = await stores.interviews.turns(req.tenantId, s.id);
+    await audit.readIndividual(req, `${submodule}.interview_transcript`, { employeeIds: [s.intervieweeId], objectType: 'interview_session', objectIds: [s.id] });
+    res.json({ data: turns });
+  }));
+
+  // PM-9 A: persetujuan wajib menyebut kode versi teks yang ditampilkan; versi disimpan bersama waktunya.
   r.post('/:id/consent', wrap(async (req, res) => {
     const s = await loadVisible(req);
     mustBeInterviewee(req, s);
     if (s.status !== 'scheduled') throw new HttpError(409, 'INVALID_STATE', 'Sesi sudah dimulai atau selesai');
+    // Q38: undangan berlaku 7 hari. Sesi yang sudah berjalan boleh diselesaikan (BT-28 belum dibangun).
+    if (isExpired(s.inviteExpiresAt)) throw new HttpError(409, 'INVITATION_EXPIRED', 'Undangan wawancara sudah berakhir. Minta HR memperpanjang undangan Anda.');
+    const current = currentConsentVersion(submodule);
+    if (!current) throw new HttpError(409, 'CONSENT_TEXT_PENDING', 'Teks persetujuan untuk wawancara ini belum terbit');
+    const consentVersion = String((req.body || {}).consentVersion || '').trim();
+    if (!consentVersion) throw badRequest(`consentVersion wajib diisi (versi berlaku: ${current})`);
+    if (!isAcceptedConsentVersion(submodule, consentVersion)) {
+      throw new HttpError(409, 'CONSENT_VERSION_OUTDATED', `Teks persetujuan sudah berubah. Baca dan setujui versi ${current}`);
+    }
+    // Pertanyaan dibuat dulu: bila AI gagal, sesi tetap 'scheduled' dan persetujuan bisa diulang.
+    const q = await nextQuestion(req.tenantId, s, []);
     const now = new Date();
-    await stores.interviews.update(req.tenantId, s.id, { consentAt: now, startedAt: now, status: 'in_progress' });
-    const ctx = await buildContext(stores, req.tenantId, s);
-    const q = ai.nextQuestion({ submodule, askedCount: 0, context: ctx });
+    await stores.interviews.update(req.tenantId, s.id, { consentAt: now, consentVersion, startedAt: now, status: 'in_progress' });
+    await audit.record(req, 'create', `${submodule}.interview_consent`, { employeeIds: [s.intervieweeId], objectType: 'interview_session', objectIds: [s.id], consentVersion });
     const turn = q ? await stores.interviews.addTurn(req.tenantId, s.id, 'ai', q) : null;
-    res.json({ data: { status: 'in_progress', question: turn } });
+    res.json({ data: { status: 'in_progress', consentVersion, question: turn } });
+  }));
+
+  // Q38: HR memperpanjang undangan (default 7 hari, maksimal 30). Dihitung dari batas lama, atau dari
+  // sekarang bila undangan sudah lewat. Pengingat H-3/H-1 dikirim ulang untuk batas baru.
+  r.post('/:id/extend', requireRole(ROLES.HR_ADMIN), wrap(async (req, res) => {
+    const s = await loadVisible(req);
+    if (!OPEN_STATUSES.includes(s.status)) throw new HttpError(409, 'INVALID_STATE', 'Sesi sudah selesai, undangan tidak perlu diperpanjang');
+    const days = parseExtendDays((req.body || {}).days);
+    if (days === null) throw badRequest(`days harus bilangan bulat 1-${EXTEND_MAX_DAYS}`);
+    const until = extendedExpiry(s.inviteExpiresAt, days);
+    const row = await stores.interviews.extendInvite(req.tenantId, s.id, until);
+    await audit.record(req, 'update', `${submodule}.interview_invitation`, {
+      employeeIds: [s.intervieweeId], objectType: 'interview_session', objectIds: [s.id], days,
+      from: s.inviteExpiresAt, to: until.toISOString(),
+    });
+    res.json({ data: row });
   }));
 
   r.post('/:id/turns', noSuperAdmin, wrap(async (req, res) => {
@@ -106,10 +133,11 @@ function interviewRouter({ submodule, stores, ai, audit }) {
     if (s.status !== 'in_progress') throw new HttpError(409, 'INVALID_STATE', 'Sesi belum dimulai atau sudah selesai');
     const text = String((req.body || {}).text || '').trim();
     if (!text) throw badRequest('Jawaban tidak boleh kosong');
-    await stores.interviews.addTurn(req.tenantId, s.id, 'human', text.slice(0, 8000));
+    const answer = text.slice(0, 8000);
+    // Pertanyaan dibuat sebelum jawaban disimpan: bila AI gagal, tidak ada yang tersimpan dan jawaban bisa dikirim ulang.
     const turns = await stores.interviews.turns(req.tenantId, s.id);
-    const ctx = await buildContext(stores, req.tenantId, s);
-    const q = ai.nextQuestion({ submodule, askedCount: turns.filter((t) => t.speaker === 'ai').length, context: ctx });
+    const q = await nextQuestion(req.tenantId, s, [...turns, { speaker: 'human', text: answer }]);
+    await stores.interviews.addTurn(req.tenantId, s.id, 'human', answer);
     const turn = q ? await stores.interviews.addTurn(req.tenantId, s.id, 'ai', q) : null;
     res.json({ data: { question: turn, done: !q } });
   }));
@@ -122,13 +150,34 @@ function interviewRouter({ submodule, stores, ai, audit }) {
     if (s.status !== 'in_progress') throw new HttpError(409, 'INVALID_STATE', 'Sesi belum dimulai atau sudah selesai');
     const transcript = await stores.interviews.turns(req.tenantId, s.id);
     if (!transcript.some((t) => t.speaker === 'human')) throw badRequest('Belum ada jawaban di sesi ini');
-    const ctx = await buildContext(stores, req.tenantId, s);
-    const result = await analyze({ stores, ai, tenantId: req.tenantId, session: s, transcript, ctx });
-    await stores.interviews.update(req.tenantId, s.id, { status: 'completed', endedAt: new Date() });
-    res.json({ data: { status: 'completed', ...result, aiProvider: ai.name } });
+    // Penutupan bersyarat: dari dua permintaan bersamaan hanya satu yang lolos, jadi job tidak dibuat ganda.
+    const closed = await stores.interviews.close(req.tenantId, s.id);
+    if (!closed) throw new HttpError(409, 'INVALID_STATE', 'Sesi belum dimulai atau sudah selesai');
+    const job = await stores.analysis.enqueue(req.tenantId, { sessionId: s.id, submodule });
+    analysis.kick(req.tenantId, job.id);
+    const aiUsage = stores.aiUsage ? await stores.aiUsage.sessionTotals(req.tenantId, s.id) : null;
+    res.status(202).json({ data: { status: 'completed', analysis: { status: job.status }, aiProvider: ai.name, aiModel: ai.model, aiUsage } });
+  }));
+
+  // Status analisis. HR melihat jumlah hasil dan kode galat; karyawan dan atasan hanya status.
+  r.get('/:id/analysis', wrap(async (req, res) => {
+    const s = await loadVisible(req);
+    const job = await stores.analysis.forSession(req.tenantId, s.id);
+    if (!job) throw notFound('Analisis belum dibuat untuk sesi ini');
+    const isHr = [ROLES.HR_ADMIN, ROLES.ETA_ADMIN].includes(req.user.role);
+    res.json({ data: isHr ? job : { status: job.status } });
+  }));
+
+  // HR mengulang analisis yang gagal permanen (setelah batas percobaan otomatis habis).
+  r.post('/:id/analysis/retry', requireRole(ROLES.HR_ADMIN), wrap(async (req, res) => {
+    const s = await loadVisible(req);
+    const job = await stores.analysis.requeue(req.tenantId, s.id);
+    if (!job) throw new HttpError(409, 'INVALID_STATE', 'Hanya analisis yang gagal yang bisa diulang');
+    analysis.kick(req.tenantId, job.id);
+    res.status(202).json({ data: { status: job.status } });
   }));
 
   return r;
 }
 
-module.exports = { interviewRouter, wrap };
+module.exports = { interviewRouter, wrap, aiContext };
