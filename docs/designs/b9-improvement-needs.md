@@ -1,6 +1,8 @@
 # B9 · Improvement Needs
 
-Status: spek sesuai kode backend (review spek egm sudah ditriase, lihat bagian 11). Bagian web menunggu B0. Paket T6 pada brief bangun penuh 19 Nov 2026.
+Status (19 Nov 2026): backend dan web sudah dibangun di PR #17 dan sesuai spek ini. egm-review penuh (tahap 5–9), review diff, dan triasenya ada di bagian 14 dan `docs/designs/egm-review/`. Yang tersisa: baris alur B18 (menunggu `driver.js`) dan keputusan terbuka di bagian 10.
+
+Istilah: "Improvement Needs" (INA) mengikuti `CONTEXT.md`; "temuan non-pelatihan" adalah temuan TNA berkategori `non_training` yang menjadi sumber tindakan. Tanda ⚠️ = asumsi yang belum diputuskan, ⏳ = risiko yang diterima sementara; keduanya punya baris di bagian 10.
 
 ## 1. Tujuan
 
@@ -8,7 +10,7 @@ HR mengelola **tindakan perbaikan** untuk masalah non-pelatihan (SOP, alat, sist
 
 Yang **bukan** tujuan paket ini:
 
-- menghasilkan temuan non-pelatihan (itu wawancara akar masalah, B6) dan memilah temuan menjadi Training/Improvement (itu tinjauan HR, B7). B7 memanggil endpoint "buat tindakan" paket ini;
+- menghasilkan temuan non-pelatihan (itu wawancara akar masalah, B6) dan memilah temuan menjadi Training/Improvement (itu tinjauan HR, B7). B7 hanya menandai temuan (`improvement_handoff_at`); HR membuat tiap tindakan di layar ini lewat `POST /ina/actions` dengan `findingId`. Tombol massal "Buat tindakan di Improvement Needs" di mockup B7 berarti "buka layar INA", bukan membuat tindakan otomatis;
 - laporan PDF agregat untuk manajemen (BI-2) dan kanal whistleblowing (BI-6, BI-16): tidak ada di mockup final dan tidak ada di brief paket; dicatat sebagai lanjutan;
 - wawancara suara.
 
@@ -32,11 +34,18 @@ Data demo ("Karyawan A", "Engineer Service Delivery", kode ST-A2) tidak dibawa.
 - **PM-6** sudah dibangun di PR #12 (`claude/project-thread-7o13op`): tabel `lna_non_training_grants` dan store `tna.hasNonTrainingGrant / grantNonTraining / revokeNonTraining / nonTrainingGrants`. Paket ini **memakai izin yang sama**, bukan tabel baru: satu izin atasan berlaku untuk temuan non-pelatihan (TNA) dan tindakan perbaikannya (INA). PR #12 sudah ada di basis integrasi `claude/project-thread-scbrmb`.
 - **BI-1**: empat kategori BRD + "Lainnya" dengan sub-label. Empat kategori memakai istilah mockup: SOP, Alat, Sistem, Budaya.
 - **BI-4 + K-3**: pelacakan ringan (pemilik, tenggat, status). Status: Baru → Berjalan → Selesai / Ditolak. Status "Diminta" dari K-3 tidak dipakai di sini karena karyawan tidak mengajukan tindakan perbaikan (PM-8: permintaan dari karyawan ditahan).
-- **K-2** (12 Nov): Pimpinan punya akses baca ke dashboard INA. K1 (lebih baru) membatasi baris tindakan ke HR dan atasan yang diberi akses, jadi Pimpinan hanya menerima **angka ringkasan** (KPI), tanpa baris. `[⚠️ BELUM TERVERIFIKASI]` K2 di brief menyebut lima peran tanpa Pimpinan; bila user memutuskan Pimpinan tidak melihat apa pun, satu baris di `access.js`.
+- **K-2** (keputusan grilling 12 Nov, berbeda dari **K2** di brief 19 Nov yang memetakan peran ke tampilan): Pimpinan punya akses baca ke dashboard INA. K1 (lebih baru) membatasi baris tindakan ke HR dan atasan yang diberi akses, jadi Pimpinan hanya menerima **angka ringkasan** (KPI), tanpa baris. `[⚠️ BELUM TERVERIFIKASI]` K2 menyebut lima tampilan tanpa Pimpinan; bila diputuskan Pimpinan tidak melihat apa pun, cukup satu baris di `access.js` (bagian 10).
 - **PO-6**: transkrip hanya untuk orang yang diwawancarai. HR hanya melihat ringkasan.
-- **R2-2**: baca data individu dan semua perubahan dicatat audit; gagal catat berarti request gagal.
+- **R2-2**: baca data individu dan semua perubahan dicatat audit; gagal catat berarti request gagal (urutan tulis di 6.1).
 - **R2-3**: teks yang berasal dari wawancara dienkripsi per tenant.
 - **RG-4 / "ya revisi" 19 Nov**: INA masuk 2 Des, tetap di balik flag.
+
+### 3.1 Alternatif yang ditolak
+
+- **Tabel izin baru khusus INA.** Ditolak: K1 = PM-6 adalah satu keputusan untuk masalah non-pelatihan, jadi izin atasan memakai `lna_non_training_grants` (bagian 6.2).
+- **Status temuan diturunkan dari `ina_actions` saat dibaca** (bukan ditulis ke `lna_findings`). Ditolak: layar TNA dan audit PK-15 sudah membaca `lna_findings.status`; INA menulisnya di transaksi yang sama dan mencatat `tna.finding` (6.1).
+- **Memakai `lna_interview_sessions` untuk verifikasi.** Ditolak: sesi itu mewajibkan proyek dan sedang dirombak B6 (bagian 5).
+- **Menunda verifikasi AI dan memakai formulir "perbarui status".** Ditolak: brief dan mockup meminta kartu "Agen AI"; risikonya ditahan flag `ina.ai_verification` dan ringkasan tanpa kutipan (6.3).
 
 ## 4. Akses
 
@@ -60,13 +69,19 @@ Fungsi `inaAccess(req)` di `src/modules/ina/access.js` mengembalikan `{ level, s
 
 Level `read` tidak menerima `findingId`, `competencyId`, `performanceRecordId`, `involvesIndividual`, dan `lastVerification.reportedStatus` (apa yang dilaporkan pemilik ke HR bukan untuk atasan).
 
-Pemilik tindakan (peran apa pun, termasuk `learner`) hanya menjangkau rute verifikasi miliknya (bagian 6.3). Ia tidak membuka dashboard.
+Pemilik tindakan (peran apa pun, termasuk `learner`) hanya menjangkau rute verifikasi miliknya (bagian 6.3) dan `GET /access/me`. Ia tidak membuka dashboard (keputusan terbuka di bagian 10).
 
 Cakupan atasan memakai `scopeFor(req, stores.people)` → `visibleEmployeeScope()` (aturan 4), diterapkan di SQL pada `owner_user_id`. Catatan: daftar temuan non-pelatihan TNA (PR #12) hanya menampilkan bawahan, tidak dirinya; di sini atasan juga melihat tindakan yang ia miliki sendiri, karena ia yang harus mengerjakannya.
 
 ### 4.3 Temuan yang menyangkut individu
 
-Kolom `involves_individual` (boolean, default `false`). Tindakan bertanda `true` tidak dikirim oleh `GET /ina/actions` bawaan untuk peran apa pun, dan tidak ikut KPI. HR mendapat hitungan `meta.hiddenIndividual`, dan hanya HR yang bisa membukanya lewat `GET /ina/actions?hidden=1` atau `GET /ina/actions/:id` agar bisa dikoreksi. Atasan dan pimpinan tidak mendapat hitungan itu; untuk atasan rute satuan menjawab 404, untuk pimpinan 403 (ia tidak punya rute satuan sama sekali). KPI selalu dihitung dari daftar utama, juga saat `hidden=1`. Tindakan bertanda individu tidak bisa diverifikasi lewat AI, dan menandainya membatalkan verifikasi yang masih terbuka.
+Kolom `involves_individual` (boolean, default `false`). Tindakan bertanda `true` tidak ikut daftar bawaan dan KPI siapa pun, dan tidak bisa diverifikasi lewat AI; menandainya membatalkan verifikasi yang masih terbuka. KPI selalu dihitung dari daftar utama, juga saat `hidden=1`.
+
+| Peran | Daftar bawaan | Hitungan `meta.hiddenIndividual` | `?hidden=1` | `GET /actions/:id` tindakan bertanda |
+| --- | --- | --- | --- | --- |
+| manage | tanpa tindakan bertanda | ya | ya, untuk koreksi | ya |
+| read (atasan) | tanpa tindakan bertanda | tidak | diabaikan | 404 |
+| summary (pimpinan) | `data` kosong | tidak | diabaikan | 403 (tidak punya rute satuan) |
 
 Saat tindakan dibuat **dari temuan** (`findingId`), `involvesIndividual` wajib dikirim eksplisit (`true`/`false`): temuan wawancara selalu berasal dari satu karyawan, jadi HR harus memutuskan dengan sadar. Judul tindakan selalu ditulis HR; judul temuan tidak diwarisi, supaya kalimat dari wawancara tidak ikut tampil ke atasan.
 
@@ -74,7 +89,7 @@ Saat tindakan dibuat **dari temuan** (`findingId`), `involvesIndividual` wajib d
 
 ## 5. Data dan migrasi
 
-Migrasi `20261119000900-ina-actions.js` (blok 09), raw SQL, punya `down` yang menghapus ketiga tabel. Dibanding draf di bawah, migrasi final menambah: CHECK `sub_label IS NULL OR category = 'lainnya'`, kolom `ina_verifications.due_date`, dan status verifikasi `withdrawn`. `ina_verification_turns` tidak punya `tenant_id`; setiap query-nya di-join ke `ina_verifications` dengan `tenant_id`. `ina_verifications.owner_user_id` memakai `ON DELETE CASCADE`: menghapus karyawan (PK-15) ikut menghapus percakapannya.
+Migrasi `20261119000900-ina-actions.js` (blok 09), raw SQL, punya `down` yang menghapus ketiga tabel. DDL di bawah sama dengan migrasi final. `ina_verification_turns` tidak punya `tenant_id`. Setiap akses ke giliran diawali membaca (dan untuk tulis, mengunci) baris `ina_verifications` dengan filter `tenant_id`; query giliran sesudahnya memakai `verification_id` hasil baca itu. Baca transkrip memakai join ke `ina_verifications` dengan `tenant_id`. `ina_verifications.owner_user_id` memakai `ON DELETE CASCADE`: menghapus karyawan (PK-15) ikut menghapus percakapannya.
 
 ```sql
 CREATE TABLE ina_actions (
@@ -84,7 +99,7 @@ CREATE TABLE ina_actions (
   title text NOT NULL,                 -- terenkripsi (R2-3)
   detail text,                         -- terenkripsi
   category varchar(16) NOT NULL CHECK (category IN ('sop','alat','sistem','budaya','lainnya')),
-  sub_label varchar(64),               -- hanya untuk 'lainnya' (BI-1)
+  sub_label varchar(64) CHECK (sub_label IS NULL OR category = 'lainnya'),  -- BI-1
   owner_user_id uuid REFERENCES users(id) ON DELETE SET NULL,
   source_ref varchar(255),             -- "Asal gap", mis. kode kompetensi atau nama key result
   competency_id uuid REFERENCES lna_competencies(id) ON DELETE SET NULL,
@@ -107,7 +122,8 @@ CREATE TABLE ina_verifications (
   tenant_id uuid NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
   action_id uuid NOT NULL REFERENCES ina_actions(id) ON DELETE CASCADE,
   owner_user_id uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-  status varchar(16) NOT NULL DEFAULT 'assigned' CHECK (status IN ('assigned','in_progress','completed','cancelled')),
+  status varchar(16) NOT NULL DEFAULT 'assigned' CHECK (status IN ('assigned','in_progress','completed','cancelled','withdrawn')),
+  due_date date,
   consent_at timestamptz,
   consent_version varchar(32),
   started_at timestamptz,
@@ -154,38 +170,39 @@ Semua di bawah `/api/ina` (sudah lewat `auth`, `tenantContext()`, `requireSubmod
 
 `action` = `{ id, title, category, subLabel, ownerUserId, ownerName, ownerJobRoleName, sourceRef, dueDate, status, overdue, lastVerification: { id, status, endedAt, reportedStatus* } | null, createdAt, updatedAt, findingId*, competencyId*, performanceRecordId*, involvesIndividual* }` (bertanda * hanya untuk manage). Daftar tidak membawa `detail`. `lastVerification` mengabaikan verifikasi yang dibatalkan atau ditarik.
 
-`kpis` = `{ total, done, process, culture, overdue }`; `process` = kategori `sop`, `alat`, `sistem`; `culture` = `budaya`; `lainnya` hanya masuk `total`. `overdue` = tenggat sudah lewat (tanggal server, UTC) dan status `new`/`in_progress`. KPI dihitung dari himpunan yang boleh dilihat pemanggil sebelum filter query, jadi atasan hanya menghitung miliknya.
+`kpis` = `{ total, done, process, culture, overdue }`; `process` = kategori `sop`, `alat`, `sistem` (kartu mockup "SOP / ALAT / SISTEM"); `culture` = `budaya`; `lainnya` (BI-1, tidak ada di mockup) hanya masuk `total`. `overdue` = tenggat sudah lewat (tanggal server, UTC) dan status `new`/`in_progress`. KPI dihitung dari himpunan yang boleh dilihat pemanggil sebelum filter query, jadi atasan hanya menghitung tindakan dalam cakupannya (dirinya dan bawahan langsung). `overdue` tidak punya kartu di mockup; layar menampilkannya sebagai keterangan di kartu TINDAKAN.
 
 Aturan:
 
 - `title` wajib, 3–255 karakter. `category` salah satu dari lima. `subLabel` hanya boleh bila `category = lainnya`; pindah kategori dari `lainnya` mengosongkannya.
-- `ownerUserId` (akun tidak nonaktif), `findingId`, `competencyId`, `performanceRecordId` dicari ulang dalam tenant; tidak ketemu atau bukan UUID → 400 dengan nama field-nya.
-- `findingId` harus temuan `non_training` yang sudah ditinjau HR (`review_status` `approved`/`edited`, PK-14). Temuan yang sudah punya tindakan → 409 `DUPLICATE` (indeks unik menangkap balapan dua request). `competencyId`/`performanceRecordId` diwarisi dari temuan bila tidak dikirim. Status temuan: dibuat → `planned`; tindakan `done` → `resolved`; keluar dari `done` → `planned`.
-- `sourceRef` kosong + `competencyId`/`performanceRecordId` ada → diisi dari nama kompetensi / nama metrik.
+- `ownerUserId` (akun tidak nonaktif), `findingId`, `competencyId`, `performanceRecordId` dicari ulang dalam tenant; tidak ketemu atau bukan UUID → 400 dengan label isian dalam bahasa Indonesia (mis. "Pemilik tidak ditemukan"). Pada `PATCH` rujukan hanya diperiksa bila nilainya berubah (UUID dibandingkan tanpa beda huruf besar), supaya tindakan yang pemiliknya sudah nonaktif tetap bisa diubah.
+- `findingId` harus temuan `non_training` yang sudah ditinjau HR (`review_status` `approved`/`edited`, PK-14). Temuan yang sudah punya tindakan → 409 `DUPLICATE` (indeks unik menangkap balapan dua request). `competencyId`/`performanceRecordId` diwarisi dari temuan bila tidak dikirim. Status temuan: dibuat → `planned`; tindakan `done` → `resolved`; keluar dari `done` → `planned`. Status temuan ditulis di transaksi yang sama dengan tindakan dan dicatat audit `update` resource `tna.finding` (`status {from,to}`, `via: 'ina'`), sama dengan perubahan dari layar TNA.
+- `sourceRef` kosong + `competencyId` ada → diisi dari nama kompetensi. Nama metrik dari `performanceRecordId` tidak dipakai, karena catatan kinerja milik satu karyawan dan `sourceRef` terlihat oleh atasan.
 - `dueDate` format `YYYY-MM-DD`. Tenggat di masa lalu diterima (HR mencatat tindakan yang sudah berjalan).
 - Transisi status: `new → in_progress | done | rejected`, `in_progress → done | rejected | new`, `done → in_progress`, `rejected → new`. Selain itu 409 `INVALID_TRANSITION` (kode yang sama dengan PR #12). Masuk `done` mengisi `completed_at`; keluar mengosongkannya.
-- Mengganti pemilik, menutup tindakan (`done`/`rejected`), atau menandai individu membatalkan verifikasi yang masih terbuka.
+- Mengganti pemilik, menutup tindakan (`done`/`rejected`), atau menandai individu membatalkan verifikasi yang masih terbuka. Tiap pembatalan dicatat audit `ina.verification` peristiwa `cancelled` dengan `reason` (`owner_changed`, `action_closed`, `involves_individual`).
 - Field yang nilainya sama diabaikan (tanpa audit). Body tanpa field dikenal → 400.
 - Audit: `create`/`update` resource `ina.action` dengan `objectIds: [id]`, nama kolom yang berubah (tanpa isi `title`/`detail`), `status {from,to}`, `owner {from,to}`, dan `employeeIds` pemilik.
 - `GET /actions` (bukan summary) dan `GET /actions/:id` mencatat `audit.readIndividual` karena memuat nama pemilik.
-- Urutan tulis: simpan, lalu efek samping (temuan, verifikasi), lalu audit, tanpa transaksi bersama (pola repo).
+- Urutan tulis: tindakan dan efek sampingnya (status temuan, pembatalan verifikasi) disimpan dalam **satu transaksi** di `ina-stores.js`; perubahan status memakai `UPDATE … WHERE status = <yang dibaca>`. Audit dicatat sesudah transaksi, seperti modul lain. `[⏳ DITERIMA]` Bila audit gagal, request menjawab 500 padahal data sudah tersimpan; memasukkan audit ke transaksi mengubah layanan audit bersama (bagian 10).
 
 ### 6.2 Akses atasan
 
 | Method + path | Jawaban |
 | --- | --- |
-| `GET /access/me` (semua peran, **di luar** flag `ina.dashboard`) | `{ data: { level: 'manage' \| 'read' \| 'summary' \| null, pendingVerifications } }`. Flag dashboard mati → `level: null`, bukan galat. `pendingVerifications` = verifikasi terbuka milik pemanggil (0 bila flag verifikasi mati) |
+| `GET /access/me` (semua peran, **di luar** flag `ina.dashboard`; satu-satunya rute di luar flag itu) | `{ data: { level: 'manage' \| 'read' \| 'summary' \| null, pendingVerifications } }`. Flag dashboard mati → `level: null`, bukan galat. `pendingVerifications` = verifikasi terbuka milik pemanggil (0 bila flag verifikasi mati) |
+| `GET /owners` (manage) | `{ data: [{ id, name, jobRoleName }] }`: akun aktif tenant untuk pemilih pemilik |
 | `GET /access` (manage) | `{ data: [{ supervisorId, name, email, granted, grantedAt, grantedByName }] }`: semua akun `supervisor` tenant dengan status izinnya |
 | `PUT /access/:supervisorId` (manage) | `{ data: { supervisorId, granted: true, changed } }` |
 | `DELETE /access/:supervisorId` (manage) | `{ data: { supervisorId, granted: false, changed } }` |
 
-Memakai store PM-6 dari PR #12. `:supervisorId` harus akun `supervisor` tenant (selain itu 404). Audit `create`/`delete` resource `ina.supervisor_access` hanya bila `changed`. Karena izinnya sama dengan `tna.non_training_access`, mengubah di satu layar mengubah keduanya; ini disengaja dan ditulis di teks panel: "Akses ini juga berlaku untuk daftar temuan di luar pelatihan."
+Memakai store PM-6 dari PR #12. Beda perilaku yang disengaja: daftar temuan TNA hanya membaca izin ini bila flag `tna.non_training_hr` menyala, sedangkan INA selalu membacanya di balik `ina.dashboard`. `:supervisorId` harus akun `supervisor` tenant (selain itu 404). Audit `create`/`delete` resource `tna.non_training_access` (nama yang sama dengan layar TNA, ditambah `via: 'ina'`) hanya bila `changed`. Karena izinnya sama dengan `tna.non_training_access`, mengubah di satu layar mengubah keduanya; ini disengaja dan ditulis di teks panel: "Akses ini juga berlaku untuk daftar temuan di luar pelatihan."
 
 ### 6.3 Verifikasi AI (flag `ina.dashboard` + `ina.ai_verification`)
 
 | Method + path | Siapa | Jawaban |
 | --- | --- | --- |
-| `POST /actions/:id/verifications` | manage | Body `{ dueDate? }`. 201 `{ data: verification }`. Tindakan harus punya pemilik yang akunnya aktif (400 `NO_OWNER`), tidak bertanda individu dan berstatus `new`/`in_progress` (409 `INVALID_STATE`), dan belum punya verifikasi terbuka (409 `DUPLICATE`) |
+| `POST /actions/:id/verifications` | manage | Body `{ dueDate? }`. 201 `{ data: verification }`. Tindakan harus punya pemilik yang akunnya aktif (400 `NO_OWNER`), tidak bertanda individu dan berstatus `new`/`in_progress` (409 `INVALID_STATE`), dan belum punya verifikasi terbuka (409 `DUPLICATE`). Syarat pemilik, status, dan tanda individu diperiksa ulang di dalam `INSERT … SELECT`, jadi `PATCH` yang menyusul di antara baca dan tulis menghasilkan 409, bukan verifikasi untuk pemilik lama |
 | `GET /verifications` | manage | `{ data: [verification] }` semua, dengan `summary` dan `reportedStatus`, **tanpa** transkrip |
 | `GET /verifications/mine` | siapa pun | Verifikasi milik pemanggil (yang dibatalkan HR tidak ditampilkan) |
 | `GET /verifications/:id` | pemilik: dengan `turns`; manage: tanpa `turns` | Orang lain 404 |
@@ -195,11 +212,11 @@ Memakai store PM-6 dari PR #12. `:supervisorId` harus akun `supervisor` tenant (
 | `POST /verifications/:id/withdraw` | pemilik | Menarik diri: `assigned`/`in_progress → withdrawn`, semua giliran dihapus |
 | `POST /verifications/:id/cancel` | manage | `assigned`/`in_progress → cancelled` |
 
-`verification` = `{ id, actionId, actionTitle, actionDueDate, ownerUserId, ownerName, status, dueDate, assignedAt, startedAt, endedAt, reportedStatus, summary, aiProvider }`. Rute percakapan pada status yang salah → 409 `INVALID_STATE` (termasuk giliran setelah selesai). HR dan orang lain mendapat 404 di rute percakapan.
+`verification` = `{ id, actionId, actionTitle, actionDueDate, ownerUserId, ownerName, status, dueDate, assignedAt, startedAt, endedAt, reportedStatus, summary, aiProvider }`. Rute percakapan (`consent`, `turns`, `complete`, `withdraw`) pada status yang salah → 409 `INVALID_STATE` (termasuk giliran setelah selesai). HR dan orang lain mendapat 404 di rute percakapan. Pemilik lama (setelah pemilik tindakan diganti) tetap melihat verifikasinya sendiri, tetapi judul tindakan diganti teks tetap.
 
 Alur percakapan (maksimal 3 pertanyaan): (1) status tindakan sekarang, (2) hambatan, (3) bantuan yang dibutuhkan dan perkiraan selesai.
 
-Port AI: `src/modules/ina/verification-ai.js` mengekspor `createVerificationAi(ai)`. Kontrak provider, keduanya async: `nextVerificationQuestion({ action: { title, category, dueDate }, askedCount, turns }) -> string` dan `summarizeVerification({ action, turns }) -> { summary, reportedStatus }`. Bila provider punya kedua method, itu yang dipakai; bila tidak ada, gagal, atau hasilnya tidak sah, dipakai implementasi deterministik bawaan. **Ringkasan bawaan tidak memuat teks jawaban** (PO-6): hanya kalimat tetap menurut `reportedStatus` dan jumlah pertanyaan yang dijawab. `reportedStatus` bawaan dari kata kunci: jawaban pertama "selesai/beres/rampung/tuntas" tanpa negasi → `done`; "terhambat/terkendala/tertunda/belum bisa/…" di jawaban mana pun → `blocked`; selain itu `in_progress`. `src/ai/index.js` **tidak diubah**. `[⏳ DITERIMA]` Sampai provider Bedrock diberi dua method itu, ringkasan bukan buatan LLM; chip "Pilot" di layar tetap, dan jawaban API membawa `aiProvider` ("bawaan" atau nama provider). Saat provider LLM dipasang, prompt ringkasannya wajib dilarang mengutip jawaban; itu diuji di QA malam (B18). Pemantauan mutu AI (BI-21) di luar paket ini (B12/B18).
+Port AI: `src/modules/ina/verification-ai.js` mengekspor `createVerificationAi(ai)` dengan dua method async: `nextVerificationQuestion({ action, askedCount, turns }) -> string` dan `summarizeVerification({ action, turns }) -> { summary, reportedStatus }`. Provider yang tidak punya method itu, gagal, atau menjawab tidak sah diganti implementasi bawaan. **Ringkasan bawaan tidak memuat teks jawaban** (PO-6): hanya kalimat tetap menurut `reportedStatus`, yang ditebak dari kata kunci (aturannya di `domain.js` dan `tests/unit/ina-domain.test.js`). `[⏳ DITERIMA]` Sampai provider LLM diberi dua method itu, ringkasan bukan buatan LLM; chip "Pilot" tetap dan API membawa `aiProvider`. Method LLM nanti masuk lewat kontrak provider bersama di `src/ai` (dengan catatan pemakaian), dan prompt ringkasannya dilarang mengutip jawaban (diuji QA malam B18). Pemantauan mutu AI (BI-21) di luar paket ini.
 
 Hasil verifikasi **tidak** mengubah status tindakan secara otomatis. HR membaca ringkasan lalu mengubah status sendiri (keputusan tetap di manusia, sejalan dengan PK-14).
 
@@ -209,7 +226,7 @@ Persetujuan: tanpa `consentVersion` → 400. Nilainya disimpan apa adanya (versi
 
 Kode galat paket ini: 400 `BAD_REQUEST` / `NO_OWNER`, 403 `NOT_ENTITLED` / `FEATURE_DISABLED` / `ROLE_FORBIDDEN` / `NO_INA_ACCESS`, 404 `NOT_FOUND`, 409 `DUPLICATE` / `INVALID_TRANSITION` / `INVALID_STATE`.
 
-Hubungan dengan B7 (T5): tinjauan HR menandai temuan untuk Improvement (`improvement_handoff_at`) dan menyediakan `stores.tna.listImprovementHandoffs`. Saat spek ini ditulis fungsi itu belum ada di basis integrasi, jadi paket ini tidak memanggilnya. Titik temunya `POST /ina/actions` dengan `findingId`; daftar "temuan yang menunggu tindakan" di layar ditambahkan setelah B7 masuk.
+Hubungan dengan B7 (T5): B7 hanya menandai temuan (`improvement_handoff_at`). HR membuat tindakan satu per satu lewat `POST /ina/actions` dengan `findingId`, karena tiap tindakan butuh judul dari HR dan keputusan `involvesIndividual`. Daftar "temuan yang menunggu tindakan" (dari `stores.tna.listImprovementHandoffs`) ditambahkan di layar ini setelah B7 masuk.
 
 ## 7. Perubahan web
 
@@ -219,7 +236,7 @@ Dibangun di atas kontrak B0 (PR #18). Layar di `apps/web/src/screens/b9-ina/`:
 - `ActionVerificationView.vue`: persetujuan → percakapan → selesai, untuk pemilik tindakan.
 - `ShellExtra.vue`: pengingat verifikasi yang menunggu, dipasang otomatis oleh shell B0.
 
-Rute di `routes.ts`: `ina` di `/ina` (meta `submodule: 'ina'`, `flag: 'ina.dashboard'`, `views: ['hr', 'atasan', 'super']`), `ina-verifikasi` di `/ina/verifikasi/:id?` (flag `ina.ai_verification`), dan `ina-lama` yang mengarahkan alamat lama `/m/ina` ke `/ina`. Layar lama `screens/legacy-ina` dihapus. Pemilih pemilik memakai `GET /ina/owners`. Menu memakai `routeOpen()` dari B0. API klien `apps/web/src/api/ina.ts`. E2E `apps/web/e2e/improvement-needs.spec.ts` (5 test) dengan API mock.
+Rute di `routes.ts`: `ina` di `/ina` (meta `submodule: 'ina'`, `flag: 'ina.dashboard'`, `views: ['hr', 'atasan', 'super']`; `super` = tampilan Super Admin; Pimpinan belum punya tampilan di shell, jadi level `summary` baru terpakai setelah B2), `ina-verifikasi` di `/ina/verifikasi/:id?` (flag `ina.ai_verification`), dan `ina-lama` yang mengarahkan alamat lama `/m/ina` ke `/ina`. Layar lama `screens/legacy-ina` dihapus. Pemilih pemilik memakai `GET /ina/owners`. Menu memakai `routeOpen()` dari B0. API klien `apps/web/src/api/ina.ts`. E2E `apps/web/e2e/improvement-needs.spec.ts` (5 test) dengan API mock.
 
 ## 8. Test yang ditulis (test-first)
 
@@ -236,6 +253,7 @@ Rute di `routes.ts`: `ina` di `/ina` (meta `submodule: 'ina'`, `flag: 'ina.dashb
 - isolasi tenant: HR tenant B tidak melihat/mengubah tindakan tenant A; `ownerUserId`/`findingId` tenant lain ditolak;
 - enkripsi: `title`, `detail`, `summary`, teks giliran tidak tersimpan sebagai teks polos di DB;
 - verifikasi: tugaskan → pemilik setuju (wajib `consentVersion`) → tiga giliran → selesai → HR melihat ringkasan tanpa `turns`; orang lain 404; HR tidak bisa menjawab; verifikasi terbuka kedua 409; status tindakan tidak berubah otomatis;
+- triase review egm 19 Nov: rujukan yang tidak berubah tidak diperiksa ulang (UUID huruf besar bukan perubahan), verifikasi tidak dibuat untuk pemilik lama setelah `PATCH` menyusul, pembatalan verifikasi tercatat dengan alasan, status temuan dan tindakan gagal bersama (transaksi), `tna.finding` tercatat, `sourceRef` tidak diisi dari catatan kinerja individu, satu nama audit izin;
 - migrasi naik-turun-naik.
 
 ## 9. Checklist perubahan file
@@ -258,7 +276,15 @@ Rute di `routes.ts`: `ina` di `/ina` (meta `submodule: 'ina'`, `flag: 'ina.dashb
 | ⚠️ | Pimpinan hanya menerima angka ringkasan (K-2 dibatasi K1) | Keputusan user / B2 |
 | ⚠️ | "Menyangkut individu" ditandai manual oleh HR | Keputusan produk; B7 bisa mengisi otomatis |
 | ⏳ | Ringkasan verifikasi belum buatan LLM sampai provider Bedrock diberi dua method | Setelah PR #15 masuk, QA malam B18 |
-| ⏳ | Izin atasan dipakai bersama dengan daftar temuan non-pelatihan TNA | Disengaja (K1 = PM-6); pisah bila user minta |
+| ⏳ | Izin atasan dipakai bersama dengan daftar temuan non-pelatihan TNA; dua set rute, satu nama audit | Disengaja (K1 = PM-6); pisah bila user minta |
+| ⚠️ | Pemilik tindakan tidak punya tampilan daftar tindakannya sendiri; ia hanya menerima verifikasi | Keputusan produk (Pak Eji) |
+| ⚠️ | `eta_admin` mendapat level `manage` seperti HR | Keputusan produk; B12 |
+| ⏳ | Audit dicatat sesudah transaksi: audit gagal → 500 padahal data tersimpan | Diterima (pola repo); ubah layanan audit bersama bila perlu (review Andrian) |
+| ⏳ | Peran INA dibaca dari token; HR yang diturunkan tetap `manage` sampai token habis (maks. 8 jam) | Diterima; sama dengan modul lain |
+| ⏳ | KPI dan daftar dihitung dari maksimal 2.000 baris di JS | Agregasi SQL bila ada tenant mendekati batas |
+| ⏳ | Verifikasi yang lewat tenggat tidak kedaluwarsa sendiri; HR membatalkannya | Diterima untuk POC |
+| ⏳ | `GET /access` tidak menampilkan atasan nonaktif yang masih punya izin | Rapikan bersama B2 |
+| ⏳ | Atasan dengan izin membaca `detail` (teks bebas HR) di `GET /actions/:id` | HR diingatkan di formulir; pisah kolom bila diminta |
 | – | Laporan PDF agregat (BI-2) dan kanal whistleblowing (BI-6/16) tidak dibangun | Paket lanjutan |
 
 ## 11. Review egm (spek)
@@ -308,3 +334,14 @@ Titik tetap `origin/claude/project-thread-scbrmb`, dua sumbu paralel, mencakup B
 | Spec | Teks 7 dan 9 basi; `/owners`, `ShellExtra`, pengalihan `/m/ina` tidak tercatat | **Perbaiki (dokumen)**, bagian 7 dan 9 |
 | Standards | Duplikasi pembantu kecil (`wrap`, pemeriksa UUID, `conflict`) antarmodul; konstanta web meniru API | **Tunda.** Pola repo yang sudah ada; dirapikan bersama setelah 2 Des (usul `/mattpocock-skills:improve-codebase-architecture`) |
 | Standards | `ina_verification_turns` tanpa `tenant_id` | **Tolak.** Selalu dibaca lewat join terkunci ke `ina_verifications` yang berfilter tenant; ada test lintas tenant |
+
+## 14. egm-review penuh dan review diff (putaran 2, 19 Nov 2026)
+
+Dijalankan dengan agen plugin egm (reviewer tanpa riwayat, dipanggil langsung dari konteks utama karena `egm-synthesizer` tidak bisa memanggil subagen di harness ini). Laporan lengkap di `docs/designs/egm-review/b9/` (tahap 5 zoom-out, 6 comprehension, 7 critic, 8 intermediate zoom-out, 9 implementation readiness), review diff di `docs/designs/egm-review/diff/diff_review_report.md`, triase egm-resolve di `docs/designs/egm-review/b9/goldfish_review_report.md`, drift di `docs/designs/egm-review/2026-11-19_DRIFT_REPORT.md`.
+
+Hasil utama:
+
+- **Kode (test-first, test merah di `d0c9f02`, perbaikan `7ae83c8`):** tulis tindakan dan efek sampingnya dalam satu transaksi; verifikasi dibuat dengan `INSERT … SELECT` bersyarat; rujukan yang tidak berubah tidak diperiksa ulang; pembatalan verifikasi dan status temuan dicatat audit; satu nama audit izin atasan; `sourceRef` tidak diisi dari catatan kinerja individu.
+- **Spek:** status, istilah, alternatif yang ditolak (3.1), tabel peran × hasil (4.3), DDL final, `GET /owners`, alur B7, klaim tenant pada giliran (temuan Blocker CB9-1) dibetulkan, baris baru di bagian 10.
+- **Diteruskan ke user:** `eta_admin` level `manage`, pemilik tanpa tampilan daftar, level Pimpinan.
+- **Ditunda:** agregasi KPI di SQL, kedaluwarsa verifikasi, `/turns` saat `addTurn` gagal, rute izin digabung. Usul: `/mattpocock-skills:to-tickets` untuk butir ini.
