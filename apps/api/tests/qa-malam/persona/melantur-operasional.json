@@ -1,0 +1,30 @@
+{
+  "id": "melantur-operasional",
+  "versi": 1,
+  "operasi": "tna",
+  "deskripsi": "Karyawan melantur ke kendala operasional: jadwal shift dan kekurangan orang (BT-11). Sebabnya Improvement Needs.",
+  "karyawan": {
+    "nama": "Wulan Contoh",
+    "jabatan": "Agen Layanan L1"
+  },
+  "target": [
+    {
+      "kpi": "Tiket selesai per hari",
+      "target": 40,
+      "aktual": 30
+    }
+  ],
+  "naskah": [
+    "Jadwal shift sering diubah mendadak sehari sebelumnya, jadi saya sering kurang tidur.",
+    "Dua rekan di tim kami keluar bulan lalu dan belum ada pengganti, antrean dibagi ke yang tersisa.",
+    "Parkir kantor juga penuh, saya sering terlambat masuk karena harus mencari tempat.",
+    "Untuk pekerjaan menangani tiketnya sendiri saya tidak ada kesulitan."
+  ],
+  "jawabanCadangan": "Saya rasa itu saja yang bisa saya ceritakan.",
+  "harapan": {
+    "kategori": [
+      "non_training"
+    ],
+    "minTemuan": 1
+  }
+}

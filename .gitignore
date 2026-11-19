@@ -14,3 +14,5 @@ test-results/
 apps/api/scripts/tenants/*.json
 !apps/api/scripts/tenants/*.example.json
 dist-e2e/
+# Laporan QA malam lokal (B18)
+qa-malam-hasil/

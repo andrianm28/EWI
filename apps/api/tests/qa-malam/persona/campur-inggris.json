@@ -1,0 +1,30 @@
+{
+  "id": "campur-inggris",
+  "versi": 1,
+  "operasi": "tna",
+  "deskripsi": "Jawaban campur bahasa Inggris. Pertanyaan AI tetap harus berbahasa Indonesia.",
+  "karyawan": {
+    "nama": "Kevin Contoh",
+    "jabatan": "Agen Layanan L1"
+  },
+  "target": [
+    {
+      "kpi": "First Contact Resolution (%)",
+      "target": 80,
+      "aktual": 65
+    }
+  ],
+  "naskah": [
+    "Honestly, saya belum confident pakai fitur baru di CRM, karena belum pernah ada onboarding.",
+    "Setiap kali harus bikin ticket merge atau split, I have to ask my senior dulu.",
+    "The process itself is fine, cuma saya belum tahu step-by-step-nya.",
+    "Kalau ada training singkat soal fitur CRM itu, I think I can handle it myself."
+  ],
+  "jawabanCadangan": "Saya rasa itu saja yang bisa saya ceritakan.",
+  "harapan": {
+    "kategori": [
+      "training"
+    ],
+    "minTemuan": 1
+  }
+}
