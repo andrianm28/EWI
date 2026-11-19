@@ -52,7 +52,7 @@ run('PK-15 privasi dan audit (Postgres)', () => {
     await db.query('UPDATE users SET supervisor_id = :spv WHERE id IN (:ids)', { replacements: { spv: u.spv, ids: [u.ani, u.beni] } });
     for (const t of [tenant.id, other.id]) {
       await db.query(`INSERT INTO entitlements (tenant_id, product) VALUES (:t, 'full_suite')`, { replacements: { t } });
-      await db.query(`INSERT INTO feature_flags (tenant_id, key, enabled) VALUES (:t, 'module.dna', true), (:t, 'module.tna', true)`, { replacements: { t } });
+      await db.query(`INSERT INTO feature_flags (tenant_id, key, enabled) VALUES (:t, 'module.dna', true), (:t, 'module.tna', true), (:t, 'tna.training_request', true)`, { replacements: { t } });
     }
     const [[p]] = await db.query(`INSERT INTO lna_projects (tenant_id, name) VALUES (:t, 'PK15') RETURNING id`, { replacements: { t: tenant.id } });
     projectId = p.id;
@@ -99,7 +99,11 @@ run('PK-15 privasi dan audit (Postgres)', () => {
       const [a] = await auditRows(`resource = 'tna.interview_consent'`);
       expect(a).toMatchObject({ userId: u.ani, action: 'create', meta: { consentVersion: CONSENT, objectIds: [sessionId] } });
       await request(app).post(`/api/tna/sessions/${sessionId}/turns`).set(as('ani')).send({ text: 'Saya belum paham kontrak proyek.' }).expect(200);
-      await request(app).post(`/api/tna/sessions/${sessionId}/complete`).set(as('ani')).expect(200);
+      // PK-14: penutupan 202, analisis berjalan sebagai job, temuan tampil setelah HR menyetujui
+      await request(app).post(`/api/tna/sessions/${sessionId}/complete`).set(as('ani')).expect(202);
+      await app.locals.analysis.drain();
+      const q = await request(app).get('/api/tna/review').set(as('hr'));
+      for (const f of q.body.data) await request(app).post(`/api/tna/findings/${f.id}/review`).set(as('hr')).send({ decision: 'approve' }).expect(200);
     });
   });
 
@@ -143,14 +147,14 @@ run('PK-15 privasi dan audit (Postgres)', () => {
       const [finding] = (await request(app).get('/api/tna/findings').set(as('hr'))).body.data.filter((x) => x.userId === u.ani);
       const plan = await request(app).post(`/api/tna/findings/${finding.id}/plan`).set(as('hr')).send({});
       expect(plan.status).toBe(201);
-      await request(app).patch(`/api/tna/plan-items/${plan.body.data.id}`).set(as('spv')).send({ status: 'assigned' }).expect(200);
+      await request(app).patch(`/api/tna/plan-items/${plan.body.data.id}`).set(as('spv')).send({ status: 'in_progress' }).expect(200);
       await request(app).post('/api/tna/training-requests').set(as('ani')).send({ note: 'Ingin kelas negosiasi' }).expect(201);
       const rows = await auditRows(`resource IN ('tna.plan_item','tna.finding')`);
       expect(rows.map((r) => [r.resource, r.action])).toEqual([
         ['tna.plan_item', 'create'], ['tna.finding', 'update'], ['tna.plan_item', 'update'], ['tna.plan_item', 'create'],
       ]);
       expect(rows[1].meta).toMatchObject({ objectIds: [finding.id], to: 'planned' });
-      expect(rows[2].meta).toMatchObject({ from: { status: expect.any(String) }, changed: { status: 'assigned' } });
+      expect(rows[2].meta).toMatchObject({ from: { status: expect.any(String) }, changed: { status: 'in_progress' } });
     });
 
     it('perubahan posisi dicatat; ID job role tenant lain ditolak (PD-19 butir 4)', async () => {

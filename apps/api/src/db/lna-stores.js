@@ -440,11 +440,11 @@ function createLnaStores(sequelize, { cipher } = {}) {
     },
     async insertFinding(tenantId, f) {
       return insert(`INSERT INTO lna_findings (tenant_id, project_id, user_id, competency_id, session_id, category, title, detail,
-                                                gap_score, performance_record_id, linked_finding_id)
+                                                gap_score, performance_record_id, linked_finding_id, review_status)
                      VALUES (:tenantId, :projectId, :userId, :competencyId, :sessionId, :category, :title, :detail,
-                             :gapScore, :performanceRecordId, :linkedFindingId)
+                             :gapScore, :performanceRecordId, :linkedFindingId, :reviewStatus)
                      RETURNING id, category`,
-      withNulls({ tenantId, ...f, title: await enc(tenantId, f.title), detail: await enc(tenantId, f.detail) },
+      withNulls({ tenantId, ...f, reviewStatus: f.reviewStatus || 'draft', title: await enc(tenantId, f.title), detail: await enc(tenantId, f.detail) },
         ['competencyId', 'sessionId', 'detail', 'gapScore', 'performanceRecordId', 'linkedFindingId']))
         .then((row) => ({ ...row, title: f.title }));
     },
@@ -665,20 +665,20 @@ function createLnaStores(sequelize, { cipher } = {}) {
       } catch (e) { await t.rollback(); throw e; }
     },
     /**
-     * Rencana training berstatus 'needs_module' yang kompetensi temuannya kini punya course aktif:
-     * isi course-nya dan ubah status ke 'proposed'. Return jumlah rencana yang terisi.
+     * Rencana training yang masih perlu modul (status 'new' tanpa course, K-3) dan kompetensi temuannya kini
+     * punya course aktif: isi course-nya; status tetap 'new'. Return jumlah rencana yang terisi.
      */
     async rematchNeedsModule(tenantId, sources) {
       if (!sources.length) return 0;
       const [, meta] = await sequelize.query(
         `UPDATE lna_training_plan_items p
-            SET status = 'proposed', catalog_source = m.source, catalog_item_ref = m.ref, catalog_item_title = m.title, updated_at = now()
+            SET catalog_source = m.source, catalog_item_ref = m.ref, catalog_item_title = m.title, updated_at = now()
            FROM (SELECT DISTINCT ON (p2.id) p2.id AS plan_id, ci.source, ci.external_ref AS ref, ci.title
                    FROM lna_training_plan_items p2
                    JOIN lna_findings f ON f.id = p2.finding_id AND f.tenant_id = p2.tenant_id
                    JOIN lna_catalog_item_competencies m2 ON m2.competency_id = f.competency_id AND m2.tenant_id = p2.tenant_id
                    JOIN lna_catalog_items ci ON ci.id = m2.catalog_item_id AND ci.active AND ci.source IN (:sources)
-                  WHERE p2.tenant_id = :tenantId AND p2.status = 'needs_module'
+                  WHERE p2.tenant_id = :tenantId AND p2.status = 'new' AND p2.catalog_item_ref IS NULL AND p2.origin <> 'learner_request'
                   ORDER BY p2.id, array_position(ARRAY[:sources]::varchar[], ci.source),
                            (ci.program_tier IS NOT DISTINCT FROM p2.program_tier) DESC, ci.title) m
           WHERE p.tenant_id = :tenantId AND p.id = m.plan_id`,
@@ -709,7 +709,7 @@ function createLnaStores(sequelize, { cipher } = {}) {
         const [, meta] = await sequelize.query(
           `UPDATE lna_training_plan_items SET status = 'completed', updated_at = now()
             WHERE tenant_id = :tenantId AND user_id = :userId AND catalog_source = :source AND catalog_item_ref = :ref
-              AND status IN ('proposed','assigned','in_progress')`,
+              AND status IN ('new','in_progress')`,
           { replacements: { tenantId, userId, source, ref } },
         );
         n += (meta && meta.rowCount) || 0;

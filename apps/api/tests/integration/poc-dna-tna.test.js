@@ -461,7 +461,7 @@ run('POC DNA + TNA (Postgres)', () => {
     const [[other]] = await db.query(`SELECT id FROM lna_performance_records WHERE tenant_id = :t AND user_id <> :u LIMIT 1`, { replacements: { t: tenant.id, u: row.id } });
     await db.query('UPDATE lna_interview_sessions SET trigger_record_ids = trigger_record_ids || CAST(:o AS uuid) WHERE id = :sid', { replacements: { o: other.id, sid: s.id } });
 
-    const consent = await request(bedrockApp).post(`/api/tna/sessions/${s.id}/consent`).set(tika);
+    const consent = await request(bedrockApp).post(`/api/tna/sessions/${s.id}/consent`).set(tika).send({ consentVersion: 'tna-consent-id-v1.0' });
     expect(consent.status).toBe(200);
     expect(consent.body.data.question.text).toMatch(/85%.*72%/);
     const system = sent[0].system[0].text;

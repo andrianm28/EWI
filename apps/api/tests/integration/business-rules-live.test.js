@@ -116,9 +116,12 @@ run('Aturan bisnis wajib live (Postgres)', () => {
   });
 
   it('PM-6: temuan non-training untuk HR; atasan hanya dengan akses dari HR (bisa dicabut, diaudit)', async () => {
-    await request(app).post(`/api/tna/sessions/${sessionId}/consent`).set(as('dimas')).expect(200);
+    await request(app).post(`/api/tna/sessions/${sessionId}/consent`).set(as('dimas')).send({ consentVersion: 'tna-consent-id-v1.0' }).expect(200);
     await request(app).post(`/api/tna/sessions/${sessionId}/turns`).set(as('dimas')).send({ text: 'Saya belum paham kontrak; SOP juga belum diperbarui dan tools lambat.' }).expect(200);
-    await request(app).post(`/api/tna/sessions/${sessionId}/complete`).set(as('dimas')).expect(200);
+    await request(app).post(`/api/tna/sessions/${sessionId}/complete`).set(as('dimas')).expect(202);
+    await app.locals.analysis.drain();
+    const queue = await request(app).get('/api/tna/review').set(as('hr'));
+    for (const f of queue.body.data) await request(app).post(`/api/tna/findings/${f.id}/review`).set(as('hr')).send({ decision: 'approve' }).expect(200);
     const nt = (who) => request(app).get('/api/tna/findings/non-training').set(as(who));
 
     expect((await nt('hr')).status).toBe(403); // flag mati = disembunyikan
