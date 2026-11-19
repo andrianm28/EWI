@@ -75,37 +75,43 @@ resource "aws_iam_role" "qa_malam" {
   max_session_duration = 3600
 }
 
+data "aws_iam_policy_document" "qa_bedrock" {
+  dynamic "statement" {
+    for_each = local.qa_profil ? [] : [1]
+    content {
+      sid       = "ModelQa"
+      actions   = ["bedrock:InvokeModel"]
+      resources = [local.qa_model]
+    }
+  }
+  dynamic "statement" {
+    for_each = local.qa_profil ? [1] : []
+    content {
+      sid       = "ProfilInferensi"
+      actions   = ["bedrock:InvokeModel"]
+      resources = [local.qa_profile]
+    }
+  }
+  dynamic "statement" {
+    for_each = local.qa_profil ? [1] : []
+    content {
+      sid       = "ModelLewatProfil"
+      actions   = ["bedrock:InvokeModel"]
+      resources = [local.qa_model_semua_region]
+      condition {
+        test     = "StringEquals"
+        variable = "bedrock:InferenceProfileArn"
+        values   = [local.qa_profile]
+      }
+    }
+  }
+}
+
 resource "aws_iam_role_policy" "qa_malam" {
-  count = local.qa_aktif ? 1 : 0
-  name  = "elgos-qa-malam-bedrock"
-  role  = aws_iam_role.qa_malam[0].id
-  policy = jsonencode({
-    Version = "2012-10-17"
-    Statement = concat(
-      local.qa_profil ? [
-        {
-          Sid      = "ProfilInferensi"
-          Effect   = "Allow"
-          Action   = ["bedrock:InvokeModel"]
-          Resource = [local.qa_profile]
-        },
-        {
-          Sid       = "ModelLewatProfil"
-          Effect    = "Allow"
-          Action    = ["bedrock:InvokeModel"]
-          Resource  = [local.qa_model_semua_region]
-          Condition = { StringEquals = { "bedrock:InferenceProfileArn" = local.qa_profile } }
-        },
-        ] : [
-        {
-          Sid      = "ModelQa"
-          Effect   = "Allow"
-          Action   = ["bedrock:InvokeModel"]
-          Resource = [local.qa_model]
-        },
-      ]
-    )
-  })
+  count  = local.qa_aktif ? 1 : 0
+  name   = "elgos-qa-malam-bedrock"
+  role   = aws_iam_role.qa_malam[0].id
+  policy = data.aws_iam_policy_document.qa_bedrock.json
 }
 
 resource "aws_budgets_budget" "qa_malam" {
