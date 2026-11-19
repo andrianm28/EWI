@@ -118,6 +118,65 @@ function langkah(app, masuk) {
       },
       transkrip: (siapa, sid) => kirim('get', `/api/tna/sessions/${sid}/transcript`, siapa),
     },
+    li: {
+      /**
+       * B13: impor satu modul library KSA lewat impor CSV (unggah lalu simpan), lalu mengembalikan modulnya.
+       * modul: { code, name, level, jobRoles, competencies, items: [[tipe K/S/A, butir], ...] }.
+       */
+      async imporModul(hr, { code, name, level = 'basic', jobRoles = '', competencies = '', items }) {
+        const sel = (s) => `"${String(s).replace(/"/g, '""')}"`;
+        const header = 'Kode Modul,Nama Modul,Level,Rumpun,Tujuan,Jabatan,Kompetensi,Tipe Butir,Butir';
+        const baris = items.map(([tipe, butir], i) => (i === 0
+          ? [code, name, level, '', '', jobRoles, competencies, tipe, butir]
+          : [code, '', '', '', '', '', '', tipe, butir]).map(sel).join(','));
+        const up = await request(app).post('/api/li/imports/li_modules?filename=modul.csv').set(masuk(hr))
+          .set('Content-Type', 'application/octet-stream').send(Buffer.from(`${[header, ...baris].join('\n')}\n`)).expect(201);
+        await kirim('post', `/api/li/imports/batches/${up.body.data.id}/commit`, hr, {}).expect(200);
+        const modul = (await kirim('get', '/api/li/modules', hr).expect(200)).body.data.find((m) => m.code === code.toUpperCase());
+        if (!modul) throw new Error(`Modul ${code} tidak ada setelah impor`);
+        return modul;
+      },
+    },
+    ld: {
+      /**
+       * B14: pelatihan offline dari satu modul; semua peserta hadir dan skor vendor diisi.
+       * skor: [[pengguna, angka], ...]. Mengembalikan detail pelatihan.
+       */
+      async pelatihanOffline(hr, { title, moduleId, startsOn, endsOn = null, skor }) {
+        const t = (await kirim('post', '/api/ld/trainings', hr, { title, moduleId, startsOn, endsOn }).expect(201)).body.data;
+        await kirim('put', `/api/ld/trainings/${t.id}/participants`, hr, { userIds: skor.map(([p]) => p.id) }).expect(200);
+        await kirim('put', `/api/ld/trainings/${t.id}/attendance`, hr, { allPresent: true }).expect(200);
+        await kirim('put', `/api/ld/trainings/${t.id}/assessment`, hr, { mode: 'vendor_manual' }).expect(200);
+        await kirim('put', `/api/ld/trainings/${t.id}/scores`, hr, { entries: skor.map(([p, score]) => ({ userId: p.id, score })) }).expect(200);
+        return (await kirim('patch', `/api/ld/trainings/${t.id}`, hr, { status: 'done' }).expect(200)).body.data;
+      },
+    },
+    cca: {
+      /** B10 (flag cca.interview): HR menugaskan tier pimpinan; pimpinan menugaskan bawahan langsungnya. */
+      async tugaskan(siapa, assigneeIds, dueDate) {
+        return (await kirim('post', '/api/cca/assignments', siapa, { assigneeIds, dueDate }).expect(201)).body.data;
+      },
+      /** Tampilan penugasan sesuai peran: { role: hr|leader|employee, mine, ... }. */
+      async penugasan(siapa) {
+        return (await kirim('get', '/api/cca/assignments', siapa).expect(200)).body.data;
+      },
+    },
+    lim: {
+      /** B15: rencana pengukuran (HR). */
+      async buatRencana(hr, rencana) {
+        return (await kirim('post', '/api/lim/plans', hr, rencana).expect(201)).body.data;
+      },
+      async ringkasan(siapa, planId) {
+        return (await kirim('get', `/api/lim/plans/${planId}/overview`, siapa).expect(200)).body.data;
+      },
+      async antrean(hr, planId) {
+        return (await kirim('get', `/api/lim/plans/${planId}/queue`, hr).expect(200)).body.data;
+      },
+      /** Jadwal wawancara ulang per karyawan; date null membatalkan. */
+      async jadwalkan(hr, planId, userIds, date) {
+        return (await kirim('post', `/api/lim/plans/${planId}/queue/schedule`, hr, { userIds, date }).expect(200)).body.data;
+      },
+    },
   };
 }
 
