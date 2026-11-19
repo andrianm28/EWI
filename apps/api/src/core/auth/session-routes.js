@@ -28,7 +28,12 @@ function sessionRoutes({ sessions, audit, mfa, users }) {
     const { userId } = req.params;
     if (String(userId) === String(req.user.id)) throw forbidden('SELF_MFA_RESET', 'Minta admin lain mereset verifikasi dua langkah Anda');
     // Tenant dari token: akun tenant lain diperlakukan seperti tidak ada
-    if (!(await users.findById(req.tenantId, userId))) throw notFound('Pengguna tidak ditemukan');
+    const target = await users.findById(req.tenantId, userId);
+    if (!target) throw notFound('Pengguna tidak ditemukan');
+    // Review egm: faktor kedua akun yang lebih tinggi tidak boleh dihapus oleh akun di bawahnya
+    const targetRoles = new Set([target.role, ...(target.roles || [])]);
+    const protectedTarget = targetRoles.has(ROLES.ETA_ADMIN) || (targetRoles.has(ROLES.TENANT_ADMIN) && req.user.role !== ROLES.TENANT_ADMIN);
+    if (protectedTarget) throw forbidden('ROLE_PROTECTED', 'Verifikasi dua langkah akun admin hanya bisa direset oleh admin yang setingkat');
     const removed = await mfa.adminReset(req.tenantId, userId);
     const n = await sessions.revokeAllForUser(req.tenantId, userId, { revokedBy: req.user.id, reason: 'mfa_reset' });
     await audit.record(req, 'delete', 'auth.mfa', { reason: 'admin_reset', employeeIds: [userId], removed, sessionsRevoked: n });

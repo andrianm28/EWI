@@ -68,6 +68,26 @@ describe('pendaftaran MFA', () => {
   });
 });
 
+describe('review diff egm: penguatan MFA', () => {
+  it('mematikan dan mengaktifkan MFA dibatasi per akun dan kegagalannya dicatat', async () => {
+    const { app, stores } = build();
+    const { secret, token } = await enroll(app);
+    const wrong = codeNow(secret, 1) === '000000' ? '000001' : '000000';
+    for (let i = 0; i < 10; i += 1) await request(app).delete('/api/auth/mfa').set(bearer(token)).send({ code: wrong }).expect(401);
+    const r = await request(app).delete('/api/auth/mfa').set(bearer(token)).send({ code: codeNow(secret, 1) });
+    expect(r.status).toBe(429);
+    expect(attemptsOf(stores).filter(([, m, o]) => m === 'mfa_disable' && o === 'failed')).toHaveLength(10);
+  });
+
+  it('mengaktifkan MFA mencabut sesi lain akun itu, sesi yang dipakai tetap hidup', async () => {
+    const { app } = build();
+    const { body: { token: other } } = await login(app);
+    const { token } = await enroll(app);
+    expect((await request(app).get('/api/auth/me').set(bearer(other))).status).toBe(401);
+    expect((await request(app).get('/api/auth/me').set(bearer(token))).status).toBe(200);
+  });
+});
+
 describe('login dengan langkah kedua', () => {
   it('akun dengan MFA aktif: login menjawab challenge, bukan token; kode benar menerbitkan sesi mfa', async () => {
     const { app, stores } = build();
@@ -156,6 +176,18 @@ describe('reset MFA oleh admin (pemulihan)', () => {
     expect((await request(app).get('/api/auth/me').set(bearer(learnerTok))).status).toBe(401);
     expect((await login(app, 'agent@elgos.test')).body.token).toBeTruthy();
     expect(stores.audit.rows.find((x) => x.resource === 'auth.mfa' && x.action === 'delete')).toMatchObject({ userId: 'u-hr', meta: { reason: 'admin_reset', employeeIds: ['u-l'] } });
+  });
+
+  it('HR tidak bisa mereset MFA Admin ETA atau Admin Tenant', async () => {
+    const { app, stores } = build();
+    stores.users.all.push(
+      { id: 'u-ta', tenantId: 't-1', tenantSlug: 'elgos', email: 'ta@elgos.test', name: 'TA', role: 'tenant_admin' },
+      { id: 'u-e1', tenantId: 't-1', tenantSlug: 'elgos', email: 'eta1@elgos.test', name: 'ETA', role: 'eta_admin' },
+    );
+    const { body: { token: hr } } = await login(app);
+    const a = await request(app).delete('/api/sessions/users/u-ta/mfa').set(bearer(hr));
+    const b = await request(app).delete('/api/sessions/users/u-e1/mfa').set(bearer(hr));
+    expect([a.status, a.body.error.code, b.status, b.body.error.code]).toEqual([403, 'ROLE_PROTECTED', 403, 'ROLE_PROTECTED']);
   });
 
   it('tidak bisa untuk diri sendiri, akun tenant lain, atau oleh karyawan', async () => {

@@ -90,6 +90,7 @@ function authRoutes({ users, sessions, policy, audit, requireAuth, limits, mfa, 
     const from = req.user.role;
     const next = role === from ? null : await sessions.switchRole(req.user, role);
     if (!next) throw forbidden('ROLE_NOT_ASSIGNED', 'Peran itu tidak diberikan ke akun Anda');
+    if (next.conflict) throw new HttpError(409, 'ROLE_VIEW_CHANGED', 'Tampilan sudah berganti di tab lain. Muat ulang halaman.');
     await audit.record({ tenantId: req.user.tenantId, user: { ...req.user, role } }, 'update', 'auth.role_view', { from, to: role });
     const { id, tenantId, email } = req.user;
     res.json({ token: next.token, user: { id, tenantId, email, role, roles: next.roles, view: viewOf(role), primaryRole: req.user.primaryRole } });

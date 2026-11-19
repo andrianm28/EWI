@@ -93,3 +93,16 @@ describe('ganti tampilan', () => {
     expect((await request(app).get('/api/auth/me').set(bearer(l))).status).toBe(401);
   });
 });
+
+describe('review diff egm: ganti tampilan bersamaan', () => {
+  it('dua tab memakai token yang sama: satu berhasil, yang kalah dapat ROLE_VIEW_CHANGED, bukan ROLE_NOT_ASSIGNED', async () => {
+    const { app } = build({ accounts: { 'u-hr': { primary: 'hr_admin', roles: ['hr_admin', 'learner', 'supervisor'] } } });
+    const hr = await login(app);
+    const [a, b] = await Promise.all([switchTo(app, hr, 'learner'), switchTo(app, hr, 'supervisor')]);
+    // Yang kalah ditolak di requireAuth (401) atau di penggantian atomik (409); kodenya selalu ROLE_VIEW_CHANGED
+    const loser = [a, b].find((r) => r.status !== 200);
+    expect([a, b].filter((r) => r.status === 200)).toHaveLength(1);
+    expect([401, 409]).toContain(loser.status);
+    expect(loser.body.error.code).toBe('ROLE_VIEW_CHANGED');
+  });
+});

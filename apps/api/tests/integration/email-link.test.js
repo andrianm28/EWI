@@ -78,6 +78,10 @@ run('Login link email R3-2 (Postgres)', () => {
     expect((await request(app).post('/api/auth/email-link/verify').send({ token })).status).toBe(401);
     for (let i = 0; i < 4; i += 1) await request(app).post('/api/auth/email-link').send({ tenant: slug, email: 'rina@link.test' }).expect(202);
     expect(mailer.sent.length).toBe(3);
+    // Review egm: permintaan ke-4 dst. hanya menambah satu baris "ditolak karena batas" per jendela
+    await request(app).post('/api/auth/email-link').send({ tenant: slug, email: 'rina@link.test' }).expect(202);
+    const [[{ n }]] = await db.query(`SELECT count(*)::int AS n FROM audit_logs WHERE tenant_id = :t AND user_id = :u AND meta->>'reason' = 'rate'`, { replacements: { t: tenant.id, u: u.rina } });
+    expect(n).toBe(1);
     expect((await request(app).post('/api/auth/email-link/verify').send({ token: 'x' })).status).toBe(401);
   });
 

@@ -5,13 +5,21 @@ const express = require('express');
 const { requireRole } = require('./index');
 const { ROLES, ASSIGNABLE_ROLES, describeRoles, switchableRoles } = require('./roles');
 const { HttpError, badRequest, forbidden, notFound } = require('../errors');
+const { FLAGS } = require('../flags');
 
 const wrap = (fn) => (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
 const shape = (r) => ({ primary: r.primary, roles: r.roles, views: describeRoles(switchableRoles(r.roles)) });
 
 /** userRoles: { get(tenantId, userId), replace(tenantId, userId, { roles, primary, grantedBy }) } */
-function roleRoutes({ userRoles, audit }) {
+function roleRoutes({ userRoles, audit, flags }) {
   const r = express.Router();
+  // Aturan 3 CLAUDE.md: fitur baru di balik flag (default mati). Peran tambahan ikut flag auth.multi_role.
+  r.use(wrap(async (req, res, next) => {
+    if (!flags || !(await flags.isEnabled(req.tenantId, FLAGS.AUTH_MULTI_ROLE))) {
+      throw forbidden('FEATURE_DISABLED', 'Pengaturan peran belum diaktifkan untuk organisasi Anda');
+    }
+    next();
+  }));
 
   r.get('/:id/roles', requireRole(ROLES.HR_ADMIN, ROLES.TENANT_ADMIN), wrap(async (req, res) => {
     const row = await userRoles.get(req.tenantId, req.params.id);

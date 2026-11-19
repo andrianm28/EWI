@@ -44,9 +44,9 @@ Flag baru `auth.multi_role` (default mati, per tenant): bila mati, `switchableRo
 
 ## Peran aktif di sesi
 
-- `auth_sessions` mendapat `active_role` (NULL = peran utama) dan `role_version int NOT NULL DEFAULT 0`.
+- `auth_sessions` mendapat `active_role` (diisi peran utama saat sesi dibuat; NULL hanya untuk sesi sebelum migrasi = peran utama) dan `role_version int NOT NULL DEFAULT 0`.
 - JWT: `role` = peran aktif, klaim baru `rv` = `role_version`. Contoh akun `pimpinan`: `{ sub, tid, role:'pimpinan', rv:0, sid, email }`.
-- `authSessions.findActive(id)` kini mengembalikan `{ id, tenantId, userId, activeRole, roleVersion, expiresAt, primaryRole, roles }`; `roles` = isi `user_roles` akun (satu query dengan `array_agg`). Store memori menerima `rolesOf(userId)` opsional; tanpa itu peran akun = peran saat sesi dibuat, jadi test lama tidak berubah.
+- `authSessions.findActive(id)` kini mengembalikan `{ id, tenantId, userId, activeRole, roleVersion, expiresAt, primaryRole, roles }`; `roles` = isi `user_roles` akun (satu query dengan `array_agg`). Store memori menerima `accountOf(userId)` opsional; tanpa itu peran akun = peran saat sesi dibuat, jadi test lama tidak berubah.
 - `requireAuth` menolak (401) bila: `claims.rv !== roleVersion` → kode `ROLE_VIEW_CHANGED`; peran aktif sesi tidak sama dengan `claims.role`; atau peran aktif tidak lagi ada di `switchableRoles`. Jadi peran yang dicabut langsung kehilangan akses tanpa perlu mencabut sesi.
 - `req.user` ditambah `roles` (switchable) dan `view`. Karena `req.user.role` = peran aktif, `requireRole`, `visibleEmployeeScope`, dan pengecekan di modul otomatis mengikuti tampilan: HR dalam tampilan Karyawan hanya melihat datanya sendiri.
 - Ganti tampilan: `POST /api/auth/switch-role {role}` → `UPDATE auth_sessions SET active_role = :role, role_version = role_version + 1 WHERE id = :sid AND role_version = :rv RETURNING ...`, lalu token baru ditandatangani dengan `exp` = `expires_at` sesi (masa sesi tidak bertambah). Token lama selalu tidak berlaku (`rv` naik, juga setelah A→B→A). Audit `update` `auth.role_view` `{from,to}`.
@@ -167,3 +167,16 @@ Reviewer tanpa konteks memberi 11 temuan untuk B2. Triase:
 | Kontrak menu kurang | **Perbaiki**: tabel menu dan bentuk JSON. |
 | `user_roles.tenant_id` tidak terikat ke tenant user | **Perbaiki**: FK komposit. |
 | Nama constraint dan `down` | **Perbaiki**. |
+
+## Review diff (egm, 19 Nov)
+
+Satu review diff untuk B1 + B2 (lihat juga `b1-login.md`). Tidak ada temuan berat.
+
+| # | Temuan | Keputusan |
+|---|---|---|
+| D5 | `GET/PUT /api/users/:id/roles` aktif tanpa flag (aturan 3) | Diperbaiki: seluruh rute di balik `auth.multi_role` (403 `FEATURE_DISABLED` bila mati). Peran `tenant_admin` sendiri tetap ada di semua tenant karena dipakai onboarding B12 |
+| D6 | `down` tidak menghapus sesi yang memakai peran tambahan | Diperbaiki: sesi dengan `active_role <> users.role` dihapus sebelum kolom dibuang; naik-turun-naik dijalankan lokal |
+| D9 | Kalah balapan `switch-role` menjawab `ROLE_NOT_ASSIGNED` | Diperbaiki: `ROLE_VIEW_CHANGED` (409 dari penggantian atomik, atau 401 dari `requireAuth`). Audit gagal setelah ganti: ditunda, pengguna cukup masuk lagi. `active_role` selalu diisi saat sesi dibuat: spek disesuaikan, NULL hanya untuk sesi lama |
+| D10 | Hak pemberi peran tidak dicek ulang di dalam kunci | Ditunda: jendela sangat sempit, butuh dua admin bertindak bersamaan; dicatat untuk B11 |
+| D12 | Menu `admin` memuat "Impor data" tetapi impor masih `hr_admin` saja | Ditunda ke B11 (pemilik layar Admin Tenant): perlu keputusan apakah Admin Tenant boleh mengimpor data kinerja. Kode `accountOf` vs `rolesOf` di spek: diselaraskan |
+| D13 | Celah test | Ditambah: batas MFA enable/disable, target terlindung, audit `rate` sekali per jendela, balapan ganti tampilan. Sisanya (perilaku `down` dengan data, penurunan atasan lewat impor) dicatat |

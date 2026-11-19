@@ -25,6 +25,7 @@ function makeStores({ entitlements = {}, flags = {} } = {}) {
   const projects = [];
   return {
     users: {
+      all: users,
       listActiveTenants: async () => [{ slug: 'elgos', name: 'ELGOS' }, { slug: 'other', name: 'Lain' }],
       findByEmail: async (slug, email) => users.find((u) => u.tenantSlug === slug && u.email === email) || null,
       findById: async (tenantId, id) => users.find((u) => u.tenantId === tenantId && u.id === id) || null,

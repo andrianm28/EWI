@@ -95,7 +95,7 @@ function createApp({ config, stores, ai, catalog, mailer, rateLimits, readiness 
   })));
   if (stores.loginLinks) app.use('/api/auth/email-link', emailLinkRoutes({ users: stores.users, links, sessions, policy, audit, limits, mfa, attempts }));
   app.use('/api/auth/mfa', mfaPublicRoutes({ mfa, users: stores.users, sessions, policy, audit, attempts, limits, publicUser }));
-  app.use('/api/auth/mfa', auth, mfaAccountRoutes({ mfa, flags, audit, users: stores.users }));
+  app.use('/api/auth/mfa', auth, mfaAccountRoutes({ mfa, flags, audit, users: stores.users, limits, attempts, sessions }));
   app.use('/api/auth', authRoutes({
     users: stores.users, sessions, policy, audit, requireAuth: auth, limits, mfa, attempts, flags,
     tenantPicker: config.loginTenantPicker, localLogin: authConfig.localLogin,
@@ -116,7 +116,7 @@ function createApp({ config, stores, ai, catalog, mailer, rateLimits, readiness 
   });
   api.use('/projects', projects.router({ projects: stores.projects }));
   api.use('/admin', flagAdminRouter({ flags, audit }));
-  if (stores.userRoles) api.use('/users', roleRoutes({ userRoles: stores.userRoles, audit }));
+  if (stores.userRoles) api.use('/users', roleRoutes({ userRoles: stores.userRoles, audit, flags }));
   api.use('/sessions', sessionRoutes({ sessions, audit, mfa, users: stores.users }));
   if (stores.people && stores.interviews) api.use('/employees', employeeRouter({ stores, flags, audit }));
   if (stores.loginLinks) api.use('/invitations', invitationRoutes({ users: stores.users, links, audit }));
@@ -141,6 +141,8 @@ function defaultRateLimits() {
     // B1: langkah kedua. Kegagalan per akun tidak direset oleh faktor pertama yang benar.
     mfaIp: createRateLimiter({ windowMs, max: 20 }),
     mfaAccount: createRateLimiter({ windowMs, max: 10, message: 'Terlalu banyak kode salah untuk akun ini. Coba lagi 15 menit lagi.' }),
+    // Review egm: baris audit "ditolak karena batas" paling banyak satu per akun per jendela
+    auditOnce: createRateLimiter({ windowMs, max: 1 }),
   };
 }
 

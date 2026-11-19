@@ -58,6 +58,12 @@ function createEmailLinkService({ stores, mailer, appBaseUrl, now = () => new Da
  * PK-16: batas per akun (RATE, di database) ditambah batas per IP (`limits.linkIp`, `limits.verifyIp`);
  * kebijakan login (daftar email Admin ETA) dicek saat link dikirim dan saat ditukar; penukaran membuat sesi.
  */
+/** true untuk kejadian pertama kunci ini dalam jendela limiter auditOnce (tanpa limiter: selalu true). */
+function firstInWindow(limits, key) {
+  if (!limits || !limits.auditOnce) return true;
+  try { limits.auditOnce.consume(key); return true; } catch { return false; }
+}
+
 function emailLinkRoutes({ users, links, sessions, policy, audit, limits, mfa, attempts }) {
   const r = express.Router();
   const GENERIC = 'Bila email terdaftar di organisasi ini, link masuk sudah dikirim. Periksa kotak masuk Anda.';
@@ -72,7 +78,11 @@ function emailLinkRoutes({ users, links, sessions, policy, audit, limits, mfa, a
     if (user) {
       const blocked = !policy.allows(user) ? 'policy' : ((await links.recentCount(user)) >= RATE.max ? 'rate' : null);
       if (blocked) {
-        await attempts.record(user, { method: 'email_link', outcome: 'blocked', reason: blocked });
+        // Review egm: penolakan dicatat sekali per akun per jendela, supaya audit append-only
+        // tidak bisa dibanjiri oleh orang yang hanya tahu satu email.
+        if (firstInWindow(limits, `audit:link:${blocked}:${user.id}`)) {
+          await attempts.record(user, { method: 'email_link', outcome: 'blocked', reason: blocked });
+        }
       } else {
         await links.issue(user, 'login', { tenantName: users.tenantName ? await users.tenantName(user.tenantId) : null });
         await attempts.record(user, { method: 'email_link', outcome: 'link_sent' });

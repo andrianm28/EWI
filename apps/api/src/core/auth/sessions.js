@@ -53,14 +53,14 @@ function createSessionService({ store, tokens, multiRole = async () => false }) 
     /** true bila sesi milik user ini masih berlaku. */
     async isActive(claims) { return (await check(claims)).ok; },
     /**
-     * B2: ganti tampilan pada sesi yang sama. user = req.user. Return { token, roles } atau null bila peran
-     * tidak boleh dipakai akun ini / sesi berubah di tempat lain.
+     * B2: ganti tampilan pada sesi yang sama. user = req.user. Return { token, roles }, null bila peran
+     * tidak boleh dipakai akun ini, atau { conflict: true } bila sesi berubah di tempat lain (tab lain).
      */
     async switchRole(user, role) {
       const state = await check({ ...user, rv: user.rv });
       if (!state.ok || !state.roles.includes(role)) return null;
       const next = await store.setActiveRole(user.sid, role, user.rv || 0);
-      if (!next) return null;
+      if (!next) return { conflict: true };
       const token = tokens.sign({ ...user, role }, { sid: user.sid, rv: next.roleVersion, expiresAt: next.expiresAt });
       return { token, roles: state.roles };
     },

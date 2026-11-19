@@ -50,6 +50,9 @@ module.exports = {
   async down(qi) {
     await qi.sequelize.query(`
       SET search_path TO "${S}";
+      -- Sesi yang sedang memakai peran tambahan (bukan peran utama) dihapus: kode lama hanya mengenal klaim role
+      DELETE FROM auth_sessions s USING users u
+       WHERE u.id = s.user_id AND s.active_role IS NOT NULL AND s.active_role <> u.role;
       ALTER TABLE auth_sessions DROP COLUMN role_version;
       ALTER TABLE auth_sessions DROP COLUMN active_role;
       DROP TRIGGER IF EXISTS users_role_sync ON users;

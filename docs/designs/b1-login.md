@@ -162,3 +162,18 @@ Reviewer tanpa konteks memberi 9 temuan untuk B1. Triase:
 | Kontrak endpoint kurang | **Perbaiki**: kode galat, challenge, dependensi rute ditulis. |
 | Kolom organisasi tidak dicatat sebagai penyimpangan | **Perbaiki**: dicatat beserta sumber slug. |
 | Nama constraint `down`, aturan 7, `auth.sso` vs `em.sso` | **Perbaiki**. |
+
+## Review diff (egm, 19 Nov)
+
+Reviewer segar membaca `git diff origin/claude/project-thread-scbrmb...HEAD` + spek ini (commit 52b47ae, sebelum gabung B0). Tidak ada temuan berat. Test baru ditulis merah dulu (5 gagal di kode lama), lalu hijau (skill `mattpocock-skills:tdd`; seam = HTTP API lewat supertest, sama dengan bagian Test di atas).
+
+| # | Temuan | Keputusan |
+|---|---|---|
+| D1 | `DELETE /api/auth/mfa` dan `POST /enable` memeriksa kode tanpa batas per akun | Diperbaiki: limiter `mfaAccount` (kunci sama dengan `/verify`), kegagalan dicatat `mfa_disable`/`mfa_enable` |
+| D2 | Baris audit `blocked/rate` bisa dibanjiri per akun | Diperbaiki: limiter `auditOnce`, satu baris per akun per alasan per 15 menit. Audit `/sso/start` per IP tetap seperti spek [⏳ DITERIMA]: flag SSO mati di semua tenant sampai SSO sungguhan ada |
+| D3 | Web belum mengenal jawaban `{ mfaRequired, challenge }` | Dikerjakan di layar login (langkah 2) pada PR yang sama. Sampai layar terbit, `auth.mfa` jangan dinyalakan [⏳ DITERIMA] |
+| D4 | HR bisa mereset MFA Admin Tenant / Admin ETA | Diperbaiki: target `eta_admin` selalu ditolak, target `tenant_admin` hanya oleh `tenant_admin` (`ROLE_PROTECTED`); peran tambahan di `user_roles` ikut dicek |
+| D7 | `check` dan `record` limiter MFA tidak atomik | Ditunda: limiter memori satu proses; dibatasi juga 5 percobaan per challenge dan 3 link per 15 menit. Dicatat untuk limiter bersama (PK-16 ⏳) |
+| D8 | Mengaktifkan MFA tidak mencabut sesi lain | Diperbaiki: sesi lain dicabut (`reason = mfa_enabled`), sesi yang dipakai tetap. Challenge menggantung saat cabut semua sesi: ditunda, umurnya 5 menit |
+| D11 | `mfaStore.get/enable/advanceStep` tanpa `tenant_id` | Diperbaiki: semua query memfilter `tenant_id` |
+| D12 | Selisih kecil spek dan kode | Diterima sebagai kode: rute akun MFA membungkus `{ data }`; `DELETE` tanpa baris = 404; login sandi mencatat `blocked/policy`. Tabel `auth_mfa_challenges` tanpa purge: masuk job pembersihan PK-15 [⏳ DITERIMA] |

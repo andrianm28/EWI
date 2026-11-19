@@ -107,11 +107,11 @@ function authSessionStore(q) {
 /** B1: secret autentikator dan tantangan langkah kedua. Semua perubahan status atomik (satu UPDATE ... RETURNING). */
 function mfaStore(q) {
   return {
-    async get(userId) {
+    async get(tenantId, userId) {
       if (!UUID_RE.test(String(userId))) return null;
       const [row] = await q(
         `SELECT user_id AS "userId", tenant_id AS "tenantId", secret_enc AS "secretEnc", enabled_at AS "enabledAt", last_step AS "lastStep"
-           FROM user_mfa WHERE user_id = :userId`, { userId });
+           FROM user_mfa WHERE tenant_id = :tenantId AND user_id = :userId`, { tenantId, userId });
       if (!row) return null;
       return { ...row, lastStep: row.lastStep === null ? null : Number(row.lastStep) };
     },
@@ -123,18 +123,18 @@ function mfaStore(q) {
         { tenantId, userId, secretEnc }, QueryTypes.INSERT,
       );
     },
-    async enable(userId) {
-      await q('UPDATE user_mfa SET enabled_at = now() WHERE user_id = :userId AND enabled_at IS NULL RETURNING user_id', { userId });
+    async enable(tenantId, userId) {
+      await q('UPDATE user_mfa SET enabled_at = now() WHERE tenant_id = :tenantId AND user_id = :userId AND enabled_at IS NULL RETURNING user_id', { tenantId, userId });
     },
     async remove(tenantId, userId) {
       if (!UUID_RE.test(String(userId))) return false;
       const rows = await q('DELETE FROM user_mfa WHERE tenant_id = :tenantId AND user_id = :userId RETURNING user_id', { tenantId, userId });
       return rows.length > 0;
     },
-    async advanceStep(userId, step) {
+    async advanceStep(tenantId, userId, step) {
       const rows = await q(
-        'UPDATE user_mfa SET last_step = :step WHERE user_id = :userId AND (last_step IS NULL OR last_step < :step) RETURNING user_id',
-        { userId, step });
+        'UPDATE user_mfa SET last_step = :step WHERE tenant_id = :tenantId AND user_id = :userId AND (last_step IS NULL OR last_step < :step) RETURNING user_id',
+        { tenantId, userId, step });
       return rows.length > 0;
     },
     async createChallenge({ id, tenantId, userId, method, tokenHash, expiresAt }) {
@@ -255,7 +255,8 @@ function createStores(sequelize, { encryption } = {}) {
       async findById(tenantId, id) {
         if (!UUID_RE.test(String(id))) return null;
         const [row] = await q(
-          `SELECT u.id, u.tenant_id AS "tenantId", u.email, u.name, u.role
+          `SELECT u.id, u.tenant_id AS "tenantId", u.email, u.name, u.role,
+                  ARRAY(SELECT ur.role FROM user_roles ur WHERE ur.user_id = u.id ORDER BY ur.role) AS roles
              FROM users u JOIN tenants t ON t.id = u.tenant_id
             WHERE u.tenant_id = :tenantId AND u.id = :id AND u.status <> 'disabled' AND t.status = 'active'`,
           { tenantId, id },
