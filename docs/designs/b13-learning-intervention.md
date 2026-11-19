@@ -58,6 +58,15 @@ kompetensinya. Permintaan dan draf yang sudah ada tidak dihapus dan tidak disesu
 kode modul: satu baris salah menolak seluruh modul itu. Jabatan atau kompetensi yang tidak dikenal juga menolak seluruh
 modul itu, dengan alasan per baris.
 
+**Tautan modul ke kompetensi lewat kode (setelah B4, PR #22).** Di DACUM, kode modul Tool 2 sama dengan kode
+kompetensi Tool 1 (`lna_competencies.code`, contoh `ST-A2`, unik per jabatan). Sebuah modul terhubung ke kompetensi bila:
+(a) kompetensi itu disebut namanya di kolom Kompetensi saat impor (tersimpan di `li_module_competencies`), atau (b)
+`lower(kompetensi.code) = lower(modul.code)` dan jabatan kompetensi termasuk jabatan modul (`li_module_job_roles`).
+Jalur (b) dihitung saat dibaca, bukan disimpan, jadi urutan impor (kamus dulu atau library dulu) dan perubahan kode lewat
+`PATCH /api/dna/competencies/:id` langsung berlaku tanpa impor ulang. Modul tanpa jabatan tidak dicocokkan lewat kode,
+karena kode hanya unik per jabatan. Tidak ada migrasi: kedua jalur memakai tabel yang sudah ada. Jalur nama tetap ada
+untuk kompetensi tanpa kode (kompetensi inti, kamus lama).
+
 `[⚠️ BELUM TERVERIFIKASI]` Bentuk berkas DACUM Tool 2 asli dari Mas Abdan belum dilihat. Pemetaan kolom memakai mesin
 pemetaan impor yang ada, jadi judul kolom berbeda masih bisa dipetakan HR, tetapi berkas yang satu modul per baris
 dengan butir di banyak kolom perlu dirapikan dulu.
@@ -87,7 +96,8 @@ dengan butir di banyak kolom perlu dirapikan dulu.
 6. **Prioritas Pareto 20/80.** Sumber: temuan TNA kategori `training`, diperingkat `rankTrainingNeeds`
    (`modules/tna/pareto.js`) dengan `settings.tna.pareto`. Data diambil lewat query khusus yang tidak membawa judul atau
    rincian temuan; temuan tanpa kompetensi tidak ikut dan dilaporkan sebagai `unlinkedFindings`. Pencocokan memakai nama
-   kompetensi yang dinormalkan, dan dibatasi ke satu jabatan bila filter `jobRoleId` dipakai. Kompetensi prioritas = baris dengan
+   kompetensi yang dinormalkan dari semua kompetensi yang terhubung ke modul (lewat nama atau kode, lihat "Tautan modul
+   ke kompetensi" di §3), dan dibatasi ke satu jabatan bila filter `jobRoleId` dipakai. Kompetensi prioritas = baris dengan
    `cumulativeShare ≤ 0,8`, ditambah baris peringkat 1 (agar tidak kosong bila satu kompetensi > 80%). Modul prioritas
    = modul yang terhubung ke kompetensi prioritas; peringkat modul = peringkat terbaik kompetensinya. Modul tanpa
    kompetensi terhubung atau tanpa temuan = "belum ada data gap". Bila `module.tna` mati untuk tenant, prioritas
@@ -132,7 +142,7 @@ dengan butir di banyak kolom perlu dirapikan dulu.
 | --- | --- | --- |
 | GET | `/api/li/` | probe modul `{ module, title, tenantId, role }` (HR, SME, role leader; dipakai test gerbang) |
 | GET | `/api/li/modules?jobRoleId&priority=pareto&type=K\|S\|A&level&stream` | `{ data: [ringkas], kpis (termasuk `streams`), pareto, filters: { jobRoles, streams }, vendorName }` |
-| GET | `/api/li/modules/:id` | detail + `items` per tipe, `jobRoles`, `status`, `priority`, `recommendation`, `request`, `draft` (ringkas) |
+| GET | `/api/li/modules/:id` | detail + `items` per tipe, `jobRoles`, `competencies: [{ id, code, name, jobRoleId, via: 'code' \| 'name' }]` (kompetensi terhubung; `via = code` bila cocok lewat kode, walau juga disebut namanya), `status`, `priority`, `recommendation`, `request`, `draft` (ringkas) |
 | POST | `/api/li/modules/:id/request` | 201 permintaan; 409 `PATH_ACTIVE` |
 | POST | `/api/li/requests/bulk` | `{ scope, jobRoleId?, level? }` → 201 `{ created, skipped, requests }` |
 | GET | `/api/li/requests` | `{ data: { vendor, drafts, candidates }, vendorName }` (kandidat = saran `dev`, status `none`, prioritas dulu) |
@@ -170,6 +180,10 @@ Bentuk galat: `{ error: { code, message } }`.
   prioritas Pareto dari temuan TNA → minta vendor, alur status, batal, permintaan massal → draf, sunting, ajukan,
   kembalikan, setujui (suntingan draf diaudit) → course katalog aktif saja → program per jabatan → cakupan
   `visibleEmployeeScope` di `listTrainingGaps` → isolasi tenant (404/daftar kosong) → peran non-HR 403 → audit tercatat.
+- `tests/integration/li.test.js` (tautan lewat kode): modul ber-kode sama dengan kompetensi di jabatannya terhubung tanpa
+  kolom Kompetensi, baik kamus diimpor sebelum maupun sesudah library; kode sama di jabatan lain tidak terhubung; modul
+  tanpa jabatan tidak dicocokkan; huruf besar/kecil tidak berpengaruh; detail `competencies` dengan `via`; prioritas Pareto
+  ikut tautan kode; mengganti kode kompetensi lewat `PATCH /api/dna/competencies/:id` langsung memindahkan tautan.
 - `tests/integration/alur-li.test.js` (B18, lewat `tests/alur/driver.js`): impor library → wawancara TNA stub menghasilkan gap
   training → gap belum masuk Pareto sebelum HR meninjau → setelah disetujui modul kompetensi itu prioritas Pareto (tanpa
   judul temuan) → minta vendor sampai `installed` dengan course aktif → modul `available`; atasan/karyawan 403; flag
@@ -274,8 +288,9 @@ sudah tersedia); helper bersama `li`/`ld`.
 ## 9. Batas dengan paket lain
 
 - B4 (Developmental Needs) dan B11 mengimpor DACUM (kompetensi, `code`, `stream`, `program_tier`, job function). B13
-  mengimpor library modul KSA (Tool 2) ke tabel `li_*` sendiri dan tidak menambah kolom di `lna_competencies`. Setelah B4
-  masuk, tautan modul ke kompetensi sebaiknya memakai `lna_competencies.code`, bukan nama.
+  mengimpor library modul KSA (Tool 2) ke tabel `li_*` sendiri dan tidak menambah kolom di `lna_competencies`. Sejak B4
+  masuk, modul juga terhubung ke kompetensi lewat `lna_competencies.code` = `li_modules.code` per jabatan (§3), dibaca
+  langsung dari kolom B4; B13 tidak menulis ke tabel B4.
 - B14 menunjuk `li_modules` dari `ld_trainings.module_id`, dan memetakan course LMS ke modul lewat
   `li_modules.catalog_item_id`.
 - B7/B8 (rencana belajar): membaca `li_modules.catalog_item_id` (boleh kosong, per tenant) sebagai course untuk modul,
