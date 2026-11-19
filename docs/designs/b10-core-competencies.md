@@ -58,7 +58,8 @@ Store baru `apps/api/src/db/cca-stores.js` (`createCcaStores(sequelize, { cipher
 
 - sumber dan persyaratan: `listSources`, `getSource`, `createSource`, `updateSource`, `getRequirement`, `createRequirement`, `updateRequirement`;
 - program: `listPrograms`, `getProgram`, `upsertProgram`, `setProgramManualReport`, `countProgramResults`, `listProgramResults`, `replaceProgramResults`;
-- penugasan: `listEligibleLeaders`, `listAssignments` (terbaru per orang per tier, yang batal diabaikan), `getAssignment`, `createAssignment`, `cancelAssignment`, `completeAssignment`, `getAssignmentSummary`.
+- penugasan: `listEligibleLeaders`, `listAssignments` (terbaru per orang per tier, yang batal diabaikan), `getAssignment`, `createAssignment`, `cancelAssignment`, `completeAssignment`, `getAssignmentSummary`;
+- ekspor: `exportFor`.
 
 ## 5. Endpoint dan flag
 
@@ -194,6 +195,13 @@ Privasi: endpoint laporan hanya untuk HR, dan HR memang boleh melihat semua kary
 - Ringkasan (`GET /assignments/:id/summary`): peserta membaca ringkasannya sendiri. HR membaca ringkasan tier `leader`; untuk tier `employee` HR mendapat 403 `SUMMARY_RESTRICTED`. Orang lain mendapat 404. Penugasan yang belum selesai atau belum punya ringkasan dijawab 404 "Ringkasan belum tersedia" (di tahap 1 ringkasan hanya terisi lewat `completeAssignment`). Ringkasan tier `employee` sampai ke HR sebagai sintesis di tahap 2 (mockup: "Isi jawaban karyawan diringkas dan tidak ditampilkan per orang"). Transkrip tidak pernah keluar dari modul ini (PO-6).
 - Tahap 1 tidak punya endpoint untuk menyelesaikan penugasan. Store menyediakan `completeAssignment(tenantId, id, { sessionId, summary })` sebagai sambungan untuk mesin wawancara tahap 2.
 
+### 6.4 Ekspor dan hapus data karyawan (PK-15)
+
+Basis integrasi e2d3707 sudah memuat PR #11, jadi paket ini langsung menyambung ke sana:
+
+- `GET /api/employees/:userId/export` menambah `coreCompetencies: { programResults, interviewAssignments }` lewat `stores.cca.exportFor`. Skor program ditulis dengan nama nilai dan komponennya. Ringkasan wawancara hanya ikut bila karyawan mengekspor datanya sendiri, sama dengan aturan transkrip.
+- Hapus karyawan menghapus hasil program dan penugasannya lewat `ON DELETE CASCADE`.
+
 ## 7. Keputusan default yang dipakai
 
 - K2: peran mengikuti kode saat ini (`hr_admin`, `supervisor`, `pimpinan`, `learner`); `eta_admin` lolos `requireRole` seperti modul lain.
@@ -204,7 +212,7 @@ Privasi: endpoint laporan hanya untuk HR, dan HR memang boleh melihat semua kary
 ## 8. Test
 
 - Unit `tests/unit/cca-domain.test.js`: kesiapan dan klasifikasi (termasuk tanpa nilai aktual), status band, laporan program (angka contoh kecil yang bisa dihitung tangan), isian agregat, validasi konfigurasi program, validasi baris impor dan pemetaan kolom.
-- Integrasi `tests/integration/cca.test.js` (Postgres), sekaligus test rute: peran (karyawan dan atasan ditolak di endpoint HR); alur sumber → persyaratan → overview, validasi dan kembali ke draft; konfigurasi program → isian agregat → impor (pemetaan kolom tidak pas, baris ditolak) → laporan → impor ulang sebagai potret; flag `cca.interview`; penugasan berjenjang lewat `completeAssignment` untuk `supervisor` dan `pimpinan`, di luar tim ditolak, duplikat dilewati, putaran baru; bentuk `GET /assignments` per peran; ringkasan karyawan tertutup untuk HR dan atasan, tersimpan terenkripsi, baca dicatat audit; isolasi tenant.
+- Integrasi `tests/integration/cca.test.js` (Postgres), sekaligus test rute: peran (karyawan dan atasan ditolak di endpoint HR); alur sumber → persyaratan → overview, validasi dan kembali ke draft; konfigurasi program → isian agregat → impor (pemetaan kolom tidak pas, baris ditolak) → laporan → impor ulang sebagai potret; flag `cca.interview`; penugasan berjenjang lewat `completeAssignment` untuk `supervisor` dan `pimpinan`, di luar tim ditolak, duplikat dilewati, putaran baru; bentuk `GET /assignments` per peran; ringkasan karyawan tertutup untuk HR dan atasan, tersimpan terenkripsi, baca dicatat audit; ekspor dan hapus karyawan; isolasi tenant.
 - Test rute dengan store in-memory tidak dibuat: CI selalu menyediakan Postgres, dan store tiruan akan menduplikasi aturan SQL.
 - CI yang ada menjalankan migrasi naik, turun, naik.
 
@@ -222,6 +230,7 @@ Privasi: endpoint laporan hanya untuk HR, dan HR memang boleh melihat semua kary
 - [x] `apps/api/tests/unit/cca-domain.test.js`
 - [x] `apps/api/src/modules/imports/kinds/employees.js`, `job-levels.js` (tambah `cca` di `submodules`)
 - [x] `apps/api/tests/integration/cca.test.js`
+- [x] `apps/api/src/modules/employees/index.js` (ekspor memuat data Core Competencies)
 - [x] `docs/designs/b10-core-competencies.md`
 
 ## 10. Di luar cakupan tahap 1
@@ -229,7 +238,6 @@ Privasi: endpoint laporan hanya untuk HR, dan HR memang boleh melihat semua kary
 - Turunan persyaratan oleh AI dari dokumen visi-misi (unggah dokumen, CCA-B21/B22 masih terbuka): tahap 2. Tahap 1 menerima persyaratan yang diisi HR; kolom `origin` sudah menyediakan `ai`.
 - Percakapan, ringkasan, sintesis tema, pratinjau sesi pimpinan (tahap 2).
 - Detail gap per persyaratan (layar `s.gap`) dan alur ke tinjauan HR: milik B5 dan B7.
-- Ekspor dan hapus data karyawan (PK-15, PR #11) untuk tabel baru: `ON DELETE CASCADE` sudah menutup hapus; ekspor `cca_program_results` dan `cca_assignments` ditambahkan setelah PR #11 masuk branch integrasi, karena kodenya belum ada di base. [⏳ DITERIMA sampai saat itu; test yang dijadwalkan: ekspor karyawan memuat hasil program dan penugasannya.]
 - Persetujuan karyawan atas penyimpanan skor program: data berasal dari program pelatihan klien sendiri dan diunggah HR; dasar pemrosesannya mengikuti dokumen legal PK-17, bukan paket ini.
 - Undangan email dan pengingat tenggat.
 
@@ -254,7 +262,7 @@ Review spek oleh subagent tanpa konteks, 19 Nov: 18 temuan (4 berat, 12 sedang, 
 | 6 | Bentuk `GET /assignments` HR kurang untuk layar | Diperbaiki: calon pimpinan `none`, penyebut KPI, `teamTotal` = ukuran tim |
 | 7 | HR yang juga karyawan tidak punya `mine` | Diperbaiki: `mine` di semua bentuk |
 | 8 | "Wawancarai karyawan yang belum selesai" tidak bisa dijalankan | Ditunda: membuka data per orang ke atasan, perlu keputusan pemilik produk (PR) |
-| 9 | Skor per karyawan tanpa ekspor; divisi kecil terbaca | Sebagian ditunda (ekspor menunggu PR #11), ambang divisi ditolak dengan alasan RG-3 dan mockup |
+| 9 | Skor per karyawan tanpa ekspor; divisi kecil terbaca | Diperbaiki: ekspor dan hapus (6.4) setelah basis integrasi memuat PR #11; ambang divisi ditolak dengan alasan RG-3 dan mockup |
 | 10 | Tenant CCA saja tidak bisa mengimpor karyawan | Diperbaiki: `employees` dan `dna_job_levels` dibuka untuk `cca` |
 | 11 | Aturan impor yang harus ditebak | Diperbaiki: baris ganda, potret, perubahan konfigurasi, divisi, peserta selesai tanpa skor |
 | 12 | Validasi konfigurasi belum lengkap | Diperbaiki: bobot 100, aturan band, deskripsi band; tautan nama nilai ditolak dengan alasan |

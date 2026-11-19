@@ -339,6 +339,26 @@ run('B10 Core Competencies (Postgres)', () => {
       expect((await get('/assignments', 'spv')).body.data).toMatchObject({ canAssign: false, mine: { leader: { status: 'assigned' } } });
     });
 
+    it('ekspor data karyawan memuat hasil program dan penugasannya; ringkasan hanya untuk dirinya; hapus karyawan menghapus semuanya', async () => {
+      const exp = (who) => request(app).get(`/api/employees/${u.a}/export`).set(as(who));
+      const self = (await exp('a')).body.data.coreCompetencies;
+      expect(self.programResults).toEqual([expect.objectContaining({
+        programKey: 'dna-5c', finalScore: 95, totalActivities: 2,
+        values: [{ name: 'Credible', score: 90 }, { name: 'Competent', score: 100 }],
+        components: [{ name: 'Kuis', score: 90 }, { name: 'Asesmen akhir', score: 100 }],
+      })]);
+      expect(self.interviewAssignments).toEqual([expect.objectContaining({ tier: 'employee', status: 'completed', summary: 'Jawaban karyawan a.' })]);
+      const byHr = (await exp('hr')).body.data.coreCompetencies;
+      expect(byHr.interviewAssignments).toHaveLength(1);
+      expect(JSON.stringify(byHr)).not.toContain('Jawaban');
+
+      expect((await request(app).delete(`/api/employees/${u.a}`).set(as('hr')).send({ reason: 'uji' })).status).toBe(200);
+      const [{ n }] = await db.query(
+        `SELECT (SELECT count(*) FROM cca_program_results WHERE user_id = :id)::int + (SELECT count(*) FROM cca_assignments WHERE assignee_id = :id)::int AS n`,
+        { replacements: { id: u.a }, type: 'SELECT' });
+      expect(n).toBe(0);
+    });
+
     it('tenant lain punya daftar sendiri', async () => {
       const hr = (await get('/assignments', 'luar')).body.data;
       expect(hr.kpis).toMatchObject({ leadersEligible: 1, leadersAssigned: 0, employeesAssigned: 0 });

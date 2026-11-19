@@ -212,6 +212,31 @@ function createCcaStores(sequelize, { cipher } = {}) {
           WHERE a.tenant_id = :tenantId AND a.id = :id AND a.status IN ('assigned','in_progress') RETURNING ${ASSIGNMENT_COLS}`,
         { tenantId, id, sessionId: sessionId ?? null, summary: summary ? await cipher.encrypt(tenantId, summary) : null });
     },
+    /**
+     * PK-15: data Core Competencies milik satu karyawan untuk ekspor. Ringkasan wawancara hanya ikut bila
+     * withSummary (karyawan mengekspor datanya sendiri).
+     */
+    async exportFor(tenantId, userId, { withSummary = false } = {}) {
+      const results = await select(
+        `SELECT p.key AS "programKey", p.name AS "programName", p.config, x.division, x.activities_done AS "activitiesDone",
+                x.final_score::float8 AS "finalScore", x.value_scores AS "valueScores", x.component_scores AS "componentScores"
+           FROM cca_program_results x JOIN cca_programs p ON p.id = x.program_id AND p.tenant_id = x.tenant_id
+          WHERE x.tenant_id = :tenantId AND x.user_id = :userId ORDER BY p.name`, { tenantId, userId });
+      const assignments = await select(
+        `SELECT ${ASSIGNMENT_COLS}, a.summary FROM cca_assignments a
+          WHERE a.tenant_id = :tenantId AND a.assignee_id = :userId ORDER BY a.created_at`, { tenantId, userId });
+      if (withSummary) await cipher.open(tenantId, assignments, ['summary']);
+      const named = (list, scores) => list.map((x, i) => ({ name: x.name, score: (scores || [])[i] ?? null }));
+      return {
+        programResults: results.map(({ config, valueScores, componentScores, ...r }) => ({
+          ...r, totalActivities: config.totalActivities, values: named(config.values, valueScores), components: named(config.components, componentScores),
+        })),
+        interviewAssignments: assignments.map((a) => ({
+          id: a.id, tier: a.tier, status: a.status, dueDate: a.dueDate, durationMinutes: a.durationMinutes, createdAt: a.createdAt, completedAt: a.completedAt,
+          ...(withSummary ? { summary: a.summary ?? null } : {}),
+        })),
+      };
+    },
     async getAssignmentSummary(tenantId, id) {
       const row = await one('SELECT a.summary FROM cca_assignments a WHERE a.tenant_id = :tenantId AND a.id = :id', { tenantId, id });
       if (!row || !row.summary) return null;
