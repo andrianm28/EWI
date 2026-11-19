@@ -399,3 +399,19 @@ Ikan mas `egm:egm-design` dan `egm:egm-implementation-readiness`, konteks hanya 
 | `UiDataTable` tanpa klik baris; satuan KPI detail; nilai `null`; id/label `UiTabs`; penyebut `UiProgressBar`; `top4Share` tidak pernah `null`; periode ringkasan vs tab OKR; `tab` di query; `status` proyek dan `defaults` | **Perbaiki** teks bagian 16 |
 | HR di tampilan "Karyawan (saya)" masih melihat data HR di `/tna` | **Terima** (⏳), sama dengan B0 5.1 sampai B8 |
 | Atasan tidak bisa memilih jabatan (`/tna/job-roles` hanya HR) | **Terima** (⏳): atasan memakai `affected` |
+
+### 16.2 Code review layar (`mattpocock-skills:code-review`, 19 Nov)
+
+Dua sumbu paralel atas `git diff 3bf15c2...HEAD` (layar B5/B6 dan kolom API detail). Triase (`egm-resolve`); perbaikan di commit "Perbaiki temuan code review layar B5/B6", test merah lebih dulu:
+
+| Sumbu | Temuan | Keputusan |
+| --- | --- | --- |
+| Spec | `assignedBy` selalu `null` karena `gapSessions` tidak memilih `assigned_by`, jadi tombol Batalkan tidak pernah muncul (unit test menyuntik kolom itu sendiri) | **Perbaiki**: store memilih `assigned_by`; test integrasi detail memeriksa `projectId`, `assignedBy`, `open`; test alur `alur-gap-wawancara.test.js` gagal tanpa perbaikan ini |
+| Spec | Galat 400/409 penugasan tidak menandai field | **Perbaiki**: validasi peramban (proyek, jabatan, tenggat) dan galat API dipetakan ke field (`tna-project`, `tna-jobrole`, `tna-due`, `tna-employees`) lewat `UiField`, tautan di `UiErrorSummary` |
+| Spec | Kolom "Wawancara" dan "Belum ada" | **Perbaiki**: "Status wawancara", selalu "n selesai · n berjalan" |
+| Standards | Panel tab tanpa `role="tabpanel"`; kelas formulir sendiri; tautan tinjauan memakai path | **Perbaiki**: panel `tna-tab-panel-*`, `el-input`/`el-check`, rute bernama `tna-review`; `watch(fullPath)` mengosongkan detail dan galat lama |
+| Spec | Nama klien API berbeda dari teks spek (`gaps.summary` dst.) | **Tolak**: nama hanya internal layar; perilaku dan rute sama |
+| Spec | Teks pengantar, judul "Perlu dikerjakan"/"Riwayat", label "Ditugaskan"/"Undangan berakhir" tidak disebut spek | **Terima**: dari mockup, tidak mengubah kontrak |
+| Spec | Perubahan `gating.spec.ts`/`shell.spec.ts` di luar spek | **Terima**: dipaksa judul `Training Needs` dan menu `iv` baru; dicatat di sini |
+| Standards | Duplikasi `call`/`post`, `ALL_VIEWS`, pola `ApiError ? message : …`; `tna.css` dipakai B6 | **Tunda** ke `/mattpocock-skills:to-tickets` bersama tipe Gap bersama |
+| Standards | `assignedBy` (id pengguna) ikut terkirim ke atasan | **Terima**: id saja, tanpa nama; dibutuhkan untuk tombol Batalkan atasan penugas |

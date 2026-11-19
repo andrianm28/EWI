@@ -349,3 +349,19 @@ Ikan mas yang sama dengan B5 bagian 16.1. Triase:
 | "Sesi ditutup HR" salah untuk alur lama | **Perbaiki**: "Wawancara ini sudah selesai." |
 | Keadaan hilang: menunggu/gagal `/summary`, flag dimatikan di langkah ringkasan, `INVITATION_EXPIRED`, AI selesai setelah muat ulang | **Perbaiki**: semuanya ditulis di bagian 15 |
 | Daftar `/iv` memuat semua sesi dalam cakupan lalu disaring di peramban | **Terima** (⏳): isinya sama dengan yang sudah dilihat HR/atasan |
+
+### 15.2 Code review layar (`mattpocock-skills:code-review`, 19 Nov)
+
+Triase temuan sumbu Standards dan Spec untuk layar `iv`/`iv-session` (tabel lengkap untuk kolom API di B5 bagian 16.2):
+
+| Sumbu | Temuan | Keputusan |
+| --- | --- | --- |
+| Spec + Standards | Galat "Tulis catatan 10-1000 karakter" tidak pernah tampil (`run()` hanya menampilkan `ApiError`), field tidak ditandai | **Perbaiki**: validasi di luar `run()`, galat menaut ke `iv-note`, `UiField :error` memberi `aria-invalid` (e2e baru) |
+| Spec | Catatan transkrip privat menambah kalimat dan tidak menampilkan status `step` | **Perbaiki**: teks persis spek + "Status: <langkah>" |
+| Spec | `GET /summary` gagal membuat layar kosong | **Perbaiki**: langkah sesi tetap tampil bersama galat (e2e baru) |
+| Standards | `id` rute dibaca sekali; `restartsLeft` kosong mengunci pengguna; ringkasan diambil dua kali | **Perbaiki**: `watch(id)`, `restartsLeft ?? 0`, `load({ keepSummary })` |
+| Standards | Fokus ke kotak centang memakai `setTimeout` dan merebut fokus dari `UiErrorSummary` | **Perbaiki**: ringkasan galat mengambil fokus, tautannya ke `iv-consent` (e2e diperbarui) |
+| Standards | Percakapan tanpa `role="log"`; `sr-only` Tailwind; chip mentah; `list-disc` | **Perbaiki**: `role="log" aria-live="polite"`, `el-sr-only`, `UiChip`, `el-input` |
+| Standards | `iv`/`iv-session` memakai lima tampilan, sedangkan menu `iv` hanya `karyawan` (B0 5.3 aturan 1) | **Tolak** untuk sekarang: brief koordinator meminta lima tampilan sampai B8, B11, B12 terpasang (sama dengan peralihan B0 aturan 6); dipersempit saat itu |
+| Spec | Baris riwayat hanya topik dan status | **Terima**: riwayat sudah lewat tenggat; durasi dan tenggat ada di sesi terbuka |
+| Standards | `IvListView` menyaring `intervieweeId` di peramban | **Terima**: sudah `⏳ DITERIMA` di bagian 15 |
