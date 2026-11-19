@@ -170,6 +170,10 @@ Bentuk galat: `{ error: { code, message } }`.
   prioritas Pareto dari temuan TNA → minta vendor, alur status, batal, permintaan massal → draf, sunting, ajukan,
   kembalikan, setujui (suntingan draf diaudit) → course katalog aktif saja → program per jabatan → cakupan
   `visibleEmployeeScope` di `listTrainingGaps` → isolasi tenant (404/daftar kosong) → peran non-HR 403 → audit tercatat.
+- `tests/integration/alur-li.test.js` (B18, lewat `tests/alur/driver.js`): impor library → wawancara TNA stub menghasilkan gap
+  training → gap belum masuk Pareto sebelum HR meninjau → setelah disetujui modul kompetensi itu prioritas Pareto (tanpa
+  judul temuan) → minta vendor sampai `installed` dengan course aktif → modul `available`; atasan/karyawan 403; flag
+  mati `FEATURE_DISABLED`; tanpa `full_suite` `NOT_ENTITLED`.
 - UI (setelah B0): e2e Playwright dengan API mock untuk empat layar, plus menu tersembunyi bila tenant tanpa `full_suite`.
 
 ## 7. Daftar perubahan file
@@ -207,6 +211,7 @@ UI (menumpuk di atas B0):
 
 Dokumen:
 - [x] `docs/designs/b18-e2e-qa-malam.md` (baris alur B13 di tabel 3.3)
+- [x] `apps/api/tests/integration/alur-li.test.js` dan langkah `li` di `apps/api/tests/alur/driver.js` (test alur B18)
 
 ## 8. Keputusan triase review egm
 

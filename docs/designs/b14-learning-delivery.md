@@ -243,6 +243,9 @@ lain → 404. Bentuk galat: `{ error: { code, message } }`.
   diabaikan, `organizationId` di luar rentang integer diabaikan, idempoten, event terlambat, user tak dikenal, hasil
   asesmen → baris LMS dari katalog (selesai + gagal = tuntas, peserta yang belum pernah aktif dihitung tidak aktif)
   → isolasi tenant → peran non-HR 403 → audit.
+- `tests/integration/alur-ld.test.js` (B18, lewat `tests/alur/driver.js`): pelatihan offline sampai skor dan dashboard, pengingat
+  kedua 409, peran non-HR 403; webhook `learning.progress` membuat pelatihan online `elitementor`, `assessment.result`
+  mengisi skor offline lewat kode asesmen, event ulang tanpa efek, flag/entitlement mati 202 tanpa efek dan tidak dicatat (kiriman ulang setelah pulih diproses).
 - `tests/unit/gating.test.js`: `ld` butuh `full_suite` (403 `NOT_ENTITLED`) dan `module.ld` (403 `FEATURE_DISABLED`);
   learner 403. `tests/unit/config.test.js`: rentang `EWI_UPLOAD_MAX_MB`.
 - UI (setelah B0): e2e Playwright dengan API mock untuk empat tab, plus menu tersembunyi bila tenant tanpa `full_suite`.
@@ -282,6 +285,7 @@ UI (menumpuk di atas B0):
 
 Dokumen:
 - [x] `docs/designs/b18-e2e-qa-malam.md` (baris alur B14 di tabel 3.3)
+- [x] `apps/api/tests/integration/alur-ld.test.js` dan langkah `ld` di `apps/api/tests/alur/driver.js` (test alur B18)
 
 ## 8. Keputusan triase review egm
 
