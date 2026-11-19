@@ -15,7 +15,7 @@ module.exports = {
   key: 'employees',
   label: 'Data karyawan & posisi',
   description: 'Daftar karyawan peserta, atasan langsung, job role, dan jenjang. Untuk DNA, impor Jenjang & program lebih dulu agar job role dikenali.',
-  submodules: ['dna', 'tna'],
+  submodules: ['dna', 'tna', 'cca'],
   fields: [
     { key: 'employeeId', header: 'ID Karyawan', required: true, aliases: ['nik', 'nip', 'employee id', 'id pegawai', 'no karyawan'], example: 'E-1001' },
     { key: 'name', header: 'Nama', required: true, aliases: ['nama karyawan', 'nama lengkap', 'name', 'full name'], example: 'Dimas Pratama' },

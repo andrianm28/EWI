@@ -1,0 +1,266 @@
+# B10 · Core Competencies (modul `cca`)
+
+Status: tahap 1 (backend dan impor) dikerjakan di PR ini. Spek ini hanya mengikat tahap 1. Tahap 2 dan 3 menunggu PR lain dan mendapat tambahan spek sendiri sebelum dibangun, lihat "Pentahapan" dan bagian 11.
+Acuan layar: mockup Pak Eji `project/Main.dc.html`, layar `s.cc`, `s.ccvm`, `s.ccval`, `s.aiv`.
+Acuan aturan: brief `elgos-eksekusi/brief-bangun-penuh-19nov.md` bagian T7, rekap keputusan bagian 4b (CCA-B1..B15), CLAUDE.md.
+
+## 1. Tujuan
+
+HR melihat kompetensi inti perusahaan dari tiga sumber dan seberapa siap karyawan terhadapnya:
+
+1. persyaratan kompetensi yang diturunkan dari dokumen visi dan misi;
+2. indikator perilaku per nilai korporasi (di Elitery: 5C), ditambah hasil program pelatihan nilai yang diimpor dari laporan program;
+3. wawancara AI berjenjang: HR menugaskan pimpinan, pimpinan diwawancarai, pimpinan menugaskan timnya, karyawan diwawancarai. AI menyintesis jawaban pimpinan dan karyawan.
+
+ELGOS adalah produk multi-tenant. "5C", "Elitery's DNA 5C", nama nilai, komponen program, dan ambang status adalah konfigurasi tenant, bukan konstanta kode.
+
+## 2. Pentahapan
+
+| Tahap | Isi | Syarat mulai |
+| --- | --- | --- |
+| 1 (PR ini) | Migrasi, store, API sumber dan persyaratan, konfigurasi program nilai, impor laporan program, laporan agregat, penugasan wawancara berjenjang (status saja), flag | Tidak ada |
+| 2 | Turunan persyaratan oleh AI dari dokumen visi-misi, percakapan wawancara visi-misi-nilai, ringkasan yang diperiksa peserta, sintesis pimpinan vs karyawan, pengisian nilai aktual dari sintesis | PR B6 (mesin wawancara dan penyedia AI, thread T4) terbuka |
+| 3 | Layar HR (tab Vision & Mission, Corporate Values, Wawancara AI), layar atasan dan karyawan, e2e | PR B0 (fondasi UI, thread T1) terbuka |
+
+Tahap 1 sengaja tidak menyentuh `src/modules/interviews` agar tidak bentrok dengan B6. Tahap 1 tidak punya endpoint untuk menyelesaikan penugasan, jadi flag `cca.interview` jangan dinyalakan untuk tenant sungguhan sebelum tahap 2.
+
+## 3. Layar mockup dan data yang dilayani tahap 1
+
+| Layar mockup | Elemen | Endpoint tahap 1 |
+| --- | --- | --- |
+| Tab Vision & Mission | KPI (kesiapan, gap terbesar, di bawah target), grup Visi dan Misi berisi tabel persyaratan (target, aktual, gap, klasifikasi), catatan "menunggu validasi HR" | `GET /api/cca/overview?group=vm` |
+| Tab Corporate Values, bagian gap perilaku | KPI, kesiapan per nilai, tabel indikator perilaku per nilai | `GET /api/cca/overview?group=values` |
+| Tab Corporate Values, bagian hasil program | KPI (terdaftar, selesai, lulus, rata-rata skor nilai), status karyawan, skor per nilai, komponen berbobot, per divisi, temuan, rekomendasi | `GET /api/cca/programs/:key/report` (dari impor per karyawan, atau dari isian agregat) |
+| Tab Wawancara AI (HR) | KPI penugasan, tabel pimpinan (status, tim selesai, tindakan) | `GET /api/cca/assignments`, `POST /api/cca/assignments` |
+| Wawancara AI (atasan) | Status wawancara sendiri, tabel anggota tim (status saja), tombol tugaskan | sama, hasil dibentuk per peran |
+| Wawancara visi & nilai (karyawan) | Status penugasan sendiri | sama |
+| Percakapan, ringkasan, sintesis tema | tahap 2 | belum ada |
+
+## 4. Data dan migrasi
+
+Satu migrasi `apps/api/migrations/20261119001000-cca-core-competencies.js` (blok 10), schema `ewi`, punya `down` yang menghapus kelima tabel. Semua tabel punya `tenant_id uuid NOT NULL REFERENCES tenants(id) ON DELETE CASCADE`.
+
+- `cca_sources`: pernyataan strategis. `kind` (`vision`, `mission`, `value`), `title`, `text`, `source_ref` (mis. URL atau nama dokumen), `position` (urutan tampil), `status` (`active`, `archived`), `created_by`, waktu. Satu set per organisasi (CCA-B2).
+- `cca_requirements`: persyaratan kompetensi (untuk visi dan misi) atau indikator perilaku (untuk nilai). `source_id` FK ke `cca_sources` ON DELETE CASCADE, `name`, `definition`, `target_score` numeric 0–100, `actual_score` numeric 0–100 boleh NULL, `actual_source` (`manual`, `synthesis`), `actual_updated_at`, `origin` (`hr`, `ai`), `status` (`draft`, `validated`, `rejected`), `validated_by`, `validated_at`, waktu.
+- `cca_programs`: konfigurasi program nilai. `key` (unik per tenant, pola `[a-z0-9-]{1,32}`), `name`, `provider`, `cutoff_date`, `config` jsonb, `insight` text, `recommendations` jsonb (`[{ title, detail }]`), `manual_report` jsonb NULL (isian agregat, lihat 6.2), `updated_by`, waktu. Bentuk `config`:
+  - `values`: daftar berurut `[{ name }]`, maksimal 8;
+  - `components`: daftar berurut `[{ name, weight }]`, maksimal 10, `weight` 0–100, jumlah bobot harus 100 bila ada komponen;
+  - `totalActivities`: bilangan bulat ≥ 1;
+  - `passScore`: 0–100;
+  - `bands`: `[{ key, label, min, description }]`, disimpan urut menurun menurut `min`. `key` dan `min` unik, `key` bukan `not_passed` atau `in_progress`, dan `min` band terendah tidak boleh di bawah `passScore`. Skor akhir di bawah `passScore` selalu `not_passed`.
+  - Nama nilai di `config.values` berdiri sendiri, tidak ditautkan ke `cca_sources` berjenis `value` (ditolak saat triase: program bisa memakai penamaan atau subset yang berbeda).
+- `cca_program_results`: satu baris per karyawan per program. `program_id` FK ON DELETE CASCADE, `user_id` FK `users` ON DELETE CASCADE, `division` varchar, `activities_done` int, `final_score` numeric NULL, `value_scores` jsonb (larik sepanjang `values`, elemen angka atau null), `component_scores` jsonb (larik sepanjang `components`), `import_batch_id` uuid, waktu. `UNIQUE (tenant_id, program_id, user_id)`. `import_batch_id` tanpa FK, sama dengan tabel LNA lain.
+- `cca_assignments`: penugasan wawancara berjenjang. `assignee_id` FK users ON DELETE CASCADE, `assigned_by` FK users ON DELETE SET NULL, `tier` (`leader`, `employee`), `parent_id` FK `cca_assignments` ON DELETE SET NULL (penugasan pimpinan yang menjadi induk penugasan karyawan), `due_date` date, `duration_minutes` smallint default 10, `status` (`assigned`, `in_progress`, `completed`, `cancelled`), `session_id` uuid NULL (diisi tahap 2), `summary` text NULL terenkripsi per tenant (diisi tahap 2), `completed_at`, waktu. Indeks unik parsial `(tenant_id, assignee_id, tier) WHERE status IN ('assigned','in_progress')`: satu penugasan berjalan per orang per tier. Setelah selesai atau batal, putaran baru boleh dibuat. Atasan menengah boleh punya penugasan `leader` (dari HR) dan `employee` (dari atasannya) sekaligus. Yang dipakai layar selalu penugasan terbaru per orang per tier.
+
+Skor angka disimpan terbuka agar bisa diagregasi, sama dengan aturan `lna-stores.js`. Teks ringkasan wawancara dienkripsi dengan `cipher` yang sama.
+
+Store baru `apps/api/src/db/cca-stores.js` (`createCcaStores(sequelize, { cipher })`), digabung di `src/db/stores.js` sebagai `stores.cca`. Setiap query memfilter `tenant_id`. Metodenya:
+
+- sumber dan persyaratan: `listSources`, `getSource`, `createSource`, `updateSource`, `getRequirement`, `createRequirement`, `updateRequirement`;
+- program: `listPrograms`, `getProgram`, `upsertProgram`, `setProgramManualReport`, `countProgramResults`, `listProgramResults`, `replaceProgramResults`;
+- penugasan: `listEligibleLeaders`, `listAssignments` (terbaru per orang per tier, yang batal diabaikan), `getAssignment`, `createAssignment`, `cancelAssignment`, `completeAssignment`, `getAssignmentSummary`.
+
+## 5. Endpoint dan flag
+
+Semua di bawah `/api/cca`, sudah dipasang lewat `requireSubmodule('cca')` di `src/app.js` (entitlement + flag `module.cca`). Flag baru `cca.interview` (`FLAGS.CCA_INTERVIEW`, default mati) menahan seluruh endpoint `/assignments`, supaya hasil program dan persyaratan bisa dibuka tanpa wawancara AI.
+
+| Metode dan path | Peran | Isi |
+| --- | --- | --- |
+| `GET /overview?group=vm\|values` | HR | KPI + grup + baris, lihat aturan 6.1 |
+| `GET /sources` | HR | daftar kelola: sumber aktif beserta semua persyaratannya termasuk `rejected`; `?archived=1` ikut memuat sumber arsip |
+| `POST /sources` | HR | buat sumber `{ kind, title, text, sourceRef, position }` |
+| `PATCH /sources/:id` | HR | ubah `title`, `text`, `sourceRef`, `position`, `status` |
+| `POST /sources/:id/requirements` | HR | buat persyaratan `{ name, definition, targetScore, actualScore }`; `origin = hr`, `status = draft` |
+| `PATCH /requirements/:id` | HR | ubah `name`, `definition`, `targetScore`, `actualScore`, `status` (transisi bebas); `status = validated` mengisi `validated_by` dan `validated_at`; mengubah nama, definisi, atau target baris `validated` tanpa mengirim `status` mengembalikannya ke `draft` |
+| `GET /programs` | HR | daftar program |
+| `PUT /programs/:key` | HR | buat atau ubah konfigurasi program, `insight`, `recommendations` |
+| `GET /programs/:key/report` | HR | laporan agregat, lihat aturan 6.2 |
+| `PUT /programs/:key/manual-report` | HR | simpan isian agregat `{ report }`; `{ report: null }` menghapusnya |
+| `/imports/*` | HR | `importRouter({ submodule: 'cca' })`: jenis impor baru `cca_program_results`, ditambah `dna_job_levels` dan `employees` yang kini juga terbuka untuk `cca` (CCA dijual satuan, dan penugasan berjenjang butuh data atasan) |
+| `GET /assignments` | semua | dibentuk per peran, lihat aturan 6.3 |
+| `POST /assignments` | HR, `supervisor`, `pimpinan` | `{ assigneeIds, dueDate, durationMinutes }` |
+| `PATCH /assignments/:id` | penugas atau HR | hanya `{ status: 'cancelled' }` |
+| `GET /assignments/:id/summary` | HR (tier pimpinan), peserta sendiri | ringkasan wawancara; dicatat `audit.readIndividual` |
+
+`tenant_id` selalu dari `req.tenantId`. Perubahan data dicatat `audit.record` (aksi `create` atau `update`, resource `cca.source`, `cca.requirement`, `cca.program`, `cca.assignment`). Objek milik tenant lain dan id yang bukan UUID dijawab 404. `eta_admin` lolos `requireRole` seperti di modul lain.
+
+Kode galat khusus: `PROGRAM_HAS_RESULTS` (409), `LEADER_INTERVIEW_REQUIRED` (409), `INVALID_STATE` (409), `SUMMARY_RESTRICTED` (403), `FEATURE_DISABLED` (403). Galat validasi memakai 400 `BAD_REQUEST` dengan pesan Indonesia.
+
+Bentuk respons (semua di dalam `{ data }`):
+
+```jsonc
+// GET /overview?group=vm
+{ "kpis": { "readiness": 79, "biggestGap": { "name": "…", "gap": 17 }, "belowTarget": { "count": 1, "measured": 1, "total": 2 },
+            "pendingValidation": 2 /* group=values menambah "weakestSource": { "title", "readiness" } */ },
+  "groups": [{ "id", "kind": "vision", "title", "text", "sourceRef", "readiness": 79,
+               "rows": [{ "id", "name", "definition", "targetScore": 80, "actualScore": 63, "actualSource": "manual",
+                          "gap": 17, "classification": "perlu_ditinjau", "status": "draft" }] }] }
+
+// GET /programs/:key/report  (source: "results" dari impor, "manual" dari isian agregat)
+{ "source": "results", "program": { "key", "name", "provider", "cutoffDate" },
+  "kpis": { "registered", "completed", "completedPct", "passed", "passedPct", "avgValueScore" },
+  "statuses": [{ "key", "label", "description", "min", "count", "pct" }],   // band, lalu not_passed, in_progress
+  "values": [{ "name", "avgCompleted", "avgAll" }],
+  "components": [{ "name", "weight", "done", "donePct", "avg", "contribution" }],
+  "total": { "done", "donePct", "avgFinal" },
+  "divisions": [{ "name", "participants", "completed", "completedPct", "passed", "passedPct", "avgFinal", "avgValueScore" }],
+  "allDivisions": { /* sama, name "Semua divisi" */ }, "insight", "recommendations": [{ "title", "detail" }] }
+
+// GET /assignments
+// HR:       { "role": "hr", "mine", "kpis": { "leadersEligible", "leadersAssigned", "leadersCompleted", "employeesAssigned", "employeesCompleted" },
+//             "leaders": [{ "userId", "name", "division", "jobRoleName", "assignmentId", "status", "dueDate", "teamTotal", "teamAssigned", "teamDone" }] }
+// pimpinan: { "role": "leader", "mine", "canAssign", "team": [{ "userId", "name", "jobRoleName", "status" }] }
+// lainnya:  { "role": "employee", "mine" }
+// mine = { "leader": penugasan | null, "employee": penugasan | null }
+// penugasan = { "id", "tier", "status", "dueDate", "durationMinutes", "completedAt" }; status "none" = belum ditugaskan
+
+// POST /assignments -> 201 { "tier", "assigned": [penugasan + "assigneeId"], "skipped": [id], "rejected": [id] }
+```
+
+## 6. Aturan bisnis
+
+### 6.1 Persyaratan dan kesiapan
+
+- Baris yang dihitung dan ditampilkan: `status` `draft` atau `validated`. `rejected` disembunyikan. Tiap baris membawa `status` supaya layar bisa menulis "menunggu validasi HR" (mockup).
+- `gap = targetScore − actualScore`, minimal 0. Baris tanpa `actualScore` punya `gap = null` dan klasifikasi `belum_diukur`.
+- Klasifikasi mengikuti fungsi `deco` di mockup: gap ≤ 8 berarti `dalam_batas` ("Dalam batas"), selain itu `perlu_ditinjau` ("Perlu ditinjau HR"). Angka 8 adalah konstanta `GAP_TOLERANCE` di `readiness.js`. [⚠️ BELUM TERVERIFIKASI: ambang 8 berasal dari mockup, belum ada keputusan bisnis.]
+- Kesiapan grup = `round(Σ min(aktual, target) / Σ target × 100)` atas baris yang sudah punya nilai aktual (fungsi `ready` di mockup, ditambah jepitan supaya baris yang melampaui target tidak menutupi gap baris lain). Tanpa baris terukur, kesiapan `null`.
+- Baris `draft` ikut dihitung, sama dengan mockup; KPI `pendingValidation` memberi tahu layar berapa baris yang belum divalidasi.
+- KPI: kesiapan keseluruhan, gap terbesar (nama + nilai), jumlah baris dengan gap > 8 dari jumlah baris terukur. Untuk `group=values` ditambah nilai dengan kesiapan terendah.
+- `group=vm` mengembalikan sumber `vision` dan `mission`. `group=values` mengembalikan sumber `value`.
+- Nilai aktual di tahap 1 diisi HR (`actual_source = manual`). Tahap 2 mengisinya dari sintesis wawancara (`synthesis`). [⏳ DITERIMA: sampai tahap 2, nilai aktual adalah isian HR. Test tahap 2: sintesis menimpa nilai dan mengubah `actual_source`.] Tiap baris membawa `actualSource` supaya layar bisa memberi label "isian HR". Ini berbeda dari CCA-B3 (12 Nov: gap CCA diturunkan dari hasil TNA; statusnya di rekap memang "perlu dicek ulang"). Dasarnya: user menetapkan mockup Pak Eji final (19 Nov), dan di mockup nilai aktual sama dengan angka "karyawan sejalan" pada sintesis wawancara. Perbedaan ini dicatat di PR.
+- Persetujuan peta oleh pimpinan (CCA-B12) dan 3–5 indikator per kompetensi (CCA-B1) tidak ada di mockup final. [⏳ DITERIMA: tahap 1 hanya punya validasi HR dan kolom `definition`. Ditinjau lagi bersama sintesis tahap 2.]
+- Versi peta kompetensi (CCA-B2 "berversi", CCA-B13) belum dibangun. [⏳ DITERIMA: sumber diarsipkan, bukan dihapus, sehingga riwayat tidak hilang. Versi penuh ditunda setelah pilot.]
+
+### 6.2 Program nilai dan laporan agregat
+
+Keputusan user 19 Nov (kartu keputusan di thread): dua jalur masuk data, yaitu impor per karyawan dan isian agregat. Hasil impor didahulukan; isian agregat dipakai hanya selama program belum punya hasil per karyawan. Respons laporan membawa `source` (`results` atau `manual`).
+
+Jalur 1, impor `cca_program_results` (satu baris per karyawan):
+
+- Opsi: `programKey` wajib (bentuknya diperiksa `checkOptions`; keberadaan program diperiksa `context()`, yang menggagalkan seluruh impor bila program belum dikonfigurasi), `cutoffDate` opsional (memperbarui `cutoff_date` program saat disimpan).
+- Kolom: ID Karyawan atau Email (salah satu wajib), Divisi, Kegiatan Selesai (bilangan bulat 0..`totalActivities`), Skor Akhir, Skor Nilai 1..8, Skor Komponen 1..10.
+- Kerangka impor memakai daftar kolom statis, jadi kolom nilai dan komponen dipetakan menurut urutan konfigurasi program. Supaya salah petakan tidak diam-diam: pratinjau dan simpan gagal total bila kolom Skor Nilai yang dipetakan bukan tepat 1..N (N = jumlah nilai program), begitu juga Skor Komponen. Pesan galatnya menulis pasangan urutan dan nama, mis. "Skor Nilai 1 = Credible; Skor Nilai 2 = Competent". Berkas dengan judul kolom lain (mis. "Credible") dipetakan HR di layar pemetaan.
+- Semua skor 0–100; selain itu baris ditolak. Karyawan harus sudah ada di tenant (pesan sama dengan jenis impor lain).
+- Divisi kosong diisi divisi job role karyawan bila ada, selain itu "Tanpa divisi". Di laporan, divisi dikelompokkan tanpa membedakan huruf besar/kecil; labelnya ejaan terbanyak.
+- Skor Akhir kosong pada peserta yang selesai dihitung dari `Σ skor komponen × bobot / 100` (komponen kosong dihitung 0). Peserta selesai tanpa Skor Akhir dan tanpa satu pun skor komponen ditolak.
+- Karyawan yang muncul dua kali di berkas: baris terakhir dipakai.
+- Laporan program adalah potret per tanggal cut off. Menyimpan impor mengganti seluruh hasil program itu: karyawan yang tidak ada di berkas baru dikeluarkan, dan jumlahnya dilaporkan sebagai `removed`.
+
+Jalur 2, isian agregat `PUT /programs/:key/manual-report` dengan `{ report }`:
+
+- `registered`, `completed`, `passed` (bilangan bulat, `passed ≤ completed ≤ registered`), `avgValueScore`, `avgFinal` (0–100 atau null);
+- `statuses`: objek `{ <key band>: jumlah, not_passed, in_progress }`, totalnya harus sama dengan `registered`;
+- `values`: larik sepanjang nilai program, `{ avgCompleted, avgAll }`;
+- `components`: larik sepanjang komponen program, `{ done, avg }`;
+- `divisions`: maksimal 200 baris `{ name, participants, completed, passed, avgFinal, avgValueScore }`; bila diisi, jumlah peserta harus sama dengan `registered`.
+
+Hanya angka mentah yang disimpan; persen dan kontribusi dihitung saat ditampilkan, sehingga bentuk responsnya sama dengan laporan dari impor. Jalur ini tidak menyimpan data per orang.
+
+Setelah program punya hasil impor atau isian agregat, jumlah nilai, jumlah komponen, dan daftar key band tidak bisa diubah (409 `PROGRAM_HAS_RESULTS`), karena skor tersimpan berurut.
+
+Status per karyawan (dihitung saat laporan dibuat, tidak disimpan):
+
+- `in_progress` bila `activitiesDone < totalActivities`;
+- selain itu `not_passed` bila skor akhir < `passScore`;
+- selain itu `key` band pertama yang `min`-nya ≤ skor akhir.
+
+Laporan (`program-report.js`, fungsi murni):
+
+- `registered`, `completed`, `passed` beserta persen terhadap terdaftar;
+- `avgValueScore`: rata-rata, atas peserta selesai, dari rata-rata skor nilai tiap peserta;
+- `statuses`: jumlah dan persen per band, `not_passed`, `in_progress`;
+- `values`: per nilai, rata-rata peserta selesai dan rata-rata semua peserta (skor kosong dihitung 0, sesuai catatan mockup);
+- `components`: bobot, jumlah dan persen yang sudah mengerjakan (skor tidak kosong, atas semua peserta), rata-rata atas peserta selesai, kontribusi = rata-rata × bobot / 100; ditambah baris total (jumlah selesai, rata-rata skor akhir peserta selesai);
+- `divisions`: per divisi jumlah peserta, selesai, lulus, rata-rata skor akhir dan rata-rata skor nilai atas peserta selesai (null bila tidak ada yang selesai), diurutkan menurut jumlah peserta; ditambah baris semua divisi;
+- `insight`, `recommendations`, `cutoffDate`, `name`, `provider` dari konfigurasi program.
+
+Angka dibulatkan satu desimal di laporan (kontribusi dua desimal). [⚠️ BELUM TERVERIFIKASI: rumus di atas direkonstruksi dari angka mockup; format berkas laporan Elite Academy yang asli belum dilihat.]
+
+Privasi: endpoint laporan hanya untuk HR, dan HR memang boleh melihat semua karyawan (RG-3). Karena itu divisi kecil tetap ditampilkan, sama dengan mockup; ambang minimum per divisi ditolak saat triase dengan alasan itu. Tidak ada endpoint hasil per orang di paket ini. Mockup menawarkan "Wawancarai karyawan yang belum selesai"; itu butuh membuka status program per orang kepada atasan, jadi ditunda dan dicatat di PR sebagai keputusan pemilik produk.
+
+### 6.3 Penugasan wawancara berjenjang
+
+- HR menugaskan tier `leader`. Yang boleh ditugaskan: pengguna tenant ini yang tidak nonaktif (`status <> 'disabled'`, sama dengan `people.list`) dan berperan `supervisor` atau `pimpinan`. `hr_admin` tidak bisa menjadi `leader`, tetapi bisa ditugaskan sebagai `employee` oleh atasannya.
+- Pimpinan (peran `supervisor` atau `pimpinan`) menugaskan tier `employee` hanya bila penugasan `leader` terbarunya berstatus `completed` (mockup: "Atasan yang selesai bisa meneruskan"); selain itu 409 `LEADER_INTERVIEW_REQUIRED`. Yang boleh ditugaskan: bawahan langsungnya (`users.supervisor_id`). `parent_id` = penugasan pimpinan itu.
+- Cakupan tim dihitung lewat `visibleEmployeeScope()` dengan bawahan langsung pemanggil. Fungsi itu hanya memberi tim kepada peran `supervisor`, padahal impor karyawan memetakan "manajer", "kepala", "direktur" ke `pimpinan`. Karena itu modul ini memanggilnya dengan cakupan atasan untuk kedua peran pimpinan. Datanya terbatas pada nama, jabatan, dan status penugasan bawahan langsung. [⏳ DITERIMA: pemetaan peran final menunggu B2 (K2); perlu ditinjau Andrian karena menyangkut aturan visibilitas. Test: orang di luar bawahan langsung ditolak, untuk `supervisor` maupun `pimpinan`.]
+- Orang yang masih punya penugasan berjalan di tier yang sama dilewati dan dilaporkan di `skipped`. Id di luar aturan, termasuk id tenant lain dan id yang bukan UUID, dilaporkan di `rejected` tanpa membedakan sebabnya.
+- `dueDate` wajib, tanggal valid, tidak sebelum hari ini menurut WIB (UTC+7). `durationMinutes` 5–60, default 10. Maksimal 200 orang per permintaan.
+- Pembatalan oleh penugas atau HR, hanya dari status `assigned`; selain itu 409 `INVALID_STATE`. HR hanya menerima id penugasan pimpinan, jadi praktis HR membatalkan tier `leader`. Membatalkan penugasan pimpinan tidak mengubah penugasan karyawan di bawahnya.
+- `GET /assignments` selalu memuat `mine` (penugasan terbaru pemanggil per tier), lalu per peran:
+  - HR: `leaders` = semua calon pimpinan, termasuk yang belum ditugaskan (`status: none`), dengan `teamTotal` (jumlah bawahan langsung), `teamAssigned`, `teamDone`; dan `kpis` dengan penyebutnya (`leadersEligible`). HR tidak menerima daftar karyawan per orang di endpoint ini.
+  - Pimpinan: `canAssign`, `team` (bawahan langsung: nama, jabatan, status penugasan `employee` terbaru atau `none`). Hanya status; tidak ada ringkasan (mockup: "Atasan hanya melihat status tim").
+  - Peran lain: `mine` saja.
+- Ringkasan (`GET /assignments/:id/summary`): peserta membaca ringkasannya sendiri. HR membaca ringkasan tier `leader`; untuk tier `employee` HR mendapat 403 `SUMMARY_RESTRICTED`. Orang lain mendapat 404. Penugasan yang belum selesai atau belum punya ringkasan dijawab 404 "Ringkasan belum tersedia" (di tahap 1 ringkasan hanya terisi lewat `completeAssignment`). Ringkasan tier `employee` sampai ke HR sebagai sintesis di tahap 2 (mockup: "Isi jawaban karyawan diringkas dan tidak ditampilkan per orang"). Transkrip tidak pernah keluar dari modul ini (PO-6).
+- Tahap 1 tidak punya endpoint untuk menyelesaikan penugasan. Store menyediakan `completeAssignment(tenantId, id, { sessionId, summary })` sebagai sambungan untuk mesin wawancara tahap 2.
+
+## 7. Keputusan default yang dipakai
+
+- K2: peran mengikuti kode saat ini (`hr_admin`, `supervisor`, `pimpinan`, `learner`); `eta_admin` lolos `requireRole` seperti modul lain.
+- CCA-B4 (dokumen + minimal satu pimpinan) dan CCA-B10 (AI menggabung, HR memutuskan) berlaku di tahap 2.
+- CCA-B9: penunjuk pimpinan kunci adalah HR.
+- CCA-B15: jumlah persyaratan tidak dibatasi.
+
+## 8. Test
+
+- Unit `tests/unit/cca-domain.test.js`: kesiapan dan klasifikasi (termasuk tanpa nilai aktual), status band, laporan program (angka contoh kecil yang bisa dihitung tangan), isian agregat, validasi konfigurasi program, validasi baris impor dan pemetaan kolom.
+- Integrasi `tests/integration/cca.test.js` (Postgres), sekaligus test rute: peran (karyawan dan atasan ditolak di endpoint HR); alur sumber → persyaratan → overview, validasi dan kembali ke draft; konfigurasi program → isian agregat → impor (pemetaan kolom tidak pas, baris ditolak) → laporan → impor ulang sebagai potret; flag `cca.interview`; penugasan berjenjang lewat `completeAssignment` untuk `supervisor` dan `pimpinan`, di luar tim ditolak, duplikat dilewati, putaran baru; bentuk `GET /assignments` per peran; ringkasan karyawan tertutup untuk HR dan atasan, tersimpan terenkripsi, baca dicatat audit; isolasi tenant.
+- Test rute dengan store in-memory tidak dibuat: CI selalu menyediakan Postgres, dan store tiruan akan menduplikasi aturan SQL.
+- CI yang ada menjalankan migrasi naik, turun, naik.
+
+## 9. Daftar perubahan berkas (tahap 1)
+
+- [x] `apps/api/migrations/20261119001000-cca-core-competencies.js`
+- [x] `apps/api/src/core/flags/index.js` (flag `cca.interview`)
+- [x] `apps/api/src/db/cca-stores.js`
+- [x] `apps/api/src/db/stores.js` (gabungkan `stores.cca`)
+- [x] `apps/api/src/modules/cca/readiness.js`
+- [x] `apps/api/src/modules/cca/program-report.js`
+- [x] `apps/api/src/modules/cca/index.js`
+- [x] `apps/api/src/modules/imports/kinds/cca-program-results.js`
+- [x] `apps/api/src/modules/imports/kinds/index.js`
+- [x] `apps/api/tests/unit/cca-domain.test.js`
+- [x] `apps/api/src/modules/imports/kinds/employees.js`, `job-levels.js` (tambah `cca` di `submodules`)
+- [x] `apps/api/tests/integration/cca.test.js`
+- [x] `docs/designs/b10-core-competencies.md`
+
+## 10. Di luar cakupan tahap 1
+
+- Turunan persyaratan oleh AI dari dokumen visi-misi (unggah dokumen, CCA-B21/B22 masih terbuka): tahap 2. Tahap 1 menerima persyaratan yang diisi HR; kolom `origin` sudah menyediakan `ai`.
+- Percakapan, ringkasan, sintesis tema, pratinjau sesi pimpinan (tahap 2).
+- Detail gap per persyaratan (layar `s.gap`) dan alur ke tinjauan HR: milik B5 dan B7.
+- Ekspor dan hapus data karyawan (PK-15, PR #11) untuk tabel baru: `ON DELETE CASCADE` sudah menutup hapus; ekspor `cca_program_results` dan `cca_assignments` ditambahkan setelah PR #11 masuk branch integrasi, karena kodenya belum ada di base. [⏳ DITERIMA sampai saat itu; test yang dijadwalkan: ekspor karyawan memuat hasil program dan penugasannya.]
+- Persetujuan karyawan atas penyimpanan skor program: data berasal dari program pelatihan klien sendiri dan diunggah HR; dasar pemrosesannya mengikuti dokumen legal PK-17, bukan paket ini.
+- Undangan email dan pengingat tenggat.
+
+## 11. Sketsa tahap 2 (belum mengikat)
+
+- Sesi wawancara CCA tidak punya proyek, sedangkan `lna_interview_sessions.project_id` NOT NULL dan mesin wawancara meminta `projectId`. Pilihannya: melonggarkan kolom itu lewat migrasi baru, atau memberi CCA tabel giliran sendiri. Diputuskan setelah PR B6 terlihat, supaya tidak bentrok.
+- Tabel tema sintesis (blok migrasi 10, berkas kedua): judul, jenis sumber, tautan ke `cca_requirements`, persen pimpinan sepakat, persen karyawan sejalan, jumlah responden, status tinjauan HR. Persen karyawan hanya ditampilkan bila responden cukup banyak untuk tidak menunjuk orang.
+- Port AI ditambah `deriveRequirements` dan `synthesizeCca`; implementasi stub tetap deterministik untuk test.
+- Syarat sintesis mengikuti CCA-B4 (minimal satu pimpinan selesai) dan CCA-B10 (AI menggabung, konflik ditandai, HR memutuskan).
+
+## 12. Catatan review egm
+
+Review spek oleh subagent tanpa konteks, 19 Nov: 18 temuan (4 berat, 12 sedang, 2 ringan).
+
+| # | Temuan | Keputusan |
+| --- | --- | --- |
+| 1 | Peran `pimpinan` tidak bisa meneruskan karena `visibleEmployeeScope()` hanya memberi tim kepada `supervisor` | Diperbaiki: 6.3, cakupan atasan untuk kedua peran, ditandai ⏳ untuk ditinjau Andrian |
+| 2 | Impor per karyawan mungkin tidak punya sumber data (mockup menyebut laporan ringkasan) | Diangkat ke user; jawaban "dua-duanya": impor per karyawan + isian agregat (6.2) |
+| 3 | Turunan AI dan asal nilai aktual tidak terjadwal; CCA-B3 diganti | Diperbaiki: turunan AI masuk tahap 2, `actualSource` di respons; dasar penggantian CCA-B3 ditulis di 6.1 dan PR |
+| 4 | Kolom nilai/komponen bergantung konfigurasi, kerangka impor statis | Diperbaiki tanpa mengubah kerangka: gagal total bila pemetaan tidak pas, pesan memuat pasangan urutan dan nama |
+| 5 | Indeks unik mengunci penugasan seumur hidup | Diperbaiki: unik per tier dan hanya untuk status berjalan |
+| 6 | Bentuk `GET /assignments` HR kurang untuk layar | Diperbaiki: calon pimpinan `none`, penyebut KPI, `teamTotal` = ukuran tim |
+| 7 | HR yang juga karyawan tidak punya `mine` | Diperbaiki: `mine` di semua bentuk |
+| 8 | "Wawancarai karyawan yang belum selesai" tidak bisa dijalankan | Ditunda: membuka data per orang ke atasan, perlu keputusan pemilik produk (PR) |
+| 9 | Skor per karyawan tanpa ekspor; divisi kecil terbaca | Sebagian ditunda (ekspor menunggu PR #11), ambang divisi ditolak dengan alasan RG-3 dan mockup |
+| 10 | Tenant CCA saja tidak bisa mengimpor karyawan | Diperbaiki: `employees` dan `dna_job_levels` dibuka untuk `cca` |
+| 11 | Aturan impor yang harus ditebak | Diperbaiki: baris ganda, potret, perubahan konfigurasi, divisi, peserta selesai tanpa skor |
+| 12 | Validasi konfigurasi belum lengkap | Diperbaiki: bobot 100, aturan band, deskripsi band; tautan nama nilai ditolak dengan alasan |
+| 13 | Kontrak respons dan store tidak ditulis | Diperbaiki: bagian 4 dan 5 |
+| 14 | Ketentuan bertentangan (pembatalan, ringkasan, pengguna aktif, transisi status) | Diperbaiki: 5 dan 6.3 |
+| 15 | CCA-B12 dan CCA-B1 tidak dipenuhi | Diterima sebagai penyimpangan ⏳ (6.1), dicatat di PR |
+| 16 | Tahap 2 dan 3 tanpa rancangan | Diperbaiki sebagian: spek ini hanya mengikat tahap 1, sketsa di bagian 11 |
+| 17 | Kesiapan bisa lebih dari 100% | Diperbaiki: jepitan di rumus |
+| 18 | Rincian kecil (nama flag, zona waktu, FK batch) | Diperbaiki atau dijelaskan di 4, 5, 6.3 |

@@ -19,6 +19,8 @@ const FLAGS = Object.freeze({
   WEBHOOK_SYNC: 'em.webhook_sync',
   COST_PER_SESSION: 'cost.per_session',
   INA_DASHBOARD: 'ina.dashboard', // RG-4: ditahan dari POC Desember
+  // B10: wawancara AI berjenjang visi-misi-nilai (pimpinan lalu karyawan); hasil program dan persyaratan tetap bisa dibuka tanpa ini
+  CCA_INTERVIEW: 'cca.interview',
 });
 
 const KNOWN = new Set(Object.values(FLAGS));
