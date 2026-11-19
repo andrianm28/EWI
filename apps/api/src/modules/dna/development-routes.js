@@ -21,9 +21,12 @@ async function orConflict(promise, message) {
 const jobFunctionView = (f) => ({ id: f.id, jobRoleId: f.jobRoleId, order: f.order, name: f.name, competencyIds: f.competencyIds || [] });
 const sameText = (a, b) => String(a).trim().toLowerCase() === String(b).trim().toLowerCase();
 
+/** Gerbang flag B4 (R1 review egm), dipakai juga `PATCH /competencies/:id` di dna/index.js. */
+const b4Flag = (flags) => requireFlag(flags, FLAGS.DNA_DEVELOPMENT, 'Developmental Needs (kamus per job function dan kurikulum) belum diaktifkan untuk organisasi Anda');
+
 function developmentRoutes(r, { stores, audit, flags }) {
   // R1 review egm: semua endpoint B4 di balik flag baru (aturan arsitektur 3); endpoint POC DNA tidak terpengaruh
-  const on = requireFlag(flags, FLAGS.DNA_DEVELOPMENT, 'Developmental Needs (kamus per job function dan kurikulum) belum diaktifkan untuk organisasi Anda');
+  const on = b4Flag(flags);
   const hr = requireRole(ROLES.HR_ADMIN);
   const viewer = requireRole(ROLES.HR_ADMIN, ROLES.SUPERVISOR);
 
@@ -224,4 +227,4 @@ function developmentRoutes(r, { stores, audit, flags }) {
   }));
 }
 
-module.exports = { developmentRoutes, isUuid, orConflict, isUniqueViolation };
+module.exports = { developmentRoutes, isUuid, orConflict, isUniqueViolation, b4Flag };

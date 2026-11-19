@@ -15,7 +15,7 @@ const { careerRoutes } = require('./career-routes');
 const { importRouter } = require('../imports');
 const { getKind } = require('../imports/kinds');
 const { validateRows, commitRows } = require('../imports/engine');
-const { developmentRoutes, isUuid, orConflict } = require('./development-routes');
+const { developmentRoutes, isUuid, orConflict, b4Flag } = require('./development-routes');
 
 const TIERS = ['basic', 'intermediate', 'advanced'];
 const KINDS = ['core', 'job'];
@@ -142,8 +142,8 @@ module.exports = {
       await assertCodesFree(req.tenantId, [req.body]);
       res.status(201).json({ data: await orConflict(stores.dna.createCompetency(req.tenantId, toCompetency(req.body)), CODE_TAKEN) });
     }));
-    // B4: melengkapi/koreksi kamus yang sudah ada. Perubahan mereset pengesahan (A7).
-    r.patch('/competencies/:id', hr, wrap(async (req, res) => {
+    // B4: melengkapi/koreksi kamus yang sudah ada. Perubahan mereset pengesahan (A7). Di balik flag dna.development (R1).
+    r.patch('/competencies/:id', b4Flag(flags), hr, wrap(async (req, res) => {
       const current = isUuid(req.params.id) ? await stores.dna.getCompetency(req.tenantId, req.params.id) : null;
       if (!current) throw notFound('Kompetensi tidak ditemukan');
       const b = req.body || {};

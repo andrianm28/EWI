@@ -64,6 +64,7 @@ run('B4 Developmental Needs (Postgres)', () => {
     const anyId = '00000000-0000-4000-8000-000000000000';
     expect((await post(`/job-roles/${anyId}/job-functions`, 'hr', { name: 'JF', order: 1 })).status).toBe(403);
     expect((await get(`/job-roles/${anyId}/dictionary`, 'hr')).status).toBe(403);
+    expect((await request(app).patch(`/api/dna/competencies/${anyId}`).set(as('hr')).send({ stream: 'X' })).status).toBe(403);
     expect((await get('/job-roles', 'hr')).status).toBe(200); // POC DNA tetap
     for (const t of [tenant.id, otherTenant.id]) {
       await db.query(`INSERT INTO feature_flags (tenant_id, key, enabled) VALUES (:t, 'dna.development', true)`, { replacements: { t } });
