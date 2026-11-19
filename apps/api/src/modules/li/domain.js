@@ -4,7 +4,8 @@
 const LEVELS = Object.freeze(['basic', 'intermediate', 'advanced']);
 const ITEM_KINDS = Object.freeze(['K', 'S', 'A']);
 const REQUEST_FLOW = Object.freeze(['requested', 'confirmed', 'delivered', 'installed']);
-const ACTIVE_REQUEST = Object.freeze(['requested', 'confirmed', 'delivered', 'installed']);
+/** Semua status permintaan vendor yang sah (alur maju + batal). */
+const REQUEST_STATUSES = Object.freeze([...REQUEST_FLOW, 'cancelled']);
 const PARETO_CUTOFF = 0.8;
 
 /**
@@ -79,7 +80,7 @@ function byPriorityThenCode(a, b) {
 }
 
 module.exports = {
-  LEVELS, ITEM_KINDS, REQUEST_FLOW, ACTIVE_REQUEST, PARETO_CUTOFF,
+  LEVELS, ITEM_KINDS, REQUEST_FLOW, REQUEST_STATUSES, PARETO_CUTOFF,
   moduleStatus, nextRequestStatuses, canRequestTransition, recommendedSource, priorityFromPareto, modulePriority,
   countItems, byPriorityThenCode, norm,
 };

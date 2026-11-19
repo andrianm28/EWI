@@ -46,6 +46,27 @@ describe('entitlement + feature flag gating', () => {
     expect(access.body.products).toEqual(['dna', 'tna']);
   });
 
+  it.each([['li', 'module.li'], ['ld', 'module.ld']])('modul %s (B13/B14) butuh full_suite dan flag-nya', async (mod, flagKey) => {
+    let app = makeApp({ entitlements: { 't-1': ['tna', 'dna'] }, flags: { 't-1': { [flagKey]: true } } });
+    let res = await request(app).get(`/api/${mod}`).set('Authorization', `Bearer ${await tokenFor(app)}`);
+    expect(res.status).toBe(403);
+    expect(res.body.error.code).toBe('NOT_ENTITLED');
+    app = makeApp({ entitlements: { 't-1': ['full_suite'] } });
+    res = await request(app).get(`/api/${mod}`).set('Authorization', `Bearer ${await tokenFor(app)}`);
+    expect(res.status).toBe(403);
+    expect(res.body.error.code).toBe('FEATURE_DISABLED');
+    app = makeApp({ entitlements: { 't-1': ['full_suite'] }, flags: { 't-1': { [flagKey]: true } } });
+    res = await request(app).get(`/api/${mod}`).set('Authorization', `Bearer ${await tokenFor(app)}`);
+    expect(res.status).toBe(200);
+    expect(res.body).toMatchObject({ module: mod, tenantId: 't-1' });
+  });
+
+  it.each(['li', 'ld'])('modul %s hanya untuk HR, learner ditolak walau tenant berhak', async (mod) => {
+    const app = makeApp({ entitlements: { 't-1': ['full_suite'] }, flags: { 't-1': { [`module.${mod}`]: true } } });
+    const res = await request(app).get(`/api/${mod}`).set('Authorization', `Bearer ${await tokenFor(app, 'agent@elgos.test')}`);
+    expect(res.status).toBe(403);
+  });
+
   it('entitlement tenant lain tidak bocor', async () => {
     const app = makeApp({ entitlements: { 't-2': ['full_suite'] }, flags: { 't-2': { 'module.dna': true } } });
     const res = await request(app).get('/api/dna').set('Authorization', `Bearer ${await tokenFor(app)}`);

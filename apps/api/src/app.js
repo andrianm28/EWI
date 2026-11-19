@@ -66,6 +66,7 @@ function createApp({ config, stores, ai, catalog, mailer, readiness, storage }) 
   // Webhook EliteMentor butuh raw body untuk verifikasi HMAC, jadi dipasang sebelum express.json().
   if (config.elitementor && config.elitementor.webhookSecret) {
     // B14: event progres/skor diteruskan ke Learning Delivery (cek entitlement + flag em.webhook_sync ada di sana).
+    // stores.elitementorEvents: titik injeksi test (tests/unit/elitementor.test.js); di aplikasi nyata handler-nya sinkron B14.
     const handler = stores.elitementorEvents?.handle || (stores.ld ? createLdSync({ stores, flags, entitlements }) : undefined);
     app.use('/api/integrations/elitementor/webhook', webhookRouter({ secret: config.elitementor.webhookSecret, handler }));
   }

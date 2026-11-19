@@ -18,7 +18,7 @@ function verify(secret, timestamp, rawBody, signature, nowSeconds = Math.floor(D
   return expected.length === given.length && crypto.timingSafeEqual(expected, given);
 }
 
-/** handler(event) dipanggil untuk event yang lolos verifikasi. Penyimpanan idempoten menyusul (B21). */
+/** handler(event) dipanggil untuk event yang lolos verifikasi. Idempotensi per event ada di handler (B14: ld_sync_events). */
 function webhookRouter({ secret, handler = async () => {} }) {
   const r = express.Router();
   r.post('/', express.raw({ type: 'application/json', limit: '256kb' }), async (req, res, next) => {

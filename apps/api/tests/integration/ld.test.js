@@ -17,7 +17,7 @@ const SECRET = 'rahasia-webhook-uji';
 const day = (offset) => new Date(Date.now() + 7 * 3600e3 + offset * 86400e3).toISOString().slice(0, 10);
 
 run('Learning Delivery (Postgres)', () => {
-  let db; let app; let appNoStorage; let stores; let tenant; let other; const u = {}; const tok = {};
+  let db; let app; let appNoStorage; let appSmall; let stores; let tenant; let other; const u = {}; const tok = {};
   let role; let mailer; let storage; let orgId; let training;
   const as = (who) => ({ Authorization: `Bearer ${tok[who]}` });
   const get = (path, who = 'hr') => request(app).get(`/api/ld${path}`).set(as(who));
@@ -41,6 +41,7 @@ run('Learning Delivery (Postgres)', () => {
     mailer = memoryMailer(); storage = memoryStorage();
     app = createApp({ config, stores, mailer, storage });
     appNoStorage = createApp({ config, stores, mailer, storage: null });
+    appSmall = createApp({ config: { ...config, uploads: { maxBytes: 16 } }, stores, mailer, storage });
     const tokens = createTokenService(config.jwt);
     const slug = `ld-${Date.now()}`;
     orgId = Math.floor(Date.now() / 1000) % 2000000000;
@@ -87,6 +88,7 @@ run('Learning Delivery (Postgres)', () => {
     expect((await send('post', '/trainings', { title: 'X', startsOn: '2026-02-31' })).status).toBe(400);
     expect((await send('post', '/trainings', { title: 'X', startsOn: day(5), endsOn: day(4) })).status).toBe(400);
     expect((await send('post', '/trainings', { title: 'X', startsOn: day(5), moduleId: '11111111-1111-4111-8111-111111111111' })).status).toBe(400);
+    expect((await send('post', '/trainings', { title: 'X', startsOn: day(5), sessionCount: '2' })).status).toBe(400); // sama dengan PATCH: harus bilangan bulat
     const res = await send('post', '/trainings', { title: 'Workshop RCA', startsOn: day(5) });
     expect(res.status).toBe(201);
     training = res.body.data;
@@ -121,7 +123,13 @@ run('Learning Delivery (Postgres)', () => {
     expect((await send('delete', `/trainings/${training.id}/participants/${u.sari}`)).status).toBe(204);
     expect((await send('delete', `/trainings/${training.id}/participants/${u.sari}`)).status).toBe(404);
     const read = (await audits('ld.training')).pop();
-    expect(read.action).toBe('read');
+    expect(read.action).toBe('read');    // aturan 4 CLAUDE.md: data karyawan lewat cakupan visibleEmployeeScope (HR = semua; cakupan sempit hanya melihat dirinya)
+    const narrow = { userIds: [u.dimas] };
+    expect((await stores.ld.listParticipants(tenant.id, training.id, narrow)).map((p) => p.name)).toEqual(['dimas']);
+    expect((await stores.ld.participantOptions(tenant.id, narrow)).employees.map((e) => e.name)).toEqual(['dimas']);
+    expect((await stores.ld.listParticipants(tenant.id, training.id, { all: true })).length).toBe(2);
+    // daftar karyawan + email di /options tercatat sebagai akses data individu
+    expect((await audits('ld.options')).pop()).toMatchObject({ action: 'read' });
   });
 
   it('kelengkapan: jadwal, materi, kehadiran, asesmen manual, lalu ditutup', async () => {
@@ -158,6 +166,11 @@ run('Learning Delivery (Postgres)', () => {
     const noStore = await upload(id, PNG, 'kind=photo', 'hr', appNoStorage);
     expect(noStore.status).toBe(501);
     expect(noStore.body.error.code).toBe('STORAGE_NOT_CONFIGURED');
+    // berkas melebihi batas: 413 dengan kode dan pesan sendiri; tidak ada yang tersimpan
+    const big = await upload(id, PNG, 'kind=photo', 'hr', appSmall);
+    expect(big.status).toBe(413);
+    expect(big.body.error).toMatchObject({ code: 'FILE_TOO_LARGE', message: expect.stringMatching(/melebihi batas/) });
+    expect(storage.files.size).toBe(0);
     const up = await upload(id, PNG, 'kind=photo&filename=..%2F..%2Fsesi%201.png');
     expect(up.status).toBe(201);
     expect(up.body.data).toMatchObject({ kind: 'photo', filename: 'sesi 1.png', mime: 'image/png', sizeBytes: PNG.length });
@@ -180,6 +193,14 @@ run('Learning Delivery (Postgres)', () => {
     expect((await send('delete', `/documents/${docId}`)).status).toBe(204);
     expect(storage.files.size).toBe(1);
     expect((await get(`/documents/${docId}/content`)).status).toBe(404);
+    // batas 60 berkas per pelatihan
+    await db.query(`INSERT INTO ld_documents (tenant_id, training_id, kind, filename, mime, size_bytes, storage_key)
+                    SELECT :t, :id, 'photo', 'f.png', 'image/png', 1, 'kunci-' || g FROM generate_series(1, 59) g`, { replacements: { t: tenant.id, id } });
+    const full = await upload(id, PNG);
+    expect(full.status).toBe(409);
+    expect(full.body.error.code).toBe('LIMIT_REACHED');
+    expect(storage.files.size).toBe(1);
+    await db.query("DELETE FROM ld_documents WHERE tenant_id = :t AND storage_key LIKE 'kunci-%'", { replacements: { t: tenant.id } });
   });
 
   it('pengingat: ke semua peserta offline, sekali per 24 jam, tercatat di audit', async () => {
@@ -209,11 +230,16 @@ run('Learning Delivery (Postgres)', () => {
     const list = (await get('/trainings?mode=online')).body.data;
     expect(list.length).toBe(1);
     const lms = list[0];
-    expect(lms).toMatchObject({ title: 'ITIL Foundation', source: 'lms', mode: 'online', group: 'running', participants: 2, completed: 1, progressPct: 50, programTier: 'basic' });
+    expect(lms).toMatchObject({ title: 'ITIL Foundation', source: 'lms', mode: 'online', group: 'running', participants: 2, completed: 1, progressPct: 50, programTier: 'basic', inactive: 0 });
+    // peserta yang belum pernah aktif dihitung tidak aktif setelah 14 hari terdaftar
+    await db.query(`UPDATE ld_participants SET created_at = now() - interval '20 days' WHERE tenant_id = :t AND user_id = :rina AND training_id = :id`, { replacements: { t: tenant.id, rina: u.rina, id: lms.id } });
+    expect((await get(`/trainings/${lms.id}`)).body.data.inactive).toBe(1);
     // membaca ulang tidak menggandakan; perubahan status di LMS terbawa
     await db.query(`UPDATE lna_catalog_completions SET status = 'failed' WHERE tenant_id = :t AND user_id = :rina`, { replacements: { t: tenant.id, rina: u.rina } });
+    expect((await get('/trainings?mode=online')).body.data.length).toBe(1); // daftar menyinkronkan ulang dari katalog
     const detail = (await get(`/trainings/${lms.id}`)).body.data;
-    expect((await get('/trainings?mode=online')).body.data.length).toBe(1);
+    // satu lulus, satu gagal: semua peserta tuntas, pelatihan selesai (tidak menggantung "terlambat")
+    expect(detail).toMatchObject({ group: 'done', completed: 1, failed: 1, inactive: 0 });
     expect((await get(`/trainings/${lms.id}`)).body.data.participantList.find((p) => p.userId === u.rina).status).toBe('failed');
     expect(detail.participantList.find((p) => p.userId === u.dimas)).toMatchObject({ status: 'completed', score: 88, scoreSource: 'lms' });
     for (const res of [
@@ -223,6 +249,8 @@ run('Learning Delivery (Postgres)', () => {
       await send('patch', `/trainings/${lms.id}`, { title: 'Ganti' }),
       await upload(lms.id, PNG),
     ]) { expect(res.status).toBe(409); expect(res.body.error.code).toBe('READ_ONLY_SOURCE'); }
+    await db.query(`UPDATE lna_catalog_completions SET status = 'in_progress' WHERE tenant_id = :t AND user_id = :rina`, { replacements: { t: tenant.id, rina: u.rina } });
+    await get('/trainings'); // sinkron ulang dari katalog
     expect((await send('patch', `/trainings/${lms.id}`, { startsOn: day(-20), endsOn: day(-1) })).body.data.health).toBe('late');
     expect((await get('/trainings', 'luar')).body.data).toEqual([]);
   });
@@ -268,6 +296,13 @@ run('Learning Delivery (Postgres)', () => {
     expect((await hook(progress({ id: 'ev-i' }))).status).toBe(202);
     await flag('module.ld', true);
     expect((await events()).map((e) => e.event_id)).not.toContain('ev-i');
+    // tenant tanpa entitlement full_suite: event diterima tetapi tidak diproses
+    await db.query("DELETE FROM entitlements WHERE tenant_id = :t AND product = 'full_suite'", { replacements: { t: tenant.id } });
+    expect((await hook(progress({ id: 'ev-j' }))).status).toBe(202);
+    await db.query(`INSERT INTO entitlements (tenant_id, product) VALUES (:t, 'full_suite')`, { replacements: { t: tenant.id } });
+    expect((await events()).map((e) => e.event_id)).not.toContain('ev-j');
+    // id organisasi di luar rentang integer: diabaikan (202), bukan galat DB yang membuat EliteMentor mengulang terus
+    expect((await hook(progress({ id: 'ev-k', organizationId: 99999999999 }))).status).toBe(202);
   });
 
   it('webhook: skor asesmen pelatihan offline dicocokkan lewat kode asesmen', async () => {

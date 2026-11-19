@@ -1,6 +1,6 @@
 # B13 · Learning Intervention (modul `li`)
 
-Status: spek untuk review egm · 19 Nov 2026 · paket B13 dari `brief-bangun-penuh-19nov.md` (thread T8).
+Status: dibangun (PR #23, masuk scbrmb), spek diselaraskan dengan review egm susulan (plugin egm asli) · 19 Nov 2026 · paket B13 dari `brief-bangun-penuh-19nov.md` (thread T8).
 Acuan layar: mockup Pak Eji, layar `lib`, `prog`, `req`, `lidev` (`project/Main.dc.html`).
 
 ## 1. Tujuan
@@ -23,7 +23,10 @@ Bukan tujuan paket ini: rencana belajar karyawan (B8), penugasan ke EliteMentor 
 
 Semua endpoint hanya untuk peran `hr_admin` (dan `eta_admin` yang selalu lolos `requireRole`). Di mockup hanya HR yang
 punya menu Learning Intervention; atasan dan karyawan tidak. Pengecualian: `POST /drafts/:id/review` juga boleh untuk
-`sme` dan `role_leader`.
+`sme` dan `role_leader`, begitu pula `GET /drafts`, `GET /drafts/:id`, dan probe `GET /api/li/`.
+Rute web memakai `meta.flag = 'module.li'` dan `meta.entitlement = 'full_suite'` (kontrak B0), jadi menu tidak tampil
+untuk tenant yang API-nya akan menjawab 403. Data gap per karyawan untuk Pareto dibaca lewat cakupan
+`visibleEmployeeScope()` (aturan 4 CLAUDE.md); untuk HR dan admin ETA cakupannya semua karyawan tenant.
 
 ## 3. Data dan migrasi
 
@@ -35,13 +38,14 @@ Blok migrasi 13: `20261119001300-learning-intervention.js` (raw SQL, punya `down
 | `li_module_items` | `module_id`, `kind` (`K`/`S`/`A`), `text`, `position` | Butir KSA |
 | `li_module_job_roles` | `module_id`, `job_role_id` → `lna_job_roles` | Satu modul bisa dipakai beberapa jabatan |
 | `li_module_competencies` | `module_id`, `competency_id` → `lna_competencies` | Dipakai untuk prioritas Pareto |
-| `li_module_requests` | `module_id`, `vendor_name`, `status` (`requested`/`confirmed`/`delivered`/`installed`/`cancelled`), `requested_by`, waktu per status, `note` | Indeks unik parsial: satu permintaan aktif (bukan `cancelled`) per modul |
-| `li_module_drafts` | `module_id` (unik per tenant), `status` (`draft`/`sme_review`/`approved`/`returned`), `objectives`/`sessions`/`assessments` (jsonb), `generated_by`, `submitted_at`, `reviewed_by`, `reviewer_name`, `review_note`, `reviewed_at`, `created_by` | Satu draf per modul; `review_recorded_by_hr` menandai keputusan SME yang dicatat HR |
+| `li_module_requests` | `module_id`, `vendor_name`, `status` (`requested`/`confirmed`/`delivered`/`installed`/`cancelled`), `requested_by`, `updated_by`, waktu per status, `note` | Indeks unik parsial: satu permintaan aktif (bukan `cancelled`) per modul |
+| `li_module_drafts` | `module_id` (unik per tenant), `status` (`draft`/`sme_review`/`approved`/`returned`), `objectives`/`sessions`/`assessments` (jsonb), `generated_by`, `submitted_at`, `submitted_by`, `reviewed_by`, `reviewer_name`, `review_note`, `reviewed_at`, `review_recorded_by_hr`, `created_by`, `updated_by` | Satu draf per modul; `review_recorded_by_hr` menandai keputusan SME yang dicatat HR |
 
 Tabel `lna_catalog_items` berasal dari PK-18, yang sudah ada di branch integrasi.
 
 Isi modul tidak memuat data pribadi, jadi tidak dienkripsi per tenant dan baca daftar modul tidak dicatat sebagai baca
-data individu. Semua perubahan (permintaan, ubah status, draf diajukan, keputusan SME) dicatat lewat `audit.record`.
+data individu. Semua perubahan (permintaan, ubah status, draf dibuat, disunting, dihapus, diajukan, keputusan SME,
+tautan course) dicatat lewat `audit.record`.
 
 ### Cara data masuk
 
@@ -51,8 +55,8 @@ Kompetensi (nama kompetensi di kamus, pisah titik koma), Tipe Butir* (K/S/A atau
 Nama, level, rumpun, tujuan, jabatan, dan kompetensi diambil dari baris pertama tiap kode; baris berikutnya boleh
 kosong, tetapi bila diisi harus sama. Impor ulang kode yang sama memperbarui modul dan mengganti butir, jabatan, serta
 kompetensinya. Permintaan dan draf yang sudah ada tidak dihapus dan tidak disesuaikan. Impor bersifat atomik per
-kode modul: satu baris salah menolak seluruh modul itu. Jabatan atau kompetensi yang tidak dikenal ditolak
-per baris dengan alasan.
+kode modul: satu baris salah menolak seluruh modul itu. Jabatan atau kompetensi yang tidak dikenal juga menolak seluruh
+modul itu, dengan alasan per baris.
 
 `[⚠️ BELUM TERVERIFIKASI]` Bentuk berkas DACUM Tool 2 asli dari Mas Abdan belum dilihat. Pemetaan kolom memakai mesin
 pemetaan impor yang ada, jadi judul kolom berbeda masih bisa dipetakan HR, tetapi berkas yang satu modul per baris
@@ -71,7 +75,9 @@ dengan butir di banyak kolom perlu dirapikan dulu.
    boleh dihapus (`DELETE /api/li/drafts/:id`) untuk pindah jalur.
 3. **Alur vendor** (K4): `requested` → `confirmed` → `delivered` → `installed`, maju satu langkah, tidak mundur.
    `cancelled` boleh dari status mana pun kecuali `installed`. Saat `installed`, HR boleh mengisi `catalogItemId`
-   (course di katalog LMS/EliteMentor, dicek milik tenant yang sama) agar rencana training bisa menunjuk course itu. ELGOS **tidak mengirim apa
+   (course **aktif** di katalog LMS/EliteMentor milik tenant yang sama, sama dengan pilihan `GET /catalog`) agar rencana
+   training bisa menunjuk course itu (lihat §9 B8). Status yang kosong atau tidak dikenal dijawab 400; transisi yang
+   tidak boleh 409 `INVALID_TRANSITION`. ELGOS **tidak mengirim apa
    pun ke vendor**: tombol "Minta" hanya mencatat permintaan; HR yang menghubungi vendor. Ini ditulis di layar.
 4. **Nama vendor** dari `settings.li.vendorName`, default `"Mahaka Institute"` (K4), disalin ke `vendor_name` saat
    permintaan dibuat.
@@ -85,10 +91,12 @@ dengan butir di banyak kolom perlu dirapikan dulu.
    `cumulativeShare ≤ 0,8`, ditambah baris peringkat 1 (agar tidak kosong bila satu kompetensi > 80%). Modul prioritas
    = modul yang terhubung ke kompetensi prioritas; peringkat modul = peringkat terbaik kompetensinya. Modul tanpa
    kompetensi terhubung atau tanpa temuan = "belum ada data gap". Bila `module.tna` mati untuk tenant, prioritas
-   kosong dan `pareto.available = false`.
+   kosong dan `pareto.available = false`. Filter `jobRoleId` membatasi ke karyawan yang **sekarang** memegang jabatan
+   itu (`users.job_role_id`), bukan ke jabatan pemilik kompetensi.
 7. **Permintaan massal** (`POST /requests/bulk`): `scope: "pareto"` meminta semua modul prioritas yang sumber
    sarannya `vendor` dan statusnya `none`; `scope: "program"` (wajib `jobRoleId` dan `level`) meminta semua modul
-   seperti itu di program tersebut. Respons: jumlah yang dibuat dan yang dilewati (termasuk yang kalah balapan dengan permintaan lain).
+   seperti itu di program tersebut. Respons selalu 201: `{ created, skipped, requests }` (termasuk yang kalah balapan
+   dengan permintaan lain; `created` boleh 0).
 8. **Program & Course**: program = (jabatan × level). Course = modul yang berlaku untuk jabatan itu pada level itu,
    dikelompokkan per rumpun, prioritas Pareto di atas. Jabatan `hasDictionary = true` bila punya minimal satu modul.
    Jabatan tanpa modul tampil dengan status "kamus belum tersedia" dan tanpa course. Data contoh (dummy) untuk
@@ -101,8 +109,10 @@ dengan butir di banyak kolom perlu dirapikan dulu.
      demonstrasi dan praktik (bila ada S), studi kasus dan refleksi (bila ada A), rangkuman dan transfer.
    - Asesmen per tipe yang ada, dengan kriteria lulus.
    - `isMeasurable(text)`: tujuan dianggap terukur bila memuat angka kriteria.
-   HR boleh menyunting ketiga bagian (`PUT`) selama status `draft`/`returned`. `submit` ditolak bila ada tujuan
-   yang tidak terukur, tujuan kosong, atau modul tanpa butir.
+   Draf hanya bisa dibuat untuk modul yang punya butir (400). HR boleh menyunting ketiga bagian (`PUT`) selama status
+   `draft`/`returned`. `submit` (fungsi `validateDraft`) ditolak 400 bila tidak ada tujuan, ada tujuan kosong, ada
+   tujuan yang tidak terukur, tidak ada sesi atau ada sesi tanpa judul, atau tidak ada asesmen atau ada asesmen tanpa
+   rincian. Mengubah draf yang sudah diajukan dijawab 409 `INVALID_STATE`.
    `[⏳ DITERIMA]` Draf awal dibuat dari templat deterministik (`generated_by = 'template'`), belum oleh LLM, karena
    penyedia Bedrock (PR #15) belum masuk branch integrasi dan kontrak `ai` belum punya fungsi untuk ini. Test unit
    `li-domain.test.js` mengunci bentuk draf agar penggantian ke LLM tidak mengubah kontrak. Layar tetap memakai
@@ -120,13 +130,14 @@ dengan butir di banyak kolom perlu dirapikan dulu.
 
 | Metode | Path | Isi |
 | --- | --- | --- |
-| GET | `/api/li/modules?jobRoleId&priority=pareto&type=K\|S\|A&level&stream` | `{ data: [ringkas], kpis, pareto, filters: { jobRoles, streams }, vendorName }` |
+| GET | `/api/li/` | probe modul `{ module, title, tenantId, role }` (HR, SME, role leader; dipakai test gerbang) |
+| GET | `/api/li/modules?jobRoleId&priority=pareto&type=K\|S\|A&level&stream` | `{ data: [ringkas], kpis (termasuk `streams`), pareto, filters: { jobRoles, streams }, vendorName }` |
 | GET | `/api/li/modules/:id` | detail + `items` per tipe, `jobRoles`, `status`, `priority`, `recommendation`, `request`, `draft` (ringkas) |
 | POST | `/api/li/modules/:id/request` | 201 permintaan; 409 `PATH_ACTIVE` |
-| POST | `/api/li/requests/bulk` | `{ scope, jobRoleId?, level? }` → `{ created, skipped }` |
-| GET | `/api/li/requests` | `{ vendor: [...], drafts: [...], candidates: [...] }` (kandidat = saran `dev`, status `none`, prioritas dulu) |
-| PATCH | `/api/li/requests/:id` | `{ status, catalogItemId?, note? }`; 409 `INVALID_TRANSITION` |
-| GET | `/api/li/programs?jobRoleId&level` | `{ jobRoles, levels: [{ level, count }], kpis, groups: [{ stream, modules }] , pareto }` |
+| POST | `/api/li/requests/bulk` | `{ scope, jobRoleId?, level? }` → 201 `{ created, skipped, requests }` |
+| GET | `/api/li/requests` | `{ data: { vendor, drafts, candidates }, vendorName }` (kandidat = saran `dev`, status `none`, prioritas dulu) |
+| PATCH | `/api/li/requests/:id` | `{ status, catalogItemId?, note? }`; 400 status tidak dikenal; 409 `INVALID_TRANSITION` |
+| GET | `/api/li/programs?jobRoleId&level` | `{ data: { jobRoles, jobRoleId (default: jabatan pertama yang punya modul), level, levels: [{ level, count }], kpis, groups: [{ stream, modules }], pareto }, vendorName }`; modul tanpa rumpun dikelompokkan "Lainnya" |
 | POST | `/api/li/modules/:id/draft` | 201 draf baru, atau 200 draf yang sudah ada |
 | PATCH | `/api/li/modules/:id` | `{ catalogItemId \| null }` tautkan course katalog |
 | GET | `/api/li/catalog` | course aktif di katalog tenant, untuk menautkan modul |
@@ -136,35 +147,66 @@ dengan butir di banyak kolom perlu dirapikan dulu.
 | POST | `/api/li/drafts/:id/review` | `{ decision, note?, reviewerName? }` |
 | * | `/api/li/imports/...` | router impor yang ada, `submodule: 'li'` |
 
-Setiap query memfilter `tenant_id = req.tenantId`. ID dari tenant lain menghasilkan 404.
+Semua respons sukses dibungkus `{ data: ... }` (ditambah `vendorName` atau `pareto` di sebelahnya bila disebut).
+`DELETE` menjawab 204. Setiap query memfilter `tenant_id = req.tenantId`. ID dari tenant lain menghasilkan 404.
+Bentuk galat: `{ error: { code, message } }`.
+
+| Status | Kode | Kapan |
+| --- | --- | --- |
+| 400 | `BAD_REQUEST` | filter tidak valid; status permintaan kosong/tidak dikenal; course katalog tidak ada, nonaktif, milik tenant lain, atau diisi bukan saat `installed`; draf tanpa butir; draf belum memenuhi syarat ajukan; suntingan tidak valid; keputusan SME tidak valid, `returned` tanpa catatan, HR tanpa `reviewerName` |
+| 403 | `NOT_ENTITLED` / `FEATURE_DISABLED` / `ROLE_FORBIDDEN` | tenant tanpa `full_suite` / flag `module.li` mati / peran tidak berhak |
+| 404 | `NOT_FOUND` | modul, permintaan, draf, atau jabatan tidak ada di tenant ini; SME membuka draf yang tidak `sme_review` |
+| 409 | `PATH_ACTIVE` | modul sudah punya permintaan aktif atau draf |
+| 409 | `INVALID_TRANSITION` | langkah status permintaan tidak boleh, atau status berubah di tengah jalan |
+| 409 | `INVALID_STATE` | menyunting, menghapus, mengajukan, atau meninjau draf yang statusnya tidak sesuai |
 
 ## 6. Test yang ditulis lebih dulu
 
 - `tests/unit/li-domain.test.js`: `moduleStatus` (semua urutan), `recommendedSource`, `priorityFromPareto` (≤ 80%,
   peringkat 1 selalu masuk, kosong), `generateDraft` (K/S/A, modul tanpa A), `isMeasurable`, transisi vendor.
-- `tests/unit/gating.test.js` (tambahan): `li` butuh `full_suite` + `module.li`; flag mati → 403 `FEATURE_DISABLED`.
+- `tests/unit/gating.test.js` (tambahan): `li` butuh `full_suite` (tanpa itu 403 `NOT_ENTITLED`) + `module.li` (mati →
+  403 `FEATURE_DISABLED`); learner 403.
 - `tests/integration/li.test.js` (Postgres): impor `li_modules` (baru, ulang, baris ditolak) → daftar + filter + KPI →
   prioritas Pareto dari temuan TNA → minta vendor, alur status, batal, permintaan massal → draf, sunting, ajukan,
-  kembalikan, setujui → program per jabatan → isolasi tenant (404/daftar kosong) → peran non-HR 403 → audit tercatat.
-- UI (setelah B0): e2e Playwright dengan API mock untuk empat layar.
+  kembalikan, setujui (suntingan draf diaudit) → course katalog aktif saja → program per jabatan → cakupan
+  `visibleEmployeeScope` di `listTrainingGaps` → isolasi tenant (404/daftar kosong) → peran non-HR 403 → audit tercatat.
+- UI (setelah B0): e2e Playwright dengan API mock untuk empat layar, plus menu tersembunyi bila tenant tanpa `full_suite`.
 
 ## 7. Daftar perubahan file
+
+Tahap dan titik periksa (tiap tahap bisa di-build dan dites sendiri):
+1. Migrasi + flag + entitlement + settings → `npm run migrate` naik-turun-naik.
+2. Domain + `design.js` + test unit → `tests/unit/li-domain.test.js`.
+3. Store + jenis impor + router + test integrasi → `tests/integration/li.test.js`, `tests/unit/gating.test.js`.
+4. Layar + e2e → `apps/web/e2e/li.spec.ts`.
 
 Backend:
 - [x] `apps/api/migrations/20261119001300-learning-intervention.js`
 - [x] `apps/api/src/core/flags/index.js` (flag `module.li`)
 - [x] `apps/api/src/core/entitlement/index.js` (modul khusus `full_suite`)
 - [x] `apps/api/src/core/settings/index.js` (`li.vendorName`, `li.devStreams`)
-- [x] `apps/api/src/modules/li/domain.js`, `design.js`, `index.js`
-- [x] `apps/api/src/db/li-stores.js` + sambungan di `db/lna-stores.js`
-- [x] `apps/api/src/modules/imports/kinds/li-modules.js` + `kinds/index.js`
+- [x] `apps/api/src/modules/li/domain.js`
+- [x] `apps/api/src/modules/li/design.js`
+- [x] `apps/api/src/modules/li/index.js`
+- [x] `apps/api/src/db/li-stores.js` + sambungan di `apps/api/src/db/lna-stores.js`
+- [x] `apps/api/src/db/scope-sql.js` (potongan SQL `visibleEmployeeScope`, dipakai bersama LNA/LI/LD)
+- [x] `apps/api/src/modules/imports/kinds/li-modules.js` + `apps/api/src/modules/imports/kinds/index.js`
 - [x] `apps/api/src/app.js` (pasang modul)
-- [x] test di bagian 6
+- [x] `apps/api/tests/unit/li-domain.test.js`, `apps/api/tests/unit/gating.test.js`
+- [x] `apps/api/tests/integration/li.test.js`
 
 UI (menumpuk di atas B0):
-- [x] `apps/web/src/screens/b13-li/` (api, layar Library, Program, Permintaan, Draf modul; `routes.ts` dengan nama rute
-      `lib`, `prog`, `req`, `req-draf`, sesuai kontrak B0)
+- [x] `apps/web/src/screens/b13-li/api.ts`
+- [x] `apps/web/src/screens/b13-li/labels.ts`
+- [x] `apps/web/src/screens/b13-li/routes.ts` (rute `lib`, `prog`, `req`, `req-draf`; `meta.flag` + `meta.entitlement`)
+- [x] `apps/web/src/screens/b13-li/LibraryView.vue`
+- [x] `apps/web/src/screens/b13-li/ProgramView.vue`
+- [x] `apps/web/src/screens/b13-li/RequestsView.vue`
+- [x] `apps/web/src/screens/b13-li/DraftView.vue`
 - [x] `apps/web/e2e/li.spec.ts`
+
+Dokumen:
+- [x] `docs/designs/b18-e2e-qa-malam.md` (baris alur B13 di tabel 3.3)
 
 ## 8. Keputusan triase review egm
 
@@ -200,18 +242,38 @@ permintaan bersamaan.
 Sumbu standar: tidak ada pelanggaran CLAUDE.md maupun kontrak B0. Sumbu spek, diperbaiki: layar kini bisa menautkan
 course katalog ke modul (`GET /api/li/catalog` baru, pilih course saat permintaan dipasang dan di detail Library),
 sehingga rancangan yang disetujui SME bisa menjadi tersedia; draf `draft`/`returned` bisa dihapus dari layar.
+(Layar draf menyebut "DACUM Tool 1 dan Tool 2" karena butir KSA berasal dari Tool 2 yang disusun dari daftar tugas Tool 1.)
 
 Ditunda: layar tinjauan untuk peran `sme`/`role_leader` (mockup hanya memberi menu ke HR; API sudah mendukung), helper
 bersama untuk `wrap`/`UUID`/pesan galat di `li` dan `ld`, dan menggabungkan store `li`/`ld` langsung di `createStores`
 alih-alih lewat `lna-stores.js`. Ketegangan kontrak: B0 menganggap modul 2–5 cukup memakai flag, sedangkan API `li`
 juga memeriksa entitlement `full_suite` (CLAUDE.md aturan 3). Tenant dengan flag menyala tanpa `full_suite` akan
-melihat menu lalu mendapat 403; diteruskan ke pemilik B0.
+melihat menu lalu mendapat 403; diteruskan ke pemilik B0. **Selesai 19 Nov**: B0 (#18) menambah `meta.entitlement`,
+dan rute `li`/`ld` kini memakainya.
+
+### Review egm susulan (plugin egm asli, 19 Nov 2026, setelah PR #23 masuk scbrmb)
+
+Thread T8 menjalankan langkah egm secara manual karena plugin belum termuat. Thread susulan menjalankannya dengan
+plugin: `egm-drift-report` (subagen baru) dan `egm-review` tahap 9 atas diff dengan persona terdaftar
+`egm:egm-codebase-details` dan `egm:egm-implementation-readiness`, lalu triase `egm-resolve`. Tidak ada temuan berat
+atau Blocker. Laporan dan keputusan per butir: `docs/designs/egm/b13-b14-2026-11-19_DRIFT_REPORT.md` dan
+`docs/designs/egm/b13-b14-goldfish_review_report.md`. Perubahan spek di atas (tabel galat, tabel insight, definisi
+tuntas dan tidak aktif, cakupan `visibleEmployeeScope`, batas unggah, `meta.entitlement`, daftar file per tahap) berasal
+dari triase itu.
+
+Ditunda dari review susulan: kunci unik pelatihan LMS per `catalog_item_id` dan penerusan judul/course nonaktif;
+indeks unik parsial `assessment_ref`; kunci per tenant di `syncFromCatalog`; test isolasi tenant untuk endpoint yang
+belum dites, webhook tenant ambigu, akun nonaktif di pengingat; kasus tepi status (buka lagi `done`, minta modul yang
+sudah tersedia); helper bersama `li`/`ld`.
 
 ## 9. Batas dengan paket lain
 
 - B4 (Developmental Needs) dan B11 mengimpor DACUM (kompetensi, `code`, `stream`, `program_tier`, job function). B13
   mengimpor library modul KSA (Tool 2) ke tabel `li_*` sendiri dan tidak menambah kolom di `lna_competencies`. Setelah B4
   masuk, tautan modul ke kompetensi sebaiknya memakai `lna_competencies.code`, bukan nama.
-- B14 menunjuk `li_modules` dari `ld_trainings.module_id`.
+- B14 menunjuk `li_modules` dari `ld_trainings.module_id`, dan memetakan course LMS ke modul lewat
+  `li_modules.catalog_item_id`.
+- B7/B8 (rencana belajar): membaca `li_modules.catalog_item_id` (boleh kosong, per tenant) sebagai course untuk modul,
+  dan `status.key = available` sebagai tanda modul siap dipakai. B13 tidak menulis ke tabel B7/B8.
 - Entitlement: `li` dan `ld` ikut `full_suite` lewat `FULL_SUITE_ONLY`; paket lain yang menambah modul cukup menambah
   kuncinya di sana.
