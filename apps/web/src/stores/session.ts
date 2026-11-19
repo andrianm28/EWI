@@ -92,18 +92,15 @@ export const useSessionStore = defineStore('session', () => {
     scheduleExpiry()
   }
 
-  // B1: faktor pertama bisa dijawab { mfaRequired, challenge } bila akun memakai verifikasi dua langkah.
-  // Return challenge (sesi belum terbit) atau null (sudah masuk).
-  type FirstFactor = { token: string; user: SessionUser } | { mfaRequired: true; challenge: string }
-  async function finish(res: FirstFactor): Promise<string | null> {
-    if ('mfaRequired' in res && res.mfaRequired) return res.challenge
-    startSession(res as { token: string; user: SessionUser })
+  // B1: tanpa verifikasi dua langkah (keputusan 19 Nov); faktor yang lolos langsung menerbitkan sesi
+  type LoginResult = { token: string; user: SessionUser }
+  async function finish(res: LoginResult) {
+    startSession(res)
     await loadAccess()
-    return null
   }
 
   async function login(tenant: string, email: string, password: string) {
-    return finish(await api<FirstFactor>('/auth/login', {
+    return finish(await api<LoginResult>('/auth/login', {
       method: 'POST',
       body: JSON.stringify({ tenant, email, password }),
     }))
@@ -111,19 +108,12 @@ export const useSessionStore = defineStore('session', () => {
 
   // R3-2: tukar token dari link email (sekali pakai) menjadi sesi
   async function loginWithEmailLink(linkToken: string) {
-    return finish(await api<FirstFactor>('/auth/email-link/verify', {
+    return finish(await api<LoginResult>('/auth/email-link/verify', {
       method: 'POST',
       body: JSON.stringify({ token: linkToken }),
     }))
   }
 
-  // B1: langkah kedua (kode 6 digit dari aplikasi autentikator)
-  async function verifyMfa(challenge: string, code: string) {
-    await finish(await api<FirstFactor>('/auth/mfa/verify', {
-      method: 'POST',
-      body: JSON.stringify({ challenge, code }),
-    }))
-  }
 
   async function loadAccess() {
     access.value = await api<Access>('/me/access', {}, token.value)
@@ -207,5 +197,5 @@ export const useSessionStore = defineStore('session', () => {
 
   if (token.value) scheduleExpiry()
 
-  return { token, user, role, roles, views, activeView, setView, homeReady, access, isAuthenticated, canOpen, hasFlag, login, loginWithEmailLink, verifyMfa, loadAccess, logout, clear, expire, setExpiredHandler }
+  return { token, user, role, roles, views, activeView, setView, homeReady, access, isAuthenticated, canOpen, hasFlag, login, loginWithEmailLink, loadAccess, logout, clear, expire, setExpiredHandler }
 })

@@ -8,7 +8,6 @@ const { createInaStores } = require('./ina-stores');
 const { createCcaStores } = require('./cca-stores');
 const { createFieldCipher, createProvider } = require('../core/crypto');
 const { PRIVILEGED_ROLES, ROLES } = require('../core/rbac/roles');
-const { MAX_ATTEMPTS } = require('../core/auth/mfa');
 
 /** Penyimpan DEK terbungkus per tenant (R2-3). */
 function tenantKeyStore(sequelize) {
@@ -44,11 +43,11 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 /** Sesi login (PK-16). Sesi hanya berlaku bila belum dicabut, belum kedaluwarsa, user tidak nonaktif, tenant aktif. */
 function authSessionStore(q) {
   return {
-    async create({ id, tenantId, userId, method, mfa = false, activeRole = null, expiresAt, ip, userAgent }) {
+    async create({ id, tenantId, userId, method, activeRole = null, expiresAt, ip, userAgent }) {
       await q(
-        `INSERT INTO auth_sessions (id, tenant_id, user_id, method, mfa, active_role, expires_at, ip, user_agent)
-         VALUES (:id, :tenantId, :userId, :method, :mfa, :activeRole, :expiresAt, :ip, :userAgent)`,
-        { id, tenantId, userId, method, mfa, activeRole, expiresAt, ip, userAgent }, QueryTypes.INSERT,
+        `INSERT INTO auth_sessions (id, tenant_id, user_id, method, active_role, expires_at, ip, user_agent)
+         VALUES (:id, :tenantId, :userId, :method, :activeRole, :expiresAt, :ip, :userAgent)`,
+        { id, tenantId, userId, method, activeRole, expiresAt, ip, userAgent }, QueryTypes.INSERT,
       );
     },
     async findActive(id) {
@@ -98,7 +97,7 @@ function authSessionStore(q) {
     },
     async listActiveForUser(tenantId, userId) {
       return q(
-        `SELECT id, method, mfa, created_at AS "createdAt", expires_at AS "expiresAt", ip, user_agent AS "userAgent"
+        `SELECT id, method, created_at AS "createdAt", expires_at AS "expiresAt", ip, user_agent AS "userAgent"
            FROM auth_sessions
           WHERE tenant_id = :tenantId AND user_id = :userId AND revoked_at IS NULL AND expires_at > now()
           ORDER BY created_at DESC`,
@@ -108,59 +107,6 @@ function authSessionStore(q) {
   };
 }
 
-/** B1: secret autentikator dan tantangan langkah kedua. Semua perubahan status atomik (satu UPDATE ... RETURNING). */
-function mfaStore(q) {
-  return {
-    async get(tenantId, userId) {
-      if (!UUID_RE.test(String(userId))) return null;
-      const [row] = await q(
-        `SELECT user_id AS "userId", tenant_id AS "tenantId", secret_enc AS "secretEnc", enabled_at AS "enabledAt", last_step AS "lastStep"
-           FROM user_mfa WHERE tenant_id = :tenantId AND user_id = :userId`, { tenantId, userId });
-      if (!row) return null;
-      return { ...row, lastStep: row.lastStep === null ? null : Number(row.lastStep) };
-    },
-    async savePending(tenantId, userId, secretEnc) {
-      await q(
-        `INSERT INTO user_mfa (user_id, tenant_id, secret_enc) VALUES (:userId, :tenantId, :secretEnc)
-         ON CONFLICT (user_id) DO UPDATE SET secret_enc = EXCLUDED.secret_enc, last_step = NULL, created_at = now()
-           WHERE user_mfa.enabled_at IS NULL`,
-        { tenantId, userId, secretEnc }, QueryTypes.INSERT,
-      );
-    },
-    async enable(tenantId, userId) {
-      await q('UPDATE user_mfa SET enabled_at = now() WHERE tenant_id = :tenantId AND user_id = :userId AND enabled_at IS NULL RETURNING user_id', { tenantId, userId });
-    },
-    async remove(tenantId, userId) {
-      if (!UUID_RE.test(String(userId))) return false;
-      const rows = await q('DELETE FROM user_mfa WHERE tenant_id = :tenantId AND user_id = :userId RETURNING user_id', { tenantId, userId });
-      return rows.length > 0;
-    },
-    async advanceStep(tenantId, userId, step) {
-      const rows = await q(
-        'UPDATE user_mfa SET last_step = :step WHERE tenant_id = :tenantId AND user_id = :userId AND (last_step IS NULL OR last_step < :step) RETURNING user_id',
-        { tenantId, userId, step });
-      return rows.length > 0;
-    },
-    async createChallenge({ id, tenantId, userId, method, tokenHash, expiresAt }) {
-      await q(
-        `INSERT INTO auth_mfa_challenges (id, tenant_id, user_id, method, token_hash, expires_at)
-         VALUES (:id, :tenantId, :userId, :method, :tokenHash, :expiresAt)`,
-        { id, tenantId, userId, method, tokenHash, expiresAt }, QueryTypes.INSERT,
-      );
-    },
-    async attemptChallenge(tokenHash) {
-      const [row] = await q(
-        `UPDATE auth_mfa_challenges SET attempts = attempts + 1
-          WHERE token_hash = :tokenHash AND used_at IS NULL AND expires_at > now() AND attempts < :maxAttempts
-          RETURNING id, tenant_id AS "tenantId", user_id AS "userId", method`, { tokenHash, maxAttempts: MAX_ATTEMPTS });
-      return row || null;
-    },
-    async useChallenge(id) {
-      const rows = await q('UPDATE auth_mfa_challenges SET used_at = now() WHERE id = :id AND used_at IS NULL RETURNING id', { id });
-      return rows.length > 0;
-    },
-  };
-}
 
 /** B2: peran per akun. users.role = peran utama; user_roles = semua peran (trigger users_role_sync menjaga keduanya). */
 function userRoleStore(sequelize) {
@@ -318,7 +264,6 @@ function createStores(sequelize, { encryption } = {}) {
     // PK-16: sesi login yang bisa dicabut
     authSessions: authSessionStore(q),
     // B1: verifikasi dua langkah
-    mfa: mfaStore(q),
     // B2: peran per akun
     userRoles: userRoleStore(sequelize),
     flags: {

@@ -31,8 +31,6 @@ const FLAGS = Object.freeze({
   TNA_NON_TRAINING_HR: 'tna.non_training_hr',
   // B1 (19 Nov): SSO ke IdP perusahaan klien untuk masuk ELGOS (beda dari em.sso = lompat ke EliteMentor)
   AUTH_SSO: 'auth.sso',
-  // B1: pendaftaran verifikasi dua langkah (kode autentikator). Akun yang sudah aktif tetap ditantang walau flag mati
-  AUTH_MFA: 'auth.mfa',
   // B2: satu akun memakai beberapa peran dan berpindah tampilan di bilah atas
   AUTH_MULTI_ROLE: 'auth.multi_role',
   // B7 (19 Nov): tinjauan HR versi mockup Pak Eji: klasifikasi tiga tombol, solusi pelatihan, penugasan, ekspor gap,

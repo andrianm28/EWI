@@ -8,7 +8,7 @@ const { switchableRoles } = require('../rbac/roles');
 
 /**
  * store: {
- *   create({ id, tenantId, userId, method, mfa, activeRole, expiresAt, ip, userAgent }),
+ *   create({ id, tenantId, userId, method, activeRole, expiresAt, ip, userAgent }),
  *   findActive(id) -> { id, tenantId, userId, activeRole, roleVersion, expiresAt, primaryRole, roles } | null
  *                     (belum dicabut, belum kedaluwarsa, user & tenant aktif; roles = isi user_roles akun),
  *   setActiveRole(id, role, expectedVersion) -> { roleVersion, expiresAt } | null   (atomik),
@@ -40,11 +40,11 @@ function createSessionService({ store, tokens, multiRole = async () => false }) 
     return { ok: true, roles, primaryRole: s.primaryRole || active };
   }
   return {
-    async issue(user, { method, ip, userAgent, mfa = false } = {}) {
+    async issue(user, { method, ip, userAgent } = {}) {
       const id = crypto.randomUUID();
       const token = tokens.sign(user, { sid: id });
       await store.create({
-        id, tenantId: user.tenantId, userId: user.id, method: method || 'unknown', mfa: mfa === true, activeRole: user.role,
+        id, tenantId: user.tenantId, userId: user.id, method: method || 'unknown', activeRole: user.role,
         expiresAt: tokens.expiresAt(token), ip: ip || null, userAgent: userAgent ? String(userAgent).slice(0, 255) : null,
       });
       return { token, sessionId: id };
@@ -111,7 +111,7 @@ function memorySessionStore({ now = () => new Date(), accountOf } = {}) {
     },
     async listActiveForUser(tenantId, userId) {
       return [...rows.values()].filter((s) => s.tenantId === tenantId && s.userId === userId && live(s))
-        .map(({ id, method, mfa, createdAt, expiresAt, ip, userAgent }) => ({ id, method, mfa, createdAt, expiresAt, ip, userAgent }));
+        .map(({ id, method, createdAt, expiresAt, ip, userAgent }) => ({ id, method, createdAt, expiresAt, ip, userAgent }));
     },
   };
 }

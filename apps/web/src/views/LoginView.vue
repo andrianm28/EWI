@@ -12,13 +12,9 @@ const session = useSessionStore()
 const router = useRouter()
 const route = useRoute()
 
-type Step = 'cred' | 'mfa'
-const step = ref<Step>('cred')
 const tenant = ref(typeof route.query.org === 'string' ? route.query.org : '')
 const email = ref('')
 const password = ref('')
-const otp = ref('')
-const challenge = ref('')
 const errors = ref<{ message: string; fieldId?: string }[]>([])
 const loading = ref(false)
 const linkNotice = ref('')
@@ -77,8 +73,7 @@ async function submit() {
   if (!requireFields(true)) return
   loading.value = true
   try {
-    const next = await session.login(tenant.value.trim(), email.value.trim(), password.value)
-    if (next) { challenge.value = next; otp.value = ''; step.value = 'mfa'; return }
+    await session.login(tenant.value.trim(), email.value.trim(), password.value)
     await router.push(target())
   } catch (e) {
     fail(e, 'Gagal masuk')
@@ -111,21 +106,7 @@ async function sso() {
   }
 }
 
-async function verify() {
-  if (!/^\d{6}$/.test(otp.value.trim())) { errors.value = [{ message: 'Masukkan 6 digit kode verifikasi', fieldId: 'otp' }]; return }
-  errors.value = []
-  loading.value = true
-  try {
-    await session.verifyMfa(challenge.value, otp.value.trim())
-    await router.push(target())
-  } catch (e) {
-    fail(e, 'Kode tidak bisa diverifikasi')
-  } finally {
-    loading.value = false
-  }
-}
 
-function back() { step.value = 'cred'; challenge.value = ''; otp.value = ''; errors.value = [] }
 </script>
 
 <template>
@@ -149,7 +130,7 @@ function back() { step.value = 'cred'; challenge.value = ''; otp.value = ''; err
 
     <main id="isi-login" class="lg-r">
       <div class="lg-c">
-        <form v-if="step === 'cred'" novalidate @submit.prevent="submit">
+        <form novalidate @submit.prevent="submit">
           <h1 class="lg-h1">Masuk ke ELGOS</h1>
           <p class="lg-sub">Gunakan akun kerja yang didaftarkan oleh admin perusahaan Anda.</p>
           <p v-if="expired" data-testid="session-expired"><UiNote tone="warning">Sesi Anda sudah berakhir. Silakan masuk lagi.</UiNote></p>
@@ -179,18 +160,6 @@ function back() { step.value = 'cred'; challenge.value = ''; otp.value = ''; err
           <p v-if="!passwordEnabled" class="lg-help">Kami mengirim link masuk ke email Anda. Link berlaku 15 menit dan hanya bisa dipakai sekali.</p>
         </form>
 
-        <form v-else novalidate @submit.prevent="verify">
-          <h1 class="lg-h1">Verifikasi dua langkah</h1>
-          <p class="lg-sub">Masukkan 6 digit kode dari aplikasi autentikator untuk {{ email || 'akun Anda' }}.</p>
-          <UiErrorSummary :errors="errors" />
-          <UiField id="otp" v-slot="{ attrs }" label="Kode verifikasi" :error="fieldError('otp')">
-            <input v-bind="attrs" v-model="otp" name="otp" class="el-input lg-w lg-otp" inputmode="numeric" maxlength="6" autocomplete="one-time-code" />
-          </UiField>
-          <div class="lg-row">
-            <UiButton type="submit" :disabled="loading">{{ loading ? 'Memproses…' : 'Verifikasi dan masuk' }}</UiButton>
-            <UiButton variant="text" @click="back">Kembali</UiButton>
-          </div>
-        </form>
 
         <p class="lg-meta">Sesi dienkripsi · percobaan masuk dicatat di log audit tenant</p>
       </div>
@@ -215,7 +184,6 @@ function back() { step.value = 'cred'; challenge.value = ''; otp.value = ''; err
 .lg-h1 { font-size: 24px; line-height: 32px; font-weight: 500; }
 .lg-sub { color: var(--el-on-surface-variant); margin: 4px 0 16px; }
 .lg-w { width: 100%; }
-.lg-otp { letter-spacing: 6px; font-family: var(--el-font-mono); }
 .lg-actions { margin-top: 20px; display: flex; flex-direction: column; gap: 10px; }
 .lg-actions :deep(.el-btn) { justify-content: center; }
 .lg-row { margin-top: 20px; display: flex; gap: 8px; flex-wrap: wrap; }

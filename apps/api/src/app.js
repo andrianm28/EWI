@@ -4,13 +4,12 @@ const helmet = require('helmet');
 const cors = require('cors');
 const { createTokenService } = require('./core/auth/tokens');
 const { requireAuth } = require('./core/auth/middleware');
-const { authRoutes, publicUser } = require('./core/auth/routes');
+const { authRoutes } = require('./core/auth/routes');
 const { createSessionService, memorySessionStore } = require('./core/auth/sessions');
 const { sessionRoutes } = require('./core/auth/session-routes');
 const { createLoginPolicy } = require('./core/auth/policy');
 const { createRateLimiter } = require('./core/auth/rate-limit');
 const { createEmailLinkService, emailLinkRoutes, invitationRoutes } = require('./core/auth/email-link');
-const { createMfaService, mfaPublicRoutes, mfaAccountRoutes, memoryMfaStore, plainCipher } = require('./core/auth/mfa');
 const { createAttemptLog } = require('./core/auth/attempts');
 const { createMailer } = require('./integrations/mailer');
 const { tenantContext } = require('./core/tenant');
@@ -66,9 +65,6 @@ function createApp({ config, stores, ai, catalog, mailer, rateLimits, readiness,
   // R2-2: store audit wajib di luar test; in-memory hanya untuk test yang tidak menyediakannya.
   if (!stores.audit && config.nodeEnv !== 'test') throw new Error('stores.audit wajib (R2-2)');
   const audit = createAuditService(stores.audit || memoryAuditStore());
-  // B1: verifikasi dua langkah. Di luar test store dan cipher tenant wajib (secret tidak boleh tersimpan polos).
-  if ((!stores.mfa || !stores.cipher) && config.nodeEnv !== 'test') throw new Error('stores.mfa dan stores.cipher wajib (B1)');
-  const mfa = createMfaService({ store: stores.mfa || memoryMfaStore(), cipher: stores.mfa && stores.cipher ? stores.cipher : plainCipher });
   const attempts = createAttemptLog(audit);
   const mail = mailer || createMailer(config.mail || {});
   const links = createEmailLinkService({ stores, mailer: mail, appBaseUrl: config.appBaseUrl });
@@ -115,11 +111,9 @@ function createApp({ config, stores, ai, catalog, mailer, rateLimits, readiness,
       ...(stores.cipher?.healthCheck ? { encryption: () => stores.cipher.healthCheck() } : {}),
     },
   })));
-  if (stores.loginLinks) app.use('/api/auth/email-link', emailLinkRoutes({ users: stores.users, links, sessions, policy, audit, limits, mfa, attempts }));
-  app.use('/api/auth/mfa', mfaPublicRoutes({ mfa, users: stores.users, sessions, policy, audit, attempts, limits, publicUser }));
-  app.use('/api/auth/mfa', auth, mfaAccountRoutes({ mfa, flags, audit, users: stores.users, limits, attempts, sessions }));
+  if (stores.loginLinks) app.use('/api/auth/email-link', emailLinkRoutes({ users: stores.users, links, sessions, policy, audit, limits, attempts }));
   app.use('/api/auth', authRoutes({
-    users: stores.users, sessions, policy, audit, requireAuth: auth, limits, mfa, attempts, flags,
+    users: stores.users, sessions, policy, audit, requireAuth: auth, limits, attempts, flags,
     tenantPicker: config.loginTenantPicker, localLogin: authConfig.localLogin,
   }));
 
@@ -140,7 +134,7 @@ function createApp({ config, stores, ai, catalog, mailer, rateLimits, readiness,
   api.use('/projects', projects.router({ projects: stores.projects }));
   api.use('/admin', flagAdminRouter({ flags, audit }));
   if (stores.userRoles) api.use('/users', roleRoutes({ userRoles: stores.userRoles, audit, flags }));
-  api.use('/sessions', sessionRoutes({ sessions, audit, mfa, users: stores.users }));
+  api.use('/sessions', sessionRoutes({ sessions, audit }));
   if (stores.people && stores.interviews) api.use('/employees', employeeRouter({ stores, flags, audit }));
   // B8: beranda karyawan. Bukan submodul; tiap bagian memeriksa modulnya sendiri (flag learner.home).
   if (stores.people && stores.dataRequests) api.use('/my', myRouter({ stores, flags, entitlements, settings, audit }));
@@ -172,9 +166,6 @@ function defaultRateLimits() {
     passwordAccount: createRateLimiter({ windowMs, max: 5, message: 'Terlalu banyak percobaan gagal untuk akun ini. Coba lagi 15 menit lagi.' }),
     linkIp: createRateLimiter({ windowMs, max: 10 }),
     verifyIp: createRateLimiter({ windowMs, max: 20 }),
-    // B1: langkah kedua. Kegagalan per akun tidak direset oleh faktor pertama yang benar.
-    mfaIp: createRateLimiter({ windowMs, max: 20 }),
-    mfaAccount: createRateLimiter({ windowMs, max: 10, message: 'Terlalu banyak kode salah untuk akun ini. Coba lagi 15 menit lagi.' }),
     // Review egm: baris audit "ditolak karena batas" paling banyak satu per akun per jendela
     auditOnce: createRateLimiter({ windowMs, max: 1 }),
   };

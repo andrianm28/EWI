@@ -3,7 +3,7 @@ const express = require('express');
 const bcrypt = require('bcryptjs');
 const { unauthorized, badRequest, notFound, forbidden, HttpError } = require('../errors');
 const { limitByIp } = require('./rate-limit');
-const { finishFirstFactor } = require('./mfa');
+const { finishLogin } = require('./login');
 const { FLAGS } = require('../flags');
 const { viewOf } = require('../rbac/roles');
 
@@ -17,7 +17,7 @@ const DUMMY_HASH = bcrypt.hashSync('elgos-dummy-password', 10);
  * PK-16 / PD-10 ★B: `localLogin` false di produksi; login password lalu menjawab 404.
  * `limits`: { passwordIp, passwordAccount } dari createRateLimiter.
  */
-function authRoutes({ users, sessions, policy, audit, requireAuth, limits, mfa, attempts, flags, tenantPicker = false, localLogin = false }) {
+function authRoutes({ users, sessions, policy, audit, requireAuth, limits, attempts, flags, tenantPicker = false, localLogin = false }) {
   const r = express.Router();
   // B1: SSO perusahaan hanya ditawarkan bila organisasi dikenal, aktif, dan flag auth.sso menyala
   const ssoTenant = async (slug) => {
@@ -68,8 +68,8 @@ function authRoutes({ users, sessions, policy, audit, requireAuth, limits, mfa, 
         throw forbidden('LOGIN_NOT_ALLOWED', 'Akun ini tidak diizinkan masuk');
       }
       limits.passwordAccount.reset(accountKey);
-      const done = await finishFirstFactor({ user, method: 'password', req, sessions, mfa, audit, attempts });
-      res.json(done.mfaRequired ? done : { token: done.token, user: publicUser(user) });
+      const done = await finishLogin({ user, method: 'password', req, sessions, audit });
+      res.json({ token: done.token, user: publicUser(user) });
     }));
   } else {
     r.post('/login', (_req, _res, next) => next(notFound('Login password tidak tersedia. Masuk lewat link email.')));

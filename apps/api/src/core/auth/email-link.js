@@ -8,7 +8,7 @@ const express = require('express');
 const { badRequest, unauthorized } = require('../errors');
 const { requireRole, ROLES } = require('../rbac');
 const { limitByIp } = require('./rate-limit');
-const { finishFirstFactor } = require('./mfa');
+const { finishLogin } = require('./login');
 
 const TTL = { login: 15 * 60 * 1000, invite: 7 * 24 * 60 * 60 * 1000 };
 const RATE = { windowMs: 15 * 60 * 1000, max: 3 };
@@ -64,7 +64,7 @@ function firstInWindow(limits, key) {
  * PK-16: batas per akun (RATE, di database) ditambah batas per IP (`limits.linkIp`, `limits.verifyIp`);
  * kebijakan login (daftar email Admin ETA) dicek saat link dikirim dan saat ditukar; penukaran membuat sesi.
  */
-function emailLinkRoutes({ users, links, sessions, policy, audit, limits, mfa, attempts }) {
+function emailLinkRoutes({ users, links, sessions, policy, audit, limits, attempts }) {
   const r = express.Router();
   const GENERIC = 'Bila email terdaftar di organisasi ini, link masuk sudah dikirim. Periksa kotak masuk Anda.';
   const INVALID = 'Link masuk tidak valid, sudah dipakai, atau kedaluwarsa. Minta link baru.';
@@ -94,8 +94,7 @@ function emailLinkRoutes({ users, links, sessions, policy, audit, limits, mfa, a
   r.post('/verify', limitByIp(limits.verifyIp, 'verify'), wrap(async (req, res) => {
     const user = await links.consume((req.body || {}).token);
     if (!user || !policy.allows(user)) throw unauthorized(INVALID);
-    const done = await finishFirstFactor({ user, method: 'email_link', req, sessions, mfa, audit, attempts, auditMeta: { purpose: user.purpose } });
-    if (done.mfaRequired) return res.json(done);
+    const done = await finishLogin({ user, method: 'email_link', req, sessions, audit, auditMeta: { purpose: user.purpose } });
     const pub = { id: user.id, tenantId: user.tenantId, email: user.email, name: user.name, role: user.role };
     return res.json({ token: done.token, user: pub });
   }));

@@ -51,55 +51,11 @@ test('tanpa SSO: tombol SSO tidak ada; kolom kosong ditandai di ringkasan galat'
   await expect(page.getByLabel('Email kerja')).toBeFocused()
 })
 
-test('akun dengan verifikasi dua langkah: kata sandi benar membuka langkah kode, kode benar masuk', async ({ page }) => {
-  await mockBase(page, { password: true })
-  await page.route('**/api/auth/login', (r) => r.fulfill({ json: { mfaRequired: true, challenge: 'ch-1' } }))
-  let verified: unknown = null
-  await page.route('**/api/auth/mfa/verify', async (r) => {
-    verified = r.request().postDataJSON()
-    const body = verified as { code: string }
-    if (body.code !== '123456') return r.fulfill({ status: 401, json: { error: { code: 'MFA_CODE_INVALID', message: 'Kode verifikasi salah atau sudah dipakai' } } })
-    return r.fulfill({ json: { token: 'tok', user } })
-  })
-  await page.goto('/login')
-  await page.getByLabel('Organisasi').fill('demo')
-  await page.getByLabel('Email').fill('hr@demo.test')
-  await page.getByLabel('Kata sandi').fill(`pw-${Date.now()}`)
-  await page.getByRole('button', { name: 'Masuk', exact: true }).click()
-
-  await expect(page.getByRole('heading', { name: 'Verifikasi dua langkah' })).toBeVisible()
-  await expect(page.getByText('untuk hr@demo.test')).toBeVisible()
-  await page.getByLabel('Kode verifikasi').fill('12')
-  await page.getByRole('button', { name: 'Verifikasi dan masuk' }).click()
-  await expect(page.getByRole('alert')).toContainText('Masukkan 6 digit kode verifikasi')
-  await page.getByLabel('Kode verifikasi').fill('000000')
-  await page.getByRole('button', { name: 'Verifikasi dan masuk' }).click()
-  await expect(page.getByRole('alert')).toContainText('Kode verifikasi salah')
-  await page.getByLabel('Kode verifikasi').fill('123456')
-  await page.getByRole('button', { name: 'Verifikasi dan masuk' }).click()
-  await expect(page.getByRole('button', { name: 'Keluar' })).toBeVisible()
-  expect(verified).toEqual({ challenge: 'ch-1', code: '123456' })
-})
-
-test('langkah kode: Kembali ke formulir awal', async ({ page }) => {
-  await mockBase(page, { password: true })
-  await page.route('**/api/auth/login', (r) => r.fulfill({ json: { mfaRequired: true, challenge: 'ch-1' } }))
-  await page.goto('/login')
-  await page.getByLabel('Organisasi').fill('demo')
-  await page.getByLabel('Email').fill('hr@demo.test')
-  await page.getByLabel('Kata sandi').fill('x')
-  await page.getByRole('button', { name: 'Masuk', exact: true }).click()
-  await page.getByRole('button', { name: 'Kembali' }).click()
-  await expect(page.getByRole('heading', { name: 'Masuk ke ELGOS' })).toBeVisible()
-})
-
-test('link email untuk akun dengan verifikasi dua langkah: minta kode setelah link ditukar', async ({ page }) => {
+test('tanpa verifikasi dua langkah: link email yang ditukar langsung masuk, tanpa langkah kode', async ({ page }) => {
   await mockBase(page)
-  await page.route('**/api/auth/email-link/verify', (r) => r.fulfill({ json: { mfaRequired: true, challenge: 'ch-2' } }))
-  await page.route('**/api/auth/mfa/verify', (r) => r.fulfill({ json: { token: 'tok', user } }))
+  await page.route('**/api/auth/email-link/verify', (r) => r.fulfill({ json: { token: 'tok', user } }))
   await page.goto('/masuk#token=abcdefghijklmnopqrstuvwxyz0123')
   await page.getByRole('button', { name: 'Lanjutkan masuk' }).click()
-  await page.getByLabel('Kode verifikasi').fill('654321')
-  await page.getByRole('button', { name: 'Verifikasi dan masuk' }).click()
   await expect(page.getByRole('button', { name: 'Keluar' })).toBeVisible()
+  await expect(page.getByLabel('Kode verifikasi')).toHaveCount(0)
 })
