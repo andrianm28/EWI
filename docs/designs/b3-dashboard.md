@@ -256,7 +256,7 @@ Reviewer `egm:egm-codebase-details` dan `egm:egm-implementation-readiness` (suba
 ### Menambah bagian dashboard (B9, B13–B16)
 
 - Tiap modul menambah datanya di `GET /api/dashboard` hanya bila modulnya terbuka dengan gerbang di 3.4, dan bernilai `null` (bukan 0) bila tertutup, tanpa membaca datanya.
-- Metrik per modul: field opsional `modules[].metric: { label: string, value: number | null }`. Layar menampilkannya di bawah keterangan modul bila ada.
+- Metrik per modul: field opsional `modules[].metric: { label: string, value: number | null }`. Belum ada di B3; paket pertama yang mengirimnya juga menambah tampilannya di kartu modul (di bawah keterangan) beserta test e2e.
 - Butir tindakan baru: kunci baru di akhir urutan 3.5 kecuali spek paketnya menyebut posisi lain; layar menambah entri di `ACTIONS` (`DashboardView.vue`). Kunci yang belum dikenal layar dilewati.
 - Untuk atasan: angka yang bergantung pada draf tidak dikirim (PM-5); Improvement Needs hanya dengan akses HR (K1); id karyawan yang menjadi sumber angka ikut ke audit `readIndividual`.
 - Test yang disalin tiap paket: modul tertutup → `null` dan store tidak dipanggil; cakupan atasan; tidak ada angka yang membocorkan draf.
