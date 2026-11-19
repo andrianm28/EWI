@@ -1,0 +1,27 @@
+{
+  "id": "jawaban-singkat",
+  "versi": 1,
+  "operasi": "tna",
+  "deskripsi": "Karyawan menjawab sangat singkat. Memeriksa bahwa wawancara tetap selesai tanpa mengarang temuan.",
+  "karyawan": {
+    "nama": "Budi Contoh",
+    "jabatan": "Agen Layanan L1"
+  },
+  "target": [
+    {
+      "kpi": "Kepuasan pelanggan CSAT (%)",
+      "target": 90,
+      "aktual": 75
+    }
+  ],
+  "naskah": [
+    "Tidak tahu.",
+    "Biasa saja.",
+    "Mungkin."
+  ],
+  "jawabanCadangan": "Tidak ada.",
+  "harapan": {
+    "kategori": null,
+    "minTemuan": 0
+  }
+}

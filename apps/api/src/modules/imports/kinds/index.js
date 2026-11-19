@@ -15,7 +15,9 @@ const KINDS = [
   require('./li-modules'),
   // B10: hasil program Core Competencies, nomor template 10
   require('./cca-program-results'),
-  // B4: job function DACUM; diimpor sebelum kamus kompetensi, tetapi ditaruh di akhir agar nomor template tidak bergeser
+  // B15: skor pre/post/kinerja per karyawan per kompetensi rencana Impact Measurement, nomor template 11
+  require('./lim-measurements'),
+  // B4: job function DACUM; diimpor sebelum kamus kompetensi, tetapi ditaruh di akhir agar nomor template tidak bergeser (nomor 12)
   require('./job-functions'),
 ];
 const byKey = new Map(KINDS.map((k) => [k.key, k]));

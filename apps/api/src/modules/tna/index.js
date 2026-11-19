@@ -17,13 +17,14 @@ const { FLAGS, requireFlag } = require('../../core/flags');
 const { badRequest, notFound, forbidden, HttpError } = require('../../core/errors');
 const { interviewRouter, wrap } = require('../interviews');
 const { inviteExpiry } = require('../interviews/invitation');
-const { evaluate, metricKey, METRIC_TYPES } = require('./performance');
+const { metricKey, METRIC_TYPES } = require('./performance');
 const { selectInterviewees } = require('./targeting');
-const { rankTrainingNeeds } = require('./pareto');
+const { rankFindings } = require('./pareto');
 const { importRouter } = require('../imports');
 const { getKind } = require('../imports/kinds');
 const { validateRows, commitRows } = require('../imports/engine');
 const { PLAN_STATUSES, PLAN_STATUS_LABEL, initialStatus, canTransition } = require('./plan-status');
+const { reviewWorkspaceRouter, toReviewItem, assertNotWithdrawn } = require('./review-workspace');
 const { gapRouter } = require('./gap-routes');
 
 const REVIEW_DECISIONS = { approve: 'approved', edit: 'edited', reject: 'rejected' };
@@ -33,7 +34,7 @@ const CATEGORIES = ['training', 'non_training'];
 module.exports = {
   key: 'tna',
   title: 'Training Needs Analysis',
-  router({ stores, ai, aiConfig, settings, catalog, flags, audit, analysis } = {}) {
+  router({ stores, ai, aiConfig, settings, catalog, flags, audit, analysis, assignments } = {}) {
     const r = express.Router();
     const hr = requireRole(ROLES.HR_ADMIN);
 
@@ -127,13 +128,16 @@ module.exports = {
       const records = await stores.tna.listPerformance(req.tenantId, { all: true }, { period, projectId, userIds: members.map((m) => m.id) });
       const picks = selectInterviewees({ members, records, scope });
       const open = await stores.interviews.openFor(req.tenantId, { projectId, submodule: 'tna' });
-      const created = [];
+      // B8: karyawan yang menarik persetujuan tidak diundang ulang oleh undangan massal, kecuali HR memintanya
+      const withdrawn = body.includeWithdrawn === true ? new Set() : await stores.interviews.withdrawnFor(req.tenantId, { projectId, submodule: 'tna' });
+      const created = []; let skippedWithdrawn = 0;
       for (const p of picks) {
         if (open.has(p.userId)) continue;
+        if (withdrawn.has(p.userId)) { skippedWithdrawn += 1; continue; }
         const m = members.find((x) => x.id === p.userId);
         created.push({ ...(await stores.interviews.create(req.tenantId, { projectId, submodule: 'tna', intervieweeId: p.userId, jobRoleId: m.jobRoleId, triggerRecordIds: p.triggerRecordIds, inviteExpiresAt: inviteExpiry() })), focus: p.focus });
       }
-      res.status(201).json({ data: { scope, scheduled: created.length, skipped: picks.length - created.length, sessions: created } });
+      res.status(201).json({ data: { scope, scheduled: created.length, skipped: picks.length - created.length, skippedWithdrawn, sessions: created } });
     }));
 
     // B5: papan gap dan penugasan wawancara akar masalah (flag tna.gap_board, tna.interview_assignment)
@@ -149,12 +153,25 @@ module.exports = {
       const status = req.query.status || 'draft';
       const statuses = status === 'all' ? ['draft', ...Object.values(REVIEW_DECISIONS)] : status === 'reviewed' ? Object.values(REVIEW_DECISIONS) : [status];
       if (!statuses.every((x) => ['draft', ...Object.values(REVIEW_DECISIONS)].includes(x))) throw badRequest('status harus draft, approved, edited, rejected, reviewed, atau all');
-      const [rows, counts] = await Promise.all([
+      const [rows, counts, conf] = await Promise.all([
         stores.tna.reviewQueue(req.tenantId, { projectId: req.query.projectId, statuses }),
         stores.tna.reviewCounts(req.tenantId, { projectId: req.query.projectId }),
+        settings.get(req.tenantId),
       ]);
+      // B7 (PM-3 A): target tinjauan dalam hari kerja. held/overdue dihitung dari seluruh draf dalam cakupan
+      // proyek yang sama, bukan hanya baris yang difilter status.
+      const targetDays = conf.tna.reviewTargetDays;
+      const now = new Date();
+      const data = rows.map((f) => toReviewItem(f, targetDays, now));
+      const drafts = statuses.includes('draft')
+        ? data.filter((f) => f.reviewStatus === 'draft')
+        : (await stores.tna.reviewQueue(req.tenantId, { projectId: req.query.projectId, statuses: ['draft'] })).map((f) => toReviewItem(f, targetDays, now));
       await audit.readIndividual(req, 'tna.review_queue', { employeeIds: rows.map((f) => f.userId), objectType: 'tna_finding', objectIds: rows.map((f) => f.id) });
-      res.json({ data: rows, counts });
+      res.json({
+        data,
+        counts: { ...counts, held: drafts.filter((f) => f.held).length, overdue: drafts.filter((f) => f.overdue).length },
+        targetDays,
+      });
     }));
 
     r.post('/findings/:id/review', hr, wrap(async (req, res) => {
@@ -172,6 +189,7 @@ module.exports = {
       const current = await stores.tna.getReviewItem(req.tenantId, req.params.id);
       if (!current) throw notFound('Temuan tidak ditemukan');
       if (current.reviewStatus !== 'draft') throw new HttpError(409, 'ALREADY_REVIEWED', 'Temuan ini sudah direview');
+      assertNotWithdrawn(current);
       const out = await stores.tna.reviewFinding(req.tenantId, current.id, {
         decision: status, title: patch.title, detail: patch.detail, category: decision === 'edit' ? category : undefined, note: patch.note, reviewerId: req.user.id,
       });
@@ -179,8 +197,11 @@ module.exports = {
       await audit.record(req, 'update', 'tna.finding_review', {
         employeeIds: [current.userId], objectType: 'tna_finding', objectIds: [current.id], decision: status, confidence: current.confidence,
       });
-      res.json({ data: out });
+      res.json({ data: toReviewItem(out, (await settings.get(req.tenantId)).tna.reviewTargetDays) });
     }));
+
+    // B7: klasifikasi tiga tombol, solusi, penugasan, ekspor gap, serah ke Improvement Needs (flag tna.review_workspace)
+    r.use(reviewWorkspaceRouter({ stores, settings, catalog, flags, audit, assignments, wrap }));
 
     // PM-6 (jawaban user 17 Nov): temuan "bukan masalah pelatihan" tampil untuk HR secara bawaan, ringkas,
     // tanpa rencana aksi. Atasan langsung melihat temuan timnya hanya bila HR memberinya akses (bisa dicabut,
@@ -251,9 +272,7 @@ module.exports = {
       const scope = await scopeFor(req, stores.people);
       const conf = await settings.get(req.tenantId);
       const findings = await stores.tna.listFindings(req.tenantId, scope, { projectId: req.query.projectId, categories: ['training'] });
-      const rows = rankTrainingNeeds(findings.map((f) => ({
-        ...f, missRatio: f.target != null ? evaluate({ target: f.target, actual: f.actual, direction: f.direction, tolerance: f.tolerance }).missRatio : null,
-      })), conf.tna.pareto);
+      const rows = rankFindings(findings, conf.tna.pareto);
       res.json({ data: rows, formula: conf.tna.pareto });
     }));
 
@@ -265,12 +284,13 @@ module.exports = {
       const conf = await settings.get(req.tenantId);
       const competency = f.competencyId ? await stores.dna.getCompetency(req.tenantId, f.competencyId) : null;
       const hit = await catalog.match({ tenantId: req.tenantId, targets: conf.lms.targets, competency, tier: req.body?.programTier });
-      const item = await stores.tna.insertPlanItem(req.tenantId, {
-        findingId: f.id, userId: f.userId, origin: 'hr', status: initialStatus('hr'),
+      // B7: temuan dikunci dan diperiksa ulang saat rencana disimpan (klasifikasi bisa berubah sejak dibaca di atas)
+      const item = await stores.tna.planFromFinding(req.tenantId, f.id, {
+        userId: f.userId, origin: 'hr', status: initialStatus('hr'),
         programTier: req.body?.programTier || null, catalogSource: hit?.source, catalogItemRef: hit?.ref, catalogItemTitle: hit?.title,
         note: req.body?.note || null,
       });
-      await stores.tna.setFindingStatus(req.tenantId, f.id, 'planned');
+      if (!item) throw new HttpError(409, 'ALREADY_ACTIONED', 'Klasifikasi temuan ini baru saja berubah. Muat ulang lalu coba lagi.');
       // PK-15: perubahan temuan dan rencana dicatat
       await audit.record(req, 'create', 'tna.plan_item', { employeeIds: [f.userId], objectType: 'tna_plan_item', objectIds: [item.id], findingId: f.id, status: item.status });
       await audit.record(req, 'update', 'tna.finding', { employeeIds: [f.userId], objectType: 'tna_finding', objectIds: [f.id], from: f.status, to: 'planned' });
@@ -311,6 +331,8 @@ module.exports = {
         throw new HttpError(409, 'INVALID_TRANSITION', `Status "${PLAN_STATUS_LABEL[item.status]}" tidak bisa diubah menjadi "${PLAN_STATUS_LABEL[status]}"`);
       }
       const saved = await stores.tna.updatePlanItem(req.tenantId, item.id, { status, catalogItemRef, catalogItemTitle, catalogSource });
+      // B7: course rencana yang sedang atau sudah ditugaskan ke EliteMentor tidak boleh diganti
+      if (!saved) throw new HttpError(409, 'ALREADY_ASSIGNED', 'Rencana ini sudah ditugaskan, course-nya tidak bisa diganti');
       const changed = Object.fromEntries(Object.entries({ status, catalogItemRef, catalogItemTitle, catalogSource }).filter(([, v]) => v !== undefined));
       await audit.record(req, 'update', 'tna.plan_item', { employeeIds: [item.userId], objectType: 'tna_plan_item', objectIds: [item.id], from: { status: item.status }, changed });
       res.json({ data: saved });

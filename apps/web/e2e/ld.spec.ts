@@ -23,7 +23,7 @@ async function setup(page: Page, calls: { method: string; url: string; body: unk
   await page.route('**/api/auth/tenants', (r) => r.fulfill({ json: { data: [] } }))
   await page.route('**/api/auth/login', (r) => r.fulfill({ json: { token: 't', user } }))
   await page.route('**/api/auth/me', (r) => r.fulfill({ json: { user } }))
-  await page.route('**/api/me/access', (r) => r.fulfill({ json: { submodules: ['dna', 'tna'], flags: { 'module.dna': true, 'module.tna': true, 'module.ld': true } } }))
+  await page.route('**/api/me/access', (r) => r.fulfill({ json: { submodules: ['dna', 'tna'], products: ['full_suite'], flags: { 'module.dna': true, 'module.tna': true, 'module.ld': true } } }))
   await page.route(/\/api\/(dna|tna)\//, (r) => r.fulfill({ json: { data: [] } }))
   const created: Record<string, unknown>[] = []
   let detail = {
@@ -140,4 +140,13 @@ test('Pelatihan offline: validasi form, kehadiran, asesmen dari vendor, skor, da
   await expect(d.getByRole('list', { name: 'Berkas dokumentasi' })).toContainText('sesi.png')
   expect(calls.find((c) => c.url.includes('/documents'))?.url).toContain('kind=photo&filename=sesi.png')
   await expect(page.getByText('hanya bisa dibuka oleh HR')).toBeVisible()
+})
+
+test('Learning Delivery tidak tampil dan tidak bisa dibuka bila tenant tidak punya full_suite, walau flag menyala', async ({ page }) => {
+  await setup(page)
+  await page.route('**/api/me/access', (r) => r.fulfill({ json: { submodules: ['dna', 'tna'], products: ['dna', 'tna'], flags: { 'module.dna': true, 'module.tna': true, 'module.ld': true } } }))
+  await page.reload()
+  await expect(page.getByRole('navigation', { name: 'Navigasi utama' }).getByRole('button', { name: 'Learning Delivery' })).toHaveCount(0)
+  await page.goto('/ld')
+  await expect(page).toHaveURL(/\/$/)
 })

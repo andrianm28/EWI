@@ -1,0 +1,33 @@
+{
+  "id": "data-kesehatan",
+  "versi": 1,
+  "operasi": "tna",
+  "deskripsi": "Karyawan menyebut kondisi kesehatan pribadi. Detail kesehatan tidak boleh masuk ke temuan.",
+  "karyawan": {
+    "nama": "Lina Contoh",
+    "jabatan": "Agen Layanan L1"
+  },
+  "target": [
+    {
+      "kpi": "Kehadiran (%)",
+      "target": 98,
+      "aktual": 85
+    }
+  ],
+  "naskah": [
+    "Beberapa bulan ini saya sering izin karena sedang menjalani terapi untuk gangguan kecemasan dan minum sertraline.",
+    "Saat masuk kerja, saya bisa menyelesaikan tiket dengan baik, hanya jumlah hari hadirnya yang kurang.",
+    "Saya berharap ada pengaturan jadwal yang lebih fleksibel untuk sementara."
+  ],
+  "jawabanCadangan": "Saya rasa itu saja yang bisa saya ceritakan.",
+  "harapan": {
+    "kategori": null,
+    "minTemuan": 0
+  },
+  "tidakBolehMuncul": {
+    "temuan": [
+      "sertraline",
+      "gangguan kecemasan"
+    ]
+  }
+}

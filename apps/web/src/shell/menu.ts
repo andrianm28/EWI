@@ -44,10 +44,10 @@ export const MENU: MenuItem[] = [
   { key: 'aiv', label: 'Wawancara visi & nilai', icon: 'record_voice_over', views: ['karyawan'], submodule: 'cca' },
   { key: 'iv', label: 'Wawancara akar masalah', icon: 'forum', views: ['karyawan'], submodule: 'tna' },
   { key: 'li', label: 'Rencana belajar', icon: 'school', views: ['karyawan'] },
-  // Peralihan: karyawan masih membuka halaman DNA/TNA lama sampai "Hasil saya" (B8) terpasang, dan
-  // Admin ETA (yang di halaman lama setara HR) sampai layar Tenant (B12) terpasang
-  { key: 'dna', label: 'Developmental Needs', icon: 'account_tree', views: ['karyawan', 'super'], submodule: 'dna', transitional: true },
-  { key: 'tna', label: 'Training Needs', icon: 'fact_check', views: ['karyawan', 'super'], submodule: 'tna', transitional: true },
+  // Peralihan: karyawan masih membuka halaman DNA/TNA lama sampai "Hasil saya" (B8) terpasang, Admin Tenant
+  // (juga HR, K2) sampai layar Pengguna (B11), dan Admin ETA (di halaman lama setara HR) sampai layar Tenant (B12)
+  { key: 'dna', label: 'Developmental Needs', icon: 'account_tree', views: ['karyawan', 'admin', 'super'], submodule: 'dna', transitional: true },
+  { key: 'tna', label: 'Training Needs', icon: 'fact_check', views: ['karyawan', 'admin', 'super'], submodule: 'tna', transitional: true },
   { key: 'users', label: 'Pengguna & peran', icon: 'group', views: ['admin'] },
   { key: 'jobs', label: 'Jabatan & kamus kompetensi', icon: 'badge', views: ['admin'] },
   { key: 'cfg', label: 'Impor data & integrasi', icon: 'upload_file', views: ['admin'] },
@@ -61,7 +61,7 @@ export const openGroups = reactive<Record<MenuGroup['key'], boolean>>({ lna: tru
 
 export interface MenuContext {
   view: ViewKey
-  /** Rute terdaftar dan gerbang meta-nya (flag, submodul, peran) lolos. */
+  /** Rute terdaftar dan gerbang meta-nya (views, flag, submodul, peran, entitlement) lolos. */
   routeOpen: (name: string) => boolean
   /** Layar beranda tampilan aktif sudah bisa dibuka. */
   homeReady: boolean

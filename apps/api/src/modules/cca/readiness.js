@@ -31,7 +31,7 @@ function readiness(rows) {
  * group: 'vm' (visi + misi) atau 'values' (nilai korporasi).
  */
 function buildOverview(sources, group) {
-  const kinds = GROUP_KINDS[group];
+  const kinds = Object.prototype.hasOwnProperty.call(GROUP_KINDS, group) ? GROUP_KINDS[group] : null;
   if (!kinds) throw new Error(`Grup tidak dikenal: ${group}`);
   const groups = sources.filter((s) => kinds.includes(s.kind)).map((s) => {
     const rows = (s.requirements || []).filter((r) => r.status !== 'rejected').map(decorate);

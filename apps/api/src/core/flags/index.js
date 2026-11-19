@@ -9,6 +9,7 @@ const FLAGS = Object.freeze({
   // Bangun penuh 19 Nov (mockup Pak Eji): modul di luar Learning Needs Analysis
   MODULE_LI: 'module.li', // B13 Learning Intervention
   MODULE_LD: 'module.ld', // B14 Learning Delivery
+  MODULE_LIM: 'module.lim', // B15 Learning Impact Measurement
   // Cadence 11 Nov (C2): POC ELGOS memakai hasil wawancara DNA manual; wawancara AI DNA ditahan
   DNA_AI_INTERVIEW: 'dna.ai_interview',
   // G2-A (13 Nov): rekomendasi promosi = modul terpisah, di luar POC DNA+TNA
@@ -24,10 +25,21 @@ const FLAGS = Object.freeze({
   WEBHOOK_SYNC: 'em.webhook_sync',
   COST_PER_SESSION: 'cost.per_session',
   INA_DASHBOARD: 'ina.dashboard', // RG-4: ditahan dari POC Desember
+  // B11 (19 Nov): layar Admin Tenant (pengguna & peran, jabatan & kamus, impor & integrasi)
+  TENANT_ADMIN: 'admin.tenant',
   // PM-8 B: BT-31 ditunda; permintaan training dari karyawan disembunyikan selama POC
   TNA_TRAINING_REQUEST: 'tna.training_request',
   // PM-6 (17 Nov): daftar ringkas temuan non-training untuk HR; atasan bila diberi akses HR. Mati = disembunyikan
   TNA_NON_TRAINING_HR: 'tna.non_training_hr',
+  // B7 (19 Nov): tinjauan HR versi mockup Pak Eji: klasifikasi tiga tombol, solusi pelatihan, penugasan, ekspor gap,
+  // dan serah temuan ke Improvement Needs
+  TNA_REVIEW_WORKSPACE: 'tna.review_workspace',
+  // B8 (19 Nov): beranda karyawan (Hasil saya, Rencana belajar)
+  LEARNER_HOME: 'learner.home',
+  // B17 (19 Nov): Asisten ELGOS, jawaban dari data yang boleh dilihat peran penanya
+  ASSISTANT: 'assistant',
+  // B9 (19 Nov): verifikasi tindakan perbaikan lewat wawancara singkat AI ke pemiliknya (butuh ina.dashboard)
+  INA_AI_VERIFICATION: 'ina.ai_verification',
   // B5 (19 Nov): papan gap Training Needs (gap kompetensi + gap OKR, klasifikasi, detail gap)
   TNA_GAP_BOARD: 'tna.gap_board',
   // B5: penugasan wawancara akar masalah per gap (tenggat, durasi 15/30 menit) oleh HR atau atasan
@@ -36,6 +48,8 @@ const FLAGS = Object.freeze({
   TNA_INTERVIEW_SUMMARY: 'tna.interview_summary',
   // B10: wawancara AI berjenjang visi-misi-nilai (pimpinan lalu karyawan); hasil program dan persyaratan tetap bisa dibuka tanpa ini
   CCA_INTERVIEW: 'cca.interview',
+  // B3 (19 Nov): dashboard utama HR dan dashboard tim atasan. Mati = pengguna tetap mendarat di Beranda lama
+  DASHBOARD_MAIN: 'dashboard.main',
 });
 
 const KNOWN = new Set(Object.values(FLAGS));

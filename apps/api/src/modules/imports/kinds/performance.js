@@ -53,9 +53,12 @@ module.exports = {
   options: [
     { key: 'period', label: 'Periode (bila kolom kosong)', type: 'text', required: true },
     { key: 'projectId', label: 'Proyek', type: 'project' },
+    // B11: asal data (mis. HRIS, HappyFive, Berkas); hanya tercatat di riwayat impor
+    { key: 'source', label: 'Sumber data (mis. HRIS)', type: 'text' },
   ],
   checkOptions(o) {
     if (!v.text(o.period)) return 'Periode wajib diisi (mis. 2026-11)';
+    if (v.text(o.source).length > 64) return 'Sumber data maksimal 64 karakter';
     return null;
   },
   async context({ stores, tenantId, rows, options }) {

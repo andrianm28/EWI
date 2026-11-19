@@ -1,0 +1,24 @@
+{
+  "data": [
+    {
+      "id": "00000000-0000-4000-8000-000000000008",
+      "projectId": "00000000-0000-4000-8000-000000000005",
+      "userId": "00000000-0000-4000-8000-000000000004",
+      "userName": "Rina Contoh",
+      "category": "training",
+      "title": "Kesulitan mencapai target First Contact Resolution (%)",
+      "detail": "Skor sementara dari penyedia AI tiruan (stub); perlu dinilai ulang.",
+      "status": "open",
+      "competencyId": "00000000-0000-4000-8000-000000000009",
+      "competencyName": "Menangani eskalasi tiket",
+      "importance": 3,
+      "performanceRecordId": "00000000-0000-4000-8000-000000000010",
+      "metricName": "First Contact Resolution (%)",
+      "target": 80,
+      "actual": 62,
+      "direction": "higher",
+      "tolerance": 0,
+      "createdAt": "2026-11-19T07:00:00.000Z"
+    }
+  ]
+}

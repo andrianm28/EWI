@@ -2,6 +2,7 @@
 // Store Postgres untuk B14 Learning Delivery. Setiap query memfilter tenant_id; rujukan (karyawan, modul, jabatan)
 // selalu dicek milik tenant yang sama di SQL-nya. Kehadiran dan skor adalah data individu: audit dilakukan di router.
 const { QueryTypes } = require('sequelize');
+const { scopeSql } = require('./scope-sql');
 
 const TRAINING_COLS = `t.id, t.title, t.mode, t.source, t.external_ref AS "externalRef", t.catalog_item_id AS "catalogItemId",
   t.module_id AS "moduleId", t.program_tier AS "programTier", t.vendor_name AS "vendorName", t.venue,
@@ -62,7 +63,7 @@ function createLdStores(sequelize) {
     async listTrainings(tenantId, { id, inactiveBefore } = {}) {
       const rep = { tenantId, inactiveBefore: inactiveBefore || new Date(0) };
       let sql = `SELECT ${TRAINING_COLS}, m.code AS "moduleCode", m.name AS "moduleName",
-          COALESCE(p.participants, 0)::int AS participants, COALESCE(p.completed, 0)::int AS completed,
+          COALESCE(p.participants, 0)::int AS participants, COALESCE(p.completed, 0)::int AS completed, COALESCE(p.failed, 0)::int AS failed,
           COALESCE(p.avg_progress, 0)::float AS "avgProgress", COALESCE(p.attendance_recorded, 0)::int AS "attendanceRecorded",
           COALESCE(p.present, 0)::int AS present, COALESCE(p.scored, 0)::int AS scored, COALESCE(p.scored_present, 0)::int AS "scoredPresent", COALESCE(p.inactive, 0)::int AS inactive,
           (SELECT count(*)::int FROM ld_documents d WHERE d.training_id = t.id AND d.tenant_id = t.tenant_id AND d.kind IN ('photo','video')) AS "photoDocs",
@@ -72,12 +73,13 @@ function createLdStores(sequelize) {
         LEFT JOIN LATERAL (
           SELECT count(*) AS participants,
                  count(*) FILTER (WHERE lp.status = 'completed') AS completed,
-                 avg(COALESCE(lp.progress_pct, CASE WHEN lp.status = 'completed' THEN 100 ELSE 0 END)) AS avg_progress,
+                 count(*) FILTER (WHERE lp.status = 'failed') AS failed,
+                 avg(CASE WHEN lp.status IN ('completed','failed') THEN 100 ELSE COALESCE(lp.progress_pct, 0) END) AS avg_progress,
                  count(*) FILTER (WHERE lp.attendance IS NOT NULL) AS attendance_recorded,
                  count(*) FILTER (WHERE lp.attendance) AS present,
                  count(*) FILTER (WHERE lp.score IS NOT NULL AND (lp.attendance IS NOT FALSE)) AS scored,
                  count(*) FILTER (WHERE lp.score IS NOT NULL AND lp.attendance) AS scored_present,
-                 count(*) FILTER (WHERE lp.status IN ('enrolled','in_progress') AND lp.last_activity_at IS NOT NULL AND lp.last_activity_at < :inactiveBefore) AS inactive
+                 count(*) FILTER (WHERE t.mode = 'online' AND lp.status IN ('enrolled','in_progress') AND COALESCE(lp.last_activity_at, lp.created_at) < :inactiveBefore) AS inactive
             FROM ld_participants lp WHERE lp.training_id = t.id AND lp.tenant_id = t.tenant_id
         ) p ON true
         WHERE t.tenant_id = :tenantId`;
@@ -120,26 +122,30 @@ function createLdStores(sequelize) {
     },
 
     /** Pilihan untuk form peserta: jabatan (dengan jumlah karyawan) dan karyawan tenant yang tidak dinonaktifkan. */
-    async participantOptions(tenantId) {
+    async participantOptions(tenantId, scope) {
+      const rep = { tenantId };
+      const scoped = scopeSql('u.id', scope, rep);
       const [jobRoles, employees] = await Promise.all([
         select(`SELECT jr.id, jr.name, count(u.id)::int AS people FROM lna_job_roles jr
                   LEFT JOIN users u ON u.job_role_id = jr.id AND u.tenant_id = jr.tenant_id AND u.status <> 'disabled'
                  WHERE jr.tenant_id = :tenantId GROUP BY jr.id, jr.name ORDER BY jr.name`, { tenantId }),
         select(`SELECT u.id, u.name, u.email, jr.name AS "jobRoleName" FROM users u
                   LEFT JOIN lna_job_roles jr ON jr.id = u.job_role_id AND jr.tenant_id = u.tenant_id
-                 WHERE u.tenant_id = :tenantId AND u.status <> 'disabled' AND u.role <> 'eta_admin' ORDER BY u.name NULLS LAST, u.email`, { tenantId }),
+                 WHERE u.tenant_id = :tenantId AND u.status <> 'disabled' AND u.role <> 'eta_admin'${scoped} ORDER BY u.name NULLS LAST, u.email`, rep),
       ]);
       return { jobRoles, employees };
     },
 
     // --- Peserta, kehadiran, skor ---
-    async listParticipants(tenantId, trainingId) {
+    async listParticipants(tenantId, trainingId, scope) {
+      const rep = { tenantId, trainingId };
+      const scoped = scopeSql('lp.user_id', scope, rep);
       return select(`SELECT lp.user_id AS "userId", u.name, u.email, u.employee_id AS "employeeId", jr.name AS "jobRoleName",
                             lp.progress_pct::float AS "progressPct", lp.status, lp.attendance, lp.attendance_at AS "attendanceAt",
                             lp.score::float AS score, lp.score_source AS "scoreSource", lp.last_activity_at AS "lastActivityAt", lp.completed_at AS "completedAt"
                        FROM ld_participants lp JOIN users u ON u.id = lp.user_id AND u.tenant_id = lp.tenant_id
                        LEFT JOIN lna_job_roles jr ON jr.id = u.job_role_id AND jr.tenant_id = u.tenant_id
-                      WHERE lp.tenant_id = :tenantId AND lp.training_id = :trainingId ORDER BY u.name NULLS LAST, u.email`, { tenantId, trainingId });
+                      WHERE lp.tenant_id = :tenantId AND lp.training_id = :trainingId${scoped} ORDER BY u.name NULLS LAST, u.email`, rep);
     },
     /** Tambah peserta dari daftar id dan/atau satu jabatan; hanya karyawan tenant ini yang tidak dinonaktifkan. Return jumlah baru. */
     async addParticipants(tenantId, trainingId, { userIds = [], jobRoleId = null }) {
@@ -197,14 +203,24 @@ function createLdStores(sequelize) {
       return one(`SELECT id, training_id AS "trainingId", kind, filename, mime, size_bytes AS "sizeBytes", storage_key AS "storageKey"
                     FROM ld_documents WHERE tenant_id = :tenantId AND id = :id`, { tenantId, id });
     },
-    async insertDocument(tenantId, trainingId, d) {
-      const [row] = await write(
-        `INSERT INTO ld_documents (tenant_id, training_id, kind, filename, mime, size_bytes, storage_key, uploaded_by)
-         SELECT :tenantId, t.id, :kind, :filename, :mime, :sizeBytes, :storageKey, :userId FROM ld_trainings t WHERE t.tenant_id = :tenantId AND t.id = :trainingId
-         RETURNING id, kind, filename, mime, size_bytes AS "sizeBytes", created_at AS "createdAt"`,
-        { tenantId, trainingId, ...d, userId: d.userId || null },
-      );
-      return row || null;
+    /**
+     * Sisipkan dokumen. Baris pelatihan dikunci (FOR UPDATE) lalu jumlah dokumen dihitung, sehingga unggahan bersamaan
+     * tidak melewati maxDocs. Return baris dokumen, { limitReached: true }, atau null (pelatihan tidak ada).
+     */
+    async insertDocument(tenantId, trainingId, d, { maxDocs = Infinity } = {}) {
+      return tx(async (t) => {
+        const training = await one('SELECT id FROM ld_trainings WHERE tenant_id = :tenantId AND id = :trainingId FOR UPDATE', { tenantId, trainingId }, t);
+        if (!training) return null;
+        const { n } = await one('SELECT count(*)::int AS n FROM ld_documents WHERE tenant_id = :tenantId AND training_id = :trainingId', { tenantId, trainingId }, t);
+        if (n >= maxDocs) return { limitReached: true };
+        const [row] = await write(
+          `INSERT INTO ld_documents (tenant_id, training_id, kind, filename, mime, size_bytes, storage_key, uploaded_by)
+           VALUES (:tenantId, :trainingId, :kind, :filename, :mime, :sizeBytes, :storageKey, :userId)
+           RETURNING id, kind, filename, mime, size_bytes AS "sizeBytes", created_at AS "createdAt"`,
+          { tenantId, trainingId, ...d, userId: d.userId || null }, t,
+        );
+        return row;
+      });
     },
     async deleteDocument(tenantId, id) {
       const rows = await write('DELETE FROM ld_documents WHERE tenant_id = :tenantId AND id = :id RETURNING storage_key', { tenantId, id });
@@ -251,7 +267,7 @@ function createLdStores(sequelize) {
            ON CONFLICT (tenant_id, source, event_id) DO NOTHING RETURNING id`, { tenantId, id: ev.id, type: ev.type }, t);
         if (!mark) return { duplicate: true };
         const result = await (ev.type === 'assessment.result' ? applyAssessment(tenantId, ev, t) : applyProgress(tenantId, ev, t));
-        await write('UPDATE ld_sync_events SET result = CAST(:result AS jsonb) WHERE id = :id', { id: mark.id, result: JSON.stringify(result) }, t);
+        await write('UPDATE ld_sync_events SET result = CAST(:result AS jsonb) WHERE tenant_id = :tenantId AND id = :id', { tenantId, id: mark.id, result: JSON.stringify(result) }, t);
         return result;
       });
     },

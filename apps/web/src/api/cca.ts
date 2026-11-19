@@ -26,7 +26,8 @@ export interface Overview {
 }
 
 export interface Requirement {
-  id: string; sourceId: string; name: string; definition: string | null; targetScore: number; actualScore: number | null; status: RequirementStatus
+  id: string; sourceId: string; name: string; definition: string | null; targetScore: number; actualScore: number | null
+  actualSource: 'manual' | 'synthesis' | null; origin: 'hr' | 'ai'; status: RequirementStatus
 }
 export interface Source {
   id: string; kind: SourceKind; title: string; text: string | null; sourceRef: string | null; position: number

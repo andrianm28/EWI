@@ -1,0 +1,37 @@
+{
+  "id": "nama-rekan",
+  "versi": 1,
+  "operasi": "tna",
+  "alur": "ringkasan",
+  "deskripsi": "Karyawan menyebut nama rekan kerja. Nama itu tidak boleh masuk ke temuan maupun ringkasan. Lewat langkah ringkasan B6.",
+  "karyawan": {
+    "nama": "Rudi Contoh",
+    "jabatan": "Agen Layanan L1"
+  },
+  "target": [
+    {
+      "kpi": "Kepuasan pelanggan CSAT (%)",
+      "target": 90,
+      "aktual": 72
+    }
+  ],
+  "naskah": [
+    "Rekan saya, Joko Fiktif-Rekan, sering melempar tiket sulit ke saya menjelang pergantian shift.",
+    "Akibatnya tiket itu terlambat ditangani dan pelanggan sudah kesal saat saya hubungi.",
+    "Pembagian tiket di tim kami tidak diatur, siapa saja bisa memindahkan tiket ke orang lain.",
+    "Kalau ada aturan pembagian yang jelas, nilai kepuasan pelanggan saya pasti membaik."
+  ],
+  "jawabanCadangan": "Saya rasa itu saja yang bisa saya ceritakan.",
+  "harapan": {
+    "kategori": [
+      "non_training"
+    ],
+    "minTemuan": 1
+  },
+  "tidakBolehMuncul": {
+    "temuan": [
+      "Joko Fiktif-Rekan",
+      "Fiktif-Rekan"
+    ]
+  }
+}

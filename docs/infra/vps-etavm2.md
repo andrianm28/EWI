@@ -124,6 +124,44 @@ atau nama job tidak dikenal image (exit 2). Dilewati bila lingkungan belum perna
 - Biaya: US$1 per kunci per bulan (tenant + backup) + permintaan KMS, SES US$0,10 per 1.000 email,
   S3 backup beberapa sen per GB, health check Route 53 ±US$1–2 per bulan, Bedrock sesuai pemakaian.
 
+## Status etavm2 (19 Nov 2026)
+
+`setup-etavm2.sh` sudah dijalankan (tanpa `ACME_EMAIL`/`RUNNER_TOKEN`): SSH kunci saja, root login
+mati, ufw 22/80/443, fail2ban, Docker 29 + rotasi log, AWS CLI 2, user `elgos-deploy` dan `elgos-dev`
+(Docker rootless, terisolasi dari daemon utama, `/srv/elgos-*`, dan `/etc/elgos`), 9 timer aktif.
+Catatan server: `/tmp` di-mount noexec dan umask admin 0027 (skrip sudah menanganinya). Belum: Caddy
+(DNS + `ACME_EMAIL`), runner (`RUNNER_TOKEN`), isi `.env`/`ops.env` (menunggu akun AWS ELGOS).
+
+## Kunci GCP suara (B19)
+
+Thread suara memasang `/etc/elgos/gcp-voice.json` (root 0600; project `elgos-dev`, SA `elgos-voice`,
+hanya `roles/aiplatform.user`). `sudo ops/pasang-kunci-gcp.sh <env>` menyalinnya ke
+`/srv/elgos-<env>/secrets/gcp-voice.json` milik uid 1000 (user `node` di image API), 0400; compose
+memasangnya hanya-baca di `/run/secrets/gcp-voice.json`. Aktif bila `.env` berisi
+`GOOGLE_APPLICATION_CREDENTIALS=/run/secrets/gcp-voice.json`. Setup memasangnya untuk staging; prod
+hanya dengan `GCP_KEY_PROD=1` sampai ada project GCP produksi. Dev per worktree tidak mendapat kunci
+ini (elgos-dev tidak bisa membaca `/etc/elgos`).
+
+Uji asap staging 24 Nov: `.env` staging `VOICE_PROVIDER=gemini-vertex` (bawaan `fake`), `VOICE_MODEL`,
+`VOICE_LOCATION=asia-southeast1`. WebSocket `/api/voice/sessions/:id/stream` diteruskan Caddy apa
+adanya dan nginx web (`location /api/voice/`, timeout 1 jam). Keluar ke
+`asia-southeast1-aiplatform.googleapis.com:443` diizinkan (ufw hanya membatasi masuk).
+
+## QA malam dengan AI sungguhan (B18)
+
+Keputusan user 19 Nov: akun Bedrock siap 24 Nov, QA malam 24–26 Nov untuk Go/No-Go 27 Nov.
+`infra/live/shared/qa-malam.tf` membuat role `elgos-qa-malam` (OIDC dari environment GitHub
+`qa-malam` yang hanya boleh dari `main`, izin hanya `bedrock:InvokeModel` pada model QA, ditambah
+inference profile bila memakai profil `apac.`) dan budget `elgos-qa-malam` (★ US$100/bulan, peringatan
+50%/80%/prakiraan 100%, seluruh akun). Role terpisah dari user aplikasi (KMS/SES) dan tidak dibuat
+selama `qa_bedrock_model_id` kosong. Region mengikuti PD-2b: Jakarta `ap-southeast-3` (region
+opt-in), Singapura bila Claude tidak tersedia di Jakarta. Ketersediaan dicek saat akun ada.
+
+Langkah tangan admin (akun, region, bootstrap, akses model, variabel repo, apply) dibungkus wizard
+`bash infra/setup-akun-elgos.sh` dari laptop admin. Variabel repo hasilnya: `QA_MALAM_ROLE_ARN`,
+`QA_MALAM_BEDROCK_REGION`, `QA_MALAM_BEDROCK_MODEL_ID`. Cadangan bila akun terlambat: satu run manual
+oleh Andrian 26 Nov.
+
 ## Setup sekali
 
 1. AWS (dari laptop admin, profil SSO akun ELGOS, setelah akun ada): `infra/bootstrap` apply

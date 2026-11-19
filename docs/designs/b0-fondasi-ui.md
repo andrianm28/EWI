@@ -1,6 +1,6 @@
 # B0 · Fondasi UI ELGOS
 
-Status: spek setelah review egm dan implementasi, 19 Nov 2026. Paket B0 dari rencana bangun penuh mockup Pak Eji (5 modul, live 2 Des). Hampir seluruhnya `apps/web`. Tidak ada perubahan API, migrasi, atau flag baru.
+Status: spek setelah review egm dan implementasi, 19 Nov 2026. Paket B0 dari rencana bangun penuh mockup Pak Eji (5 modul, live 2 Des). Hampir seluruhnya `apps/web`. Satu perubahan API: `GET /me/access` menambah `products` (bagian 6). Tidak ada migrasi atau flag baru.
 
 Sumber acuan:
 
@@ -86,7 +86,7 @@ Semua komponen: Vue 3 `<script setup lang="ts">`, tanpa pustaka komponen pihak k
 
 Formulir: input, select, dan textarea memakai kelas `el-input`; kotak centang memakai `el-check`; label mandiri memakai `el-label`. Kelas bantu lain: `el-h1`–`el-h3`, `el-muted`, `el-mono`, `el-grid` + `el-grid-2/3/4`, `el-pill`, `el-sr-only`. Saklar (`.sw2` mockup) dan dialog belum disediakan; paket pertama yang membutuhkannya menambahkannya ke `src/ui/` (ditunda, lihat bagian 11).
 
-`v-model:sort` bertipe `{ key, dir: 'asc' | 'desc' } | null`; klik header berputar naik → turun → tanpa urutan. Nilai kosong selalu di bawah. Pengurutan `UiDataTable` dilakukan di sisi klien atas `rows` yang diberikan (angka dibanding sebagai angka, lainnya dengan `localeCompare('id')`). Data berhalaman dari server bukan cakupan B0; pemakai yang butuh itu mematikan `sortable` dan mengurutkan sendiri.
+`v-model:sort` bertipe `{ key, dir: 'asc' | 'desc' } | null`; klik header berputar naik → turun → tanpa urutan. Nilai kosong selalu di bawah. Pengurutan `UiDataTable` dilakukan di sisi klien atas `rows` yang diberikan (angka dibanding sebagai angka, lainnya dengan `localeCompare(…, 'id', { numeric: true, sensitivity: 'base' })`: deret angka di dalam teks dibanding sebagai angka, huruf besar-kecil diabaikan; kunci urut yang tidak cocok dengan kolom mana pun berarti tanpa urutan). Data berhalaman dari server bukan cakupan B0; pemakai yang butuh itu mematikan `sortable` dan mengurutkan sendiri.
 
 **Halaman referensi komponen** `/ui-kit` menampilkan semua komponen dengan data contoh. Halaman ini hanya ada bila build dijalankan dengan `VITE_UI_KIT=1` (dipakai e2e dan pengembangan); build produksi tidak memuatnya. Mockup menyebut design system "bukan fitur atau menu aplikasi".
 
@@ -109,6 +109,9 @@ Mockup punya lima tampilan. Kuncinya dipakai di seluruh web app:
 - **Ganti tampilan sebelum B2 dan B8 selesai.** Tampilan tambahan hanya ditawarkan bila rute berandanya sudah terdaftar (untuk `karyawan`: rute `my`, Hasil saya, B8). Alasannya: halaman lama menentukan isi dari `user.role` dan API memberi data sesuai peran asli, jadi "tampilan karyawan" di atas halaman lama akan tetap memperlihatkan data HR. Begitu B8 memasang `my`, tombol ganti tampilan muncul sendiri.
 - Tampilan aktif disimpan di store sesi (`activeView`) dan `sessionStorage` kunci `elgos.view`. Saat nilainya tidak termasuk tampilan yang tersedia, dipakai tampilan pertama (pilihan tersimpan tidak ditimpa).
 - Bila profil belum termuat (`/auth/me` gagal setelah muat ulang), tampilan jatuh ke `karyawan` (menu paling sempit) dan pil identitas tidak tampil. Ini sama dengan perilaku halaman lama yang memperlakukan peran kosong sebagai bukan HR.
+- **Layar yang dipakai beberapa tampilan** (mis. `dash` untuk hr dan atasan, `aiv` untuk atasan dan karyawan) membaca `session.activeView` secara reaktif untuk varian dan judul, dan `session.roles` untuk izin. Jangan membaca `session.role` (satu peran) untuk keduanya. Ganti tampilan ke rute yang sama (hr → atasan saat di `dash`) tidak memicu navigasi, jadi layar harus bereaksi pada perubahan `activeView` sendiri. Data yang ditampilkan mengikuti apa yang dikirim API (mis. B3 memakai `scope` dari respons), bukan tampilan aktif.
+- **Data tampilan tambahan akun multi-peran** diselesaikan B2 (PR #20): pengalih tampilan memanggil `POST /auth/switch-role` bila `/me/access` mengirim `roles`, sehingga API menghitung data dengan peran tampilan itu. Sampai itu masuk, API memakai peran utama dan layar wajib mengikuti cakupan dari respons (butir di atas).
+- `[⏳ DITERIMA]` Rute lama tanpa `meta.views` (`legacy-dna`, `legacy-tna`, `legacy-review`, `legacy-interview`) tidak memindahkan tampilan. Setelah B8 memasang `my`, akun HR di tampilan "Karyawan (saya)" yang membuka tautan `/m/tna` melihat halaman HR dengan label Karyawan. Hanya UI (API tetap mengotorisasi); hilang saat B4/B5/B6/B7 mengganti rute itu dengan `views` yang benar. Tombol Back ke rute khusus HR juga memindahkan tampilan kembali ke HR; itu konsekuensi "tautan langsung tetap bekerja".
 - `eta_admin` dipetakan ke `super`. Di halaman lama ia setara HR, jadi sampai layar Tenant (B12) terpasang ia tetap mendapat butir peralihan Developmental Needs dan Training Needs.
 - Ganti tampilan **hanya mengubah menu dan rute yang boleh dibuka di UI**. Otorisasi data tetap di API (`visibleEmployeeScope()`, peran di JWT). Shell tidak pernah menjadi satu-satunya penjaga data.
 
@@ -141,7 +144,7 @@ Butir peralihan (tidak ada di mockup, hilang sendiri begitu penggantinya terpasa
 | Tampilan | Butir | Rute | Hilang saat |
 | --- | --- | --- | --- |
 | semua | Beranda | `home` | rute beranda tampilan terdaftar: `dash` (hr, atasan), `my` (karyawan), `users` (admin), `tenants` (super) |
-| karyawan, super | Developmental Needs, Training Needs | `dna`, `tna` | rute beranda tampilan terdaftar (`my`, `tenants`) |
+| karyawan, admin, super | Developmental Needs, Training Needs | `dna`, `tna` | rute beranda tampilan terdaftar (`my`, `users`, `tenants`). Admin Tenant juga HR (K2); tanpa butir ini akun `tenant_admin` + `hr_admin` kehilangan DNA/TNA sampai B11 |
 
 "Syarat submodul" berarti `session.canOpen(key)`: tenant berhak atas submodul itu **dan** flag `module.<key>` menyala. Empat submodul LNA (`cca`, `dna`, `tna`, `ina`) memakai syarat ini. Modul 2–5 bukan submodul berlisensi, jadi hanya memakai flag.
 
@@ -179,9 +182,43 @@ Supaya thread-thread paralel tidak mengedit berkas router yang sama:
 - Nama atau path rute ganda membuat aplikasi gagal dimuat (`assertUnique` di `router/index.ts`), sehingga e2e PR yang membawanya langsung merah. Rute paket **datar**: `children` dan `alias` ditolak, karena tidak ikut diperiksa. Pemeriksaan path hanya perbandingan teks (`/m/dna` dan `/m/:key(dna)` dianggap berbeda).
 - Rute bersifat statis. Jangan memakai `router.addRoute` saat runtime: menu dan daftar tampilan tidak akan ikut berubah.
 - Di build uji (`VITE_UI_KIT=1`), rute uji dari `localStorage` **menggantikan** rute asli bernama atau ber-path sama. Jadi test shell yang mendaftarkan `dash` atau `my` tiruan tetap berjalan setelah layar aslinya ada.
-- Elemen yang melayang di atas semua layar (Asisten ELGOS, B17): taruh `src/screens/<nama-paket>/ShellExtra.vue`; `AppShell` memasangnya setelah `<main>` tanpa perlu diedit.
-- Beranda tampilan (`homeFor(view)`): `dash` (hr, atasan), `my` (karyawan), `users` (admin), `tenants` (super) bila rutenya terdaftar dan gerbangnya (`views`, `flag`, `submodule`) lolos; selain itu `home`. Rute `home` mengalihkan ke beranda tampilan, jadi kode yang melakukan `router.push({ name: 'home' })` (login, link email) tidak perlu diubah.
+- Elemen yang melayang di atas semua layar (Asisten ELGOS, B17): taruh `src/screens/<nama-paket>/ShellExtra.vue`; `AppShell` memasangnya setelah `<main>` tanpa perlu diedit. Karena tiap halaman memasang `AppShell` sendiri, `ShellExtra` dilepas dan dipasang ulang setiap pindah halaman: simpan state (percakapan terbuka, permintaan berjalan) di store Pinia atau state modul. `AppShell` tidak memeriksa tampilan, flag, atau entitlement untuknya: gerbang itu dipasang di dalam komponen sendiri. Komponen ini di luar `.el-app__main`, jadi tetap bisa difokus saat drawer terbuka; beri `inert` sendiri bila perlu.
+- Beranda tampilan (`homeFor(view)`): `dash` (hr, atasan), `my` (karyawan), `users` (admin), `tenants` (super) bila rutenya terdaftar dan gerbangnya (`views`, `flag`, `submodule`/`submoduleParam`, `roles`, `entitlement`) lolos; selain itu `home`. Rute `home` mengalihkan ke beranda tampilan, jadi kode yang melakukan `router.push({ name: 'home' })` (login, link email) tidak perlu diubah.
 - `src/modules.ts` (`SubmoduleKey`) tidak perlu diedit untuk modul 2–5: pakai `meta.flag`.
+
+**Aturan wajib rute paket baru** (hasil review diff egm):
+
+1. Rute kunci menu wajib memasang `meta.views` sama dengan `views` butir menunya, dan mengulang `flag`/`submodule` butir itu. Rute tanpa `views` terbuka di semua tampilan; rute tanpa `flag` bisa dibuka lewat alamat langsung walau butirnya tersembunyi. Rute lama di `legacy-*` tidak punya `views`; jangan dijadikan contoh.
+2. Rute anak **tidak mewarisi** gerbang induknya. `menuKey` hanya mengatur butir yang menyala dan judul. Anak wajib mengulang `views`, `flag`, `submodule`, `roles`, dan `entitlement` induknya.
+3. Rute kunci menu tidak boleh punya param wajib: `routeOpen` tidak bisa me-resolve-nya, sehingga butirnya tidak pernah tampil. Param wajib hanya di rute anak.
+4. Setiap rute wajib punya `name` (termasuk rute `redirect`); tanpa nama aplikasi gagal dimuat.
+5. Layar baru hanya memakai komponen `Ui*` dan token `--el-*`, tanpa warna bawaan Tailwind (`slate-*`, `white`, dan sebagainya) atau hex. Pemetaan warna Tailwind di mode gelap hanya penopang halaman lama.
+6. B4 dan B5 yang mengganti `dna`/`tna` wajib memasang `views: ['hr', 'atasan', 'karyawan', 'admin', 'super']` sampai B8 (`my`), B11 (`users`), dan B12 (`tenants`) terpasang, lalu mempersempitnya di PR paket beranda itu. Bila B4/B5 langsung memakai `['hr', 'atasan']`, butir peralihan karyawan, Admin Tenant, dan Admin ETA hilang lebih awal.
+7. Mock `GET /me/access` di helper e2e (B18 dan `loginAs` tiap paket) wajib mengirim `products` (mis. `['full_suite']`). Gerbang `entitlement` gagal-tertutup, jadi mock tanpa `products` menyembunyikan modul 2–5.
+
+Contoh `routes.ts` paket baru (B9):
+
+```ts
+import type { RouteMeta, RouteRecordRaw } from 'vue-router'
+// Gerbang butir menu `ina` (5.2), diulang di rute utama dan rute anak
+const gates: RouteMeta = { views: ['hr', 'atasan'], submodule: 'ina' }
+export default [
+  { path: '/ina', name: 'ina', component: () => import('./InaView.vue'), meta: { ...gates } },
+  { path: '/ina/temuan/:id', name: 'ina-temuan', component: () => import('./InaFinding.vue'), meta: { ...gates, menuKey: 'ina' } },
+] satisfies RouteRecordRaw[]
+```
+
+**Nilai `meta.entitlement` per paket.** Produk yang valid: `full_suite`, `cca`, `dna`, `tna`, `ina` (`core/tenant/onboarding.js` `PRODUCTS`). Modul 2–5 hanya dijual dalam `full_suite`:
+
+| Rute | Paket | `meta.entitlement` |
+| --- | --- | --- |
+| `lib`, `prog`, `req` | B13 | `'full_suite'` |
+| `ld` | B14 | `'full_suite'` |
+| `lim` | B15 | `'full_suite'` |
+| `cp` | B16 | `'full_suite'` |
+| rute submodul LNA (`cc`, `aiv`, `dna`, `tna`, `iv`, `ina`) | B4–B10 | tidak dipakai; memakai `submodule` |
+
+Pemeriksaan sisi API untuk modul 2–5 milik paket modulnya (B13–B16), dengan `entitlements.products()` yang ditambahkan B0. `[⚠️ BELUM TERVERIFIKASI]` B0 belum menyediakan guard API bersama (`requireProduct`); bila dua paket butuh, paket pertama yang menambahkannya di `core/entitlement`.
 
 **Rute lama dipecah per layar** supaya tiap paket cukup menghapus foldernya sendiri:
 
@@ -235,7 +272,9 @@ Rincian:
 
 ## 6. Data, migrasi, endpoint, flag
 
-Tidak ada. B0 hanya membaca `/api/me/access` dan `/api/auth/me` yang sudah ada.
+- Migrasi dan flag: tidak ada.
+- Endpoint: `GET /api/me/access` menambah field `products`. Bentuk respons: `{ submodules: string[], products: string[], flags: Record<string, boolean> }`. `products` = produk entitlement **aktif** tenant (`entitlements.products()` di `core/entitlement/index.js`), unik dan terurut, `[]` bila tidak ada. Dipakai gerbang `meta.entitlement` (5.3). Kode bersama: reviewer Andrian (CLAUDE.md aturan 7).
+- `/api/auth/me` dibaca apa adanya.
 
 ## 7. Aturan dan keputusan yang dirujuk
 
@@ -299,12 +338,16 @@ Gerbang: `npm run lint`, `npm test` (API tidak berubah), `npm run build`, `npm r
 - [x] `apps/web/src/components/AppShell.vue` (ditulis ulang), `AppDrawer.vue`, `AppTopBar.vue`
 - [x] `apps/web/src/stores/session.ts`: `roles`, `views`, `activeView`, `setView`, `homeReady`, `bindRoutes`; `SessionUser.roles?`, `tenantName?`
 - [x] `apps/web/src/router/index.ts`: glob `screens/*/routes.ts`, penjaga `views`/`flag`/`submodule`, `homeFor`, `assertUnique`, judul tab
-- [x] `apps/web/src/screens/legacy-{dna,tna,interview,cca,ina}/routes.ts` (rute lama dipecah)
+- [x] `apps/web/src/screens/legacy-{dna,tna,review,interview,cca,ina}/routes.ts` (rute lama dipecah)
 - [x] `apps/web/src/screens/ui-kit/routes.ts`, `UiKitView.vue`, `test-routes.ts`, `TestScreen.vue` (hanya `VITE_UI_KIT=1`)
 - [x] `apps/web/env.d.ts`: `VITE_UI_KIT`
 - [x] `apps/web/playwright.config.ts`: `VITE_UI_KIT=1` pada build e2e, opsi snapshot
 - [x] `apps/web/e2e/shell.spec.ts`, `ui-kit.spec.ts`, `__snapshots__/`
 - [x] `README.md` bagian web: menunjuk ke spek ini
+- [x] `.gitignore`, `apps/web/eslint.config.ts`: abaikan `dist-e2e/`
+- [x] `apps/api/src/app.js`: `products` di `GET /me/access`
+- [x] `apps/api/src/core/entitlement/index.js`: `products()`
+- [x] `apps/api/tests/unit/gating.test.js`: `products` terisi dan kosong
 
 Tidak diubah: `LoginView.vue`, `EmailLinkView.vue` (milik B1), halaman lama lain, dan `apps/api` kecuali `products` di `GET /me/access` (`app.js`, `core/entitlement/index.js`, `tests/unit/gating.test.js`).
 
@@ -397,3 +440,13 @@ Dijalankan setelah review diff, terhadap `2048e21...HEAD`, dengan dua subagent t
 **Temuan lintas thread (T8, 19 Nov):** API modul `li`/`ld` memeriksa entitlement `full_suite`, sedangkan menu hanya memeriksa flag, sehingga tenant tanpa `full_suite` melihat menu lalu kena 403. **Perbaiki**: `GET /me/access` mengirim `products` (`entitlements.products()`), rute memakai `meta.entitlement`. Satu-satunya perubahan `apps/api` di B0. Test: `gating.test.js` + dua e2e `meta.entitlement`.
 
 Catatan TDD (`mattpocock-skills:tdd`): skill ini baru diminta setelah implementasi awal B0 (commit `bc0577e` memuat test dan kode bersama). Perbaikan setelah review mengikuti siklus merah ke hijau per perilaku: test e2e ditulis dan dijalankan merah dulu (gerbang beranda di balik flag, `meta.roles`, scrim dan `inert`, `meta.views` pada menu), lalu kodenya. Seam yang diuji: layar lewat browser dengan API di-mock (`page.route`); tidak ada test terhadap fungsi internal router.
+
+### Review diff egm asli (plugin egm, 19 Nov, setelah #18 digabung)
+
+Putaran pertama di atas memakai ikan mas manual karena plugin egm tidak termuat di sesi T1 lama. Setelah plugin termuat, review diff diulang dengan reviewer egm asli, `egm:egm-codebase-details` dan `egm:egm-implementation-readiness` (subagent baru, hanya menerima spek, diff, `CLAUDE.md`, `docs/agents/domain.md`, mockup, dan brief). Hasil: 1 Blocker, 13 Major, 15 Nit, tanpa pelanggaran aturan arsitektur `CLAUDE.md`. Triase `egm-resolve` lengkap ada di folder proyek `elgos-eksekusi/egm/b0/goldfish_review_report.md`; perbaikannya masuk PR susulan (bukan #18):
+
+- Blocker spek "tidak ada perubahan API": bagian 6 dan baris status kini memuat `products`.
+- Kode: butir peralihan DNA/TNA juga untuk tampilan `admin` (akun `tenant_admin` + `hr_admin` sebelumnya kehilangan menu). Test e2e merah lalu hijau.
+- Test tambahan: `products` hilang dan kosong tetap gagal-tertutup (e2e dan `gating.test.js`).
+- Spek 5.1 dan 5.3: layar lintas tampilan, data tampilan tambahan (B2 `switch-role`), rute lama tanpa `views` `[⏳ DITERIMA]`, tujuh aturan wajib rute paket baru dengan contoh, tabel `meta.entitlement` per paket, kontrak `ShellExtra`.
+- Ditolak dengan alasan (Nit): tabel komponen bagian 4 tetap merujuk tipe `src/ui/` dan `/ui-kit`; kueri entitlement ganda di `/me/access` dibiarkan karena `app.js` sedang diubah B2.

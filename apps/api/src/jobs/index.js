@@ -3,6 +3,8 @@
 // oleh timer systemd milik infra. Tidak ada penjadwal di dalam proses API. Setiap job aman diulang.
 const { runInterviewReminders } = require('./interview-reminders');
 
+const { DEFAULTS } = require('../core/settings');
+
 const DEFAULT_IMPORT_BATCH_TTL_DAYS = 7;
 
 const JOBS = Object.freeze({
@@ -14,6 +16,8 @@ const JOBS = Object.freeze({
     if (!Number.isFinite(days) || days < 1) throw new Error('IMPORT_BATCH_TTL_DAYS minimal 1');
     return stores.imports.cleanup({ olderThanDays: days, now });
   },
+  // B17: log Asisten ELGOS dihapus setelah assistant.retentionDays tenant (1-365, selain itu 90). Harian.
+  'assistant-logs-cleanup': ({ stores }) => stores.assistant.cleanup({ defaultDays: DEFAULTS.assistant.retentionDays }),
 });
 
 function getJob(name) {

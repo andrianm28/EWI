@@ -44,7 +44,7 @@ function loadConfig(env = process.env) {
     }
   }
   const uploadMaxMb = Number(env.EWI_UPLOAD_MAX_MB || 25);
-  if (!Number.isFinite(uploadMaxMb) || uploadMaxMb <= 0 || uploadMaxMb > 200) errors.push('EWI_UPLOAD_MAX_MB harus angka 1 sampai 200');
+  if (!Number.isFinite(uploadMaxMb) || uploadMaxMb < 1 || uploadMaxMb > 200) errors.push('EWI_UPLOAD_MAX_MB harus angka 1 sampai 200');
   const ai = loadAiConfig(env, errors);
   if (errors.length) {
     const err = new Error(`Konfigurasi tidak valid:\n- ${errors.join('\n- ')}`);
@@ -68,6 +68,8 @@ function loadConfig(env = process.env) {
       clientId: env.ELITEMENTOR_CLIENT_ID || '',
       clientSecret: env.ELITEMENTOR_CLIENT_SECRET || '',
       webhookSecret: env.ELITEMENTOR_WEBHOOK_SECRET || '',
+      // B7: penugasan course ke EliteMentor. Kontrak FR-EM belum final, jadi mati sampai dinyalakan dengan sengaja.
+      assignmentsEnabled: env.ELITEMENTOR_ASSIGNMENTS_ENABLED === 'true',
     }),
     // Alamat web untuk link masuk (R3-2), mis. https://dev-elgos.eliteacademy.id
     appBaseUrl: (env.APP_BASE_URL || (env.CORS_ORIGIN || '').split(',')[0] || 'http://localhost:5174').replace(/\/$/, ''),
