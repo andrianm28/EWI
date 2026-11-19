@@ -29,6 +29,12 @@ const FLAGS = Object.freeze({
   AUTH_MFA: 'auth.mfa',
   // B2: satu akun memakai beberapa peran dan berpindah tampilan di bilah atas
   AUTH_MULTI_ROLE: 'auth.multi_role',
+  // B5 (19 Nov): papan gap Training Needs (gap kompetensi + gap OKR, klasifikasi, detail gap)
+  TNA_GAP_BOARD: 'tna.gap_board',
+  // B5: penugasan wawancara akar masalah per gap (tenggat, durasi 15/30 menit) oleh HR atau atasan
+  TNA_INTERVIEW_ASSIGNMENT: 'tna.interview_assignment',
+  // B6: karyawan memeriksa ringkasan temuan AI (sesuai / ulangi) sebelum dikirim ke HR
+  TNA_INTERVIEW_SUMMARY: 'tna.interview_summary',
 });
 
 const KNOWN = new Set(Object.values(FLAGS));

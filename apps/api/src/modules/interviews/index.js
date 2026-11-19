@@ -10,16 +10,21 @@ const { scopeFor, inScope } = require('../../core/rbac/scope');
 const { badRequest, forbidden, notFound, HttpError } = require('../../core/errors');
 const { currentConsentVersion, isAcceptedConsentVersion } = require('../../core/consent');
 const { inviteExpiry, isExpired, extendedExpiry, parseExtendDays, OPEN_STATUSES, EXTEND_MAX_DAYS } = require('./invitation');
+const { FLAGS, requireFlag } = require('../../core/flags');
+const { MAX_RESTARTS, NOTE_MIN, NOTE_MAX, questionLimit, publicSummary, sessionView, summaryStateOf, parseConfirmation } = require('./summary');
 
 const wrap = (fn) => (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
 
-function interviewRouter({ submodule, stores, ai, aiConfig = {}, audit, analysis }) {
+function interviewRouter({ submodule, stores, ai, aiConfig = {}, audit, analysis, flags }) {
   const r = express.Router();
-  const maxQuestions = aiConfig.maxQuestions || 8;
+  // B6: langkah ringkasan hanya untuk wawancara TNA (router ini juga dipakai DNA tanpa `flags`)
+  const summarySupported = submodule === 'tna' && Boolean(flags);
+  const summaryEnabled = async (tenantId) => summarySupported && flags.isEnabled(tenantId, FLAGS.TNA_INTERVIEW_SUMMARY);
 
   /** Pertanyaan berikutnya dari transkrip (termasuk jawaban yang belum disimpan). Batas kuota ditegakkan di sini. */
   async function nextQuestion(tenantId, session, transcript) {
     const askedCount = transcript.filter((t) => t.speaker === 'ai').length;
+    const maxQuestions = questionLimit(session, aiConfig); // sesi 15 menit lebih pendek (B6 A10)
     if (askedCount >= maxQuestions) return null;
     const ctx = aiContext(await buildContext(stores, tenantId, session), session);
     const { question } = await callAi({ stores, aiConfig, tenantId, session },
@@ -71,13 +76,15 @@ function interviewRouter({ submodule, stores, ai, aiConfig = {}, audit, analysis
 
   r.get('/:id', wrap(async (req, res) => {
     const s = await loadVisible(req);
+    // B6 (A11): kolom ringkasan mentah tidak pernah ikut; peran lain hanya melihat langkah dan status ringkasan
     if (!isInterviewee(req, s)) {
-      return res.json({ data: { ...s, turns: undefined, transcriptVisible: false } });
+      return res.json({ data: { ...sessionView(s), turns: undefined, transcriptVisible: false } });
     }
     const turns = await stores.interviews.turns(req.tenantId, s.id);
+    const view = sessionView(s, { interviewee: true, answerCount: turns.filter((t) => t.speaker === 'human').length, aiConfig });
     // R2-2: baca transkrip individu selalu dicatat
     await audit.readIndividual(req, `${submodule}.interview_transcript`, { employeeIds: [s.intervieweeId], objectType: 'interview_session', objectIds: [s.id] });
-    return res.json({ data: { ...s, turns, transcriptVisible: true, consentVersionRequired: currentConsentVersion(submodule) } });
+    return res.json({ data: { ...view, turns, transcriptVisible: true, consentVersionRequired: currentConsentVersion(submodule) } });
   }));
 
   r.get('/:id/transcript', wrap(async (req, res) => {
@@ -131,14 +138,22 @@ function interviewRouter({ submodule, stores, ai, aiConfig = {}, audit, analysis
     const s = await loadVisible(req);
     mustBeInterviewee(req, s);
     if (s.status !== 'in_progress') throw new HttpError(409, 'INVALID_STATE', 'Sesi belum dimulai atau sudah selesai');
+    // B6 (A4): sesudah ringkasan dibuat, percakapan terkunci. Berdasarkan data, bukan flag.
+    if (s.summaryAt) throw new HttpError(409, 'SUMMARY_PENDING', 'Ringkasan sudah dibuat. Kirim ke HR atau ulangi wawancara.');
     const text = String((req.body || {}).text || '').trim();
     if (!text) throw badRequest('Jawaban tidak boleh kosong');
     const answer = text.slice(0, 8000);
     // Pertanyaan dibuat sebelum jawaban disimpan: bila AI gagal, tidak ada yang tersimpan dan jawaban bisa dikirim ulang.
     const turns = await stores.interviews.turns(req.tenantId, s.id);
     const q = await nextQuestion(req.tenantId, s, [...turns, { speaker: 'human', text: answer }]);
-    await stores.interviews.addTurn(req.tenantId, s.id, 'human', answer);
-    const turn = q ? await stores.interviews.addTurn(req.tenantId, s.id, 'ai', q) : null;
+    // Penjaga di store: bila ringkasan dibuat atau sesi diulang saat AI masih bekerja, giliran ini tidak tersimpan.
+    // `mode` diteruskan untuk paket suara (B19); wawancara teks tidak mengisinya.
+    const opts = { guard: { restartCount: s.restartCount } };
+    const saved = await stores.interviews.addTurn(req.tenantId, s.id, 'human', answer, opts);
+    if (!saved) throw new HttpError(409, 'INVALID_STATE', 'Sesi sudah berubah. Muat ulang halaman ini.');
+    const turn = q ? await stores.interviews.addTurn(req.tenantId, s.id, 'ai', q, opts) : null;
+    // Ringkasan atau ulangi masuk di antara dua simpan: jangan biarkan layar menunggu pertanyaan yang tidak tersimpan
+    if (q && !turn) throw new HttpError(409, 'INVALID_STATE', 'Sesi sudah berubah. Muat ulang halaman ini.');
     res.json({ data: { question: turn, done: !q } });
   }));
 
@@ -148,6 +163,11 @@ function interviewRouter({ submodule, stores, ai, aiConfig = {}, audit, analysis
       throw forbidden('ROLE_FORBIDDEN', 'Peran Anda tidak bisa menutup sesi ini');
     }
     if (s.status !== 'in_progress') throw new HttpError(409, 'INVALID_STATE', 'Sesi belum dimulai atau sudah selesai');
+    // B6 (A7): orang yang diwawancarai (apa pun perannya) mengirim lewat langkah ringkasan, bukan /complete.
+    // HR dan Admin ETA tetap bisa menutup sesi orang lain; ringkasannya lalu bertanda tidak diperiksa.
+    if (s.intervieweeId === req.user.id && (await summaryEnabled(req.tenantId))) {
+      throw new HttpError(409, 'SUMMARY_REQUIRED', 'Periksa ringkasan temuan sebelum mengirim ke HR.');
+    }
     const transcript = await stores.interviews.turns(req.tenantId, s.id);
     if (!transcript.some((t) => t.speaker === 'human')) throw badRequest('Belum ada jawaban di sesi ini');
     // Penutupan bersyarat: dari dua permintaan bersamaan hanya satu yang lolos, jadi job tidak dibuat ganda.
@@ -158,6 +178,94 @@ function interviewRouter({ submodule, stores, ai, aiConfig = {}, audit, analysis
     const aiUsage = stores.aiUsage ? await stores.aiUsage.sessionTotals(req.tenantId, s.id) : null;
     res.status(202).json({ data: { status: 'completed', analysis: { status: job.status }, aiProvider: ai.name, aiModel: ai.model, aiUsage } });
   }));
+
+  // --- B6: ringkasan temuan diperiksa karyawan sebelum dikirim ke HR (flag tna.interview_summary) ---
+  if (summarySupported) {
+    const summaryFlag = requireFlag(flags, FLAGS.TNA_INTERVIEW_SUMMARY, 'Langkah ringkasan temuan belum diaktifkan untuk organisasi Anda');
+    const RESOURCE = `${submodule}.interview_summary`;
+    // A12: ringkasan adalah data pribadi karyawan sampai ia mengirimnya; HR melihat temuan lewat antrean review
+    const mustOwnSummary = (req, s) => {
+      if (!isInterviewee(req, s)) throw forbidden('SUMMARY_PRIVATE', 'Ringkasan temuan hanya bisa dibaca karyawan yang diwawancarai');
+    };
+    const present = (sum) => ({
+      findings: publicSummary(sum.findings), createdAt: sum.summaryAt, confirmedAt: sum.summaryConfirmedAt || null, state: summaryStateOf(sum),
+    });
+    const readAudit = (req, s) => audit.readIndividual(req, RESOURCE, { employeeIds: [s.intervieweeId], objectType: 'interview_session', objectIds: [s.id] });
+
+    // A2: ringkasan = penilaian pertama analisis, dibuat sekali. Permintaan ulang mengembalikan isi yang sama.
+    r.post('/:id/summary', summaryFlag, wrap(async (req, res) => {
+      const s = await loadVisible(req);
+      mustOwnSummary(req, s);
+      if (s.status !== 'in_progress') throw new HttpError(409, 'INVALID_STATE', 'Sesi belum dimulai atau sudah selesai');
+      const existing = await stores.interviews.getSummary(req.tenantId, s.id);
+      if (existing) {
+        await readAudit(req, s);
+        return res.json({ data: present(existing) });
+      }
+      const transcript = await stores.interviews.turns(req.tenantId, s.id);
+      if (!transcript.some((t) => t.speaker === 'human')) throw badRequest('Belum ada jawaban di sesi ini');
+      const ctx = aiContext(await buildContext(stores, req.tenantId, s), s);
+      const out = await callAi({ stores, aiConfig, tenantId: req.tenantId, session: s },
+        () => ai.analyzeTna({ transcript, triggers: ctx.triggers, competencies: ctx.competencies, pass: 1 }));
+      const saved = await stores.interviews.saveSummary(req.tenantId, s.id, out.findings, { restartCount: s.restartCount, turnCount: transcript.length });
+      const stored = await stores.interviews.getSummary(req.tenantId, s.id);
+      // Kalah balapan: pakai ringkasan pemenang; bila sesi sudah diulang atau ditutup, hasil ini dibuang.
+      if (!stored || stored.status !== 'in_progress' || stored.restartCount !== s.restartCount) {
+        throw new HttpError(409, 'INVALID_STATE', 'Sesi sudah berubah. Muat ulang halaman ini.');
+      }
+      if (saved) await audit.record(req, 'create', RESOURCE, { employeeIds: [s.intervieweeId], objectType: 'interview_session', objectIds: [s.id], findings: out.findings.length });
+      await readAudit(req, s);
+      return res.status(saved ? 201 : 200).json({ data: present(stored) });
+    }));
+
+    r.get('/:id/summary', summaryFlag, wrap(async (req, res) => {
+      const s = await loadVisible(req);
+      mustOwnSummary(req, s);
+      const sum = await stores.interviews.getSummary(req.tenantId, s.id);
+      if (!sum) throw notFound('Ringkasan belum dibuat untuk sesi ini');
+      await readAudit(req, s);
+      res.json({ data: present(sum) });
+    }));
+
+    // A5/A5b: "Sesuai, kirim ke HR", atau kirim dengan catatan bila karyawan menilai ringkasan tidak sesuai
+    r.post('/:id/summary/confirm', summaryFlag, wrap(async (req, res) => {
+      const s = await loadVisible(req);
+      mustBeInterviewee(req, s);
+      if (s.status !== 'in_progress') throw new HttpError(409, 'INVALID_STATE', 'Sesi belum dimulai atau sudah selesai');
+      const decision = parseConfirmation(req.body);
+      if (!decision) throw badRequest(`Bila ringkasan tidak sesuai, tulis catatan ${NOTE_MIN}-${NOTE_MAX} karakter untuk HR`);
+      if (!s.summaryAt) throw new HttpError(409, 'SUMMARY_MISSING', 'Ringkasan temuan belum dibuat');
+      const sum = await stores.interviews.getSummary(req.tenantId, s.id);
+      const done = await stores.interviews.confirmSummary(req.tenantId, s.id, { submodule, ...decision });
+      if (!done) throw new HttpError(409, 'INVALID_STATE', 'Ringkasan sudah dikirim atau sesi sudah berubah');
+      analysis.kick(req.tenantId, done.job.id);
+      await audit.record(req, 'update', RESOURCE, {
+        employeeIds: [s.intervieweeId], objectType: 'interview_session', objectIds: [s.id],
+        decision: decision.disputed ? 'disputed' : 'confirmed', findings: sum ? sum.findings.length : 0,
+      });
+      res.status(202).json({ data: { status: 'completed', analysis: { status: done.job.status }, summaryState: decision.disputed ? 'disputed' : 'confirmed' } });
+    }));
+
+    // A6: "Ulangi wawancara" menghapus jawaban dan ringkasan, lalu kembali ke langkah persetujuan
+    r.post('/:id/restart', summaryFlag, wrap(async (req, res) => {
+      const s = await loadVisible(req);
+      mustBeInterviewee(req, s);
+      if (s.status !== 'in_progress') throw new HttpError(409, 'INVALID_STATE', 'Sesi belum dimulai atau sudah selesai');
+      if ((s.restartCount || 0) >= MAX_RESTARTS) {
+        throw new HttpError(409, 'RESTART_LIMIT', `Wawancara hanya bisa diulang ${MAX_RESTARTS} kali. Kirim ringkasan ke HR, dengan catatan bila tidak sesuai.`);
+      }
+      // Ditolak sebelum apa pun dihapus: persetujuan ulang pasti gagal bila undangan sudah lewat
+      if (isExpired(s.inviteExpiresAt)) {
+        throw new HttpError(409, 'INVITATION_EXPIRED', 'Undangan sudah berakhir, jadi wawancara tidak bisa diulang. Kirim ringkasan atau minta HR memperpanjang undangan.');
+      }
+      const row = await stores.interviews.restart(req.tenantId, s.id);
+      if (!row) throw new HttpError(409, 'INVALID_STATE', 'Sesi sudah berubah. Muat ulang halaman ini.');
+      await audit.record(req, 'delete', `${submodule}.interview_transcript`, {
+        employeeIds: [s.intervieweeId], objectType: 'interview_session', objectIds: [s.id], reason: 'restart', turns: row.deletedTurns, restartCount: row.restartCount,
+      });
+      res.json({ data: { status: row.status, restartCount: row.restartCount, restartsLeft: Math.max(0, MAX_RESTARTS - row.restartCount) } });
+    }));
+  }
 
   // Status analisis. HR melihat jumlah hasil dan kode galat; karyawan dan atasan hanya status.
   r.get('/:id/analysis', wrap(async (req, res) => {
