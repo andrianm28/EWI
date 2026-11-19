@@ -23,6 +23,8 @@ const FLAGS = Object.freeze({
   TNA_TRAINING_REQUEST: 'tna.training_request',
   // PM-6 (17 Nov): daftar ringkas temuan non-training untuk HR; atasan bila diberi akses HR. Mati = disembunyikan
   TNA_NON_TRAINING_HR: 'tna.non_training_hr',
+  // B3 (19 Nov): dashboard utama HR dan dashboard tim atasan. Mati = pengguna tetap mendarat di Beranda lama
+  DASHBOARD_MAIN: 'dashboard.main',
 });
 
 const KNOWN = new Set(Object.values(FLAGS));
