@@ -40,10 +40,11 @@ const kpis = computed(() => {
   const k = data.value?.kpis
   if (!k) return []
   const first = { label: 'Kesiapan karyawan', value: fmt(k.readiness, '%'), note: isVm.value ? 'terhadap visi dan misi' : 'terhadap nilai korporasi' }
-  const middle = isVm.value
-    ? { label: 'Gap terbesar', value: k.biggestGap ? `−${fmt(k.biggestGap.gap)}` : '-', note: k.biggestGap?.name ?? 'belum ada nilai aktual' }
-    : { label: 'Nilai dengan gap terbesar', value: k.weakestSource?.title ?? '-', note: k.weakestSource ? `kesiapan ${fmt(k.weakestSource.readiness, '%')}` : 'belum ada nilai aktual' }
-  return [first, middle, { label: 'Di bawah target', value: `${k.belowTarget.count} dari ${k.belowTarget.measured}`, note: `${rowWord.value} yang sudah diukur` }]
+  const gap = { label: 'Gap terbesar', value: k.biggestGap ? `−${fmt(k.biggestGap.gap)}` : '-', note: k.biggestGap?.name ?? 'belum ada nilai aktual' }
+  const below = { label: 'Di bawah target', value: `${k.belowTarget.count} dari ${k.belowTarget.measured}`, note: `${rowWord.value} yang sudah diukur` }
+  if (isVm.value) return [first, gap, below]
+  const weakest = { label: 'Nilai dengan gap terbesar', value: k.weakestSource?.title ?? '-', note: k.weakestSource ? `kesiapan ${fmt(k.weakestSource.readiness, '%')}` : 'belum ada nilai aktual' }
+  return [first, weakest, gap, below]
 })
 
 // --- Kelola: sumber baru, persyaratan baru, ubah persyaratan ---
@@ -85,7 +86,7 @@ const setStatus = (r: OverviewRow, status: 'validated' | 'rejected') =>
 
     <p v-if="loading" class="el-muted">Memuat…</p>
     <template v-else-if="data">
-      <div v-if="data.groups.length" class="el-grid el-grid-3">
+      <div v-if="data.groups.length" :class="['el-grid', isVm ? 'el-grid-3' : 'el-grid-4']">
         <UiKpiCard v-for="k in kpis" :key="k.label" :label="k.label" :value="k.value" :note="k.note" />
       </div>
 
@@ -131,9 +132,9 @@ const setStatus = (r: OverviewRow, status: 'validated' | 'rejected') =>
           <template #cell-status="{ row }">{{ row.status === 'validated' ? 'Tervalidasi' : 'Menunggu validasi HR' }}</template>
           <template #cell-aksi="{ row }">
             <div class="cc-actions">
-              <button type="button" class="cc-linkbtn" @click="edit(g, asRow(row))">Ubah<span class="el-sr-only"> {{ row.name }}</span></button>
-              <button v-if="row.status !== 'validated'" type="button" class="cc-linkbtn" @click="setStatus(asRow(row), 'validated')">Validasi<span class="el-sr-only"> {{ row.name }}</span></button>
-              <button type="button" class="cc-linkbtn" @click="setStatus(asRow(row), 'rejected')">Tolak<span class="el-sr-only"> {{ row.name }}</span></button>
+              <UiButton variant="text" size="sm" @click="edit(g, asRow(row))">Ubah<span class="el-sr-only"> {{ row.name }}</span></UiButton>
+              <UiButton v-if="row.status !== 'validated'" variant="text" size="sm" @click="setStatus(asRow(row), 'validated')">Validasi<span class="el-sr-only"> {{ row.name }}</span></UiButton>
+              <UiButton variant="text" size="sm" @click="setStatus(asRow(row), 'rejected')">Tolak<span class="el-sr-only"> {{ row.name }}</span></UiButton>
             </div>
           </template>
         </UiDataTable>
@@ -154,7 +155,7 @@ const setStatus = (r: OverviewRow, status: 'validated' | 'rejected') =>
         </div>
       </UiCard>
 
-      <form v-if="sourceForm.open" class="el-card cc-form" @submit.prevent="saveSource">
+      <UiCard v-if="sourceForm.open" as="form" class="cc-form" @submit.prevent="saveSource">
         <h3 class="el-h3 cc-form__wide">Tambah {{ isVm ? 'visi atau misi' : 'nilai korporasi' }}</h3>
         <UiField v-if="kinds.length > 1" :id="`sumber-jenis-${group}`" v-slot="{ attrs }" label="Jenis">
           <select v-bind="attrs" v-model="sourceForm.kind" class="el-input"><option v-for="k in kinds" :key="k.key" :value="k.key">{{ k.label }}</option></select>
@@ -166,7 +167,7 @@ const setStatus = (r: OverviewRow, status: 'validated' | 'rejected') =>
           <UiButton type="submit">Simpan</UiButton>
           <UiButton variant="text" @click="sourceForm.open = false">Batal</UiButton>
         </div>
-      </form>
+      </UiCard>
       <div v-else class="cc-actions">
         <UiButton variant="outlined" size="sm" @click="openSource">Tambah {{ isVm ? 'visi atau misi' : 'nilai korporasi' }}</UiButton>
       </div>

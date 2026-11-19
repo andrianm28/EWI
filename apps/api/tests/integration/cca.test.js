@@ -365,6 +365,8 @@ run('B10 Core Competencies (Postgres)', () => {
       expect((await send('patch', `/assignments/${b.id}`, { status: 'completed' }, 'spv')).status).toBe(400);
       expect((await send('patch', `/assignments/${b.id}`, { status: 'cancelled' }, 'dir')).status).toBe(404);
       expect((await send('patch', `/assignments/${b.id}`, { status: 'cancelled' }, 'luar')).status).toBe(404);
+      // HR tidak membatalkan penugasan karyawan yang dibuat atasan
+      expect((await send('patch', `/assignments/${b.id}`, { status: 'cancelled' })).status).toBe(404);
       expect((await send('patch', `/assignments/${b.id}`, { status: 'cancelled' }, 'spv')).body.data.status).toBe('cancelled');
       expect((await get('/assignments', 'b')).body.data.mine.employee).toBeNull();
       expect((await send('patch', `/assignments/${spvAssignment.id}`, { status: 'cancelled' })).body.error.code).toBe('INVALID_STATE');

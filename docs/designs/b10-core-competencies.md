@@ -73,10 +73,10 @@ Semua di bawah `/api/cca`, sudah dipasang lewat `requireSubmodule('cca')` di `sr
 | `PATCH /sources/:id` | HR | ubah `title`, `text`, `sourceRef`, `position`, `status` |
 | `POST /sources/:id/requirements` | HR | buat persyaratan `{ name, definition, targetScore, actualScore }`; `origin = hr`, `status = draft` |
 | `PATCH /requirements/:id` | HR | ubah `name`, `definition`, `targetScore`, `actualScore`, `status` (transisi bebas); `status = validated` mengisi `validated_by` dan `validated_at`; mengubah nama, definisi, atau target baris `validated` tanpa mengirim `status` mengembalikannya ke `draft` |
-| `GET /programs` | HR | daftar program |
+| `GET /programs` | HR | daftar program, masing-masing dengan `participants` (jumlah hasil impor) dan `manualReport` |
 | `PUT /programs/:key` | HR | buat atau ubah konfigurasi program, `insight`, `recommendations` |
 | `GET /programs/:key/report` | HR | laporan agregat, lihat aturan 6.2 |
-| `PUT /programs/:key/manual-report` | HR | simpan isian agregat `{ report }`; `{ report: null }` menghapusnya |
+| `PUT /programs/:key/manual-report` | HR | simpan isian agregat `{ report }`; `{ report: null }` menghapusnya. Respons `{ saved, shadowedByImport, report }` (`shadowedByImport` = program sudah punya hasil impor, jadi isian tidak dipakai di laporan) |
 | `/imports/*` | HR | `importRouter({ submodule: 'cca' })`: jenis impor baru `cca_program_results`, ditambah `dna_job_levels` dan `employees` yang kini juga terbuka untuk `cca` (CCA dijual satuan, dan penugasan berjenjang butuh data atasan) |
 | `GET /assignments` | semua | dibentuk per peran, lihat aturan 6.3 |
 | `POST /assignments` | HR, `supervisor`, `pimpinan` | `{ assigneeIds, dueDate, durationMinutes }` |
@@ -158,6 +158,8 @@ Jalur 2, isian agregat `PUT /programs/:key/manual-report` dengan `{ report }`:
 
 Hanya angka mentah yang disimpan; persen dan kontribusi dihitung saat ditampilkan, sehingga bentuk responsnya sama dengan laporan dari impor. Jalur ini tidak menyimpan data per orang.
 
+Skor minimum band terendah harus sama dengan `passScore`, supaya setiap peserta lulus masuk tepat satu band (temuan code review S2).
+
 Setelah program punya hasil impor atau isian agregat, jumlah nilai, jumlah komponen, dan daftar key band tidak bisa diubah (409 `PROGRAM_HAS_RESULTS`), karena skor tersimpan berurut.
 
 Status per karyawan (dihitung saat laporan dibuat, tidak disimpan):
@@ -187,7 +189,7 @@ Privasi: endpoint laporan hanya untuk HR, dan HR memang boleh melihat semua kary
 - Cakupan tim dihitung lewat `visibleEmployeeScope()` dengan bawahan langsung pemanggil. Fungsi itu hanya memberi tim kepada peran `supervisor`, padahal impor karyawan memetakan "manajer", "kepala", "direktur" ke `pimpinan`. Karena itu modul ini memanggilnya dengan cakupan atasan untuk kedua peran pimpinan. Datanya terbatas pada nama, jabatan, dan status penugasan bawahan langsung. [⏳ DITERIMA: pemetaan peran final menunggu B2 (K2); perlu ditinjau Andrian karena menyangkut aturan visibilitas. Test: orang di luar bawahan langsung ditolak, untuk `supervisor` maupun `pimpinan`.]
 - Orang yang masih punya penugasan berjalan di tier yang sama dilewati dan dilaporkan di `skipped`. Id di luar aturan, termasuk id tenant lain dan id yang bukan UUID, dilaporkan di `rejected` tanpa membedakan sebabnya.
 - `dueDate` wajib, tanggal valid, tidak sebelum hari ini menurut WIB (UTC+7). `durationMinutes` 5–60, default 10. Maksimal 200 orang per permintaan.
-- Pembatalan oleh penugas atau HR, hanya dari status `assigned`; selain itu 409 `INVALID_STATE`. HR hanya menerima id penugasan pimpinan, jadi praktis HR membatalkan tier `leader`. Membatalkan penugasan pimpinan tidak mengubah penugasan karyawan di bawahnya.
+- Pembatalan oleh penugas, atau oleh HR untuk tier `leader` saja, hanya dari status `assigned`; selain itu 409 `INVALID_STATE`. Penugasan karyawan yang dibuat atasan dijawab 404 bagi HR. Membatalkan penugasan pimpinan tidak mengubah penugasan karyawan di bawahnya.
 - `GET /assignments` selalu memuat `mine` (penugasan terbaru pemanggil per tier), lalu per peran:
   - HR: `leaders` = semua calon pimpinan, termasuk yang belum ditugaskan (`status: none`), dengan `teamTotal` (jumlah bawahan langsung), `teamAssigned`, `teamDone`; dan `kpis` dengan penyebutnya (`leadersEligible`). HR tidak menerima daftar karyawan per orang di endpoint ini.
   - Pimpinan: `canAssign`, `team` (bawahan langsung: nama, jabatan, status penugasan `employee` terbaru atau `none`). Hanya status; tidak ada ringkasan (mockup: "Atasan hanya melihat status tim").
@@ -272,7 +274,9 @@ Mengikuti kontrak B0 (`docs/designs/b0-fondasi-ui.md` bagian 4 dan 5.3). `router
 - Kelola persyaratan memakai formulir sebaris di kartu sumber (tambah, ubah, validasi, tolak). Dialog belum ada di `src/ui`, jadi tidak ditambahkan.
 - Formulir program memakai satu baris per butir dengan pemisah `|` (nilai, komponen, status, rekomendasi). [⏳ DITERIMA: cukup untuk pilot yang dikonfigurasi tim ETA; editor per butir menyusul bila HR klien mengatur sendiri.]
 - Bagian mockup yang belum ada datanya (sintesis tema, pratinjau sesi pimpinan, percakapan, ringkasan) tidak digambar dengan angka contoh. Layar menulis catatan bahwa percakapan menyusul.
-- Batas waktu penugasan default 14 hari dari hari ini, minimal hari ini.
+- Batas waktu penugasan default 14 hari dari hari ini, minimal hari ini, keduanya dihitung dalam WIB seperti API.
+- Tab Corporate Values menampilkan empat KPI: kesiapan, nilai dengan kesiapan terendah, gap terbesar, di bawah target.
+- Baris yang ditolak hilang dari overview dan belum bisa dipulihkan dari layar (API `PATCH /requirements/:id` bisa). [⏳ DITERIMA: layar kelola sumber dan baris `rejected` ditambahkan bersama turunan AI tahap 2, saat penolakan menjadi alur utama.]
 
 ## 12. Catatan review egm
 
@@ -316,4 +320,30 @@ Review diff tahap 1 oleh subagent baru, 19 Nov: 11 temuan (0 berat, 5 sedang, 6 
 | D11 | Test integrasi bergantung urutan | Ditunda: pola yang sama dipakai test integrasi lain di repo (satu tenant per berkas, `it` berurutan); memecahnya tidak mengubah perilaku. Dicatat sebagai utang test |
 
 Layar tahap 3 tidak direview subagent terpisah (batas satu review diff per paket); diperiksa lewat e2e (8 skenario) dan tinjauan sendiri.
+
+Code review dua sumbu (`mattpocock-skills:code-review`, aturan 12), 19 Nov, dua subagent paralel atas `git diff review-base-b10 HEAD` (basis = scbrmb + B0).
+
+Sumbu Standards (CLAUDE.md, kontrak B0, smell Fowler):
+
+| # | Temuan | Keputusan |
+| --- | --- | --- |
+| S-1 | `teamOf` memalsukan peran ke `visibleEmployeeScope()` | Sama dengan D8: keputusan Andrian, tidak diubah sepihak |
+| S-2 | Tombol teks dan kartu formulir tidak memakai `UiButton`/`UiCard` | Diperbaiki |
+| S-3 | Rute `aiv` tidak memakai `meta.flag` | Ditolak dengan alasan: bagian 13 (butir menu tetap tampil karena syaratnya submodul; flag di meta membuat klik menu mengalihkan diam-diam) |
+| S-4 | Gaya margin sebaris dan `h4` berkelas `el-h3` | Ditunda: kosmetik, dirapikan bersama token spasi B0 bila tersedia |
+| S-5 | Duplikasi: `isHr`, `wrap`, pencarian program, daftar field patch, validator field | Pencarian program diperbaiki (`loadProgram`). `isHr`/`wrap`/validator dipindah ke `core` ditunda: kode bersama, butuh review Andrian dan menyentuh modul lain |
+| S-6 | Status penugasan berupa string tersebar | Ditolak sebagian: label status sudah satu peta (`STATUS_LABEL`); sisa teks tindakan per layar memang berbeda |
+| S-7 | Speculative generality (`origin 'ai'`, `completeAssignment`) | Ditolak dengan alasan: sambungan tahap 2 yang dijadwalkan di bagian 2 dan 11 |
+| S-8 | `cca/index.js` memuat tiga urusan | Ditunda: dipecah per sub-router saat tahap 2 menambah endpoint percakapan |
+
+Sumbu Spec (spek ini):
+
+| # | Temuan | Keputusan |
+| --- | --- | --- |
+| P-1 | HR bisa membatalkan penugasan karyawan | Diperbaiki + test |
+| P-2 | Skor di antara skor lulus dan band terendah masuk band terendah diam-diam | Diperbaiki: band terendah wajib sama dengan skor lulus (6.2) + test |
+| P-3 | Tab nilai mengganti KPI gap terbesar, bukan menambah | Diperbaiki: empat KPI |
+| P-4 | Baris yang ditolak tidak bisa dipulihkan dari layar | Ditunda, ⏳ di bagian 13 |
+| P-5..7 | `role` di `GET /`, `participants`, bentuk respons isian agregat tidak tertulis | Dicatat di bagian 5 |
+| P-8 | Tanggal layar memakai zona peramban, API memakai WIB | Diperbaiki (`due.ts`) |
 

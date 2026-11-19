@@ -78,6 +78,8 @@ describe('CCA: konfigurasi program nilai', () => {
     [{ ...CONFIG, totalActivities: 0 }, /kegiatan/i],
     [{ ...CONFIG, passScore: 101 }, /lulus/i],
     [{ ...CONFIG, bands: [{ key: 'a', label: 'A', min: 60 }] }, /band/i],
+    // band terendah di atas skor lulus meninggalkan skor 70-74 tanpa band
+    [{ ...CONFIG, bands: [{ key: 'a', label: 'A', min: 75 }] }, /sama dengan skor lulus/i],
     [{ ...CONFIG, bands: [{ key: 'a', label: 'A', min: 80 }, { key: 'a', label: 'B', min: 70 }] }, /band/i],
     [null, /config/i],
   ])('menolak konfigurasi salah %#', (config, pattern) => {

@@ -2,7 +2,7 @@
 // Konfigurasi program nilai. Daftar (nilai, komponen, status, rekomendasi) diisi satu butir per baris dengan pemisah "|".
 import { reactive, ref } from 'vue'
 import { cca, type Program, type ProgramConfig, type Recommendation } from '@/api/cca'
-import { UiButton, UiErrorSummary, UiField, UiNote } from '@/ui'
+import { UiButton, UiCard, UiErrorSummary, UiField, UiNote } from '@/ui'
 
 const props = defineProps<{ program: Program | null }>()
 const emit = defineEmits<{ saved: [key: string]; cancel: [] }>()
@@ -57,7 +57,7 @@ async function save() {
 </script>
 
 <template>
-  <form class="el-card cc-form" data-testid="cc-program-form" @submit.prevent="save">
+  <UiCard as="form" class="cc-form" data-testid="cc-program-form" @submit.prevent="save">
     <h3 class="el-h3 cc-form__wide">{{ program ? 'Ubah program' : 'Program baru' }}</h3>
     <UiErrorSummary v-if="errors.length" :errors="errors" class="cc-form__wide" />
     <UiNote v-if="program" class="cc-form__wide">Setelah program punya hasil, jumlah nilai, jumlah komponen, dan key status tidak bisa diubah.</UiNote>
@@ -76,5 +76,5 @@ async function save() {
       <UiButton type="submit" :disabled="busy">Simpan program</UiButton>
       <UiButton variant="text" @click="emit('cancel')">Batal</UiButton>
     </div>
-  </form>
+  </UiCard>
 </template>

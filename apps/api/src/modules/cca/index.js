@@ -54,6 +54,13 @@ function intField(body, key, label, { min, max, fallback }) {
   return n;
 }
 
+/** Program milik tenant pemanggil menurut :key, atau 404. */
+async function loadProgram(stores, req) {
+  const program = KEY_RE.test(req.params.key) ? await stores.cca.getProgram(req.tenantId, req.params.key) : null;
+  if (!program) throw notFound('Program tidak ditemukan');
+  return program;
+}
+
 const idParam = (req, label) => {
   if (!UUID_RE.test(req.params.id)) throw notFound(`${label} tidak ditemukan`);
   return req.params.id;
@@ -65,6 +72,7 @@ module.exports = {
   router({ stores, flags, audit } = {}) {
     const r = express.Router();
     const hr = requireRole(ROLES.HR_ADMIN);
+    const programOf = (req) => loadProgram(stores, req);
     const interview = requireFlag(flags, FLAGS.CCA_INTERVIEW, 'Wawancara AI Core Competencies belum diaktifkan untuk organisasi Anda');
 
     r.get('/', (req, res) => res.json({ module: 'cca', title: 'Core Competencies', tenantId: req.tenantId, role: req.user.role }));
@@ -198,8 +206,7 @@ module.exports = {
     }));
 
     r.get('/programs/:key/report', hr, wrap(async (req, res) => {
-      const program = KEY_RE.test(req.params.key) ? await stores.cca.getProgram(req.tenantId, req.params.key) : null;
-      if (!program) throw notFound('Program tidak ditemukan');
+      const program = await programOf(req);
       // agregat saja; hasil per karyawan tidak keluar dari endpoint ini.
       // Hasil per karyawan (impor) didahulukan; isian agregat dipakai hanya bila impor belum ada.
       const results = await stores.cca.listProgramResults(req.tenantId, program.id);
@@ -208,8 +215,7 @@ module.exports = {
 
     // Isian agregat dari laporan ringkasan, untuk klien yang tidak punya berkas per karyawan. Body null = hapus isian.
     r.put('/programs/:key/manual-report', hr, wrap(async (req, res) => {
-      const program = KEY_RE.test(req.params.key) ? await stores.cca.getProgram(req.tenantId, req.params.key) : null;
-      if (!program) throw notFound('Program tidak ditemukan');
+      const program = await programOf(req);
       const input = (req.body || {}).report;
       let value = null;
       if (input !== null) {
@@ -332,7 +338,9 @@ module.exports = {
     r.patch('/assignments/:id', interview, requireRole(ROLES.HR_ADMIN, ...LEADER_ROLES), wrap(async (req, res) => {
       if ((req.body || {}).status !== 'cancelled') throw badRequest('Hanya pembatalan (status: cancelled) yang didukung');
       const a = await stores.cca.getAssignment(req.tenantId, idParam(req, 'Penugasan'));
-      if (!a || (!isHr(req) && a.assignedBy !== req.user.id)) throw notFound('Penugasan tidak ditemukan');
+      // HR membatalkan tier pimpinan; penugasan karyawan hanya oleh atasan yang menugaskannya (spek 6.3)
+      const mayCancel = a && (a.assignedBy === req.user.id || (isHr(req) && a.tier === 'leader'));
+      if (!mayCancel) throw notFound('Penugasan tidak ditemukan');
       const row = await stores.cca.cancelAssignment(req.tenantId, a.id);
       if (!row) throw new HttpError(409, 'INVALID_STATE', 'Penugasan yang sudah dimulai atau selesai tidak bisa dibatalkan');
       await audit.record(req, 'update', 'cca.assignment', { assignmentId: a.id, assigneeIds: [a.assigneeId], status: 'cancelled' });

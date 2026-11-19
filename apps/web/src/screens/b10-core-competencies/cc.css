@@ -11,6 +11,4 @@
 .cc-meter + .cc-meter { margin-top: 12px; }
 .cc-meter .cc-row { margin-bottom: 6px; }
 .cc-small { font-size: 12px; }
-.cc-linkbtn { border: 0; background: transparent; color: var(--el-primary); font: inherit; font-weight: 500; cursor: pointer; padding: 0; text-align: left; }
-.cc-linkbtn:hover { text-decoration: underline; }
 .cc-list { line-height: 26px; margin: 0; padding-left: 20px; }

@@ -32,7 +32,8 @@ function validateProgramConfig(config) {
   if (new Set(bands.map((b) => b.key)).size !== bands.length || new Set(bands.map((b) => b.min)).size !== bands.length) return { error: 'Key dan min band status tidak boleh kembar' };
   if (bands.some((b) => ['not_passed', 'in_progress'].includes(b.key))) return { error: 'Key band status tidak boleh not_passed atau in_progress' };
   bands.sort((a, b) => b.min - a.min);
-  if (bands[bands.length - 1].min < passScore) return { error: 'Band status terendah tidak boleh di bawah skor lulus' };
+  // band terendah = skor lulus, supaya setiap peserta lulus masuk tepat satu band
+  if (bands[bands.length - 1].min !== passScore) return { error: 'Skor minimum band status terendah harus sama dengan skor lulus' };
   return { value: { values, components, totalActivities, passScore, bands } };
 }
 

@@ -2,7 +2,7 @@
 // Isian agregat laporan program (jalur kedua keputusan 19 Nov): hanya angka ringkasan, tanpa data per orang.
 import { reactive, ref } from 'vue'
 import { cca, type ManualReport, type Program } from '@/api/cca'
-import { UiButton, UiErrorSummary, UiField, UiNote } from '@/ui'
+import { UiButton, UiCard, UiErrorSummary, UiField, UiNote } from '@/ui'
 
 const props = defineProps<{ program: Program }>()
 const emit = defineEmits<{ saved: []; cancel: [] }>()
@@ -46,7 +46,7 @@ async function submit(report: ManualReport | null) {
 </script>
 
 <template>
-  <form class="el-card cc-form" data-testid="cc-manual-form" @submit.prevent="submit(build())">
+  <UiCard as="form" class="cc-form" data-testid="cc-manual-form" @submit.prevent="submit(build())">
     <h3 class="el-h3 cc-form__wide">Isi angka agregat: {{ program.name }}</h3>
     <UiErrorSummary v-if="errors.length" :errors="errors" class="cc-form__wide" />
     <UiNote v-if="program.participants > 0" tone="warning" class="cc-form__wide">Program ini sudah punya hasil impor per karyawan. Laporan tetap memakai hasil impor; isian agregat hanya dipakai bila hasil impor tidak ada.</UiNote>
@@ -81,5 +81,5 @@ async function submit(report: ManualReport | null) {
       <UiButton v-if="program.manualReport" variant="outlined" :disabled="busy" @click="submit(null)">Hapus isian agregat</UiButton>
       <UiButton variant="text" @click="emit('cancel')">Batal</UiButton>
     </div>
-  </form>
+  </UiCard>
 </template>
