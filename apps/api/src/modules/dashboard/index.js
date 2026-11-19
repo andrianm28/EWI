@@ -77,16 +77,20 @@ function dashboardRouter({ stores, flags, entitlements, settings, audit }) {
     }
 
     if (tnaOn) {
-      const [sessions, findings, perf, conf] = await Promise.all([
+      // K1 / PM-6: temuan non-pelatihan hanya untuk HR, atau atasan yang diberi akses HR (bila flagnya menyala)
+      const nonTrainingAllowed = allFlags[FLAGS.TNA_NON_TRAINING_HR] === true
+        && (isHr || (await stores.tna.hasNonTrainingGrant(tenantId, req.user.id)));
+      const [sessions, reviewed, perf, conf] = await Promise.all([
         stores.interviews.list(tenantId, 'tna', scope),
         // listFindings hanya mengembalikan temuan yang sudah ditinjau HR (PK-14)
-        stores.tna.listFindings(tenantId, scope, { categories: ['training'] }),
+        stores.tna.listFindings(tenantId, scope, { categories: isHr || nonTrainingAllowed ? ['training', 'non_training'] : ['training'] }),
         stores.tna.listPerformance(tenantId, scope, {}),
         settings.get(tenantId),
       ]);
-      // "Dianalisis" di sisi TNA = punya temuan yang sudah ditinjau. Sesi selesai yang temuannya masih draf
-      // tidak dihitung (PM-5), jadi angka ini tidak membocorkan adanya draf.
-      for (const f of findings) analyzed.add(f.userId);
+      // "Dianalisis" di sisi TNA = punya temuan (pelatihan atau non-pelatihan) yang sudah ditinjau. Sesi selesai
+      // yang temuannya masih draf tidak dihitung (PM-5), jadi angka ini tidak membocorkan adanya draf.
+      for (const f of reviewed) analyzed.add(f.userId);
+      const findings = reviewed.filter((f) => f.category === 'training');
       kpis.okrGaps = latestUnmet(perf.filter((p) => inScope.has(p.userId)));
 
       // total dan hotCount dihitung dari seluruh peringkat; rows dipotong ke PARETO_LIMIT teratas
@@ -98,31 +102,29 @@ function dashboardRouter({ stores, flags, entitlements, settings, audit }) {
       };
 
       if (isHr) {
-        const [counts, aiCounts, durations, plan] = await Promise.all([
+        const [counts, aiCounts, allDurations, plan] = await Promise.all([
           stores.tna.reviewCounts(tenantId, {}),
           stores.tna.aiReviewCounts(tenantId),
           stores.tna.analysisDurations(tenantId, scope),
           stores.tna.listPlanItems(tenantId, scope),
         ]);
+        const durations = allDurations.filter((d) => inScope.has(d.userId));
         kpis.aiHrAgreement = agreement(aiCounts);
         kpis.analysisDays = durations.length
           ? { median: median(durations.map((d) => Number(d.days))), sessions: durations.length, targetDays: ANALYSIS_TARGET_DAYS }
           : null;
         add('review_pending', counts.draft);
         add('interviews_open', sessions.filter((s) => OPEN_SESSION.includes(s.status) && inScope.has(s.intervieweeId)).length);
-        add('plan_needs_module', plan.filter((p) => p.needsModule && !CLOSED_PLAN.includes(p.status)).length);
+        add('plan_needs_module', plan.filter((p) => inScope.has(p.userId) && p.needsModule && !CLOSED_PLAN.includes(p.status)).length);
       } else {
         add('interviews_open', sessions.filter((s) => OPEN_SESSION.includes(s.status) && inScope.has(s.intervieweeId)).length);
       }
 
       // K1 / PM-6: temuan non-pelatihan untuk HR; atasan hanya bila HR memberinya akses. Tanpa akses butirnya
       // tidak dikirim sama sekali, sehingga atasan tidak bisa menyimpulkan ada temuan.
-      if (allFlags[FLAGS.TNA_NON_TRAINING_HR] === true) {
-        const allowed = isHr || (await stores.tna.hasNonTrainingGrant(tenantId, req.user.id));
-        if (allowed) {
-          const rows = await stores.tna.listNonTrainingSummary(tenantId, isHr ? {} : { userIds: scope.userIds });
-          add('non_training_findings', rows.filter((f) => inScope.has(f.userId)).length);
-        }
+      if (nonTrainingAllowed) {
+        const rows = await stores.tna.listNonTrainingSummary(tenantId, isHr ? {} : { userIds: scope.userIds });
+        add('non_training_findings', rows.filter((f) => inScope.has(f.userId)).length);
       }
     }
     if (dnaOn && isHr) add('competencies_unapproved', unapproved);
