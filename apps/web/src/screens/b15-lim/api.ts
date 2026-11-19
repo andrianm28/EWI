@@ -48,6 +48,7 @@ export const lim = {
   options: () => call<D<Options>>('/options'),
   create: (body: NewPlan) => send<D<Plan>>('POST', '/plans', body),
   overview: (id: string) => call<D<Overview>>(`/plans/${id}/overview`),
+  preFromDna: (id: string) => send<D<{ filled: number }>>('POST', `/plans/${id}/pre-from-dna`),
   queue: (id: string) => call<D<QueueRow[]>>(`/plans/${id}/queue`),
   schedule: (id: string, userIds: string[], date: string | null) =>
     send<D<{ scheduled: string[]; skipped: { userId: string; reason: string }[]; rejected: { userId: string; message: string }[] }>>('POST', `/plans/${id}/queue/schedule`, { userIds, date }),

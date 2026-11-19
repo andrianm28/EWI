@@ -31,10 +31,11 @@ tahap 3.
 | Tab mockup | Elemen | Endpoint |
 | --- | --- | --- |
 | Ringkasan | "Mulai dari masalah bisnis · <jabatan>" (5 pertanyaan), rantai dampak 6 tingkat (tingkat, sumber data, temuan, cakupan), insight tempat rantai putus, dua jebakan, prinsip pelaporan | `GET /api/lim/plans/:id/overview` |
-| Per kompetensi | Tabel kompetensi: pre, post, wawancara ulang, kinerja, kesimpulan | sama (`competencies`) |
+| Per kompetensi | Tabel kompetensi: pre, post, wawancara ulang, kinerja, kesimpulan. HR: tombol "Isi pre dari asesmen DNA" dan panel impor `lim_measurements` (rencana yang dibuka terpilih otomatis) | sama (`competencies`), `POST /plans/:id/pre-from-dna`, `/imports/*` |
 | Dampak bisnis | Tabel indikator tim (sebelum, sesudah, target, kekuatan bukti, sumber), estimasi nilai (opsional), faktor lain | sama (`indicators`, `valueEstimate`, `factors`) |
 | Pengukuran AI | Antrean wawancara ulang (karyawan, kompetensi, status, jadwal, tindakan) | `GET /api/lim/plans/:id/queue`, `POST /api/lim/plans/:id/queue/schedule` |
 | Pengukuran AI: percakapan, benchmark, hasil bisnis, ringkasan | tahap 3 | belum ada |
+| Di atas tab (HR) | Pilihan rencana bila lebih dari satu, tombol "Rencana baru", formulir rencana (judul, jabatan, periode, modul, lima pertanyaan); tanpa rencana formulir langsung tampil. Atasan tanpa rencana melihat catatan | `GET /plans`, `GET /options`, `POST /plans` |
 
 Teks statis mockup (dua jebakan, prinsip pelaporan, catatan "Hubungan belajar dan hasil bukan bukti sebab-akibat")
 ditulis di layar, bukan di API.
@@ -93,15 +94,16 @@ baru `lim.reinterview`.
 
 | Metode dan path | Peran | Isi |
 | --- | --- | --- |
+| `GET /` | HR, atasan | info modul `{ module, title, tenantId, role }` (sama dengan modul lain) |
 | `GET /options` | HR | pilihan formulir rencana `{ modules: [{ id, code, name }], jobRoles: [{ id, name }] }` (tanpa bergantung pada modul `li`/`dna` menyala) |
 | `GET /plans` | HR, atasan | daftar rencana aktif `{ id, title, jobRoleName, moduleCount, participantCount }`; `?archived=1` ikut arsip (HR). Atasan hanya menerima rencana yang memuat ≥1 anggota timnya, dan `participantCount` dihitung atas timnya |
 | `POST /plans` | HR | buat `{ title, jobRoleId?, periodFrom?, periodUntil?, businessProblem, desiredBehavior, priorityCapabilities, evidencePlan, existingMetrics, baselineLabel?, afterLabel?, moduleIds[] }`; `moduleIds` 1–20, modul tenant lain atau tidak ada → 400 `MODULE_NOT_FOUND`; `jobRoleId` tenant lain → 400 |
 | `PATCH /plans/:id` | HR | ubah field di atas, `valueEstimate`, `factors`, `status`; field yang tidak dikirim tetap |
-| `GET /plans/:id/overview` | HR, atasan | `{ plan, chain, insight, competencies, indicators, valueEstimate, factors, generatedBy: 'rules' }`; atasan dihitung atas timnya saja |
+| `GET /plans/:id/overview` | HR, atasan | `{ plan, participants, chain, insight, competencies, indicators, valueEstimate, factors, generatedBy: 'rules' }`; atasan dihitung atas timnya saja, dan 404 bila rencana tidak memuat anggota timnya (sama dengan `GET /plans`) |
 | `POST /plans/:id/indicators` | HR | tambah indikator |
 | `PATCH /indicators/:id`, `DELETE /indicators/:id` | HR | ubah, hapus |
 | `GET /plans/:id/measurements` | HR | baris per karyawan per kompetensi (nama, kompetensi, pre, post, sumber post, wawancara ulang, kinerja); dicatat `audit.readIndividual` |
-| `PUT /plans/:id/measurements` | HR, atasan | `{ entries: [{ userId, competencyId, preScore?, postScore?, performanceScore?, performanceNote? }] }`, maks 500; `null` mengosongkan, tidak dikirim = tetap. `userId` harus peserta rencana dan `competencyId` kompetensi rencana, selain itu baris `rejected` ("Karyawan bukan peserta rencana ini", "Kompetensi bukan bagian rencana ini", "Skor harus bilangan 0–100"). Atasan hanya untuk bawahan langsungnya dan hanya `performanceScore`/`performanceNote` (field lain → `rejected` "Atasan hanya mengisi skor kinerja") [⏳ DITERIMA: default kartu keputusan tingkat 4] |
+| `PUT /plans/:id/measurements` | HR, atasan | `{ entries: [{ userId, competencyId, preScore?, postScore?, performanceScore?, performanceNote? }] }`, maks 500; `null` mengosongkan, tidak dikirim = tetap. `userId` harus peserta rencana dan `competencyId` kompetensi rencana, selain itu baris `rejected` ("Karyawan bukan peserta rencana ini", "Kompetensi bukan bagian rencana ini", "Skor harus bilangan bulat 0–100"). Atasan hanya untuk bawahan langsungnya ("Karyawan bukan anggota tim Anda", diperiksa sebelum cek peserta supaya atasan tidak bisa menebak peserta di luar timnya) dan hanya `performanceScore`/`performanceNote` (field lain → `rejected` "Atasan hanya mengisi skor kinerja") [⏳ DITERIMA: default kartu keputusan tingkat 4] |
 | `POST /plans/:id/pre-from-dna` | HR | isi pre kosong dari asesmen DNA; `{ filled }` |
 | `GET /plans/:id/queue` | HR | antrean wawancara ulang (aturan 6.4); dicatat `audit.readIndividual` |
 | `POST /plans/:id/queue/schedule` | HR | `{ userIds: [...], date }`, maks 200; `date` `YYYY-MM-DD` dari hari ini sampai +180 hari, atau `null` untuk membatalkan jadwal |
@@ -164,7 +166,7 @@ Fungsi murni `buildChain(input)` menghasilkan enam baris `{ level, label, source
 | # | Tingkat | Sumber | Temuan | Cakupan |
 | --- | --- | --- | --- | --- |
 | 1 | Aktivitas | Learning Delivery | per keikutsertaan (baris `ld_participants` pelatihan rencana): persen `status = completed`; bila ada pelatihan offline, ditambah "hadir x dari y tercatat" (`attendance = true` dari `attendance IS NOT NULL`) | `measured` bila ada peserta, selain itu `missing` |
-| 2 | Pembelajaran | Asesmen pre dan post | rata-rata kenaikan post − pre atas pasangan lengkap, jumlah kompetensi | `measured` bila semua peserta yang punya post juga punya pre; `partial` bila sebagian; `missing` bila tidak ada pasangan |
+| 2 | Pembelajaran | Asesmen pre dan post | rata-rata kenaikan post − pre atas pasangan lengkap, jumlah kompetensi | dihitung per pasangan (karyawan, kompetensi): `measured` bila semua pasangan yang punya post juga punya pre; `partial` bila sebagian; `missing` bila tidak ada pasangan |
 | 3 | Kapabilitas | Wawancara ulang AI | "x dari n karyawan sudah diwawancara ulang"; x = karyawan dengan ≥1 skor wawancara ulang untuk kompetensi rencana mana pun | `measured` bila x = n > 0; `partial` bila 0 < x < n; `missing` bila x = 0 |
 | 4 | Penerapan | Review atasan / isian kinerja | "x dari n karyawan punya skor kinerja"; x seperti tingkat 3 | sama seperti tingkat 3 |
 | 5 | Kinerja | indikator `level = performance` | indikator pertama yang lengkap: "nama baseline → current unit" | `measured` bila semua indikator tingkat ini punya baseline dan current; `partial` bila sebagian; `missing` bila tidak ada atau kosong |
@@ -197,9 +199,11 @@ wawancara ulang. Tanpa bukti di tengah, klaim bahwa pelatihan memperbaiki kinerj
 
 - Antrean satu baris per karyawan: satu wawancara ulang mencakup semua kompetensi rencana yang punya skor post dari
   Learning Delivery untuk karyawan itu. (Keputusan user 19 Nov 21.10 WIB: satu wawancara ulang
-  per karyawan.) Tanggal selesai = tanggal selesai efektif terbaru di antara kompetensinya.
+  per karyawan.) Tanggal selesai = tanggal selesai efektif terbaru di antara kompetensinya yang tanggalnya diketahui
+  (NULL dianggap paling lama, bagian 4); NULL hanya bila semua kompetensinya tanpa tanggal.
 - `dueFrom` = tanggal selesai + 28 hari, `dueUntil` = + 42 hari (mockup: "4 sampai 6 pekan setelah belajar"). Bila
   tanggal selesai NULL: `dueFrom`, `dueUntil`, `window` = null, dan karyawan itu tidak bisa dijadwalkan.
+- Penjadwalan satu karyawan ditulis dalam satu transaksi (semua kompetensinya atau tidak sama sekali).
 - Status karyawan: `done` bila semua kompetensinya `done` (skor = rata-rata), `scheduled` bila ada yang `scheduled`,
   selain itu `none`. Tambahan turunan `window`: `early` (hari ini < `dueFrom`), `due`, `late` (hari ini > `dueUntil` dan belum
   `done`). Hari ini menurut Asia/Jakarta.
@@ -253,25 +257,31 @@ yang aktif). Hapus karyawan menghapus barisnya lewat FK `lim_measurements.user_i
 
 - `tests/unit/lim-domain.test.js`: `verdict`, `summarizeCompetencies` (rata-rata, n, post tidak teraudit),
   `buildChain` (tiap tingkat measured/partial/missing), `buildInsight`, `indicatorState` (arah, target, strength HR
-  vs hitung), `queueState` (window early/due/late, urutan), `latestPost`.
+  vs hitung), `buildQueue` (window early/due/late, urutan, tanggal terbaru yang diketahui), `checkScheduleDate`,
+  `latestPost` (seri `created_at` berupa `Date`, `shared` dari baris pemenang).
 - `tests/integration/lim.test.js` (Postgres): gerbang entitlement full_suite + flag; buat rencana dengan modul;
   pelatihan LD dengan skor (termasuk `vendor_manual`) → overview; indikator; isian pre/kinerja; pre dari DNA (×25, tidak
   menimpa); antrean dan jadwal (tolak pasangan bukan calon, lewati `done`); atasan hanya timnya, tanpa per orang;
-  karyawan 403; impor; audit `readIndividual`; ekspor karyawan; isolasi tenant.
+  karyawan, sme, role_leader 403; impor (skor non-bulat ditolak, opsi `lim_plan`); audit `readIndividual` (termasuk
+  antrean) dan `delete` indikator; ekspor karyawan; isolasi tenant termasuk penulisan; rencana tanpa jabatan dan tanpa
+  data LD.
+- `apps/web/e2e/lim.spec.ts` (Playwright, API mock): empat tab, jadwalkan per karyawan, formulir rencana, isi pre dari
+  DNA dan impor dengan rencana terpilih, atasan tanpa antrean dan tanpa tombol HR, menu tersembunyi tanpa `full_suite`.
 
 ## 9. Daftar perubahan berkas (tahap 1)
 
-- [ ] `apps/api/migrations/20261119001500-learning-impact.js`
-- [ ] `apps/api/src/core/flags/index.js` (`MODULE_LIM`)
-- [ ] `apps/api/src/core/entitlement/index.js` (`lim` di `FULL_SUITE_ONLY`)
-- [ ] `apps/api/src/app.js` (daftar modul)
-- [ ] `apps/api/src/db/lim-stores.js` + sambungan di `db/stores.js`
-- [ ] `apps/api/src/modules/lim/domain.js`, `index.js`
-- [ ] `apps/api/src/modules/imports/kinds/lim-measurements.js` + `kinds/index.js`
-- [ ] `apps/api/src/modules/employees/index.js` (ekspor)
-- [ ] `apps/api/src/modules/imports/index.js` (opsi `lim_plan` bila perlu)
-- [ ] test di bagian 8
-- [ ] `docs/designs/b15-impact-measurement.md`
+- [x] `apps/api/migrations/20261119001500-learning-impact.js` (empat tabel + indeks, termasuk `ld_trainings_lim_module_idx`)
+- [x] `apps/api/src/core/flags/index.js` (`MODULE_LIM`)
+- [x] `apps/api/src/core/entitlement/index.js` (`lim` di `FULL_SUITE_ONLY`)
+- [x] `apps/api/src/app.js` (daftar modul)
+- [x] `apps/api/src/db/lim-stores.js` + sambungan di `db/lna-stores.js`
+- [x] `apps/api/src/modules/lim/domain.js`, `index.js`
+- [x] `apps/api/src/modules/imports/kinds/lim-measurements.js` + `kinds/index.js` (opsi `planId` bertipe `lim_plan`; `imports/index.js` tidak perlu diubah karena tipe opsi tidak divalidasi di sana)
+- [x] `apps/api/src/modules/employees/index.js` (ekspor)
+- [x] `apps/web/src/screens/b15-lim/` (`routes.ts`, `api.ts`, `labels.ts`, `LearningImpactView.vue`, `PlanForm.vue`)
+- [x] `apps/web/src/components/ImportPanel.vue`, `apps/web/src/api/imports.ts` (submodul `lim`, opsi `lim_plan`)
+- [x] test di bagian 8: `tests/unit/lim-domain.test.js`, `tests/integration/lim.test.js`, `tests/unit/gating.test.js`, `apps/web/e2e/lim.spec.ts`
+- [x] `docs/designs/b15-impact-measurement.md`
 
 ## 10. Di luar cakupan tahap 1
 
@@ -316,3 +326,33 @@ laporan lengkap: `/mnt/project-files/elgos-eksekusi/egm-b10-b15/b15-goldfish_rev
 | 15 | Urutan kind, opsi planId, gerbang ekspor | Perbaiki: akhir KINDS, ekspor tanpa gerbang (PK-15) | 6.6, 6.7 |
 | 16 | GET /plans untuk atasan | Perbaiki | 5 |
 | 17 | Teks review harus utuh | Perbaiki: ditautkan di atas | 11 |
+
+**Review diff (goldfish, 19 Nov):** `mattpocock-skills:code-review` dua sumbu (Standards, Spec) terhadap
+`origin/claude/project-thread-scbrmb`, plus persona egm `egm-codebase-details` dan `egm-implementation-readiness` atas
+diff yang sama. Laporan dan triase `egm-resolve`: `/mnt/project-files/elgos-eksekusi/egm-b10-b15/b15-diff-review.md`.
+
+| # | Temuan (ringkas, sumber) | Keputusan |
+| --- | --- | --- |
+| D1 | `latestPost` membandingkan `String(Date)`, seri `created_at` salah di data nyata (spek, dua persona) | Perbaiki: bandingkan waktu; test dengan `Date` |
+| D2 | Skor desimal diterima, padahal 5.1 "bilangan bulat" (spek, codebase) | Perbaiki: PUT dan impor menolak non-bulat, pesan "bilangan bulat 0–100" |
+| D3 | Satu kompetensi tanpa tanggal membuat karyawan tidak bisa dijadwalkan (readiness) | Perbaiki: tanggal terbaru yang diketahui (6.4 diperjelas) |
+| D4 | Opsi impor `planId` bertipe `text`, layar tanpa jalur impor (spek, dua persona) | Perbaiki: tipe `lim_plan`, pilihan di ImportPanel, panel impor di tab Per kompetensi (HR) |
+| D5 | Tombol "Isi pre dari asesmen DNA" tidak ada di layar (spek) | Perbaiki: tombol + keterangan "level × 25" di tab Per kompetensi (HR) |
+| D6 | Label layar dipendekkan ("Retensi turun", "skor modul") (spek) | Perbaiki: teks spek utuh |
+| D7 | `postShared` bisa diambil dari baris yang bukan pemenang (spek, dua persona) | Perbaiki: `latestPost` membawa `shared` |
+| D8 | `recordReinterview` tidak memeriksa tenant karyawan/kompetensi (codebase) | Perbaiki: `EXISTS` per tenant + test |
+| D9 | Atasan bisa menebak peserta lewat urutan pesan tolak (codebase) | Perbaiki: cek tim lebih dulu + test |
+| D10 | Overview terbuka untuk atasan tanpa tim di rencana (codebase) | Perbaiki: 404, sama dengan GET /plans |
+| D11 | Hapus indikator diaudit sebagai `update` (standards, codebase) | Perbaiki: `delete` + test |
+| D12 | `schedule` tanpa transaksi (readiness, codebase) | Perbaiki: `tx` |
+| D13 | Indeks FK `user_id`, `competency_id`, dan `ld_trainings (tenant_id, module_id)` (readiness) | Perbaiki di migrasi B15 (indeks `ld_trainings_lim_module_idx`, dibuang di `down`) |
+| D14 | Celah test: entitlement API, audit baca antrean, rencana tanpa jabatan/tanpa data, peran sme/role_leader, tulis lintas tenant (readiness) | Perbaiki: test ditambah |
+| D15 | Angka ajaib `× 25`, `decorateInd` diduplikasi (standards) | Perbaiki: `DNA_LEVEL_TO_SCORE`, satu helper |
+| D16 | Header Sebelum/Sesudah mengabaikan `baselineLabel`/`afterLabel`; teks kosong menyebut impor indikator yang tidak ada (codebase) | Perbaiki |
+| D17 | Tingkat 2 dihitung per pasangan, bukan per karyawan (spek, codebase) | Bantah: per pasangan lebih tepat untuk kenaikan per kompetensi; kalimat 6.2 diperjelas |
+| D18 | `isHr` di Admin ETA tidak konsisten dengan guard `hr` (standards) | Tolak: `requireRole` meloloskan `eta_admin` (core/rbac), jadi konsisten |
+| D19 | `GET /plans` N+1 (`planData` per rencana) (readiness, codebase) | Tunda: jumlah rencana per tenant kecil di POC; indeks D13 dipasang; agregat satu query dicatat untuk tahap 2 |
+| D20 | `planData` sebaiknya pindah ke `domain.js`; UUID/`wrap`/`LEADER_ROLES` disalin (standards) | Tunda: pola repo saat ini; pindah ke core = kode bersama, diusulkan ke Andrian |
+| D21 | Enum `Verdict` berbahasa Indonesia, `GET /api/lim/` tidak di tabel 5 (standards, spek) | Tolak: nilai mengikuti spek 6.1; `GET /` sama dengan modul lain |
+| D22 | `job_role_id` ON DELETE SET NULL memperlebar kohort diam-diam (readiness) | Catat: perilaku sesuai bagian 4; layar menampilkan "semua jabatan" bila jabatan kosong |
+| D23 | `teamOf` tidak memakai `visibleEmployeeScope()` (aturan 4) (standards) | Eskalasi ke Andrian (sama dengan B10 E7): spek 6.5 membuang atasan dari cakupan, `visibleEmployeeScope` memasukkannya |

@@ -54,6 +54,8 @@ run('B15 Learning Impact Measurement (Postgres)', () => {
     await add('a', 'learner', { sup: u.spv });
     await add('b', 'learner', { sup: u.spv });
     await add('c', 'learner', { sup: u.dir });
+    await add('sme', 'sme');
+    await add('rl', 'role_leader');
     await add('lama', 'learner'); // angkatan lama (di luar periode)
     await add('sales', 'learner', { jobRole: role2.id }); // jabatan lain
     await add('luar', 'hr_admin', { t: other.id, jobRole: null });
@@ -116,8 +118,13 @@ run('B15 Learning Impact Measurement (Postgres)', () => {
     await flag('module.lim', true);
     expect((await get('/plans')).status).toBe(200);
     expect((await get('/plans', 'eta')).status).toBe(200);
-    for (const who of ['a']) expect((await get('/plans', who)).status).toBe(403);
+    for (const who of ['a', 'sme', 'rl']) expect((await get('/plans', who)).status).toBe(403);
     expect((await send('post', '/plans', planBody(), 'spv')).status).toBe(403);
+    // tanpa paket full_suite (spek 5: lim hanya Full Suite) meski flag nyala
+    await db.query(`DELETE FROM entitlements WHERE tenant_id = :t AND product = 'full_suite'`, { replacements: { t: tenant.id } });
+    expect((await get('/plans')).status).toBe(403);
+    await db.query(`INSERT INTO entitlements (tenant_id, product) VALUES (:t, 'full_suite')`, { replacements: { t: tenant.id } });
+    expect((await get('/plans')).status).toBe(200);
   });
 
   it('pilihan formulir rencana: modul dan jabatan tenant ini saja (HR)', async () => {
@@ -173,6 +180,8 @@ run('B15 Learning Impact Measurement (Postgres)', () => {
     const tmp = (await send('post', `/plans/${plan.id}/indicators`, { name: 'Sementara', level: 'business', direction: 'higher_better' })).body.data;
     expect((await send('delete', `/indicators/${tmp.id}`)).status).toBe(204);
     expect((await send('delete', `/indicators/${tmp.id}`)).status).toBe(404);
+    const del = await q(`SELECT meta FROM audit_logs WHERE tenant_id = :t AND resource = 'lim.indicator' AND action = 'delete'`, { t: tenant.id });
+    expect(del.map((r) => r.meta.indicatorId)).toEqual([tmp.id]);
     const d = (await get(`/plans/${plan.id}/overview`)).body.data;
     expect(d.indicators.map((i) => i.name)).toEqual(['MTTR insiden P1', 'Kepuasan pelanggan', 'Kepatuhan SLA']);
     expect(d.chain[4]).toMatchObject({ coverage: 'measured', finding: 'MTTR insiden P1 92 → 71 mnt' });
@@ -186,11 +195,12 @@ run('B15 Learning Impact Measurement (Postgres)', () => {
       { userId: u.lama, competencyId: k1, preScore: 50 },
       { userId: u.a, competencyId: '00000000-0000-4000-8000-000000000000', preScore: 50 },
       { userId: u.a, competencyId: k2, preScore: 101 },
+      { userId: u.a, competencyId: k2, preScore: 52.5 },
     ] });
     expect(res.status).toBe(200);
     expect(res.body.data.saved).toBe(2);
     expect(res.body.data.rejected.map((r) => [r.index, r.message])).toEqual([
-      [2, 'Karyawan bukan peserta rencana ini'], [3, 'Kompetensi bukan bagian rencana ini'], [4, 'Skor harus bilangan 0-100'],
+      [2, 'Karyawan bukan peserta rencana ini'], [3, 'Kompetensi bukan bagian rencana ini'], [4, 'Skor harus bilangan bulat 0–100'], [5, 'Skor harus bilangan bulat 0–100'],
     ]);
     const rows = (await get(`/plans/${plan.id}/measurements`)).body.data;
     const a1 = rows.find((r) => r.userId === u.a && r.competencyId === k1);
@@ -220,6 +230,8 @@ run('B15 Learning Impact Measurement (Postgres)', () => {
   it('antrean per karyawan: tanpa tanggal tidak bisa dijadwalkan; jadwal ulang menimpa; null membatalkan; done dilewati', async () => {
     const queue = (await get(`/plans/${plan.id}/queue`)).body.data;
     expect(queue.map((r) => r.userId).sort()).toEqual([u.a, u.b, u.c].sort());
+    const qread = await q(`SELECT meta FROM audit_logs WHERE tenant_id = :t AND resource = 'lim.measurement' AND action = 'read' AND meta->>'objectType' = 'lim_plan_queue'`, { t: tenant.id });
+    expect(qread.at(-1).meta.employeeIds.sort()).toEqual([u.a, u.b, u.c].sort());
     const qa = queue.find((r) => r.userId === u.a);
     expect(qa).toMatchObject({ postCompletedOn: '2026-10-20', dueFrom: '2026-11-17', dueUntil: '2026-12-01', status: 'none' });
     expect(qa.competencies.map((c) => c.competencyId).sort()).toEqual([k1, k2].sort());
@@ -235,7 +247,9 @@ run('B15 Learning Impact Measurement (Postgres)', () => {
     await send('post', `/plans/${plan.id}/queue/schedule`, { userIds: [u.a], date: null });
     expect((await get(`/plans/${plan.id}/queue`)).body.data.find((r) => r.userId === u.a).status).toBe('none');
 
-    // done hanya lewat store (sambungan mesin wawancara tahap 3)
+    // done hanya lewat store (sambungan mesin wawancara tahap 3); karyawan tenant lain tidak bisa ditulis
+    await stores.lim.recordReinterview(tenant.id, plan.id, u.luar, k1, { score: 99, sessionId: null });
+    expect(await q('SELECT 1 FROM lim_measurements WHERE user_id = :id', { id: u.luar })).toEqual([]);
     await stores.lim.recordReinterview(tenant.id, plan.id, u.b, k1, { score: 66, sessionId: null });
     expect((await send('post', `/plans/${plan.id}/queue/schedule`, { userIds: [u.b], date: day(3) })).body.data.scheduled).toEqual([u.b]); // k2 belum done
     await stores.lim.recordReinterview(tenant.id, plan.id, u.b, k2, { score: 80, sessionId: null });
@@ -259,9 +273,11 @@ run('B15 Learning Impact Measurement (Postgres)', () => {
       { userId: u.b, competencyId: k1, performanceScore: 70, performanceNote: 'Review laporan RCA' },
       { userId: u.b, competencyId: k1, preScore: 10 },
       { userId: u.c, competencyId: k3, performanceScore: 50 },
+      { userId: u.lama, competencyId: k1, performanceScore: 50 },
     ] }, 'spv');
     expect(res.body.data.saved).toBe(1);
-    expect(res.body.data.rejected.map((r) => r.message)).toEqual(['Atasan hanya mengisi skor kinerja', 'Karyawan bukan anggota tim Anda']);
+    // bukan anggota tim ditolak sebelum cek peserta, supaya atasan tidak bisa menebak siapa peserta rencana
+    expect(res.body.data.rejected.map((r) => r.message)).toEqual(['Atasan hanya mengisi skor kinerja', 'Karyawan bukan anggota tim Anda', 'Karyawan bukan anggota tim Anda']);
     expect((await get(`/plans/${plan.id}/overview`, 'dir')).body.data.plan.id).toBe(plan.id);
   });
 
@@ -281,7 +297,7 @@ run('B15 Learning Impact Measurement (Postgres)', () => {
     const kinds = (await get('/imports/templates')).body.data.map((k) => k.key);
     expect(kinds).toContain('lim_measurements');
     const csv = ['ID Karyawan,Nama Kompetensi,Skor Pre,Skor Post,Skor Kinerja,Catatan Kinerja',
-      'E-b,ticket life cycle,45,,,', 'E-lama,Ticket Life Cycle,40,,,', 'E-b,Tidak Ada,40,,,', `E-c,${k3},,,61,Dicek atasan`].join('\n');
+      'E-b,ticket life cycle,45,,,', 'E-lama,Ticket Life Cycle,40,,,', 'E-b,Tidak Ada,40,,,', `E-c,${k3},,,61,Dicek atasan`, 'E-a,Ticket Life Cycle,"52,5",,,'].join('\n');
     const up = await request(app).post('/api/lim/imports/lim_measurements?filename=lim.csv').set(as('hr')).set('Content-Type', 'text/csv').send(csv);
     expect(up.status).toBe(201);
     const id = up.body.data.id;
@@ -289,7 +305,9 @@ run('B15 Learning Impact Measurement (Postgres)', () => {
     const val = await send('post', `/imports/batches/${id}/preview`, { options: { planId: plan.id } });
     expect(val.status).toBe(200);
     expect(val.body.data.valid).toBe(2);
-    expect(val.body.data.rejected.map((r) => r.reason)).toEqual(['Karyawan bukan peserta rencana ini', 'Kompetensi bukan bagian rencana ini']);
+    expect(val.body.data.rejected.map((r) => r.reason)).toEqual(['Karyawan bukan peserta rencana ini', 'Kompetensi bukan bagian rencana ini', 'Skor Pre harus bilangan bulat 0–100']);
+    const templ = (await get('/imports/templates')).body.data.find((k) => k.key === 'lim_measurements');
+    expect(templ.options).toEqual([expect.objectContaining({ key: 'planId', type: 'lim_plan', required: true })]);
     const commit = await send('post', `/imports/batches/${id}/commit`, {});
     expect(commit.status).toBe(200);
     const rows = (await get(`/plans/${plan.id}/measurements`)).body.data;
@@ -304,6 +322,28 @@ run('B15 Learning Impact Measurement (Postgres)', () => {
     expect((await get(`/plans/${plan.id}/overview`, 'luar')).status).toBe(404);
     expect((await get('/plans', 'luar')).body.data).toEqual([]);
     expect((await send('patch', `/plans/${plan.id}`, { title: 'x' }, 'luar')).status).toBe(404);
+    expect((await send('put', `/plans/${plan.id}/measurements`, { entries: [{ userId: u.a, competencyId: k1, preScore: 1 }] }, 'luar')).status).toBe(404);
+    expect((await send('post', `/plans/${plan.id}/queue/schedule`, { userIds: [u.a], date: day(3) }, 'luar')).status).toBe(404);
+    expect((await send('post', `/plans/${plan.id}/pre-from-dna`, {}, 'luar')).status).toBe(404);
+    expect((await send('post', `/plans/${plan.id}/indicators`, { name: 'X', level: 'business', direction: 'higher_better' }, 'luar')).status).toBe(404);
+    const up = await request(app).post('/api/lim/imports/lim_measurements?filename=x.csv').set(as('luar')).set('Content-Type', 'text/csv')
+      .send('ID Karyawan,Nama Kompetensi,Skor Pre\nE-a,Ticket Life Cycle,10');
+    const pv = await send('post', `/imports/batches/${up.body.data.id}/preview`, { options: { planId: plan.id } }, 'luar');
+    expect(pv.status).toBe(400);
     expect((await get('/plans/bukan-uuid/overview')).status).toBe(404);
+  });
+
+  it('rencana tanpa jabatan dan tanpa data Learning Delivery: semua tingkat kosong, insight tingkat 1, antrean kosong; atasan tanpa tim di rencana mendapat 404', async () => {
+    const [row] = await q(`INSERT INTO li_modules (tenant_id, code, name, level) VALUES (:t, 'KOSONG', 'Kosong', 'basic') RETURNING id`, { t: tenant.id });
+    const res = await send('post', '/plans', planBody({ title: 'Tanpa data', jobRoleId: null, moduleIds: [row.id] }));
+    expect(res.status).toBe(201);
+    expect(res.body.data).toMatchObject({ jobRoleId: null, jobRoleName: null });
+    const d = (await get(`/plans/${res.body.data.id}/overview`)).body.data;
+    expect(d.participants).toBe(0);
+    expect(d.chain.map((c) => c.coverage)).toEqual(Array(6).fill('missing'));
+    expect(d.insight.level).toBe(1);
+    expect((await get(`/plans/${res.body.data.id}/queue`)).body.data).toEqual([]);
+    expect((await get(`/plans/${res.body.data.id}/overview`, 'spv')).status).toBe(404);
+    await send('patch', `/plans/${res.body.data.id}`, { status: 'archived' });
   });
 });

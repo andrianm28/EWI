@@ -46,13 +46,20 @@ async function setup(page: Page, o: Opts = {}, calls: { method: string; url: str
   let plans = o.plans ?? [{ id: 'p-1', title: 'Pilot L1', jobRoleName: 'Engineer Service Delivery', moduleCount: 1, participantCount: 6 }]
   await page.route(/\/api\/lim\//, async (r: Route) => {
     const req = r.request(); const url = new URL(req.url()); const path = url.pathname.replace(/^.*\/api\/lim/, '')
-    const body = req.postData() ? JSON.parse(req.postData()!) : null
+    const body = (() => { try { return JSON.parse(req.postData() ?? 'null') } catch { return null } })()
     calls.push({ method: req.method(), url: path, body })
     if (path === '/plans' && req.method() === 'GET') return r.fulfill({ json: { data: plans } })
     if (path === '/plans' && req.method() === 'POST') { plans = [{ id: 'p-1', title: body.title, jobRoleName: null, moduleCount: 1, participantCount: 0 }]; return r.fulfill({ status: 201, json: { data: PLAN } }) }
     if (path === '/options') return r.fulfill({ json: { data: { modules: [{ id: 'm-1', code: 'ST-A2', name: 'RCA' }], jobRoles: [{ id: 'jr-1', name: 'Engineer Service Delivery' }] } } })
     if (path === '/plans/p-1/overview') return r.fulfill({ json: { data: OVERVIEW } })
     if (path === '/plans/p-1/queue') return r.fulfill({ json: { data: QUEUE } })
+    if (path === '/plans/p-1/pre-from-dna') return r.fulfill({ json: { data: { filled: 2 } } })
+    if (path === '/imports/templates') return r.fulfill({ json: { data: [{ key: 'lim_measurements', label: 'Skor dampak belajar (Impact Measurement)', description: 'Skor per karyawan per kompetensi.',
+      fields: [{ key: 'competencyName', header: 'Nama Kompetensi', required: false, oneOf: 'competency', help: null, example: null }],
+      options: [{ key: 'planId', label: 'Rencana pengukuran', type: 'lim_plan', required: true }] }] } })
+    if (path === '/imports/batches') return r.fulfill({ json: { data: [] } })
+    if (path === '/imports/lim_measurements') return r.fulfill({ status: 201, json: { data: { id: 'bt-1', kind: 'lim_measurements', filename: 'skor.csv', status: 'uploaded', rowCount: 1, headers: ['Nama Kompetensi'], mapping: { competencyName: 'Nama Kompetensi' }, options: {}, result: null, createdAt: '2026-11-19T00:00:00Z', committedAt: null, createdByName: null } } })
+    if (path === '/imports/batches/bt-1/preview') return r.fulfill({ json: { data: { valid: 1, rejectedCount: 0, rejected: [], sample: [] } } })
     if (path === '/plans/p-1/queue/schedule') return r.fulfill({ json: { data: { scheduled: body.userIds, skipped: [], rejected: [] } } })
     return r.fulfill({ status: 404, json: { error: { code: 'NOT_FOUND', message: `mock tidak ada: ${path}` } } })
   })
@@ -89,7 +96,7 @@ test('HR: Per kompetensi dan Dampak bisnis', async ({ page }) => {
   await expect(comp).toContainText('RCA & Post-Incident Report')
   await expect(comp).toContainText('Terkonfirmasi')
   await expect(comp).toContainText('Belum diukur')
-  await expect(comp).toContainText('skor modul')
+  await expect(comp).toContainText('skor modul, bukan per kompetensi')
   await page.getByRole('tab', { name: 'Dampak bisnis' }).click()
   const biz = page.getByRole('table', { name: 'Indikator bisnis tim' })
   await expect(biz).toContainText('92 mnt')
@@ -114,6 +121,30 @@ test('HR: Pengukuran AI menjadwalkan wawancara ulang per karyawan', async ({ pag
   await q.getByRole('button', { name: 'Jadwalkan Karyawan A' }).click()
   await expect.poll(() => calls.find((c) => c.url === '/plans/p-1/queue/schedule')?.body).toEqual({ userIds: ['u-a'], date: '2026-11-25' })
   await expect(page.getByTestId('info')).toContainText('1 karyawan dijadwalkan')
+})
+
+test('HR: isi pre dari asesmen DNA dan impor skor untuk rencana yang sedang dibuka', async ({ page }) => {
+  const calls: { method: string; url: string; body: unknown }[] = []
+  await setup(page, {}, calls)
+  await page.goto('/lim')
+  await page.getByRole('tab', { name: 'Per kompetensi' }).click()
+  await page.getByRole('button', { name: 'Isi pre dari asesmen DNA' }).click()
+  await expect(page.getByTestId('info')).toContainText('2 skor pre diisi dari asesmen DNA (level × 25)')
+  expect(calls.some((c) => c.method === 'POST' && c.url === '/plans/p-1/pre-from-dna')).toBe(true)
+  const panel = page.getByTestId('import-panel')
+  await panel.getByLabel('File (.xlsx atau .csv)').setInputFiles({ name: 'skor.csv', mimeType: 'text/csv', buffer: Buffer.from('Nama Kompetensi\nRCA') })
+  await expect(panel.getByLabel('Rencana pengukuran *')).toHaveValue('p-1')
+  await panel.getByRole('button', { name: 'Periksa' }).click()
+  await expect.poll(() => (calls.find((c) => c.url === '/imports/batches/bt-1/preview')?.body as { options?: unknown })?.options).toEqual({ planId: 'p-1' })
+})
+
+test('atasan tidak melihat tombol isian HR', async ({ page }) => {
+  await setup(page, { role: 'supervisor' })
+  await page.goto('/lim')
+  await page.getByRole('tab', { name: 'Per kompetensi' }).click()
+  await expect(page.getByRole('table', { name: 'Kompetensi sampai kinerja' })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Isi pre dari asesmen DNA' })).toHaveCount(0)
+  await expect(page.getByTestId('import-panel')).toHaveCount(0)
 })
 
 test('HR tanpa rencana: membuat rencana dari formulir', async ({ page }) => {

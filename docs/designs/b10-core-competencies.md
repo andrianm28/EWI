@@ -341,7 +341,7 @@ Review diff ulang dengan plugin egm (19 Nov, thread penerus): dua subagent terda
 | E6 | Keputusan tahap 2 belum diputuskan (`in_progress`, isian HR vs sintesis, bentuk ringkasan, ambang responden, tabel tema) | Ditunda: wajib diputuskan di tambahan spek tahap 2 sebelum dibangun (dicatat di PR) |
 | E7 | Fitur selain `/assignments` hanya di balik `module.cca`; `teamOf` memakai peran palsu | Sama dengan D8/D9: keputusan Andrian |
 | E8 | `?group=toString` menghasilkan 500 | Diperbaiki: pemeriksaan own property + test (merah dulu) |
-| E9 | `NOT IN ()` dengan larik kosong di `replaceProgramResults` | Diperbaiki: `<> ALL(uuid[])` |
+| E9 | `NOT IN ()` dengan larik kosong di `replaceProgramResults` | Diperbaiki: `NOT (user_id = ANY(CAST(:userIds AS uuid[])))` |
 | E10 | Batas teks, format tanggal, presisi, persen bulat, `finalScore` ekspor, `biggestGap` null tidak tertulis | Diperbaiki: 6.5, bagian laporan |
 | E11 | Tabel endpoint lebih longgar dari 6.3 soal pembatalan HR | Diperbaiki: bagian 5 |
 | E12 | Tipe `Requirement` web tanpa `actualSource`/`origin` | Diperbaiki |

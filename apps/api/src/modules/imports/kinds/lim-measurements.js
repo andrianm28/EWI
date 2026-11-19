@@ -18,12 +18,12 @@ module.exports = {
     ...EMPLOYEE_FIELDS,
     { key: 'competencyId', header: 'ID Kompetensi', oneOf: 'competency', aliases: ['competency id', 'id kompetensi'], help: 'Isi ini bila nama kompetensi dipakai di lebih dari satu jabatan atau level.' },
     { key: 'competencyName', header: 'Nama Kompetensi', oneOf: 'competency', aliases: ['kompetensi', 'competency', 'nama kompetensi'], example: 'Root Cause Analysis & Post-Incident Report' },
-    { key: 'preScore', header: 'Skor Pre', aliases: ['pre', 'skor sebelum', 'pre test'], example: '52', help: '0-100. Kosong = tidak diubah.' },
+    { key: 'preScore', header: 'Skor Pre', aliases: ['pre', 'skor sebelum', 'pre test'], example: '52', help: 'Bilangan bulat 0-100. Kosong = tidak diubah.' },
     { key: 'postScore', header: 'Skor Post', aliases: ['post', 'skor sesudah', 'post test'], example: '71', help: '0-100, per kompetensi. Kosong = memakai skor modul dari Learning Delivery.' },
     { key: 'performanceScore', header: 'Skor Kinerja', aliases: ['kinerja', 'skor kerja', 'review atasan'], example: '88', help: '0-100. Kosong = tidak diubah.' },
     { key: 'performanceNote', header: 'Catatan Kinerja', aliases: ['catatan', 'catatan atasan'], example: 'Review atasan atas laporan RCA' },
   ],
-  options: [{ key: 'planId', label: 'Rencana pengukuran', type: 'text', required: true }],
+  options: [{ key: 'planId', label: 'Rencana pengukuran', type: 'lim_plan', required: true }],
   checkOptions(o) {
     if (!UUID.test(String(o.planId || ''))) return 'Rencana pengukuran wajib dipilih';
     return null;
@@ -63,7 +63,7 @@ module.exports = {
     for (const [f, label] of SCORES) {
       if (v.blank(row[f])) continue;
       const n = Number(String(row[f]).replace(',', '.'));
-      if (!Number.isFinite(n) || n < 0 || n > 100) return { error: `${label} harus angka 0-100` };
+      if (!Number.isInteger(n) || n < 0 || n > 100) return { error: `${label} harus bilangan bulat 0–100` };
       value[f] = n;
     }
     if (!v.blank(row.performanceNote)) {

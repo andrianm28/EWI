@@ -8,6 +8,7 @@ import { useSessionStore } from '@/stores/session'
 import { UiButton, UiCard, UiDataTable, UiNote, UiStatus, UiTabs, type UiColumn } from '@/ui'
 import { lim, type CompetencyRow, type Indicator, type Overview, type PlanSummary, type QueueRow } from './api'
 import { COVERAGE, PITFALLS, PRINCIPLE, QUESTIONS, QUEUE_STATUS, STRENGTH, VERDICT, WINDOW, score, tanggal, targetText, withUnit } from './labels'
+import ImportPanel from '@/components/ImportPanel.vue'
 import PlanForm from './PlanForm.vue'
 
 const session = useSessionStore()
@@ -50,6 +51,16 @@ async function created(id: string) {
   await loadPlans(id)
 }
 
+async function preFromDna() {
+  error.value = ''; notice.value = ''; busy.value = true
+  try {
+    const { data: r } = await lim.preFromDna(planId.value)
+    notice.value = r.filled ? `${r.filled} skor pre diisi dari asesmen DNA (level × 25).` : 'Tidak ada skor pre baru: yang kosong tidak punya asesmen DNA sebelum mulai belajar.'
+    await loadOverview()
+  } catch (e) { error.value = msg(e, 'Skor pre tidak bisa diisi') } finally { busy.value = false }
+}
+const currentPlan = computed(() => (plans.value ?? []).filter((p) => p.id === planId.value).map((p) => ({ id: p.id, name: p.title })))
+
 const pending = computed(() => (queue.value ?? []).filter((r) => r.status === 'none' && (r.window === 'due' || r.window === 'late')))
 async function schedule(userIds: string[], when: string | null) {
   error.value = ''; notice.value = ''
@@ -70,10 +81,12 @@ const COMP_COLS: UiColumn[] = [
   { key: 'name', label: 'Kompetensi', sortable: true }, { key: 'pre', label: 'Pre', align: 'right', sortable: true }, { key: 'post', label: 'Post', align: 'right', sortable: true },
   { key: 'reinterview', label: 'Wawancara ulang', align: 'right', sortable: true }, { key: 'performance', label: 'Kinerja', align: 'right', sortable: true }, { key: 'verdict', label: 'Kesimpulan' },
 ]
-const BIZ_COLS: UiColumn[] = [
-  { key: 'name', label: 'Indikator (tim)' }, { key: 'baseline', label: 'Sebelum', align: 'right' }, { key: 'current', label: 'Sesudah', align: 'right' },
+const BIZ_COLS = computed<UiColumn[]>(() => [
+  { key: 'name', label: 'Indikator (tim)' },
+  { key: 'baseline', label: data.value?.plan.baselineLabel ? `Sebelum (${data.value.plan.baselineLabel})` : 'Sebelum', align: 'right' },
+  { key: 'current', label: data.value?.plan.afterLabel ? `Sesudah (${data.value.plan.afterLabel})` : 'Sesudah', align: 'right' },
   { key: 'target', label: 'Target', align: 'right' }, { key: 'strength', label: 'Kekuatan bukti' },
-]
+])
 const QUEUE_COLS: UiColumn[] = [
   { key: 'name', label: 'Karyawan', sortable: true }, { key: 'competencies', label: 'Kompetensi' }, { key: 'status', label: 'Status' },
   { key: 'dueFrom', label: 'Jadwal', sortable: true }, { key: 'aksi', label: 'Tindakan' },
@@ -143,7 +156,7 @@ const chainLabel = (r: Record<string, unknown>) => `${r.level} · ${r.label}`
           <template #cell-pre="{ row }"><span class="el-mono">{{ score(C(row).pre) }}</span><div class="el-muted lim-small">n={{ C(row).preN }}</div></template>
           <template #cell-post="{ row }">
             <span class="el-mono">{{ score(C(row).post) }}</span><div class="el-muted lim-small">n={{ C(row).postN }}</div>
-            <div v-if="C(row).postShared" class="el-muted lim-small">skor modul</div>
+            <div v-if="C(row).postShared" class="el-muted lim-small">skor modul, bukan per kompetensi</div>
             <div v-if="C(row).postUnauditable" class="el-muted lim-small">{{ C(row).postUnauditable }} dari vendor</div>
           </template>
           <template #cell-reinterview="{ row }"><span class="el-mono">{{ score(C(row).reinterview) }}</span><div class="el-muted lim-small">n={{ C(row).reinterviewN }}</div></template>
@@ -151,10 +164,18 @@ const chainLabel = (r: Record<string, unknown>) => `${r.level} · ${r.label}`
           <template #cell-verdict="{ row }"><UiStatus :tone="VERDICT[C(row).verdict].tone">{{ VERDICT[C(row).verdict].text }}</UiStatus></template>
         </UiDataTable>
         <p class="el-muted lim-small lim-gap">"Skor modul" berarti skor post satu modul dipakai untuk beberapa kompetensi. Kesimpulan memakai rata-rata wawancara ulang (ambang 70); yang belum diwawancara ulang ditandai "Belum diukur".</p>
+        <template v-if="isHr">
+          <UiCard tonal class="lim-gap" as="section" aria-label="Isi skor pre">
+            <h2 class="el-h3">Skor pre dari asesmen DNA</h2>
+            <p class="el-muted lim-small">Mengisi skor pre yang masih kosong dari asesmen DNA terakhir sebelum karyawan mulai belajar (level × 25). Skor yang sudah diisi tidak ditimpa.</p>
+            <UiButton variant="tonal" size="sm" :disabled="busy" @click="preFromDna">Isi pre dari asesmen DNA</UiButton>
+          </UiCard>
+          <ImportPanel submodule="lim" :plans="currentPlan" class="lim-gap" @imported="loadOverview" />
+        </template>
       </div>
 
       <div v-else-if="tab === 'bisnis'" id="lim-panel-bisnis" role="tabpanel" aria-labelledby="lim-tab-bisnis">
-        <UiDataTable :columns="BIZ_COLS" :rows="data.indicators.map(asRow)" row-key="id" caption="Indikator bisnis tim" caption-hidden empty-text="Belum ada indikator tim. HR menambahkannya lewat API atau impor.">
+        <UiDataTable :columns="BIZ_COLS" :rows="data.indicators.map(asRow)" row-key="id" caption="Indikator bisnis tim" caption-hidden empty-text="Belum ada indikator tim untuk rencana ini.">
           <template #cell-name="{ row }"><b>{{ I(row).name }}</b><div class="el-muted lim-small">{{ I(row).source ?? 'Sumber belum diisi' }} · {{ I(row).level === 'performance' ? 'kinerja' : 'hasil bisnis' }}</div></template>
           <template #cell-baseline="{ row }"><span class="el-mono">{{ withUnit(I(row).baseline, I(row).unit) }}</span></template>
           <template #cell-current="{ row }"><span class="el-mono">{{ withUnit(I(row).current, I(row).unit) }}</span></template>

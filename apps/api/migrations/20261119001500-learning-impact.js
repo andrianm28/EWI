@@ -81,11 +81,16 @@ module.exports = {
         UNIQUE (plan_id, user_id, competency_id)
       );
       CREATE INDEX lim_measurements_user_idx ON lim_measurements (tenant_id, user_id);
+      -- FK CASCADE dari users/lna_competencies dan join pelatihan per modul (review diff egm)
+      CREATE INDEX lim_measurements_user_fk_idx ON lim_measurements (user_id);
+      CREATE INDEX lim_measurements_competency_idx ON lim_measurements (competency_id);
+      CREATE INDEX ld_trainings_lim_module_idx ON ld_trainings (tenant_id, module_id);
     `);
   },
   async down(qi) {
     await qi.sequelize.query(`
       SET search_path TO "${S}";
+      DROP INDEX IF EXISTS ld_trainings_lim_module_idx;
       DROP TABLE IF EXISTS lim_measurements;
       DROP TABLE IF EXISTS lim_indicators;
       DROP TABLE IF EXISTS lim_plan_modules;

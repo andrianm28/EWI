@@ -12,13 +12,31 @@ describe('skor post terbaru per karyawan per kompetensi', () => {
       ld({ userId: 'b', score: 50, completedOn: '2026-10-01', createdAt: '2026-09-01T00:00:00Z', id: '4' }),
       ld({ userId: 'b', score: 55, completedOn: '2026-10-01', createdAt: '2026-09-02T00:00:00Z', id: '5' }),
     ]);
-    expect(m.get('a|k1')).toEqual({ score: 80, auditable: true, completedOn: '2026-10-05' });
+    expect(m.get('a|k1')).toEqual({ score: 80, auditable: true, completedOn: '2026-10-05', shared: false });
     expect(m.get('b|k1').score).toBe(55);
+  });
+
+  it('seri created_at berupa Date dari Postgres dibandingkan menurut waktu, bukan teks (review diff egm)', () => {
+    // Selasa 3 Nov lebih awal dari Kamis 5 Nov; sebagai teks "Tue" > "Thu" sehingga skor lama menang
+    const m = lim.latestPost([
+      ld({ score: 50, createdAt: new Date('2026-11-03T00:00:00Z'), id: '9' }),
+      ld({ score: 77, createdAt: new Date('2026-11-05T00:00:00Z'), id: '1' }),
+    ]);
+    expect(m.get('a|k1').score).toBe(77);
+  });
+
+  it('shared diambil dari baris pemenang (modul dengan lebih dari satu kompetensi)', () => {
+    const m = lim.latestPost([
+      ld({ score: 60, moduleCompetencies: 3, completedOn: '2026-09-01' }),
+      ld({ score: 80, moduleCompetencies: 1, completedOn: '2026-10-05', id: '2' }),
+    ]);
+    expect(m.get('a|k1')).toMatchObject({ score: 80, shared: false });
+    expect(lim.latestPost([ld({ moduleCompetencies: 2 })]).get('a|k1').shared).toBe(true);
   });
 
   it('skor vendor_manual ditandai tidak teraudit; tanpa tanggal tetap dipakai bila satu-satunya', () => {
     const m = lim.latestPost([ld({ scoreSource: 'vendor_manual', completedOn: null })]);
-    expect(m.get('a|k1')).toEqual({ score: 70, auditable: false, completedOn: null });
+    expect(m.get('a|k1')).toEqual({ score: 70, auditable: false, completedOn: null, shared: false });
   });
 });
 
@@ -122,6 +140,11 @@ describe('antrean wawancara ulang (satu baris per karyawan)', () => {
   it('hanya pasangan dengan skor post Learning Delivery; tanpa tanggal = window null', () => {
     const q = lim.buildQueue([p('a', 'k1', { postFromLd: false }), p('b', 'k1', { postCompletedOn: null })], TODAY);
     expect(q.map((r) => [r.userId, r.window, r.dueFrom])).toEqual([['b', null, null]]);
+  });
+
+  it('tanggal selesai = terbaru di antara yang diketahui; NULL hanya bila semua kompetensi tanpa tanggal (review diff egm)', () => {
+    const q = lim.buildQueue([p('a', 'k1', { postCompletedOn: '2026-10-10' }), p('a', 'k2', { postCompletedOn: null })], TODAY);
+    expect(q[0]).toMatchObject({ postCompletedOn: '2026-10-10', dueFrom: '2026-11-07', window: 'due' });
   });
 
   it('status: done bila semua done (skor rata-rata), scheduled bila ada yang dijadwalkan; urutan late, due, early', () => {

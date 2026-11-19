@@ -6,7 +6,7 @@ export const COVERAGE: Record<Coverage, { text: string; tone: Tone }> = {
   measured: { text: 'Terukur', tone: 'success' }, partial: { text: 'Sebagian', tone: 'warning' }, missing: { text: 'Belum ada data', tone: 'neutral' },
 }
 export const VERDICT: Record<Verdict, { text: string; tone: Tone }> = {
-  terkonfirmasi: { text: 'Terkonfirmasi', tone: 'success' }, retensi_turun: { text: 'Retensi turun', tone: 'critical' }, belum_diukur: { text: 'Belum diukur', tone: 'neutral' },
+  terkonfirmasi: { text: 'Terkonfirmasi', tone: 'success' }, retensi_turun: { text: 'Retensi turun, perlu penguatan', tone: 'critical' }, belum_diukur: { text: 'Belum diukur', tone: 'neutral' },
 }
 export const STRENGTH: Record<Strength, { text: string; tone: Tone }> = {
   strong: { text: 'Indikasi kuat', tone: 'success' }, moderate: { text: 'Indikasi sedang', tone: 'info' },

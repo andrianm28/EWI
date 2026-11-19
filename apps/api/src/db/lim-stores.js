@@ -179,17 +179,22 @@ function createLimStores(sequelize) {
           WHERE tenant_id = :tenantId AND plan_id = :planId AND user_id = :userId AND reinterview_status = 'scheduled'`, { tenantId, planId, userId, by });
         return;
       }
-      for (const competencyId of competencyIds) {
-        await write(`INSERT INTO lim_measurements (tenant_id, plan_id, user_id, competency_id, reinterview_status, reinterview_on, updated_by)
-            VALUES (:tenantId, :planId, :userId, :competencyId, 'scheduled', :date, :by)
-          ON CONFLICT (plan_id, user_id, competency_id) DO UPDATE SET reinterview_status = 'scheduled', reinterview_on = :date, updated_by = :by, updated_at = now()
-          WHERE lim_measurements.reinterview_status <> 'done'`, { tenantId, planId, userId, competencyId, date, by });
-      }
+      // satu karyawan = satu wawancara: semua kompetensinya terjadwal bersama atau tidak sama sekali
+      await tx(async (t) => {
+        for (const competencyId of competencyIds) {
+          await write(`INSERT INTO lim_measurements (tenant_id, plan_id, user_id, competency_id, reinterview_status, reinterview_on, updated_by)
+              VALUES (:tenantId, :planId, :userId, :competencyId, 'scheduled', :date, :by)
+            ON CONFLICT (plan_id, user_id, competency_id) DO UPDATE SET reinterview_status = 'scheduled', reinterview_on = :date, updated_by = :by, updated_at = now()
+            WHERE lim_measurements.reinterview_status <> 'done'`, { tenantId, planId, userId, competencyId, date, by }, t);
+        }
+      });
     },
     /** Sambungan mesin wawancara (tahap 3): catat hasil wawancara ulang satu pasangan. */
     async recordReinterview(tenantId, planId, userId, competencyId, { score, sessionId = null }) {
       await write(`INSERT INTO lim_measurements (tenant_id, plan_id, user_id, competency_id, reinterview_status, reinterview_score, reinterview_session_id)
           SELECT :tenantId, p.id, :userId, :competencyId, 'done', :score, :sessionId FROM lim_plans p WHERE p.tenant_id = :tenantId AND p.id = :planId
+            AND EXISTS (SELECT 1 FROM users u WHERE u.id = :userId AND u.tenant_id = :tenantId)
+            AND EXISTS (SELECT 1 FROM lna_competencies c WHERE c.id = :competencyId AND c.tenant_id = :tenantId)
         ON CONFLICT (plan_id, user_id, competency_id) DO UPDATE SET reinterview_status = 'done', reinterview_score = :score,
           reinterview_session_id = :sessionId, updated_at = now()`, { tenantId, planId, userId, competencyId, score, sessionId });
     },

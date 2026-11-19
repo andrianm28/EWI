@@ -41,7 +41,7 @@ function optDate(v, label) {
   if (!lim.validDate(String(v))) throw badRequest(`${label} harus berformat YYYY-MM-DD`);
   return String(v);
 }
-const scoreOk = (v) => v === undefined || v === null || (typeof v === 'number' && Number.isFinite(v) && v >= 0 && v <= 100);
+const scoreOk = (v) => v === undefined || v === null || (Number.isInteger(v) && v >= 0 && v <= 100); // spek 5.1: bilangan bulat
 
 /** Validasi field rencana (POST: semua wajib kecuali yang opsional; PATCH: hanya yang dikirim). */
 async function planFields(body, { stores, tenantId, create }) {
@@ -120,7 +120,6 @@ module.exports = {
       for (const m of saved) if (inTeam(m.userId)) people.set(m.userId, { userId: m.userId, name: m.name, jobRoleName: m.jobRoleName });
       const scored = parts.filter((p) => present(p.score) && p.competencyId && compIds.has(p.competencyId) && inTeam(p.userId));
       const posts = lim.latestPost(scored);
-      const shared = new Map(scored.map((p) => [lim.key(p.userId, p.competencyId), p]));
       const savedBy = new Map(saved.map((m) => [lim.key(m.userId, m.competencyId), m]));
       const starts = new Map();
       for (const p of parts) if (!starts.has(p.userId) || p.startedOn < starts.get(p.userId)) starts.set(p.userId, p.startedOn);
@@ -131,7 +130,6 @@ module.exports = {
           const k = lim.key(person.userId, c.id);
           const m = savedBy.get(k); const ld = posts.get(k);
           if (!m && !ld) continue;
-          const latest = ld ? scored.filter((p) => lim.key(p.userId, p.competencyId) === k).find((p) => (p.completedOn || null) === ld.completedOn) || shared.get(k) : null;
           const own = m && present(m.postScore);
           rows.push({
             userId: person.userId, name: person.name, jobRoleName: m?.jobRoleName ?? null, competencyId: c.id, competencyName: c.name,
@@ -139,7 +137,7 @@ module.exports = {
             post: own ? m.postScore : ld ? ld.score : null,
             postSource: own ? m.postSource : ld ? 'ld' : null,
             postAuditable: own ? true : ld ? ld.auditable : true,
-            postShared: own ? false : !!(latest && latest.moduleCompetencies > 1),
+            postShared: own ? false : !!(ld && ld.shared),
             postFromLd: !!ld, postCompletedOn: ld ? ld.completedOn : null,
             reinterview: m?.reinterviewStatus === 'done' ? m.reinterviewScore : null,
             reinterviewStatus: m?.reinterviewStatus || 'none', reinterviewOn: m?.reinterviewOn ?? null, reinterviewScore: m?.reinterviewScore ?? null,
@@ -188,13 +186,16 @@ module.exports = {
       res.json({ data: await stores.lim.getPlan(req.tenantId, req.params.id) });
     }));
 
+    const decorateInd = (i) => ({ ...i, ...lim.indicatorState(i) });
     r.get('/plans/:id/overview', idParam, wrap(async (req, res) => {
       const plan = await loadPlan(req);
       const team = await teamOf(req);
       const [{ competencies, people, rows, activity }, rawIndicators] = await Promise.all([
         planData(req.tenantId, plan, team), stores.lim.listIndicators(req.tenantId, plan.id),
       ]);
-      const indicators = rawIndicators.map((i) => ({ ...i, ...lim.indicatorState(i) }));
+      // atasan tanpa anggota tim di rencana: sama dengan GET /plans yang menyembunyikannya
+      if (team && !people.length) throw notFound('Rencana pengukuran tidak ditemukan');
+      const indicators = rawIndicators.map(decorateInd);
       const chain = lim.buildChain({ participants: people.map((p) => p.userId), activity, rows, indicators });
       res.json({ data: {
         plan, participants: people.length, chain, insight: lim.buildInsight(chain),
@@ -228,7 +229,6 @@ module.exports = {
       }
       return v;
     }
-    const decorateInd = (i) => ({ ...i, ...lim.indicatorState(i) });
     r.post('/plans/:id/indicators', hr, idParam, wrap(async (req, res) => {
       const plan = await loadPlan(req);
       const v = indicatorFields(req.body || {}, true);
@@ -246,7 +246,7 @@ module.exports = {
     }));
     r.delete('/indicators/:id', hr, idParam, wrap(async (req, res) => {
       if (!(await stores.lim.deleteIndicator(req.tenantId, req.params.id))) throw notFound('Indikator tidak ditemukan');
-      await audit.record(req, 'update', 'lim.indicator', { indicatorId: req.params.id, deleted: true });
+      await audit.record(req, 'delete', 'lim.indicator', { indicatorId: req.params.id });
       res.status(204).end();
     }));
 
@@ -275,11 +275,12 @@ module.exports = {
       for (const [index, e] of entries.entries()) {
         const msg = (() => {
           if (!e || typeof e !== 'object') return 'Baris tidak valid';
-          if (!members.has(String(e.userId))) return 'Karyawan bukan peserta rencana ini';
+          // cek tim lebih dulu: atasan tidak boleh bisa menebak siapa peserta rencana di luar timnya
           if (team && !team.has(e.userId)) return 'Karyawan bukan anggota tim Anda';
+          if (!members.has(String(e.userId))) return 'Karyawan bukan peserta rencana ini';
           if (!comps.has(String(e.competencyId))) return 'Kompetensi bukan bagian rencana ini';
           if (team && (e.preScore !== undefined || e.postScore !== undefined)) return 'Atasan hanya mengisi skor kinerja';
-          if (![e.preScore, e.postScore, e.performanceScore].every(scoreOk)) return 'Skor harus bilangan 0-100';
+          if (![e.preScore, e.postScore, e.performanceScore].every(scoreOk)) return 'Skor harus bilangan bulat 0–100';
           if (present(e.performanceNote) && String(e.performanceNote).length > 500) return 'Catatan kinerja paling panjang 500 karakter';
           return null;
         })();
@@ -309,7 +310,7 @@ module.exports = {
       }
       let filled = 0;
       for (const a of best.values()) {
-        if (await stores.lim.upsertMeasurement(req.tenantId, plan.id, a.userId, a.competencyId, { preScore: a.score * 25 }, { source: 'dna', by: req.user.id, onlyEmptyPre: true })) filled += 1;
+        if (await stores.lim.upsertMeasurement(req.tenantId, plan.id, a.userId, a.competencyId, { preScore: a.score * lim.DNA_LEVEL_TO_SCORE }, { source: 'dna', by: req.user.id, onlyEmptyPre: true })) filled += 1;
       }
       if (filled) await audit.record(req, 'update', 'lim.measurement', { planId: plan.id, preFromDna: filled });
       res.json({ data: { filled } });

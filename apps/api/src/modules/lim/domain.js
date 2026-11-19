@@ -3,6 +3,7 @@
 // Tidak ada klaim sebab-akibat: fungsi di sini hanya menyusun garis bukti dan tempat rantai putus.
 
 const RETENTION_MIN = 70; // ambang mockup (fungsi verd), sama dengan skor lulus 5C
+const DNA_LEVEL_TO_SCORE = 25; // level asesmen DNA 1-4 ke skala 0-100 (spek 4: "level × 25")
 const present = (v) => v !== null && v !== undefined;
 const avg = (list) => (list.length ? Math.round(list.reduce((s, v) => s + Number(v), 0) / list.length) : null);
 const key = (userId, competencyId) => `${userId}|${competencyId}`;
@@ -10,12 +11,14 @@ const key = (userId, competencyId) => `${userId}|${competencyId}`;
 /**
  * Skor post Learning Delivery terbaru per (karyawan, kompetensi).
  * rows: [{ userId, competencyId, score, scoreSource, completedOn (YYYY-MM-DD|null), createdAt, id }]
- * Return Map key "user|kompetensi" -> { score, auditable, completedOn }.
+ * Return Map key "user|kompetensi" -> { score, auditable, completedOn, shared } (shared: skor modul dipakai >1 kompetensi).
  */
 function latestPost(rows) {
+  // created_at dari Postgres berupa Date; String(Date) diawali nama hari, jadi bandingkan waktunya
+  const ms = (v) => (v instanceof Date ? v.getTime() : Date.parse(v) || 0);
   const better = (a, b) => {
     if ((a.completedOn || '') !== (b.completedOn || '')) return (a.completedOn || '') > (b.completedOn || '');
-    if (String(a.createdAt) !== String(b.createdAt)) return String(a.createdAt) > String(b.createdAt);
+    if (ms(a.createdAt) !== ms(b.createdAt)) return ms(a.createdAt) > ms(b.createdAt);
     return String(a.id) > String(b.id);
   };
   const best = new Map();
@@ -24,7 +27,7 @@ function latestPost(rows) {
     if (!best.has(k) || better(r, best.get(k))) best.set(k, r);
   }
   const out = new Map();
-  for (const [k, r] of best) out.set(k, { score: Math.round(Number(r.score)), auditable: r.scoreSource !== 'vendor_manual', completedOn: r.completedOn || null });
+  for (const [k, r] of best) out.set(k, { score: Math.round(Number(r.score)), auditable: r.scoreSource !== 'vendor_manual', completedOn: r.completedOn || null, shared: (r.moduleCompetencies || 0) > 1 });
   return out;
 }
 
@@ -157,8 +160,8 @@ function buildQueue(pairs, today) {
     byUser.get(x.userId).push(x);
   }
   const rows = [...byUser.values()].map((list) => {
-    const dates = list.map((x) => x.postCompletedOn);
-    const completed = dates.some((d) => !d) ? null : dates.sort().at(-1);
+    // terbaru di antara tanggal yang diketahui; NULL hanya bila semua tanpa tanggal (spek 4: NULL = paling lama)
+    const completed = list.map((x) => x.postCompletedOn).filter(Boolean).sort().at(-1) || null;
     const done = list.every((x) => x.reinterviewStatus === 'done');
     const sched = list.find((x) => x.reinterviewStatus === 'scheduled');
     const status = done ? 'done' : sched ? 'scheduled' : 'none';
@@ -188,5 +191,5 @@ function checkScheduleDate(date, today) {
 }
 
 module.exports = {
-  RETENTION_MIN, latestPost, verdict, summarizeCompetencies, indicatorState, buildChain, buildInsight, buildQueue, checkScheduleDate, validDate, key,
+  RETENTION_MIN, DNA_LEVEL_TO_SCORE, latestPost, verdict, summarizeCompetencies, indicatorState, buildChain, buildInsight, buildQueue, checkScheduleDate, validDate, key,
 };
