@@ -7,6 +7,7 @@ const crypto = require('crypto');
 const express = require('express');
 const { badRequest, unauthorized } = require('../errors');
 const { requireRole, ROLES } = require('../rbac');
+const { limitByIp } = require('./rate-limit');
 
 const TTL = { login: 15 * 60 * 1000, invite: 7 * 24 * 60 * 60 * 1000 };
 const RATE = { windowMs: 15 * 60 * 1000, max: 3 };
@@ -51,28 +52,34 @@ function createEmailLinkService({ stores, mailer, appBaseUrl, now = () => new Da
   };
 }
 
-/** Rute publik: minta link & tukar token. */
-function emailLinkRoutes({ users, links, tokens, audit }) {
+/**
+ * Rute publik: minta link & tukar token.
+ * PK-16: batas per akun (RATE, di database) ditambah batas per IP (`limits.linkIp`, `limits.verifyIp`);
+ * kebijakan login (daftar email Admin ETA) dicek saat link dikirim dan saat ditukar; penukaran membuat sesi.
+ */
+function emailLinkRoutes({ users, links, sessions, policy, audit, limits }) {
   const r = express.Router();
   const GENERIC = 'Bila email terdaftar di organisasi ini, link masuk sudah dikirim. Periksa kotak masuk Anda.';
+  const INVALID = 'Link masuk tidak valid, sudah dipakai, atau kedaluwarsa. Minta link baru.';
 
-  r.post('/', wrap(async (req, res) => {
+  r.post('/', limitByIp(limits.linkIp, 'link'), wrap(async (req, res) => {
     const { tenant, email } = req.body || {};
     if (!tenant || !email) throw badRequest('Organisasi dan email wajib diisi');
     const user = await users.findByEmail(String(tenant).trim(), String(email).trim().toLowerCase());
-    // Jawaban sama untuk email terdaftar atau tidak (mencegah enumerasi akun)
-    if (user && (await links.recentCount(user)) < RATE.max) {
+    // Jawaban sama untuk email terdaftar atau tidak, atau tidak diizinkan (mencegah enumerasi akun)
+    if (user && policy.allows(user) && (await links.recentCount(user)) < RATE.max) {
       await links.issue(user, 'login', { tenantName: users.tenantName ? await users.tenantName(user.tenantId) : null });
     }
     res.status(202).json({ message: GENERIC });
   }));
 
-  r.post('/verify', wrap(async (req, res) => {
+  r.post('/verify', limitByIp(limits.verifyIp, 'verify'), wrap(async (req, res) => {
     const user = await links.consume((req.body || {}).token);
-    if (!user) throw unauthorized('Link masuk tidak valid, sudah dipakai, atau kedaluwarsa. Minta link baru.');
+    if (!user || !policy.allows(user)) throw unauthorized(INVALID);
+    const { token } = await sessions.issue(user, { method: 'email_link', ip: req.ip, userAgent: req.get('user-agent') });
     await audit.record({ tenantId: user.tenantId, user }, 'login', 'auth.email_link', { purpose: user.purpose });
     const pub = { id: user.id, tenantId: user.tenantId, email: user.email, name: user.name, role: user.role };
-    res.json({ token: tokens.sign(user), user: pub });
+    res.json({ token, user: pub });
   }));
 
   return r;

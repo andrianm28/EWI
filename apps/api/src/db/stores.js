@@ -28,6 +28,62 @@ function tenantKeyStore(sequelize) {
   };
 }
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/** Sesi login (PK-16). Sesi hanya berlaku bila belum dicabut, belum kedaluwarsa, user tidak nonaktif, tenant aktif. */
+function authSessionStore(q) {
+  return {
+    async create({ id, tenantId, userId, method, expiresAt, ip, userAgent }) {
+      await q(
+        `INSERT INTO auth_sessions (id, tenant_id, user_id, method, expires_at, ip, user_agent)
+         VALUES (:id, :tenantId, :userId, :method, :expiresAt, :ip, :userAgent)`,
+        { id, tenantId, userId, method, expiresAt, ip, userAgent }, QueryTypes.INSERT,
+      );
+    },
+    async findActive(id) {
+      if (!UUID_RE.test(String(id))) return null;
+      const [row] = await q(
+        `SELECT s.id, s.tenant_id AS "tenantId", s.user_id AS "userId"
+           FROM auth_sessions s JOIN users u ON u.id = s.user_id AND u.tenant_id = s.tenant_id
+           JOIN tenants t ON t.id = s.tenant_id
+          WHERE s.id = :id AND s.revoked_at IS NULL AND s.expires_at > now()
+            AND u.status <> 'disabled' AND t.status = 'active'`,
+        { id },
+      );
+      return row || null;
+    },
+    async revoke(id, { revokedBy = null, reason = null } = {}) {
+      if (!UUID_RE.test(String(id))) return false;
+      const rows = await q(
+        `UPDATE auth_sessions SET revoked_at = now(), revoked_by = :revokedBy, revoke_reason = :reason
+          WHERE id = :id AND revoked_at IS NULL RETURNING id`,
+        { id, revokedBy, reason },
+      );
+      return rows.length > 0;
+    },
+    async revokeAllForUser(tenantId, userId, { revokedBy = null, reason = null, exceptId = null } = {}) {
+      if (!UUID_RE.test(String(userId))) return 0;
+      const rows = await q(
+        `UPDATE auth_sessions SET revoked_at = now(), revoked_by = :revokedBy, revoke_reason = :reason
+          WHERE tenant_id = :tenantId AND user_id = :userId AND revoked_at IS NULL
+            AND (CAST(:exceptId AS uuid) IS NULL OR id <> CAST(:exceptId AS uuid))
+          RETURNING id`,
+        { tenantId, userId, revokedBy, reason, exceptId },
+      );
+      return rows.length;
+    },
+    async listActiveForUser(tenantId, userId) {
+      return q(
+        `SELECT id, method, created_at AS "createdAt", expires_at AS "expiresAt", ip, user_agent AS "userAgent"
+           FROM auth_sessions
+          WHERE tenant_id = :tenantId AND user_id = :userId AND revoked_at IS NULL AND expires_at > now()
+          ORDER BY created_at DESC`,
+        { tenantId, userId },
+      );
+    },
+  };
+}
+
 /**
  * encryption: config.encryption (R2-3). Tanpa config hanya boleh di test (kunci lokal acak per proses).
  */
@@ -100,6 +156,8 @@ function createStores(sequelize, { encryption } = {}) {
         return row || null;
       },
     },
+    // PK-16: sesi login yang bisa dicabut
+    authSessions: authSessionStore(q),
     flags: {
       async getTenantFlags(tenantId) {
         const rows = await q('SELECT key, enabled FROM feature_flags WHERE tenant_id = :tenantId', { tenantId });

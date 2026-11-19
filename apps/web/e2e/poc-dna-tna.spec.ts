@@ -24,6 +24,7 @@ async function mockImports(page: Page) {
 
 async function loginAs(page: Page, role: string, id = 'u-1', extraFlags: Record<string, boolean> = {}) {
   await mockImports(page)
+  await page.route('**/api/auth/methods', (r) => r.fulfill({ json: { password: true, emailLink: true } }))
   await page.route('**/api/auth/login', (r) => r.fulfill({ json: { token: 't', user: { id, tenantId: 't-1', email: `${role}@demo.test`, role } } }))
   await page.route('**/api/me/access', (r) => r.fulfill({ json: { ...ACCESS, flags: { ...ACCESS.flags, ...extraFlags } } }))
   await page.route('**/api/auth/me', (r) => r.fulfill({ json: { user: { id, tenantId: 't-1', email: `${role}@demo.test`, role } } }))

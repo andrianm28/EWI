@@ -20,7 +20,7 @@ router.beforeEach(async (to) => {
   if (to.meta.public) return true
   if (!session.isAuthenticated) return { name: 'login' }
   if (!session.access) {
-    try { await session.loadAccess() } catch { session.logout(); return { name: 'login' } }
+    try { await session.loadAccess() } catch { session.clear(); return { name: 'login', query: { alasan: 'sesi-habis', ke: to.fullPath } } }
   }
   const key = (to.meta.submodule ?? to.params.key) as SubmoduleKey | undefined
   if (key && !session.canOpen(key)) return { name: 'home' }
