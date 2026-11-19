@@ -26,7 +26,7 @@ export interface Session { id: string; projectId: string; intervieweeId: string;
 export interface Turn { speaker: 'ai' | 'human'; text: string; at: string }
 export interface Finding { id: string; userId: string; userName: string | null; title: string; status: string; competencyName: string | null; metricName: string | null; target: number | null; actual: number | null }
 export interface ParetoRow { key: string; label: string; people: number; avgMiss: number; score: number; share: number; cumulativeShare: number }
-export interface PlanItem { id: string; userId: string; userName: string | null; findingTitle: string | null; origin: string; status: string; catalogItemTitle: string | null; needsModule?: boolean; note: string | null }
+export interface PlanItem { id: string; userId: string; userName: string | null; findingTitle: string | null; origin: string; status: string; catalogItemTitle: string | null; catalogItemUrl?: string | null; courseStatus?: string | null; needsModule?: boolean; note: string | null }
 // PM-6: ringkasan temuan di luar pelatihan untuk HR dan atasan yang diberi akses HR (tanpa detail, tanpa rencana aksi)
 export interface NonTrainingGrant { supervisorId: string; supervisorName: string | null; supervisorEmail: string; grantedAt: string; grantedByName: string | null }
 export interface NonTrainingFinding { id: string; userId: string; userName: string | null; title: string; metricName: string | null; linkedTrainingTitle: string | null; createdAt: string }
@@ -74,6 +74,7 @@ export const lna = {
 export const ROLE_LABEL: Record<string, string> = {
   hr_admin: 'HR', supervisor: 'Atasan', learner: 'Karyawan', eta_admin: 'Admin ETA',
 }
+export const COURSE_STATUS_LABEL: Record<string, string> = { passed: 'Lulus', in_progress: 'Berjalan', failed: 'Tidak lulus' }
 // K-3: satu set status rencana (sama dengan apps/api/src/modules/tna/plan-status.js)
 export const PLAN_STATUS_LABEL: Record<string, string> = {
   requested: 'Diminta', new: 'Baru', in_progress: 'Berjalan', completed: 'Selesai', rejected: 'Ditolak',
