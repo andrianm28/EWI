@@ -10,7 +10,7 @@ const run = process.env.DATABASE_URL ? describe : describe.skip;
 
 run('Learning Intervention (Postgres)', () => {
   let db; let app; let stores; let tenant; let other; const u = {}; const tok = {};
-  let role; let comp; let project; let catalogItem; let otherCatalogItem;
+  let role; let comp; let project; let catalogItem; let otherCatalogItem; let inactiveCatalogItem;
   const as = (who) => ({ Authorization: `Bearer ${tok[who]}` });
   const get = (path, who = 'hr') => request(app).get(`/api/li${path}`).set(as(who));
   const post = (path, body, who = 'hr') => request(app).post(`/api/li${path}`).set(as(who)).send(body || {});
@@ -53,6 +53,7 @@ run('Learning Intervention (Postgres)', () => {
     comp = await stores.dna.createCompetency(tenant.id, { jobRoleId: role.id, careerLevelId: null, kind: 'job', name: 'Root Cause Analysis', definition: null, indicators: [], source: 'dacum', requiredScore: 3, importance: 5 });
     [[project]] = await db.query(`INSERT INTO lna_projects (tenant_id, name) VALUES (:t, 'Pilot') RETURNING id`, { replacements: { t: tenant.id } });
     [[catalogItem]] = await db.query(`INSERT INTO lna_catalog_items (tenant_id, source, external_ref, title) VALUES (:t, 'moodle', 'C-1', 'Course RCA') RETURNING id`, { replacements: { t: tenant.id } });
+    [[inactiveCatalogItem]] = await db.query(`INSERT INTO lna_catalog_items (tenant_id, source, external_ref, title, active) VALUES (:t, 'moodle', 'C-OFF', 'Course lama', false) RETURNING id`, { replacements: { t: tenant.id } });
     [[otherCatalogItem]] = await db.query(`INSERT INTO lna_catalog_items (tenant_id, source, external_ref, title) VALUES (:t, 'moodle', 'C-X', 'Course lain') RETURNING id`, { replacements: { t: other.id } });
   });
 
@@ -135,6 +136,9 @@ run('Learning Intervention (Postgres)', () => {
     expect(lib.body.data[0]).toMatchObject({ code: 'ST-A2', priority: { rank: 1, label: 'Root Cause Analysis' } }); // prioritas tampil paling atas
     expect(JSON.stringify(lib.body)).not.toMatch(/Rahasia|Temuan tanpa kompetensi/);
     expect((await get('/modules?priority=pareto')).body.data.map((m) => m.code)).toEqual(['ST-A2']);
+    // aturan 4 CLAUDE.md: gap per karyawan dibaca lewat cakupan visibleEmployeeScope
+    expect((await stores.li.listTrainingGaps(tenant.id, { userIds: [u.dimas] })).map((g) => g.userId)).toEqual([u.dimas]);
+    expect((await stores.li.listTrainingGaps(tenant.id, { all: true })).length).toBe(3);
     // modul TNA mati -> prioritas tidak tersedia, library tetap jalan
     await db.query(`UPDATE feature_flags SET enabled = false WHERE tenant_id = :t AND key = 'module.tna'`, { replacements: { t: tenant.id } });
     expect((await get('/modules')).body.pareto).toMatchObject({ available: false, count: 0 });
@@ -152,10 +156,12 @@ run('Learning Intervention (Postgres)', () => {
 
     const rid = made.body.data.id;
     expect((await patch(`/requests/${rid}`, { status: 'installed' })).body.error.code).toBe('INVALID_TRANSITION');
+    for (const body of [{}, { status: 'apa' }]) expect((await patch(`/requests/${rid}`, body)).status).toBe(400); // status kosong/tidak dikenal: salah isi, bukan konflik
     expect((await patch(`/requests/${rid}`, { status: 'confirmed', catalogItemId: catalogItem.id })).status).toBe(400);
     expect((await patch(`/requests/${rid}`, { status: 'confirmed' })).body.data.status).toBe('confirmed');
     expect((await patch(`/requests/${rid}`, { status: 'delivered' })).body.data.status).toBe('delivered');
     expect((await patch(`/requests/${rid}`, { status: 'installed', catalogItemId: otherCatalogItem.id })).status).toBe(400); // course tenant lain
+    expect((await patch(`/requests/${rid}`, { status: 'installed', catalogItemId: inactiveCatalogItem.id })).status).toBe(400); // course nonaktif
     const installed = await patch(`/requests/${rid}`, { status: 'installed', catalogItemId: catalogItem.id });
     expect(installed.body.data).toMatchObject({ status: 'installed' });
     expect(installed.body.data.installedAt).toBeTruthy();
@@ -225,18 +231,21 @@ run('Learning Intervention (Postgres)', () => {
     // rancangan disetujui belum berarti modul tersedia
     expect((await byCode('ST-A2')).status).toEqual({ key: 'dev_approved', via: 'elgos' });
     expect((await patch(`/modules/${m.id}`, { catalogItemId: otherCatalogItem.id })).status).toBe(400);
+    expect((await patch(`/modules/${m.id}`, { catalogItemId: inactiveCatalogItem.id })).status).toBe(400); // tidak ada di /catalog
     expect((await patch(`/modules/${m.id}`, {})).status).toBe(400);
     expect((await patch(`/modules/${m.id}`, { catalogItemId: catalogItem.id })).body.data.status).toEqual({ key: 'available', via: 'catalog' });
     expect((await patch(`/modules/${m.id}`, { catalogItemId: null })).body.data.status.key).toBe('dev_approved');
     const log = await audits('li.module_draft');
-    expect(log.map((a) => a.meta.to || a.action)).toEqual(['create', 'sme_review', 'returned', 'sme_review', 'approved']);
-    expect(log[4].meta).toMatchObject({ reviewerName: 'Pak Budi (SME)', recordedByHr: true });
+    expect(log.map((a) => a.meta.to || a.action)).toEqual(['create', 'update', 'update', 'sme_review', 'returned', 'sme_review', 'approved']);
+    expect(log[1].meta).toMatchObject({ draftId: d.id, fields: ['objectives'] });
+    expect(log[6].meta).toMatchObject({ reviewerName: 'Pak Budi (SME)', recordedByHr: true });
   });
 
   it('katalog course untuk menautkan modul hanya milik tenant ini', async () => {
     const list = (await get('/catalog')).body.data;
     expect(list.map((c) => c.id)).toContain(catalogItem.id);
     expect(list.map((c) => c.id)).not.toContain(otherCatalogItem.id);
+    expect(list.map((c) => c.id)).not.toContain(inactiveCatalogItem.id);
     expect((await get('/catalog', 'dimas')).status).toBe(403);
   });
 
@@ -261,6 +270,9 @@ run('Learning Intervention (Postgres)', () => {
     for (const who of ['atasan', 'dimas', 'sme']) expect((await get('/modules', who)).status).toBe(403);
     expect((await post('/requests/bulk', { scope: 'pareto' }, 'dimas')).status).toBe(403);
     expect((await get('/drafts', 'dimas')).status).toBe(403);
+    // probe modul: HR dan peninjau (SME) boleh, karyawan tidak
+    expect((await get('/', 'sme')).status).toBe(200);
+    expect((await get('/', 'dimas')).status).toBe(403);
     const m = await byCode('ST-A2');
     expect((await get('/modules', 'luar')).body.data).toEqual([]);
     expect((await get(`/modules/${m.id}`, 'luar')).status).toBe(404);

@@ -28,16 +28,23 @@ onMounted(async () => {
   try { options.value = (await ld.options()).data; form.vendorName = options.value.vendorName } catch { /* form tetap bisa dipakai tanpa pilihan */ }
 })
 
+// Muat ulang bisa terpicu beruntun (pilih pelatihan, daftar berubah). Hanya respons terakhir yang dipakai, dan
+// formulir ubah hanya diisi ulang saat pelatihan yang dibuka berganti, supaya isian HR tidak tertimpa.
+let loadSeq = 0
 async function loadDetail() {
   const id = selected.value ?? props.trainings[0]?.id ?? null
   if (!id) { detail.value = null; return }
+  const seq = ++loadSeq
   try {
-    detail.value = (await ld.detail(id)).data
+    const next = (await ld.detail(id)).data
+    if (seq !== loadSeq) return
+    const switched = detail.value?.id !== next.id
+    detail.value = next
     selected.value = id
-    assessmentRef.value = detail.value.assessmentRef ?? ''
-    const t = detail.value
-    Object.assign(edit, { title: t.title, vendorName: t.vendorName ?? '', venue: t.venue ?? '', startsOn: t.startsOn ?? '', endsOn: t.endsOn ?? '', sessionCount: t.sessionCount ?? 1, sessionsDone: t.sessionsDone ?? 0 })
-    for (const p of detail.value.participantList) scores[p.userId] = p.score == null ? '' : String(p.score)
+    assessmentRef.value = next.assessmentRef ?? ''
+    const t = next
+    if (switched) Object.assign(edit, { title: t.title, vendorName: t.vendorName ?? '', venue: t.venue ?? '', startsOn: t.startsOn ?? '', endsOn: t.endsOn ?? '', sessionCount: t.sessionCount ?? 1, sessionsDone: t.sessionsDone ?? 0 })
+    for (const p of next.participantList) scores[p.userId] = p.score == null ? '' : String(p.score)
   } catch (e) { error.value = e instanceof ApiError ? e.message : 'Pelatihan tidak bisa dimuat' }
 }
 watch([selected, () => props.trainings.length], loadDetail, { immediate: true })

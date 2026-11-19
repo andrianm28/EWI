@@ -42,6 +42,11 @@ services:
     # Secret: DB_PASSWORD (role elgos_app), EWI_JWT_SECRET, AWS_ACCESS_KEY_ID/SECRET (IAM user
     # elgos-<env>-app), ELITEMENTOR_*. Password pemilik DB TIDAK ada di sini (P1-7).
     env_file: ${ELGOS_ENV_FILE:?ELGOS_ENV_FILE wajib}
+    # Kunci service account GCP suara (B19, Gemini Live): berkas host milik uid 1000 (user node),
+    # mode 0400, hanya-baca, tidak masuk image/repo. Dipakai bila .env berisi
+    # GOOGLE_APPLICATION_CREDENTIALS=/run/secrets/gcp-voice.json; tanpa itu berkas kosong diabaikan.
+    volumes:
+      - ${ELGOS_SECRETS_DIR:-/srv/elgos-${ELGOS_ENV}/secrets}/gcp-voice.json:/run/secrets/gcp-voice.json:ro
     environment:
       NODE_ENV: production
       EWI_ENV: ${ELGOS_ENV}

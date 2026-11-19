@@ -80,7 +80,7 @@ module.exports = {
     // --- Persyaratan kompetensi (visi, misi) dan indikator perilaku (nilai korporasi) ---
     r.get('/overview', hr, wrap(async (req, res) => {
       const group = String(req.query.group || 'vm');
-      if (!GROUP_KINDS[group]) throw badRequest('group harus vm atau values');
+      if (!Object.prototype.hasOwnProperty.call(GROUP_KINDS, group)) throw badRequest('group harus vm atau values');
       res.json({ data: buildOverview(await stores.cca.listSources(req.tenantId), group) });
     }));
 

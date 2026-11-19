@@ -3,6 +3,8 @@
 const { QueryTypes } = require('sequelize');
 const crypto = require('crypto');
 const { createLnaStores } = require('./lna-stores');
+const { createTenantAdminStores } = require('./tenant-admin-stores');
+const { createInaStores } = require('./ina-stores');
 const { createCcaStores } = require('./cca-stores');
 const { createFieldCipher, createProvider } = require('../core/crypto');
 const { PRIVILEGED_ROLES, ROLES } = require('../core/rbac/roles');
@@ -235,6 +237,8 @@ function createStores(sequelize, { encryption } = {}) {
       return row;
     },
     ...createLnaStores(sequelize, { cipher }),
+    ...createTenantAdminStores(sequelize),
+    ...createInaStores(sequelize, { cipher }),
     ...createCcaStores(sequelize, { cipher }),
     users: {
       async listActiveTenants() {
@@ -350,11 +354,11 @@ function createStores(sequelize, { encryption } = {}) {
       },
     },
     audit: {
-      async insert(row) {
+      async insert(row, { transaction } = {}) {
         await sequelize.query(
           `INSERT INTO audit_logs (tenant_id, user_id, action, resource, meta, at)
            VALUES (:tenantId, :userId, :action, :resource, CAST(:meta AS jsonb), :at)`,
-          { replacements: { ...row, userId: row.userId || null, meta: JSON.stringify(row.meta || {}) } },
+          { replacements: { ...row, userId: row.userId || null, meta: JSON.stringify(row.meta || {}) }, transaction },
         );
       },
     },

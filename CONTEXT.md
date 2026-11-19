@@ -42,6 +42,10 @@ _Avoid_: non-training needs, temuan non-pelatihan (istilah teknis lama)
 Keadaan gap yang sudah diwawancarai tetapi temuannya belum disetujui HR atau berisi Training Needs dan Improvement Needs sekaligus.
 _Avoid_: pending review
 
+**Ditahan**:
+Keadaan satu temuan yang HR tandai "Perlu ditinjau HR" di layar tinjauan: temuan tetap belum disetujui dan belum terlihat di luar antrean. Berbeda dari keadaan gap **Perlu ditinjau HR**.
+_Avoid_: pending, hold (di teks bebas)
+
 **Belum diwawancarai**:
 Keadaan gap yang belum punya wawancara selesai maupun temuan apa pun.
 _Avoid_: pending, belum dianalisis
@@ -79,3 +83,13 @@ _Avoid_: log platform, audit tenant (itu catatan per tenant)
 **Hitungan percobaan**:
 Jumlah percobaan masuk per jam ke tenant atau akun yang tidak dikenal, tanpa identitas siapa pun.
 _Avoid_: log percobaan, log login
+
+### Privasi karyawan
+
+**Tarik persetujuan**:
+Permintaan karyawan untuk menghentikan wawancara akar masalah yang sudah atau akan ia setujui; datanya tetap tersimpan sampai HR menghapusnya.
+_Avoid_: cabut consent, hapus wawancara
+
+**Permintaan data**:
+Permintaan karyawan atas datanya sendiri yang harus ditindaklanjuti HR: tarik persetujuan atau hapus data.
+_Avoid_: tiket privasi, request DSR

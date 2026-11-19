@@ -2,7 +2,7 @@
 // B14 Learning Delivery: aturan murni (tanpa DB). Spek: docs/designs/b14-learning-delivery.md §4.
 // Baris pelatihan (row) = kolom ld_trainings + hitungan peserta dari store:
 //   { mode, source, status, startsOn, endsOn, venue, sessionCount, sessionsDone, materialsReady, assessmentMode,
-//     participants, completed, avgProgress, attendanceRecorded, present, scored, scoredPresent, inactive, photoDocs, materialDocs }
+//     participants, completed, failed, avgProgress, attendanceRecorded, present, scored, scoredPresent, inactive, photoDocs, materialDocs }
 
 const WATCH_LAG = 15;          // poin progres tertinggal dari jadwal linear
 const READY_WINDOW_DAYS = 7;   // offline yang mulai dalam sekian hari harus sudah siap
@@ -29,8 +29,8 @@ function progressOf(row) {
 function groupOf(row, today) {
   if (row.status === 'cancelled') return 'cancelled';
   if (row.status === 'done') return 'done';
-  // online selesai sendiri saat semua peserta tuntas; offline ditutup HR
-  if (row.mode === 'online' && n(row.participants) > 0 && n(row.completed) >= n(row.participants)) return 'done';
+  // online selesai sendiri saat semua peserta tuntas (selesai atau gagal); offline ditutup HR
+  if (row.mode === 'online' && n(row.participants) > 0 && n(row.completed) + n(row.failed) >= n(row.participants)) return 'done';
   const start = day(row.startsOn);
   if (row.status === 'scheduled' && start && start > today) return 'upcoming';
   return 'running';
@@ -134,14 +134,14 @@ function buildInsights(rows, today) {
     if (action) actions.push({ key: `${action.kind}:${r.id}`, trainingId: r.id, ...action });
   };
   for (const r of rows.filter((x) => ['running', 'upcoming'].includes(x.group))) {
-    const pending = n(r.participants) - n(r.completed);
+    const pending = n(r.participants) - n(r.completed) - n(r.failed); // peserta gagal sudah tuntas, tidak diingatkan
     if (r.health === 'late' && r.mode === 'online') {
       add(r, 'late', `${r.title} tertinggal dari jadwal`, `${pending} dari ${n(r.participants)} peserta belum selesai. Batas ${fmt(r.endsOn)} sudah lewat.`,
         pending > 0 ? { kind: 'remind', title: `Kirim pengingat ke ${pending} peserta ${r.title}`, detail: `Batas ${fmt(r.endsOn)} sudah lewat` } : null);
     } else if (r.health === 'late') {
       add(r, 'late', `${r.title} belum ditutup`, `Tanggal pelatihan ${fmt(r.endsOn)} sudah lewat. Catat sesi, kehadiran, dan asesmen, lalu tandai selesai.`,
         { kind: 'open_training', title: `Lengkapi data ${r.title}`, detail: 'Kehadiran, asesmen, dan status selesai' });
-    } else if (r.mode === 'online' && n(r.inactive) > 0) {
+    } else if (r.mode === 'online' && r.group === 'running' && n(r.inactive) > 0) {
       add(r, 'inactive', `${n(r.inactive)} peserta ${r.title} tidak aktif`, `Tidak ada aktivitas belajar selama ${INACTIVE_DAYS} hari terakhir.`,
         { kind: 'remind', title: `Kirim pengingat ke peserta ${r.title}`, detail: `${n(r.inactive)} peserta tidak aktif ${INACTIVE_DAYS} hari` });
     } else if (r.health === 'watch' && r.mode === 'online') {
@@ -169,6 +169,14 @@ const str = (v, max) => (v === null || v === undefined ? '' : String(v).trim().s
 const pct = (v) => (v === null || v === undefined || v === '' ? null : Number(v));
 const inRange = (v) => v === null || (Number.isFinite(v) && v >= 0 && v <= 100);
 
+const PG_INT_MAX = 2147483647;
+/** Id dari EliteMentor (angka atau string angka) ke bilangan bulat 1..int4 Postgres; selain itu null. */
+function intId(v) {
+  if (typeof v === 'number' ? !Number.isInteger(v) : !(typeof v === 'string' && /^\d+$/.test(v))) return null;
+  const n = Number(v);
+  return n >= 1 && n <= PG_INT_MAX ? n : null;
+}
+
 /**
  * Rapikan event webhook EliteMentor ke bentuk internal. Satu-satunya tempat yang tahu bentuk payload
  * (kontrak belum disepakati, spek §3). Return { event } atau { error }.
@@ -176,15 +184,17 @@ const inRange = (v) => v === null || (Number.isFinite(v) && v >= 0 && v <= 100);
 function normalizeEvent(raw, now = new Date()) {
   if (!raw || typeof raw !== 'object') return { error: 'payload bukan objek' };
   const id = str(raw.id, 128); const type = str(raw.type, 64);
-  const organizationId = Number(raw.organizationId);
+  const organizationId = intId(raw.organizationId);
   if (!id) return { error: 'id kosong' };
   if (!EVENT_TYPES.includes(type)) return { error: `type tidak dikenal: ${type || '-'}` };
-  if (!Number.isInteger(organizationId)) return { error: 'organizationId tidak valid' };
+  if (organizationId === null) return { error: 'organizationId tidak valid' };
   const course = raw.course || {}; const user = raw.user || {};
   const ref = str(course.ref, 128);
   if (!ref) return { error: 'course.ref kosong' };
   const email = str(user.email, 255).toLowerCase() || null;
-  const emUserId = Number.isInteger(Number(user.elitementorUserId)) && user.elitementorUserId !== null && user.elitementorUserId !== undefined ? Number(user.elitementorUserId) : null;
+  const hasEmUserId = user.elitementorUserId !== null && user.elitementorUserId !== undefined;
+  const emUserId = hasEmUserId ? intId(user.elitementorUserId) : null;
+  if (hasEmUserId && emUserId === null) return { error: 'user.elitementorUserId tidak valid' };
   if (!email && emUserId === null) return { error: 'user tanpa email dan elitementorUserId' };
   const occurredAt = ['string', 'number'].includes(typeof raw.occurredAt) ? new Date(raw.occurredAt) : new Date(NaN);
   // waktu jauh di depan akan membuat semua event berikutnya dianggap usang

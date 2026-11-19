@@ -80,7 +80,7 @@ function passesGates(meta: RouteLocationNormalized['meta'], params: RouteLocatio
 }
 
 /**
- * Rute terdaftar, boleh dibuka tampilan `view`, dan gerbangnya (flag, submodul, peran) lolos. Dipakai menu dan
+ * Rute terdaftar, boleh dibuka tampilan `view`, dan gerbangnya (flag, submodul, peran, entitlement) lolos. Dipakai menu dan
  * layar supaya tautan tidak memantul ke beranda saat diklik. Rute ber-param wajib tidak bisa diperiksa: false.
  */
 export function routeOpen(name: string, view: ViewKey, session: Session = useSessionStore()): boolean {

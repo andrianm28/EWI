@@ -190,6 +190,13 @@ resource "aws_iam_role_policy" "tf_apply" {
         Resource = "${local.arn_prefix}:iam::${local.account}:user/elgos-*"
       },
       {
+        # QA malam (B18): role OIDC elgos-qa-malam di stack shared (infra/live/shared/qa-malam.tf).
+        Sid      = "IamRoleQaMalam"
+        Effect   = "Allow"
+        Action   = ["iam:CreateRole", "iam:DeleteRole", "iam:TagRole", "iam:UntagRole", "iam:UpdateRole", "iam:UpdateAssumeRolePolicy", "iam:PutRolePolicy", "iam:DeleteRolePolicy"]
+        Resource = "${local.arn_prefix}:iam::${local.account}:role/elgos-qa-malam"
+      },
+      {
         Sid      = "S3Elgos"
         Effect   = "Allow"
         Action   = ["s3:CreateBucket", "s3:Put*", "s3:DeleteBucketPolicy"]

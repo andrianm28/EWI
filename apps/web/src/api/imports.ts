@@ -4,9 +4,9 @@ import { useSessionStore } from '@/stores/session'
 
 const BASE = import.meta.env.VITE_API_BASE_URL ?? '/api'
 
-export type Submodule = 'dna' | 'tna' | 'cca'
+export type Submodule = 'dna' | 'tna' | 'cca' | 'lim'
 export interface ImportField { key: string; header: string; required: boolean; oneOf: string | null; help: string | null; example: string | number | null }
-export interface ImportOption { key: string; label: string; type: 'text' | 'date' | 'project'; required?: boolean }
+export interface ImportOption { key: string; label: string; type: 'text' | 'date' | 'project' | 'lim_plan'; required?: boolean }
 export interface ImportKind { key: string; label: string; description: string; fields: ImportField[]; options: ImportOption[] }
 export type Mapping = Record<string, string | null>
 export interface ImportResult { imported: number; rejectedCount: number; rejected: { row: number; reason: string }[]; [k: string]: unknown }
@@ -24,7 +24,8 @@ const token = () => useSessionStore().token
 const call = <T>(path: string, init: RequestInit = {}) => api<T>(path, init, token())
 const post = <T>(path: string, body: unknown) => call<T>(path, { method: 'POST', body: JSON.stringify(body) })
 
-async function raw(path: string, init: RequestInit = {}) {
+/** fetch dengan token untuk respons non-JSON (unduhan file). Dipakai juga oleh lna.ts. */
+export async function raw(path: string, init: RequestInit = {}) {
   const headers = new Headers(init.headers)
   const t = token()
   if (t) headers.set('Authorization', `Bearer ${t}`)

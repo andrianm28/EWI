@@ -2,6 +2,8 @@
 // Store Postgres untuk B13 Learning Intervention. Setiap query memfilter tenant_id. Isi modul bukan data pribadi,
 // jadi tidak dienkripsi per tenant (spek §3).
 const { QueryTypes } = require('sequelize');
+const { REVIEWED } = require('../modules/tna/review-status');
+const { scopeSql } = require('./scope-sql');
 
 const MODULE_COLS = `m.id, m.code, m.name, m.level, m.stream, m.objective, m.catalog_item_id AS "catalogItemId",
   m.created_at AS "createdAt", m.updated_at AS "updatedAt"`;
@@ -141,7 +143,7 @@ function createLiStores(sequelize) {
         if (to === 'installed' && catalogItemId) {
           await write(`UPDATE li_modules SET catalog_item_id = :catalogItemId, updated_at = now()
                         WHERE tenant_id = :tenantId AND id = :moduleId
-                          AND EXISTS (SELECT 1 FROM lna_catalog_items ci WHERE ci.tenant_id = :tenantId AND ci.id = :catalogItemId)`,
+                          AND EXISTS (SELECT 1 FROM lna_catalog_items ci WHERE ci.tenant_id = :tenantId AND ci.id = :catalogItemId AND ci.active)`,
           { tenantId, moduleId: rows[0].module_id, catalogItemId }, t);
         }
         return li.getRequest(tenantId, id, t);
@@ -152,14 +154,15 @@ function createLiStores(sequelize) {
      * hanya kunci kompetensi (nama dinormalkan), bobot, dan target/realisasi. Sama dengan /api/tna/pareto, hanya temuan
      * yang sudah ditinjau HR (approved/edited) yang dihitung. Temuan tanpa kompetensi dihitung terpisah.
      */
-    async listTrainingGaps(tenantId, { jobRoleId } = {}) {
-      const rep = { tenantId };
+    async listTrainingGaps(tenantId, scope, { jobRoleId } = {}) {
+      const rep = { tenantId, reviewed: REVIEWED };
       let sql = `SELECT f.user_id AS "userId", lower(regexp_replace(btrim(c.name), '\\s+', ' ', 'g')) AS "competencyKey", c.name AS "competencyName",
                         c.importance, pr.target::float AS target, pr.actual::float AS actual, pr.direction, pr.tolerance::float AS tolerance
                    FROM lna_findings f
                    LEFT JOIN lna_competencies c ON c.id = f.competency_id AND c.tenant_id = f.tenant_id
                    LEFT JOIN lna_performance_records pr ON pr.id = f.performance_record_id AND pr.tenant_id = f.tenant_id
-                  WHERE f.tenant_id = :tenantId AND f.category = 'training' AND f.review_status IN ('approved','edited')`;
+                  WHERE f.tenant_id = :tenantId AND f.category = 'training' AND f.review_status IN (:reviewed)`;
+      sql += scopeSql('f.user_id', scope, rep);
       if (jobRoleId) { sql += ' AND f.user_id IN (SELECT u.id FROM users u WHERE u.tenant_id = :tenantId AND u.job_role_id = :jobRoleId)'; rep.jobRoleId = jobRoleId; }
       return select(sql, rep);
     },
@@ -173,12 +176,13 @@ function createLiStores(sequelize) {
       const rows = await write(
         `UPDATE li_modules SET catalog_item_id = :catalogItemId, updated_at = now()
           WHERE tenant_id = :tenantId AND id = :moduleId
-            AND (CAST(:catalogItemId AS uuid) IS NULL OR EXISTS (SELECT 1 FROM lna_catalog_items ci WHERE ci.tenant_id = :tenantId AND ci.id = :catalogItemId))
+            AND (CAST(:catalogItemId AS uuid) IS NULL OR EXISTS (SELECT 1 FROM lna_catalog_items ci WHERE ci.tenant_id = :tenantId AND ci.id = :catalogItemId AND ci.active))
           RETURNING id`, { tenantId, moduleId, catalogItemId: catalogItemId || null });
       return rows.length > 0;
     },
+    /** Course aktif milik tenant (sama dengan pilihan di /catalog). */
     async catalogItemExists(tenantId, id) {
-      return !!(await one('SELECT 1 AS x FROM lna_catalog_items WHERE tenant_id = :tenantId AND id = :id', { tenantId, id }));
+      return !!(await one('SELECT 1 AS x FROM lna_catalog_items WHERE tenant_id = :tenantId AND id = :id AND active', { tenantId, id }));
     },
 
     // --- Draf pengembangan ---
