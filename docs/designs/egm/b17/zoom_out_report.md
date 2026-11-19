@@ -32,3 +32,21 @@ Target: `docs/designs/b17-asisten-elgos.md`. Reviewer: `egm:egm-zoom-out` dan `e
 - Z11. Dua tabel triase membuat spek gemuk.
 
 Triase: lihat `goldfish_review_report.md` (egm-resolve) setelah tahap 9.
+
+---
+# Tahap 8 — zoom-out lanjutan (ronde 2)
+
+Kesimpulan reviewer: satu keputusan desain menghapus sebagian besar mitigasi kritik: keluarkan nama orang dari teks jawaban model, dan (opsional) jadikan penjawab deterministik jalur utama POC.
+
+## 🔴
+- R1. Pemetaan tampilan wajib mengikuti B0 §5.1 (`pimpinan`, `role_leader` → atasan; `eta_admin` → super, sementara fakta `hr` seperti butir peralihan B0). Jangan tolak.
+- R2. Bagian Alternatif dan Risiko, singkat (5–6 butir).
+
+## 🟡
+- Y1. Penjawab aturan (`RULES` mockup, sudah ada sebagai penyedia tiruan) sebagai jalur utama POC, LLM di balik flag kedua. Bila LLM tetap di POC: persempit klaim baris 13 menjadi "fakta dari server tanpa nama" dan catat teks pertanyaan sebagai risiko sisa.
+- Y2. Hapus kode samaran: hanya `wawancaraTim` yang memakainya. Kirim angka saja ke model; daftar nama dikirim server sebagai field terstruktur di luar `answer`. Menghapus tabrakan "K3", `restoreNames`, nama tertinggal di log/ekspor setelah hapus akun.
+- Y3. Kunci halaman "Buka …": server kirim kunci, web hanya tampilkan tombol bila `routeOpen(page, view)` lolos; undangan karyawan → `iv`.
+- Y4. Registri `registerFactBuilder/Page/View` dan retensi per tenant spekulatif (YAGNI): array biasa dan satu konstanta/env.
+
+## 🟢
+- G1 kontrak teks polos satu kalimat; G2 facade store berlebihan, cukup assert "tampilan hr hanya dengan cakupan HR"; G3 agregat SQL catat sebagai risiko; G4 kuota per tenant spekulatif; G5 regex/SQL/tabel triase pindah ke PR/egm.

@@ -30,3 +30,25 @@ Target: `docs/designs/b7-tinjauan-hr.md`. Reviewer: `egm:egm-zoom-out` dan `egm:
 Seimbang menurut reviewer: panggilan sinkron 10 detik + klaim 5 menit; lease `finishPlanAssignment`; `held` tanpa status baru; pemakaian ulang `catalog.match`, `deliveryFor`, `planFromFinding`.
 
 Triase: lihat `goldfish_review_report.md` setelah tahap 9.
+
+---
+# Tahap 8 — zoom-out lanjutan (ronde 2)
+
+Kesimpulan: lingkup spek masih sempit (backend) dan selaras B0, tetapi mitigasi tahap 7 sebagian besar mengarah ke jalur penugasan EliteMentor yang mati di pilot; jalur pilot (rencana lalu ekspor CSV) belum terlindungi. Prinsip: tegakkan risiko di tempat data berubah, bukan di tiap endpoint pembaca.
+
+## 🔴
+1. "Tugaskan" menggandakan rencana di tenant `lms_export`: `planFromFinding` (`lna-stores.js:933`) tidak mensyaratkan `status='open'`, jadi klik ulang membuat baris rencana baru dan ganda di CSV. Buat idempoten (kembalikan rencana aktif) + web hanya memanggil plan bila `delivery.assignAvailable` false. Selaraskan klaim baris 211.
+2. Bagian Alternatif: tabel 4–5 baris.
+
+## 🟡
+3. Persetujuan ditarik: satu titik penegakan. Tulis aturan di spek; di transaksi penarikan B8, rencana aktif dari temuan sesi itu jadi `rejected` sehingga ekspor/assign/`planItem` otomatis mengecualikan. Solusi/klasifikasi ulang/handoff atas temuan disetujui = keputusan bisnis (sudah diajukan ke user).
+4. Tabel Risiko & Mitigasi dari penanda tersebar; siapa penulis `lms.elitementorOrganizationId`.
+5. Daftar `improvement` diikat ke flag `module.ina` (PM-6).
+
+## 🟢 Tunda
+6. Klaim basi, `sent` palsu, pembatalan penugasan, klaim idempotensi FR-EM: bekukan sampai kontrak FR-EM final; baris 113 menjadi "kunci dikirim; dukungan EliteMentor belum terverifikasi".
+7. Kursor `since` B9: hapus, kembalikan semua handoff (YAGNI).
+8. Paginasi solusi, sunting setelah disetujui, `title` kontrak B9: tunda/putuskan bersama T6.
+9. Kembali ke kategori AI tetap `edited`: opsional.
+10. Kewajiban B0 (rute `review`, hapus `legacy-review`) ikut PR web B7.
+11. Istilah dan status dokumen: perbaiki teks.
