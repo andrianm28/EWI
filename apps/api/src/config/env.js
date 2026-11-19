@@ -44,7 +44,7 @@ function loadConfig(env = process.env) {
     }
   }
   const uploadMaxMb = Number(env.EWI_UPLOAD_MAX_MB || 25);
-  if (!Number.isFinite(uploadMaxMb) || uploadMaxMb <= 0 || uploadMaxMb > 200) errors.push('EWI_UPLOAD_MAX_MB harus angka 1 sampai 200');
+  if (!Number.isFinite(uploadMaxMb) || uploadMaxMb < 1 || uploadMaxMb > 200) errors.push('EWI_UPLOAD_MAX_MB harus angka 1 sampai 200');
   const ai = loadAiConfig(env, errors);
   if (errors.length) {
     const err = new Error(`Konfigurasi tidak valid:\n- ${errors.join('\n- ')}`);
