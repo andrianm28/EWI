@@ -4,7 +4,15 @@ import App from './App.vue'
 import router from './router'
 import { setUnauthorizedHandler } from './api/client'
 import { useSessionStore } from './stores/session'
+import '@fontsource/roboto/latin-400.css'
+import '@fontsource/roboto/latin-500.css'
+import '@fontsource/roboto/latin-700.css'
+import '@fontsource/roboto-mono/latin-400.css'
+import '@fontsource/roboto-mono/latin-500.css'
 import './style.css'
+import { initTheme } from './shell/theme'
+
+initTheme()
 
 const app = createApp(App).use(createPinia()).use(router)
 
