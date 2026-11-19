@@ -844,7 +844,7 @@ function createLnaStores(sequelize, { cipher } = {}) {
       return one(`SELECT p.id, p.user_id AS "userId", p.status, p.catalog_source AS "catalogSource", p.catalog_item_ref AS "catalogItemRef",
                          p.catalog_item_title AS "catalogItemTitle", p.assignment_status AS "assignmentStatus",
                          u.employee_id AS "employeeId", u.email
-                    FROM lna_training_plan_items p JOIN users u ON u.id = p.user_id
+                    FROM lna_training_plan_items p JOIN users u ON u.id = p.user_id AND u.tenant_id = p.tenant_id
                    WHERE p.tenant_id = :tenantId AND p.id = :id`, { tenantId, id });
     },
     /**
@@ -861,15 +861,19 @@ function createLnaStores(sequelize, { cipher } = {}) {
                                  RETURNING assignment_claimed_at::text AS "claimedAt"`, { tenantId, id });
       return row ? row.claimedAt : null;
     },
-    /** Hanya pemilik klaim (claimedAt) yang boleh menutupnya, supaya permintaan yang macet tidak menimpa klaim penggantinya. */
+    /**
+     * Hanya pemilik klaim (claimedAt) yang boleh menutupnya, supaya permintaan yang macet tidak menimpa klaim penggantinya.
+     * Return null bila klaim sudah diambil alih (tidak ada baris berubah).
+     */
     async finishPlanAssignment(tenantId, id, { status, ref, userId, claimedAt }) {
-      await sequelize.query(`UPDATE lna_training_plan_items
+      const [rows] = await sequelize.query(`UPDATE lna_training_plan_items
                                 SET assignment_status = :status, assignment_ref = :ref,
                                     assigned_at = CASE WHEN :status = 'sent' THEN now() ELSE assigned_at END,
                                     assigned_by = CASE WHEN :status = 'sent' THEN :userId ELSE assigned_by END, updated_at = now()
-                              WHERE tenant_id = :tenantId AND id = :id AND assignment_status = 'sending' AND assignment_claimed_at = CAST(:claimedAt AS timestamptz)`,
+                              WHERE tenant_id = :tenantId AND id = :id AND assignment_status = 'sending' AND assignment_claimed_at = CAST(:claimedAt AS timestamptz)
+                              RETURNING id`,
       { replacements: { tenantId, id, status, ref: ref ? String(ref).slice(0, 128) : null, userId, claimedAt } });
-      return tna.getPlanItem(tenantId, id);
+      return rows.length ? tna.getPlanItem(tenantId, id) : null;
     },
     /** Baris ekspor gap untuk LMS klien (K4): rencana aktif, termasuk yang belum punya course. */
     async listPlanExport(tenantId, { projectId } = {}) {
@@ -877,15 +881,15 @@ function createLnaStores(sequelize, { cipher } = {}) {
       let sql = `SELECT p.id, p.user_id AS "userId", u.employee_id AS "employeeId", u.name AS "userName", u.email, c.name AS "competencyName",
                         p.catalog_item_ref AS "catalogItemRef", p.catalog_item_title AS "catalogItemTitle", p.program_tier AS "programTier", p.status
                    FROM lna_training_plan_items p
-                   JOIN users u ON u.id = p.user_id
-                   LEFT JOIN lna_findings f ON f.id = p.finding_id
-                   LEFT JOIN lna_competencies c ON c.id = f.competency_id
+                   JOIN users u ON u.id = p.user_id AND u.tenant_id = p.tenant_id
+                   LEFT JOIN lna_findings f ON f.id = p.finding_id AND f.tenant_id = p.tenant_id
+                   LEFT JOIN lna_competencies c ON c.id = f.competency_id AND c.tenant_id = p.tenant_id
                   WHERE p.tenant_id = :tenantId AND p.status IN ('new', 'in_progress')`;
       if (projectId) { sql += ' AND f.project_id = :projectId'; rep.projectId = projectId; }
       return select(`${sql} ORDER BY u.name NULLS LAST, u.email, p.created_at`, rep);
     },
     /**
-     * Teruskan temuan non-pelatihan yang sudah diputus ke Improvement Needs. Satu UPDATE bersyarat, jadi dua
+     * Teruskan temuan Improvement Needs yang sudah diputus ke modul Improvement Needs. Satu UPDATE bersyarat, jadi dua
      * permintaan bersamaan tidak menandai dua kali. Return { handedOff, already, skipped } berisi id.
      */
     async handoffImprovement(tenantId, ids, userId) {
@@ -924,15 +928,16 @@ function createLnaStores(sequelize, { cipher } = {}) {
     },
     /**
      * Rencana HR dari temuan (B7): temuan dikunci dan diperiksa ulang lebih dulu (masih pelatihan, sudah diputus),
-     * supaya klasifikasi ulang yang berjalan bersamaan tidak menghasilkan temuan non-pelatihan yang punya rencana.
+     * supaya klasifikasi ulang yang berjalan bersamaan tidak menghasilkan temuan Improvement Needs yang punya rencana.
      * null bila temuan sudah tidak memenuhi syarat.
      */
     async planFromFinding(tenantId, findingId, plan) {
       const noteEnc = await enc(tenantId, plan.note);
       return sequelize.transaction(async (transaction) => {
+        // status = 'open': klik ulang atau dua HR bersamaan tidak membuat rencana kedua untuk temuan yang sama
         const [[f]] = await sequelize.query(`UPDATE lna_findings SET status = 'planned'
                                               WHERE tenant_id = :tenantId AND id = :findingId AND category = 'training'
-                                                AND review_status IN ${REVIEWED_SQL} RETURNING id`,
+                                                AND status = 'open' AND review_status IN ${REVIEWED_SQL} RETURNING id`,
         { replacements: { tenantId, findingId }, transaction });
         if (!f) return null;
         const [[row]] = await sequelize.query(
@@ -976,7 +981,7 @@ function createLnaStores(sequelize, { cipher } = {}) {
                                   GROUP BY p.status`, rep);
       return { byStatus: Object.fromEntries(rows.map((r) => [r.status, r.n])), needsModule: rows.reduce((a, r) => a + r.needsModule, 0) };
     },
-    /** B17: temuan non-pelatihan yang sudah diputus HR, dan yang sudah diteruskan ke Improvement Needs. */
+    /** B17: temuan Improvement Needs yang sudah diputus HR, dan yang sudah diteruskan ke Improvement Needs. */
     async improvementCounts(tenantId) {
       return one(`SELECT count(*)::int AS decided, count(improvement_handoff_at)::int AS "handedOff"
                     FROM lna_findings WHERE tenant_id = :tenantId AND category = 'non_training' AND review_status IN ${REVIEWED_SQL}`, { tenantId });

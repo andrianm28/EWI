@@ -234,6 +234,11 @@ run('B7 tinjauan HR (Postgres)', () => {
       // rencana tanpa course
       const p2 = await request(a).post(`/api/tna/findings/${f.noComp}/plan`).set(as('hr')).send({});
       f.planNoCourse = p2.body.data.id;
+      // klik ulang tidak membuat rencana kedua (rencana ganda akan ikut dua kali di CSV)
+      const dup = await request(a).post(`/api/tna/findings/${f.noComp}/plan`).set(as('hr')).send({});
+      expect(dup.body.error.code).toBe('ALREADY_ACTIONED');
+      const [[{ n }]] = await db.query('SELECT count(*)::int AS n FROM lna_training_plan_items WHERE finding_id = :id', { replacements: { id: f.noComp } });
+      expect(n).toBe(1);
       expect((await assign(a, f.planNoCourse)).body.error.code).toBe('NEEDS_MODULE');
       // lms_export
       await setSettings({ lms: { delivery: 'lms_export', elitementorOrganizationId: 'org-9' } });
@@ -316,6 +321,28 @@ run('B7 tinjauan HR (Postgres)', () => {
       expect(retry.status).toBe(200);
       expect(svc2.calls).toHaveLength(1);
     });
+
+    it('permintaan yang klaimnya sudah diambil alih tidak melaporkan terkirim', async () => {
+      await ready();
+      const fid = (await finding('beni', { title: 'Klaim basi', sessionId: null, reviewStatus: 'approved' })).id;
+      const plan = await request(app()).post(`/api/tna/findings/${fid}/plan`).set(as('hr')).send({});
+      const id = plan.body.data.id;
+      let release; const gate = new Promise((r) => { release = r; });
+      const slow = makeAssignments(async () => { await gate; return { ref: 'EM-LAMBAT' }; });
+      const first = assign(app({ assignments: slow }), id).then((r) => r);
+      for (let i = 0; i < 50 && slow.calls.length === 0; i += 1) await new Promise((r) => setTimeout(r, 20));
+      await db.query(`UPDATE lna_training_plan_items SET assignment_claimed_at = now() - interval '6 minutes' WHERE id = :id`, { replacements: { id } });
+      const takeover = await assign(app({ assignments: makeAssignments(() => ({ ref: 'EM-BARU' })) }), id, 'hr2');
+      expect(takeover.status).toBe(200);
+      release();
+      const late = await first;
+      expect(late.status).toBe(409);
+      expect(late.body.error.code).toBe('ASSIGN_IN_PROGRESS');
+      const [[row]] = await db.query('SELECT assignment_status AS s, assignment_ref AS ref FROM lna_training_plan_items WHERE id = :id', { replacements: { id } });
+      expect(row).toEqual({ s: 'sent', ref: 'EM-BARU' });
+      const results = (await audits('tna.plan_assignment')).filter((r) => r.meta.objectIds && r.meta.objectIds.includes(id)).map((r) => r.meta.result);
+      expect(results.sort()).toEqual(['sent', 'superseded']);
+    });
   });
 
   describe('ekspor gap ke LMS klien', () => {
@@ -329,13 +356,14 @@ run('B7 tinjauan HR (Postgres)', () => {
       expect(res.headers['content-disposition']).toMatch(/attachment; filename="gap-pelatihan-\d{4}-\d{2}-\d{2}\.csv"/);
       const lines = res.text.replace(/^\uFEFF/, '').trim().split('\r\n');
       expect(lines[0]).toBe('ID Karyawan,Nama,Email,Kompetensi,Kode Course,Judul Course,Program,Status Rencana');
-      expect(lines).toHaveLength(4);
+      expect(lines).toHaveLength(5);
+      expect(lines.filter((l) => l.startsWith('E-beni,beni,beni@b7.test,,,,,'))).toHaveLength(1); // tanpa rencana ganda
       expect(lines).toContain("E-ani,'=Ani,ani@b7.test,Pemahaman SLA,EM-101,Dasar SLA,,Baru");
       expect(lines.some((l) => l.startsWith('E-beni,beni,beni@b7.test,,,,,'))).toBe(true); // rencana tanpa course ikut
       const after = await db.query('SELECT id, status, updated_at FROM lna_training_plan_items WHERE tenant_id = :t ORDER BY id', { replacements: { t: tenant.id }, type: 'SELECT' });
       expect(after).toEqual(before);
       const log = await audits('tna.plan_items');
-      expect(log.filter((r) => r.action === 'export').pop().meta).toMatchObject({ count: 3 });
+      expect(log.filter((r) => r.action === 'export').pop().meta).toMatchObject({ count: 4 });
       expect((await request(a).get('/api/tna/plan-items/export.csv').set(as('spv'))).status).toBe(403);
       expect((await request(a).get('/api/tna/plan-items/export.csv?projectId=bukan').set(as('hr'))).status).toBe(400);
       const x = await request(a).get('/api/tna/plan-items/export.csv').set(as('xhr'));

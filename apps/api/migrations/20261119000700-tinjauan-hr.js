@@ -1,6 +1,6 @@
 'use strict';
 // B7 (19 Nov): tinjauan HR atas temuan AI mengikuti mockup Pak Eji. Spek: docs/designs/b7-tinjauan-hr.md
-// 1. Temuan bisa ditahan ("Perlu ditinjau HR") tanpa keluar dari status draf, dan temuan non-pelatihan yang
+// 1. Temuan bisa ditahan ("Perlu ditinjau HR") tanpa keluar dari status draf, dan temuan Improvement Needs yang
 //    sudah disetujui bisa diteruskan ke Improvement Needs (dibaca modul INA, B9).
 // 2. Rencana training mencatat penugasan ke EliteMentor; 'sending' = klaim sebelum panggilan keluar supaya
 //    dua permintaan bersamaan tidak mengirim dua kali.

@@ -54,7 +54,7 @@ function reviewWorkspaceRouter({ stores, settings, catalog, flags, audit, assign
   }
 
   // --- Klasifikasi tiga tombol ---
-  r.post('/findings/:id/classify', flag, hr, wrap(async (req, res) => {
+  r.post('/findings/:id/classify', hr, flag, wrap(async (req, res) => {
     const { classification, note } = req.body || {};
     if (!CLASSIFICATIONS.includes(classification)) throw badRequest(`classification harus ${CLASSIFICATIONS.join(', ')}`);
     const cleanNote = note == null ? undefined : String(note).trim();
@@ -96,7 +96,7 @@ function reviewWorkspaceRouter({ stores, settings, catalog, flags, audit, assign
   }));
 
   // --- Solusi: rekomendasi course untuk temuan pelatihan, daftar temuan perbaikan ---
-  r.get('/review/solutions', flag, hr, wrap(async (req, res) => {
+  r.get('/review/solutions', hr, flag, wrap(async (req, res) => {
     const [rows, conf, inaEnabled] = await Promise.all([
       stores.tna.listReviewedForSolutions(req.tenantId, { projectId: projectIdOf(req) }),
       settings.get(req.tenantId),
@@ -120,7 +120,7 @@ function reviewWorkspaceRouter({ stores, settings, catalog, flags, audit, assign
   }));
 
   // --- Penugasan satu rencana ke EliteMentor. Urutan cek mengikuti tabel keputusan di spek ---
-  r.post('/plan-items/:id/assign', flag, hr, wrap(async (req, res) => {
+  r.post('/plan-items/:id/assign', hr, flag, wrap(async (req, res) => {
     const plan = UUID.test(req.params.id) ? await stores.tna.getPlanForAssignment(req.tenantId, req.params.id) : null;
     if (!plan) throw notFound('Item training plan tidak ditemukan');
     if (!ACTIVE_PLAN.includes(plan.status)) throw conflict('INVALID_STATE', `Rencana berstatus "${PLAN_STATUS_LABEL[plan.status]}" tidak bisa ditugaskan`);
@@ -145,17 +145,19 @@ function reviewWorkspaceRouter({ stores, settings, catalog, flags, audit, assign
     } catch (e) {
       // hanya nama galat yang dicatat; pesan bisa memuat data
       console.error(`Penugasan EliteMentor gagal (rencana ${plan.id}): ${e.name || 'Error'}`);
-      await stores.tna.finishPlanAssignment(req.tenantId, plan.id, { status: 'failed', ref: null, userId: req.user.id, claimedAt });
-      await audit.record(req, 'update', 'tna.plan_assignment', { ...meta, result: 'failed' });
+      const closed = await stores.tna.finishPlanAssignment(req.tenantId, plan.id, { status: 'failed', ref: null, userId: req.user.id, claimedAt });
+      await audit.record(req, 'update', 'tna.plan_assignment', { ...meta, result: closed ? 'failed' : 'superseded' });
       throw new HttpError(502, 'EM_ASSIGN_FAILED', 'EliteMentor tidak menerima penugasan. Coba lagi.');
     }
     const saved = await stores.tna.finishPlanAssignment(req.tenantId, plan.id, { status: 'sent', ref, userId: req.user.id, claimedAt });
-    await audit.record(req, 'update', 'tna.plan_assignment', { ...meta, result: 'sent' });
+    // Klaim sudah diambil alih permintaan lain (macet > 5 menit): hasil ini tidak disimpan, jadi jangan laporkan terkirim
+    await audit.record(req, 'update', 'tna.plan_assignment', { ...meta, result: saved ? 'sent' : 'superseded', ref: saved ? undefined : ref });
+    if (!saved) throw conflict('ASSIGN_IN_PROGRESS', 'Penugasan rencana ini sudah diproses permintaan lain. Muat ulang untuk melihat hasilnya.');
     return res.json({ data: saved });
   }));
 
   // --- Ekspor gap untuk LMS klien (K4). Hanya membaca ---
-  r.get('/plan-items/export.csv', flag, hr, wrap(async (req, res) => {
+  r.get('/plan-items/export.csv', hr, flag, wrap(async (req, res) => {
     const rows = await stores.tna.listPlanExport(req.tenantId, { projectId: projectIdOf(req) });
     const csv = toCsv(EXPORT_HEADER, rows.map((p) => [
       p.employeeId, p.userName, p.email, p.competencyName, p.catalogItemRef, p.catalogItemTitle, p.programTier, PLAN_STATUS_LABEL[p.status] || p.status,
@@ -169,8 +171,8 @@ function reviewWorkspaceRouter({ stores, settings, catalog, flags, audit, assign
     res.send(`${BOM}${csv}`);
   }));
 
-  // --- Serah temuan non-pelatihan ke Improvement Needs (dibaca modul INA, B9) ---
-  r.post('/review/improvement-handoff', flag, hr, wrap(async (req, res) => {
+  // --- Serah temuan Improvement Needs ke modul Improvement Needs (dibaca modul INA, B9) ---
+  r.post('/review/improvement-handoff', hr, flag, wrap(async (req, res) => {
     const raw = (req.body || {}).findingIds;
     if (!Array.isArray(raw) || !raw.length || raw.length > MAX_HANDOFF) throw badRequest(`findingIds wajib berisi 1-${MAX_HANDOFF} id`);
     if (!raw.every((id) => typeof id === 'string' && UUID.test(id))) throw badRequest('findingIds harus berisi id temuan yang valid');
