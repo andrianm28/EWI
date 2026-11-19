@@ -1,19 +1,10 @@
 import { test, expect, type Page } from '@playwright/test'
+import { loginSebagai } from './support/sesi'
+import { mockApi, cocok } from './support/api'
 
-// B16 Career & Promotion (spek: docs/designs/b16-career-promotion.md). API di-mock.
-async function loginAs(page: Page, role: string, flags: Record<string, boolean> = { 'promotion.recommendation': true }) {
-  const access = { submodules: ['cca', 'dna', 'tna', 'ina'], flags: { 'module.dna': true, 'module.tna': true, ...flags } }
-  await page.route('**/api/auth/login', (r) => r.fulfill({ json: { token: 't', user: { id: 'u-1', tenantId: 't-1', email: `${role}@demo.test`, role } } }))
-  await page.route('**/api/me/access', (r) => r.fulfill({ json: access }))
-  await page.route('**/api/auth/me', (r) => r.fulfill({ json: { user: { id: 'u-1', tenantId: 't-1', email: `${role}@demo.test`, role } } }))
-  await page.goto('/login')
-  await page.getByLabel('Organisasi').fill('demo')
-  await page.getByLabel('Email').fill(`${role}@demo.test`)
-  await page.getByLabel('Password').fill(`pw-${Date.now()}`)
-  await page.getByRole('button', { name: 'Masuk' }).click()
-  await expect(page.getByTestId('card-dna')).toBeVisible()
-}
-
+// B16 Career & Promotion (spek: docs/designs/b16-career-promotion.md). API di-mock lewat support/ (B18 4.2);
+// alur yang sama terhadap API sungguhan: apps/api/tests/integration/alur-promosi.test.js.
+const B16 = { flags: { 'promotion.recommendation': true } }
 const progs = (n: number) => ['basic', 'intermediate', 'advanced'].map((tier, i) => ({ tier, passed: i < n }))
 const MAP = {
   okrMin: 80, kpi: { employees: 3, divisions: 2, eligible: 1, awaitingDecision: 1, belowCurrent: 1 }, divisions: ['IT', 'Sales'],
@@ -28,32 +19,41 @@ const decision = (o: Record<string, unknown> = {}) => ({
   requirement: { programPassed: true, okr: { achievement: 92.5, min: 80, met: true } }, eligible: true, supervisor: null, hr: null, actions: [], blockedReason: 'waiting_supervisor', ...o,
 })
 
-async function mockCp(page: Page, decisions: unknown[]) {
-  const posts: { url: string; body: unknown }[] = []
+/** Mock API B16 lewat support/ (B18). Keputusan yang dikirim dicatat di `posts`; `sesudah` membentuk baris setelah keputusan. */
+async function mockCp(page: Page, decisions: unknown[], sesudah: (aksi: string) => unknown = () => decision({
+  supervisor: { decision: 'recommend', byName: 'Sari', at: '2026-11-19T09:00:00Z', note: 'Siap' }, actions: ['recommend', 'hold'], blockedReason: null,
+})) {
+  const posts: { path: string; body: unknown }[] = []
   let rows = decisions
-  await page.route('**/api/dna/career/map', (r) => r.fulfill({ json: { data: MAP } }))
-  await page.route('**/api/dna/career/employees/*/evidence', (r) => {
-    const id = r.request().url().split('/').at(-2)
-    const p = MAP.employees.find((e) => e.id === id)!
-    return r.fulfill({ json: { data: { person: { id, name: p.name, division: p.division, jobRoleName: p.jobRoleName, level: p.level }, status: p.status, nextLevel: p.nextLevel,
-      programsPassed: p.programs.filter((x) => x.passed).map((x) => x.tier), okr: p.okr ? { ...p.okr, min: 80, met: p.okr.achievement >= 80 } : null, reinterview: null, supervisorRecommendation: null } } })
-  })
-  await page.route('**/api/dna/career/paths', (r) => r.fulfill({ json: { data: { jobRole: { id: 'jr1', name: 'Engineer' }, okrMin: 80, levels: [
-    { id: 'l1', order: 0, name: 'Junior', requiredProgramTier: 'basic', moduleCount: 4, employees: 2, readyForNext: 1 },
-    { id: 'l2', order: 1, name: 'Senior', requiredProgramTier: 'intermediate', moduleCount: 6, employees: 0, readyForNext: 0 },
-  ] } } }))
-  await page.route('**/api/dna/career/decisions', (r) => r.fulfill({ json: { data: rows } }))
-  await page.route('**/api/dna/career/decisions/*/*', (r) => {
-    posts.push({ url: r.request().url(), body: r.request().postDataJSON() })
-    rows = [decision({ supervisor: { decision: 'recommend', byName: 'Sari', at: '2026-11-19T09:00:00Z', note: 'Siap' }, actions: ['recommend', 'hold'], blockedReason: null })]
-    return r.fulfill({ json: { data: rows[0] } })
+  await mockApi(page, (req) => {
+    const data = (d: unknown) => ({ json: { data: d } })
+    if (cocok(req, 'GET /dna/career/map')) return data(MAP)
+    const ev = cocok(req, 'GET /dna/career/employees/:id/evidence')
+    if (ev) {
+      const p = MAP.employees.find((e) => e.id === ev.id)
+      if (!p) return undefined
+      return data({ person: { id: p.id, name: p.name, division: p.division, jobRoleName: p.jobRoleName, level: p.level }, status: p.status, nextLevel: p.nextLevel,
+        programsPassed: p.programs.filter((x) => x.passed).map((x) => x.tier), okr: p.okr ? { ...p.okr, min: 80, met: p.okr.achievement >= 80 } : null, reinterview: null, supervisorRecommendation: null })
+    }
+    if (cocok(req, 'GET /dna/career/paths')) return data({ jobRole: { id: 'jr1', name: 'Engineer' }, okrMin: 80, levels: [
+      { id: 'l1', order: 0, name: 'Junior', requiredProgramTier: 'basic', moduleCount: 4, employees: 2, readyForNext: 1 },
+      { id: 'l2', order: 1, name: 'Senior', requiredProgramTier: 'intermediate', moduleCount: 6, employees: 0, readyForNext: 0 },
+    ] })
+    if (cocok(req, 'GET /dna/career/decisions')) return data(rows)
+    const d = cocok(req, 'POST /dna/career/decisions/:userId/:tahap')
+    if (d) {
+      posts.push({ path: req.path, body: req.body })
+      rows = [sesudah((req.body as { decision: string }).decision)]
+      return data(rows[0])
+    }
+    return undefined
   })
   return posts
 }
 
 test('HR: peta per divisi, bukti, jalur jenjang, dan keputusan menunggu atasan', async ({ page }) => {
   await mockCp(page, [decision()])
-  await loginAs(page, 'hr_admin')
+  await loginSebagai(page, 'hr', B16)
   await page.goto('/cp')
   await expect(page.getByRole('heading', { level: 1, name: 'Career & Promotion' })).toBeVisible()
   const map = page.getByTestId('cp-map')
@@ -80,14 +80,14 @@ test('HR: peta per divisi, bukti, jalur jenjang, dan keputusan menunggu atasan',
 
 test('Atasan merekomendasikan dengan catatan; keputusan tercatat dengan nama', async ({ page }) => {
   const posts = await mockCp(page, [decision({ actions: ['recommend', 'hold'], blockedReason: null })])
-  await loginAs(page, 'supervisor')
+  await loginSebagai(page, 'atasan', B16)
   await page.goto('/cp')
   await page.getByRole('tab', { name: 'Keputusan promosi' }).click()
   await page.getByLabel('Catatan untuk Ani').fill('Siap')
   await page.getByRole('button', { name: 'Rekomendasikan Ani' }).click()
   await expect(page.getByTestId('cp-dec').getByRole('status')).toHaveText('Rekomendasikan: Ani tercatat.')
   expect(posts).toHaveLength(1)
-  expect(posts[0]!.url).toMatch(/\/decisions\/e1\/supervisor$/)
+  expect(posts[0]!.path).toBe('/dna/career/decisions/e1/supervisor')
   expect(posts[0]!.body).toEqual({ decision: 'recommend', note: 'Siap' })
   await expect(page.getByTestId('cp-dec')).toContainText('Sari')
   await expect(page.getByTestId('cp-dec')).toContainText('Merekomendasikan')
@@ -95,7 +95,7 @@ test('Atasan merekomendasikan dengan catatan; keputusan tercatat dengan nama', a
 
 test('HR yang mencatat rekomendasi itu sendiri tidak mendapat tombol keputusan', async ({ page }) => {
   await mockCp(page, [decision({ supervisor: { decision: 'recommend', byName: 'Rina', at: '2026-11-19T09:00:00Z', note: null }, actions: [], blockedReason: 'self_recommended' })])
-  await loginAs(page, 'hr_admin')
+  await loginSebagai(page, 'hr', B16)
   await page.goto('/cp')
   await page.getByRole('tab', { name: 'Keputusan promosi' }).click()
   await expect(page.getByTestId('cp-dec')).toContainText('Anda yang merekomendasi')
@@ -103,7 +103,22 @@ test('HR yang mencatat rekomendasi itu sendiri tidak mendapat tombol keputusan',
 })
 
 test('Menu dan rute tertutup bila flag promotion.recommendation mati', async ({ page }) => {
-  await loginAs(page, 'hr_admin', { 'promotion.recommendation': false })
+  await loginSebagai(page, 'hr', { flags: { 'promotion.recommendation': false } })
   await page.goto('/cp')
   await expect(page.getByRole('heading', { level: 1, name: 'Career & Promotion' })).toHaveCount(0)
+})
+
+test('HR menyetujui rekomendasi atasan; nama HR tercatat dan tombol keputusan hilang (B18 3.3 rekomendasi promosi)', async ({ page }) => {
+  const rekomendasi = { decision: 'recommend', byName: 'Sari', at: '2026-11-19T09:00:00Z', note: 'Siap' }
+  const posts = await mockCp(page, [decision({ supervisor: rekomendasi, actions: ['approve', 'hold'], blockedReason: null })],
+    () => decision({ supervisor: rekomendasi, hr: { decision: 'approved', byName: 'Pengguna Contoh', at: '2026-11-19T10:00:00Z', note: null }, actions: [], blockedReason: 'approved' }))
+  await loginSebagai(page, 'hr', B16)
+  await page.goto('/cp')
+  await page.getByRole('tab', { name: 'Keputusan promosi' }).click()
+  await page.getByRole('button', { name: 'Setujui Ani' }).click()
+  await expect(page.getByTestId('cp-dec').getByRole('status')).toHaveText('Setujui: Ani tercatat.')
+  expect(posts).toEqual([{ path: '/dna/career/decisions/e1/hr', body: { decision: 'approve' } }])
+  await expect(page.getByTestId('cp-dec')).toContainText('Disetujui')
+  await expect(page.getByTestId('cp-dec')).toContainText('Pengguna Contoh')
+  await expect(page.getByRole('button', { name: 'Setujui Ani' })).toHaveCount(0)
 })

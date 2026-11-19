@@ -219,8 +219,9 @@ Satu-satunya daftar status terbuka spek ini.
 - `apps/api/tests/unit/dna-career.test.js`: OKR (arah, biner/tenggat, batas, baris dilewati, jenis metrik, periode, deduplikasi impor ulang termasuk waktu sama), delapan status C4, ambang konfigurasi, kandidat C5, `findCycle`, `decisionState`, tindakan atasan dan HR, pemisahan tugas (`self_recommended`), tanpa atasan sah dan Super Admin, setelan rusak (`dna: null`), atasan yang perannya dicabut.
 - `apps/api/tests/unit/dna-domain.test.js`: `careerStatus` lama tetap lulus.
 - `apps/api/tests/integration/dna-career.test.js` (Postgres): flag mati → 403; `promotionVisibleTo` tanpa `supervisor` → atasan 403; peta + KPI + filter divisi; atasan tidak melihat dirinya; bukti; jalur; rekomendasi → persetujuan dengan audit; klik ganda; `hold` vs `approve`; `WAITING_SUPERVISOR`; `NOT_ELIGIBLE`; atasan lain 404; karyawan 403; peran salah 403; tenant lain dan nonaktif 404; jenjang tidak berubah setelah `approve`; `ALREADY_DECIDED`; siklus baru setelah `hold`; perubahan posisi (termasuk store menolak siklus usang); `next_no_requirement`; `no_supervisor`; catatan terenkripsi; endpoint lama khusus HR; setelan `promotionVisibleTo` rusak tidak 500.
+- `apps/api/tests/integration/alur-promosi.test.js` (B18 3.3, lewat `tests/alur/driver.js`): impor kelulusan program dan OKR, memenuhi syarat, penolakan per peran, rekomendasi atasan lalu persetujuan HR dengan nama, waktu, dan audit, jenjang tidak berubah, tenant tanpa flag 403.
 - `apps/api/tests/integration/poc-dna-tna.test.js`: atasan 403 di `/promotion-candidates` (C14, tidak berubah dari base).
-- `apps/web/e2e/b16-cp.spec.ts`: HR (peta per divisi, bukti, jalur, keputusan menunggu atasan); atasan merekomendasi dengan catatan; HR yang mencatat rekomendasi sendiri tanpa tombol; menu dan rute tertutup bila flag mati.
+- `apps/web/e2e/b16-cp.spec.ts`: HR (peta per divisi, bukti, jalur, keputusan menunggu atasan); atasan merekomendasi dengan catatan; HR menyetujui rekomendasi atasan; HR yang mencatat rekomendasi sendiri tanpa tombol; menu dan rute tertutup bila flag mati.
 - Tidak dites: lihat §8.
 
 ## 11. Layar (di atas B0)
@@ -240,7 +241,7 @@ Satu-satunya daftar status terbuka spek ini.
 - (U) `apps/api/src/modules/dna/index.js` (pasang router, endpoint lama khusus HR, sembunyikan kandidat diri sendiri)
 - (U) `apps/api/src/core/settings/index.js`
 - (U) `apps/api/src/db/lna-stores.js` (store `promotion`, OKR per karyawan, divisi dan status di `people`)
-- (B) `apps/api/tests/unit/dna-career.test.js`, `apps/api/tests/integration/dna-career.test.js`
+- (B) `apps/api/tests/unit/dna-career.test.js`, `apps/api/tests/integration/dna-career.test.js`, `apps/api/tests/integration/alur-promosi.test.js`, langkah B16 di `apps/api/tests/alur/driver.js`
 - (B) `apps/web/src/screens/b16-cp/routes.ts`, `api.ts`, `CareerPromotionView.vue`
 - (B) `apps/web/e2e/b16-cp.spec.ts`
 - (U) `docs/ewi/poc-dna-tna.md`, `docs/designs/b0-fondasi-ui.md` (catatan rute `cp`)

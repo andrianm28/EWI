@@ -184,6 +184,7 @@ Satu-satunya daftar status terbuka spek ini.
 - `apps/api/tests/unit/dna-domain.test.js`: `latestByCompetency` (A2) tanggal sama.
 - `apps/api/tests/unit/imports.test.js`: judul "Level" → Level Program; file lama "Level" = jenjang; kolom baru dan alasan penolakan; kompetensi yang ada diperbarui/ditolak; impor ulang nilai sama ditolak tanpa reset, hanya JF → patch kosong; jenis `dna_job_functions`.
 - `apps/api/tests/integration/dna-development.test.js` (Postgres): flag `dna.development` mati → 403 dan POC tetap jalan; alur HR (jabatan, kamus berkode, job function); 409/400; tenant lain; ubah pemetaan dan PATCH, peran lain tidak boleh menulis; kamus berfilter dan kurikulum (termasuk UUID huruf besar); pengesahan + audit; tahap/daftar/rencana; visibilitas; ringkasan; jabatan default berkurikulum; audit baca; PATCH mereset pengesahan; `module.dna` mati.
+- `apps/api/tests/integration/alur-dna-pengembangan.test.js` (B18 3.3, lewat `tests/alur/driver.js`): impor job function dan kamus berkode, pengesahan dengan audit, impor asesmen, tahap BIA untuk HR, atasan hanya timnya, karyawan hanya rencananya, tenant lain 404, flag mati 403.
 - `apps/api/tests/integration/imports.test.js`: alur impor job function lalu kamus berkode; flag mati → impor seperti sebelum B4.
 - `apps/web/e2e/b4-dna.spec.ts`: HR (ringkasan, kamus + filter + pengesahan, kurikulum, cakupan di tabel, rencana); atasan tanpa tombol pengesahan dan petunjuk tanpa kamus; flag mati → `/m/dna`; karyawan → `/m/dna`. `e2e/shell.spec.ts` (milik B0) memeriksa menu karyawan.
 - Tidak dites: lihat §10.
@@ -203,7 +204,7 @@ Satu-satunya daftar status terbuka spek ini.
 - (U) `apps/api/src/core/flags/index.js` (`DNA_DEVELOPMENT`)
 - (U) `apps/api/src/modules/imports/kinds/competencies.js`, `common.js` (sinonim tingkat), `index.js`
 - (B) `apps/api/src/modules/imports/kinds/job-functions.js`
-- (B) `apps/api/tests/unit/dna-development.test.js`, `apps/api/tests/integration/dna-development.test.js`
+- (B) `apps/api/tests/unit/dna-development.test.js`, `apps/api/tests/integration/dna-development.test.js`, `apps/api/tests/integration/alur-dna-pengembangan.test.js`, langkah B4 di `apps/api/tests/alur/driver.js`
 - (U) `apps/api/tests/unit/imports.test.js`, `apps/api/tests/integration/imports.test.js`
 - (B) `apps/web/src/screens/b4-dna/routes.ts`, `api.ts`, `DevelopmentNeedsView.vue`
 - (H) `apps/web/src/screens/legacy-dna/routes.ts`
