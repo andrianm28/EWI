@@ -37,6 +37,15 @@ describe('entitlement + feature flag gating', () => {
     expect(access.body.flags['module.ina']).toBe(false);
   });
 
+  it('/me/access mengirim produk entitlement aktif, untuk gerbang modul 2–5 di menu web', async () => {
+    let app = makeApp({ entitlements: { 't-1': ['full_suite'] } });
+    let access = await request(app).get('/api/me/access').set('Authorization', `Bearer ${await tokenFor(app)}`);
+    expect(access.body.products).toEqual(['full_suite']);
+    app = makeApp({ entitlements: { 't-1': ['tna', 'dna'], 't-2': ['full_suite'] } });
+    access = await request(app).get('/api/me/access').set('Authorization', `Bearer ${await tokenFor(app)}`);
+    expect(access.body.products).toEqual(['dna', 'tna']);
+  });
+
   it('entitlement tenant lain tidak bocor', async () => {
     const app = makeApp({ entitlements: { 't-2': ['full_suite'] }, flags: { 't-2': { 'module.dna': true } } });
     const res = await request(app).get('/api/dna').set('Authorization', `Bearer ${await tokenFor(app)}`);

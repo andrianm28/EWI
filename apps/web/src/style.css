@@ -71,7 +71,7 @@
   color-scheme: dark;
 
   /*
-   * Halaman lama (DNA, TNA, wawancara) memakai utilitas Tailwind slate/white/blue/red/emerald.
+   * Halaman lama (DNA, TNA, wawancara) memakai utilitas Tailwind slate/white/blue/indigo/red/emerald/amber.
    * Variabel warnanya dipetakan ulang supaya tetap terbaca di mode gelap tanpa menulis ulang halamannya.
    */
   --color-white: #1d2024;
@@ -86,17 +86,35 @@
   --color-slate-800: #e1e2e8;
   --color-slate-900: #e1e2e8;
   --color-blue-50: #0b3a6e;
+  --color-blue-100: #0b3a6e;
+  --color-blue-200: #2a5591;
   --color-blue-600: #a9c7ff;
   --color-blue-700: #a9c7ff;
+  --color-blue-800: #d6e3ff;
+  --color-indigo-50: #0b3a6e;
+  --color-indigo-100: #0b3a6e;
+  --color-indigo-200: #2a5591;
+  --color-indigo-600: #a9c7ff;
+  --color-indigo-700: #a9c7ff;
+  --color-indigo-800: #d6e3ff;
   --color-red-50: #8c1d18;
+  --color-red-100: #8c1d18;
+  --color-red-200: #a8362f;
   --color-red-600: #ffb4ab;
   --color-red-700: #ffb4ab;
+  --color-red-800: #f9dedc;
   --color-emerald-50: #0b5229;
+  --color-emerald-100: #0b5229;
+  --color-emerald-200: #1b6e3f;
   --color-emerald-600: #8bd8a5;
   --color-emerald-700: #8bd8a5;
+  --color-emerald-800: #c6f0d3;
   --color-amber-50: #5c3b00;
+  --color-amber-100: #5c3b00;
+  --color-amber-200: #7a4f00;
   --color-amber-600: #f3bf5b;
   --color-amber-700: #f3bf5b;
+  --color-amber-800: #ffe2a8;
 }
 
 @theme inline {
@@ -106,6 +124,7 @@
   --color-on-primary-container: var(--el-on-primary-container);
   --color-secondary-container: var(--el-secondary-container);
   --color-on-secondary-container: var(--el-on-secondary-container);
+  --color-tertiary: var(--el-tertiary);
   --color-tertiary-container: var(--el-tertiary-container);
   --color-on-tertiary-container: var(--el-on-tertiary-container);
   --color-surface: var(--el-surface);
@@ -159,6 +178,9 @@
   @media (max-width: 640px) {
     .el-grid-2, .el-grid-3, .el-grid-4 { grid-template-columns: minmax(0, 1fr); }
   }
+  /* Dipakai UiCard dan UiKpiCard; di sini supaya tidak bergantung pada urutan impor komponen */
+  .el-card { background: var(--el-surface-card); border: 1px solid var(--el-outline-variant); border-radius: 16px; padding: 20px; }
+  .el-card--tonal { background: var(--el-surface-1); }
   .el-pill {
     display: inline-flex; gap: 6px; align-items: center; padding: 4px 12px; border-radius: 16px;
     background: var(--el-surface-2); font-size: 12px; white-space: nowrap;

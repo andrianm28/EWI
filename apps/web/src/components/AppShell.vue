@@ -1,6 +1,6 @@
 <script setup lang="ts">
 // Kerangka aplikasi ELGOS (mockup Pak Eji): drawer + top bar + konten. Halaman membungkus isinya dengan <AppShell>.
-import { ref, watch, type Component } from 'vue'
+import { nextTick, onBeforeUnmount, onMounted, ref, watch, type Component } from 'vue'
 import { useRoute } from 'vue-router'
 import AppDrawer from './AppDrawer.vue'
 import AppTopBar from './AppTopBar.vue'
@@ -8,13 +8,24 @@ import { UiSkipLink } from '@/ui'
 
 const route = useRoute()
 const drawerOpen = ref(false)
+// Sama dengan batas CSS drawer melayang (900px)
+const mq = typeof matchMedia === 'function' ? matchMedia('(max-width: 900px)') : null
+const narrow = ref(mq?.matches ?? false)
+function onMq() { narrow.value = mq?.matches ?? false }
 watch(() => route.fullPath, () => { drawerOpen.value = false })
 
 function closeDrawer() {
   if (!drawerOpen.value) return
   drawerOpen.value = false
-  document.getElementById('tombol-menu')?.focus()
+  // Tunggu render: tombol menu baru bisa difokus setelah `inert` dilepas
+  // Tombol menu hanya terlihat di layar sempit; di layar lebar fokus dibiarkan (drawer tetap terlihat)
+  if (narrow.value) nextTick(() => document.getElementById('tombol-menu')?.focus())
 }
+
+// Esc didengar di document: fokus bisa berada di luar kerangka (mis. setelah klik scrim)
+function onKey(e: KeyboardEvent) { if (e.key === 'Escape') closeDrawer() }
+onMounted(() => { document.addEventListener('keydown', onKey); mq?.addEventListener?.('change', onMq) })
+onBeforeUnmount(() => { document.removeEventListener('keydown', onKey); mq?.removeEventListener?.('change', onMq) })
 
 // Titik sambung untuk elemen yang melayang di atas semua layar, mis. Asisten ELGOS (B17):
 // paket menaruh src/screens/<paket>/ShellExtra.vue dan shell memasangnya tanpa perlu diedit.
@@ -24,11 +35,12 @@ const extras = Object.entries(import.meta.glob<{ default: Component }>('@/screen
 </script>
 
 <template>
-  <div class="el-app" @keydown.esc="closeDrawer">
+  <div class="el-app">
     <UiSkipLink />
     <AppDrawer :open="drawerOpen" @close="closeDrawer" />
-    <div v-if="drawerOpen" class="el-app__scrim" @click="closeDrawer" />
-    <div class="el-app__main">
+    <div v-if="drawerOpen" class="el-app__scrim" data-testid="scrim" @click="closeDrawer" />
+    <!-- Saat drawer melayang (layar sempit), isi di belakang scrim tidak bisa difokus atau dibaca pembaca layar -->
+    <div class="el-app__main" :inert="drawerOpen && narrow">
       <AppTopBar :drawer-open="drawerOpen" @toggle-drawer="drawerOpen = !drawerOpen" />
       <main id="isi" class="el-app__content" tabindex="-1"><slot /></main>
     </div>
