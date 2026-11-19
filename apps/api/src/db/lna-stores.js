@@ -469,7 +469,7 @@ function createLnaStores(sequelize, { cipher } = {}) {
     },
     /** PM-6 B: daftar ringkas temuan non-training untuk HR (tanpa detail dan tanpa rencana aksi). */
     async listNonTrainingSummary(tenantId, { projectId, userIds } = {}) {
-      const rep = { tenantId, reviewed: REVIEWED };
+      const rep = { tenantId };
       let sql = `SELECT f.id, f.project_id AS "projectId", f.user_id AS "userId", u.name AS "userName", f.title,
                         pr.name AS "metricName", lf.title AS "linkedTrainingTitle", f.created_at AS "createdAt"
                    FROM lna_findings f
