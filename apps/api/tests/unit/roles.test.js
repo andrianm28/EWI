@@ -4,10 +4,10 @@ const { buildMenu } = require('../../src/core/rbac/menu');
 const { denyRoles } = require('../../src/core/rbac');
 
 describe('tampilan per peran (K2)', () => {
-  it('lima tampilan; pimpinan, role leader, dan narasumber memakai tampilan Karyawan', () => {
+  it('lima tampilan; pimpinan dan role leader memakai tampilan Atasan (selaras shell B0), narasumber Karyawan', () => {
     expect(Object.keys(VIEWS)).toEqual(['hr', 'atasan', 'karyawan', 'admin', 'super']);
     expect(['hr_admin', 'supervisor', 'tenant_admin', 'eta_admin', 'learner', 'pimpinan', 'role_leader', 'sme'].map(viewOf))
-      .toEqual(['hr', 'atasan', 'admin', 'super', 'karyawan', 'karyawan', 'karyawan', 'karyawan']);
+      .toEqual(['hr', 'atasan', 'admin', 'super', 'karyawan', 'atasan', 'atasan', 'karyawan']);
   });
 
   it('HR, Atasan, dan Admin Tenant juga karyawan; Super Admin tunggal', () => {
@@ -15,7 +15,7 @@ describe('tampilan per peran (K2)', () => {
     expect(switchableRoles(['supervisor'])).toEqual(['supervisor', 'learner']);
     expect(switchableRoles(['tenant_admin', 'hr_admin'])).toEqual(['tenant_admin', 'hr_admin', 'learner']);
     expect(switchableRoles(['learner'])).toEqual(['learner']);
-    expect(switchableRoles(['pimpinan'])).toEqual(['pimpinan']);
+    expect(switchableRoles(['pimpinan'])).toEqual(['pimpinan', 'learner']);
     expect(switchableRoles(['supervisor', 'sme'])).toEqual(['supervisor', 'sme']);
     expect(switchableRoles(['eta_admin', 'hr_admin'])).toEqual(['eta_admin']);
     expect(switchableRoles(['tidak-ada'])).toEqual([]);

@@ -25,12 +25,12 @@ Dua konsep dipisah:
 | Peran (kode) | Tampilan | Label | Halaman awal |
 | --- | --- | --- | --- |
 | `hr_admin` | `hr` | HR / L&D | `dash` |
-| `supervisor` | `atasan` | Atasan | `dash` |
+| `supervisor`, `pimpinan`, `role_leader` | `atasan` | Atasan | `dash` |
 | `tenant_admin` (**baru**) | `admin` | Admin Tenant | `users` |
 | `eta_admin` | `super` | Super Admin | `tenants` |
-| `learner`, `pimpinan`, `role_leader`, `sme` | `karyawan` | Karyawan | `my` |
+| `learner`, `sme` | `karyawan` | Karyawan | `my` |
 
-`pimpinan`, `role_leader`, `sme` tetap menjadi kode otorisasi (dipakai CCA/DNA); akun dengan peran itu memakai tampilan Karyawan dan `req.user.role` tetap kode aslinya. `[⏳ DITERIMA]` B10 boleh memberi `pimpinan` tampilan sendiri bila perlu.
+`pimpinan`, `role_leader`, `sme` tetap menjadi kode otorisasi (dipakai CCA/DNA) dan `req.user.role` tetap kode aslinya. Selaras shell B0 (`shell/views.ts`, keputusan T1 19 Nov), `pimpinan` dan `role_leader` memakai tampilan Atasan (menu saja; cakupan data tetap dari peran lewat `visibleEmployeeScope()`), `sme` memakai tampilan Karyawan. `[⏳ DITERIMA]` B3 (T1) menyesuaikan dashboard tim untuk `pimpinan`.
 
 Peran yang dimiliki akun:
 
@@ -38,7 +38,7 @@ Peran yang dimiliki akun:
 - **Peran yang bisa dipilih** (`switchableRoles`) = peran di `user_roles`, ditambah `learner` bila akun punya `hr_admin`, `supervisor`, atau `tenant_admin` dan belum punya peran bertampilan Karyawan ("HR, Atasan, dan Admin Tenant juga karyawan", K2). `learner` turunan ini tidak disimpan.
 - `eta_admin` tidak bisa digabung dengan peran lain dan tidak punya tampilan lain.
 - Admin Tenant menjadi HR hanya bila `hr_admin` juga diberikan ke akunnya.
-- Contoh: akun utama `hr_admin` + `tenant_admin` → `switchableRoles = [hr_admin, tenant_admin, learner]`. Akun `pimpinan` → `[pimpinan]`, tampilan Karyawan.
+- Contoh: akun utama `hr_admin` + `tenant_admin` → `switchableRoles = [hr_admin, tenant_admin, learner]`. Akun `pimpinan` → `[pimpinan, learner]`, tampilan Atasan.
 
 Flag baru `auth.multi_role` (default mati, per tenant): bila mati, `switchableRoles` hanya berisi peran utama dan `switch-role` menolak (403 `FEATURE_DISABLED`). Pemeriksaan peran aktif di `requireAuth` tidak di balik flag karena itu jalur keamanan, bukan fitur; untuk akun satu peran hasilnya sama dengan sebelum B2.
 

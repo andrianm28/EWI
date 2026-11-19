@@ -16,9 +16,16 @@ export interface SessionUser {
   tenantName?: string
 }
 
+/** B2: tampilan yang boleh dipakai akun ini, dari API (peran yang bisa dipilih lewat POST /auth/switch-role). */
+export interface AccessRole { role: string; view: ViewKey; label: string }
+
 interface Access {
   submodules: SubmoduleKey[]
   flags: Record<string, boolean>
+  /** B2: peran aktif sesi, tampilannya, dan tampilan lain yang bisa dipilih. API lama tidak mengirimnya. */
+  role?: string
+  view?: ViewKey
+  roles?: AccessRole[]
 }
 
 const STORAGE_KEY = 'ewi.token'
@@ -131,9 +138,12 @@ export const useSessionStore = defineStore('session', () => {
     if (!u) return []
     return Array.isArray(u.roles) && u.roles.length ? u.roles : [u.role]
   })
+  // B2: bila API mengirim daftar peran yang bisa dipilih, tampilan diambil dari sana (otorisasi di API).
+  // Tanpa itu (API lama), tampilan diturunkan di browser dari peran akun seperti B0.
+  const apiRoles = computed(() => (access.value?.roles?.length ? access.value.roles : null))
   const views = computed<ViewKey[]>(() => {
     if (!user.value) return []
-    const all = viewsOfRoles(roles.value)
+    const all = apiRoles.value ? [...new Set([access.value!.view ?? apiRoles.value[0]!.view, ...apiRoles.value.map((r) => r.view)])] : viewsOfRoles(roles.value)
     const main = all[0]!
     // Tampilan tambahan baru ditawarkan setelah layar berandanya ada (mis. "Hasil saya" untuk karyawan).
     // Sebelum itu halaman lama akan memperlihatkan data peran asli di bawah label tampilan lain.
@@ -144,11 +154,20 @@ export const useSessionStore = defineStore('session', () => {
     return homeReadyFn(v, { access: access.value, canOpen, roles: roles.value })
   }
   const activeView = computed<ViewKey>(() => {
+    // B2: tampilan aktif = peran aktif sesi di API
+    if (apiRoles.value && access.value?.view) return access.value.view
     const picked = views.value.find((v) => v === pickedView.value)
     return picked ?? views.value[0] ?? 'karyawan'
   })
-  function setView(v: ViewKey) {
+  async function setView(v: ViewKey) {
     if (!views.value.includes(v)) return
+    const target = apiRoles.value?.find((r) => r.view === v)
+    if (target && v !== activeView.value) {
+      // B2: ganti peran aktif di API. Token lama langsung tidak berlaku, jadi token baru dipakai sebelum memuat akses.
+      const res = await api<{ token: string; user: SessionUser }>('/auth/switch-role', { method: 'POST', body: JSON.stringify({ role: target.role }) }, token.value)
+      startSession(res)
+      await loadAccess()
+    }
     pickedView.value = v
     try { sessionStorage.setItem(VIEW_KEY, v) } catch { /* abaikan */ }
   }

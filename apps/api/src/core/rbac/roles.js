@@ -24,16 +24,21 @@ const VIEWS = Object.freeze({
 });
 
 const ROLE_VIEW = Object.freeze({
-  [ROLES.HR_ADMIN]: 'hr', [ROLES.SUPERVISOR]: 'atasan', [ROLES.TENANT_ADMIN]: 'admin', [ROLES.ETA_ADMIN]: 'super',
+  [ROLES.HR_ADMIN]: 'hr', [ROLES.SUPERVISOR]: 'atasan', [ROLES.PIMPINAN]: 'atasan', [ROLES.ROLE_LEADER]: 'atasan',
+  [ROLES.TENANT_ADMIN]: 'admin', [ROLES.ETA_ADMIN]: 'super',
 });
-/** Tampilan untuk satu peran. pimpinan/role_leader/sme/learner memakai tampilan Karyawan. */
+/**
+ * Tampilan untuk satu peran (selaras `shell/views.ts` B0). pimpinan/role_leader memakai tampilan Atasan untuk menu;
+ * cakupan data tetap ditentukan peran lewat visibleEmployeeScope(). sme/learner memakai tampilan Karyawan.
+ */
 const viewOf = (role) => ROLE_VIEW[role] || 'karyawan';
 
 /** Peran yang memberi wewenang atas data atau akun orang lain; akun ini tidak diubah lewat impor/undangan karyawan. */
 const PRIVILEGED_ROLES = Object.freeze([ROLES.HR_ADMIN, ROLES.TENANT_ADMIN, ROLES.ETA_ADMIN]);
 /** Peran yang bisa diberikan lewat PUT /users/:id/roles (eta_admin tidak pernah lewat sini). */
 const ASSIGNABLE_ROLES = Object.freeze(ALL_ROLES.filter((r) => r !== ROLES.ETA_ADMIN));
-const ALSO_EMPLOYEE = [ROLES.HR_ADMIN, ROLES.SUPERVISOR, ROLES.TENANT_ADMIN];
+// Tampilan yang juga karyawan (K2): HR, Atasan, Admin Tenant
+const ALSO_EMPLOYEE_VIEWS = ['hr', 'atasan', 'admin'];
 
 /**
  * Peran yang bisa dipilih akun sebagai tampilan (K2): peran yang dimiliki, ditambah `learner` untuk
@@ -42,7 +47,7 @@ const ALSO_EMPLOYEE = [ROLES.HR_ADMIN, ROLES.SUPERVISOR, ROLES.TENANT_ADMIN];
 function switchableRoles(roles) {
   const own = [...new Set((roles || []).filter((r) => ALL_ROLES.includes(r)))];
   if (own.includes(ROLES.ETA_ADMIN)) return [ROLES.ETA_ADMIN];
-  if (own.some((r) => ALSO_EMPLOYEE.includes(r)) && !own.some((r) => viewOf(r) === 'karyawan')) own.push(ROLES.LEARNER);
+  if (own.some((r) => ALSO_EMPLOYEE_VIEWS.includes(viewOf(r))) && !own.some((r) => viewOf(r) === 'karyawan')) own.push(ROLES.LEARNER);
   return own;
 }
 
