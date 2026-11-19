@@ -34,6 +34,11 @@ function question(submodule, askedCount, context) {
     return askedCount === comps.length ? 'Kompetensi mana yang menurut Anda paling perlu dikembangkan untuk naik ke jenjang berikutnya?' : null;
   }
   const triggers = context.triggers || [];
+  // B6 (A10): sesi untuk gap kompetensi dibuka dengan topiknya
+  if (!triggers.length && context.focus && context.focus.label) {
+    if (askedCount === 0) return `Kita membahas ${context.focus.kind === 'okr' ? 'target kerja' : 'kompetensi'} "${context.focus.label}". Ceritakan pekerjaan terakhir Anda yang terkait: bagian mana yang paling sulit?`;
+    return askedCount === 1 ? 'Selain hal di atas, adakah kendala lain (SOP, tools, atau pengetahuan) yang menghambat pekerjaan Anda?' : null;
+  }
   if (askedCount < triggers.length) {
     const t = triggers[askedCount];
     return `Target "${t.name}" periode ${t.period || 'ini'} belum tercapai (target ${t.target}, realisasi ${t.actual}). Menurut Anda apa penyebab utamanya?`;

@@ -25,9 +25,10 @@ const { getKind } = require('../imports/kinds');
 const { validateRows, commitRows } = require('../imports/engine');
 const { PLAN_STATUSES, PLAN_STATUS_LABEL, initialStatus, canTransition } = require('./plan-status');
 const { reviewWorkspaceRouter, toReviewItem, assertNotWithdrawn } = require('./review-workspace');
+const { gapRouter } = require('./gap-routes');
 
 const REVIEW_DECISIONS = { approve: 'approved', edit: 'edited', reject: 'rejected' };
-const REVIEWED = ['approved', 'edited'];
+const { REVIEWED } = require('./review-status');
 const CATEGORIES = ['training', 'non_training'];
 
 module.exports = {
@@ -139,7 +140,10 @@ module.exports = {
       res.status(201).json({ data: { scope, scheduled: created.length, skipped: picks.length - created.length, skippedWithdrawn, sessions: created } });
     }));
 
-    r.use('/sessions', interviewRouter({ submodule: 'tna', stores, ai, aiConfig, audit, analysis }));
+    // B5: papan gap dan penugasan wawancara akar masalah (flag tna.gap_board, tna.interview_assignment)
+    r.use(gapRouter({ stores, flags, audit }));
+
+    r.use('/sessions', interviewRouter({ submodule: 'tna', stores, ai, aiConfig, audit, analysis, flags }));
 
     // --- Review hasil AI oleh HR (PK-14: PD-14 ★A, PM-3 ★A, PM-5 ★A) ---
     // Temuan dari analisis AI berstatus draf. Draf tidak terlihat atasan dan karyawan, dan tidak dihitung di
