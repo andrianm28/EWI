@@ -61,7 +61,7 @@ export const openGroups = reactive<Record<MenuGroup['key'], boolean>>({ lna: tru
 
 export interface MenuContext {
   view: ViewKey
-  /** Rute terdaftar dan gerbang meta-nya (flag, submodul, peran) lolos. */
+  /** Rute terdaftar dan gerbang meta-nya (views, flag, submodul, peran, entitlement) lolos. */
   routeOpen: (name: string) => boolean
   /** Layar beranda tampilan aktif sudah bisa dibuka. */
   homeReady: boolean
