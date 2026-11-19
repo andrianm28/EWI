@@ -68,6 +68,8 @@ function loadConfig(env = process.env) {
       clientId: env.ELITEMENTOR_CLIENT_ID || '',
       clientSecret: env.ELITEMENTOR_CLIENT_SECRET || '',
       webhookSecret: env.ELITEMENTOR_WEBHOOK_SECRET || '',
+      // B7: penugasan course ke EliteMentor. Kontrak FR-EM belum final, jadi mati sampai dinyalakan dengan sengaja.
+      assignmentsEnabled: env.ELITEMENTOR_ASSIGNMENTS_ENABLED === 'true',
     }),
     // Alamat web untuk link masuk (R3-2), mis. https://dev-elgos.eliteacademy.id
     appBaseUrl: (env.APP_BASE_URL || (env.CORS_ORIGIN || '').split(',')[0] || 'http://localhost:5174').replace(/\/$/, ''),

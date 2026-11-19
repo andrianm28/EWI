@@ -7,9 +7,12 @@
 // - perubahan feature flag dan kill switch (R2-1).
 // Pencatatan gagal = request gagal (fail closed): data individu tidak dikirim tanpa jejak audit.
 
-/** store: { insert({ tenantId, userId, action, resource, meta, at }) } */
+/**
+ * store: { insert({ tenantId, userId, action, resource, meta, at }, { transaction }?) }.
+ * opts.transaction: tulis audit di dalam transaksi pemanggil, supaya audit dan perubahannya jadi atau batal bersama.
+ */
 function createAuditService(store) {
-  async function record(req, action, resource, meta = {}) {
+  async function record(req, action, resource, meta = {}, opts = {}) {
     await store.insert({
       tenantId: req.tenantId,
       userId: (req.user && req.user.id) || null,
@@ -17,7 +20,7 @@ function createAuditService(store) {
       resource,
       meta: { role: req.user && req.user.role, ...meta },
       at: new Date(),
-    });
+    }, opts);
   }
   return {
     record,

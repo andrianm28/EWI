@@ -29,6 +29,13 @@ const FLAGS = Object.freeze({
   TNA_TRAINING_REQUEST: 'tna.training_request',
   // PM-6 (17 Nov): daftar ringkas temuan non-training untuk HR; atasan bila diberi akses HR. Mati = disembunyikan
   TNA_NON_TRAINING_HR: 'tna.non_training_hr',
+  // B7 (19 Nov): tinjauan HR versi mockup Pak Eji: klasifikasi tiga tombol, solusi pelatihan, penugasan, ekspor gap,
+  // dan serah temuan ke Improvement Needs
+  TNA_REVIEW_WORKSPACE: 'tna.review_workspace',
+  // B8 (19 Nov): beranda karyawan (Hasil saya, Rencana belajar)
+  LEARNER_HOME: 'learner.home',
+  // B17 (19 Nov): Asisten ELGOS, jawaban dari data yang boleh dilihat peran penanya
+  ASSISTANT: 'assistant',
   // B9 (19 Nov): verifikasi tindakan perbaikan lewat wawancara singkat AI ke pemiliknya (butuh ina.dashboard)
   INA_AI_VERIFICATION: 'ina.ai_verification',
   // B5 (19 Nov): papan gap Training Needs (gap kompetensi + gap OKR, klasifikasi, detail gap)
