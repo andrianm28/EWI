@@ -17,7 +17,7 @@ async function runInterviewReminders({ stores, mailer, appBaseUrl, now = new Dat
     // Tandai dulu: bila dua job berjalan bersamaan, hanya satu yang mengirim
     if (!(await stores.interviews.markReminded(s.tenantId, s.id, kind, now))) continue;
     try {
-      await mailer.send({ to: s.email, ...reminderMessage({ kind, name: s.name, tenantName: s.tenantName, submodule: s.submodule, inviteExpiresAt: s.inviteExpiresAt, appBaseUrl }) });
+      await mailer.send({ to: s.email, ...reminderMessage({ kind, name: s.name, tenantName: s.tenantName, submodule: s.submodule, inviteExpiresAt: s.inviteExpiresAt, appBaseUrl, durationMinutes: s.durationMinutes }) });
     } catch (e) {
       // Kirim gagal: tanda dilepas supaya dicoba lagi pada run berikutnya
       await stores.interviews.clearReminded(s.tenantId, s.id, kind);
