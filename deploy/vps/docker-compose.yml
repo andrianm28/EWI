@@ -46,7 +46,7 @@ services:
     # mode 0400, hanya-baca, tidak masuk image/repo. Dipakai bila .env berisi
     # GOOGLE_APPLICATION_CREDENTIALS=/run/secrets/gcp-voice.json; tanpa itu berkas kosong diabaikan.
     volumes:
-      - ${ELGOS_SECRETS_DIR:?ELGOS_SECRETS_DIR wajib}/gcp-voice.json:/run/secrets/gcp-voice.json:ro
+      - ${ELGOS_SECRETS_DIR:-/srv/elgos-${ELGOS_ENV}/secrets}/gcp-voice.json:/run/secrets/gcp-voice.json:ro
     environment:
       NODE_ENV: production
       EWI_ENV: ${ELGOS_ENV}
