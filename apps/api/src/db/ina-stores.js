@@ -210,10 +210,6 @@ function createInaStores(sequelize, { cipher } = {}) {
       const rows = await write(`UPDATE ina_verifications SET ${sets.join(', ')} WHERE tenant_id = :tenantId AND id = :id AND status IN (:from) RETURNING id`, rep);
       return rows.length > 0;
     },
-    /** Batalkan verifikasi terbuka sebuah tindakan (pemilik diganti, tindakan ditutup atau disembunyikan). Return id-nya. */
-    async cancelOpenVerifications(tenantId, actionId) {
-      return cancelOpen(tenantId, actionId);
-    },
     /**
      * Tambah giliran hanya selama verifikasi masih `in_progress` dan jawaban pemilik belum mencapai `maxHuman`.
      * Baris verifikasi dikunci, jadi giliran tidak bisa menyusul setelah ditarik/dibatalkan dan batas pertanyaan

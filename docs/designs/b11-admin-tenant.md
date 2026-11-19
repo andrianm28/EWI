@@ -34,7 +34,7 @@ Mockup Pak Eji (final 19 Nov, artifact https://claude.ai/artifact/3pRkbt7pJexZqg
 | Menu | Isi di mockup | Yang dibangun |
 | --- | --- | --- |
 | Pengguna & peran | chip jumlah pengguna, chip "SSO aktif", tombol "Undang pengguna", tabel Nama, Email, Peran, Jabatan, Status | Sama. Chip SSO berarti SSO perusahaan (flag `auth.sso`, paket B1); selama flag itu belum ada, chip disembunyikan (`meta.sso = false`). Peran diisi saat mengundang (mockup: "diatur setelah menerima undangan"; diisi di depan agar akun tidak pernah tanpa peran). Tambahan yang tidak ada di mockup tetapi perlu agar layar berguna: ubah peran, ubah jabatan, nonaktifkan/aktifkan, kirim ulang undangan |
-| Jabatan & kamus kompetensi | tabel Jabatan, Kamus (Tersedia/Belum tersedia), Kompetensi (jumlah), Pegawai (jumlah), Sumber | Sama, dari data tenant. Tambah jabatan baru (nama, divisi, jenjang dengan tingkat program Basic/Intermediate/Advanced) |
+| Jabatan & kamus kompetensi | tabel Jabatan, Kamus (Tersedia/Belum tersedia), Kompetensi (jumlah), Pegawai (jumlah), Sumber | Sama, dari data tenant. Tambah jabatan baru (nama, divisi; API juga menerima jenjang dengan tingkat program Basic/Intermediate/Advanced, isian layar menyusul) |
 | Impor data & integrasi | kartu "1. Model kompetensi" (DACUM xlsx per jabatan, status Terimpor), kartu "2. KPI dan OKR" (per periode), kartu "Integrasi pembelajaran" (EliteMentor, LMS perusahaan) | Kartu impor memakai alur impor yang sudah ada (unggah, petakan kolom, pratinjau, simpan); tiap berkas menampilkan sumber dan waktu unggah. Kartu integrasi berbeda dari mockup: status ditulis "Terkonfigurasi" (belum ada uji panggil) dan tanpa tautan ke EliteMentor |
 
 Data demo mockup ("Karyawan A", "Elitery", nama jabatan ilustratif, catatan "contoh ilustratif") tidak dibawa; layar memakai data tenant.
@@ -114,7 +114,7 @@ Semua di bawah `/api/tenant-admin`, setelah `auth` + `tenantContext()`, lalu `re
 | `GET /roles` | – | `{ data: [{ key, label }] }` | Peran yang boleh diberikan + label Indonesia |
 | `POST /users` | `{ email, name, role, employeeId?, jobRoleId?, careerLevelId?, supervisorId? }` | 201 `{ data: user, invited: true }` | Membuat akun `invited` lalu mengirim undangan (link 7 hari). Email dinormalkan huruf kecil. Email atau ID karyawan yang sudah ada → 409 `DUPLICATE` |
 | `PATCH /users/:id` | subset `{ name, role, employeeId, jobRoleId, careerLevelId, supervisorId, status }` | `{ data: user }` | `status` hanya `active` atau `disabled`. Lihat aturan 4.3 |
-| `POST /users/:id/invite` | – | 201 `{ data: { sent: true } }` | Kirim ulang undangan. Hanya untuk akun yang belum pernah masuk (`pendingLogin`), selain itu 409 `INVALID_STATE`. Maksimal 3 link per 15 menit per akun, dihitung bersama undangan awal dan link masuk → 429 `RATE_LIMITED`. Email gagal → 502 `MAIL_FAILED`. Link lama tidak dibatalkan (tetap sekali pakai, 7 hari) |
+| `POST /users/:id/invite` | – | 201 `{ data: { sent: true } }` | Kirim ulang undangan. Hanya untuk akun yang belum pernah masuk (`pendingLogin`), selain itu 409 `INVALID_STATE`. Maksimal 3 link per 15 menit per akun, dihitung bersama undangan awal dan link masuk → 429 `RATE_LIMITED`. Email gagal → 502 `MAIL_FAILED`. Akun `eta_admin` → 403 `ROLE_FORBIDDEN`. Link lama tidak dibatalkan (tetap sekali pakai, 7 hari) |
 
 Arti status. `pendingLogin` ("belum pernah masuk") = akun tidak `disabled` dan `last_login_at` kosong. Ini mencakup akun `invited` dan akun hasil impor karyawan, yang dibuat langsung `active` oleh modul impor walau belum pernah masuk. Layar menampilkan keduanya sebagai "Diundang". Transisi lewat `PATCH`: `active → disabled`, `invited → disabled`, `disabled → active` (bila pernah masuk) atau `disabled → invited` (bila belum pernah masuk, supaya undangan bisa dikirim ulang). `invited → active` ditolak 400: akun menjadi aktif hanya lewat link undangan. Rute lama `POST /api/invitations` (HR, undangan massal karyawan) tidak diubah.
 
@@ -124,7 +124,7 @@ Urutan tulis: simpan dulu, lalu audit, tanpa transaksi bersama (pola yang sama d
 
 Kode galat paket ini: 400 `BAD_REQUEST` (termasuk id di body yang tidak ketemu), 401 tanpa token, 403 `FEATURE_DISABLED` (flag mati atau kill switch) / `ROLE_FORBIDDEN` / `NOT_ENTITLED`, 404 `NOT_FOUND` (id di URL, termasuk yang bukan UUID), 409 `DUPLICATE` / `SELF_CHANGE` / `INVALID_STATE`, 429 `RATE_LIMITED`, 502 `MAIL_FAILED`.
 
-Validasi: `role` harus peran yang boleh diberikan; `jobRoleId` harus jabatan tenant; `careerLevelId` harus jenjang jabatan itu; `supervisorId` harus akun tenant, bukan dirinya; email berformat valid, maksimal 320 karakter; nama maksimal 255; `employeeId` maksimal 64. Jabatan: nama dan divisi maksimal 255, deskripsi maksimal 2.000.
+Validasi: `role` harus peran yang boleh diberikan; `jobRoleId` harus jabatan tenant; `careerLevelId` harus jenjang jabatan itu; `supervisorId` harus akun tenant, bukan dirinya; email berformat valid, maksimal 320 karakter; nama maksimal 255; `employeeId` maksimal 64. Jabatan: nama dan divisi maksimal 255, deskripsi maksimal 2.000, maksimal 20 jenjang dengan nama maksimal 64. Kata kunci pencarian `q` dipotong 100 karakter.
 
 Urutan `POST /users`: simpan akun dulu, lalu kirim undangan. Bila pengiriman email gagal, akun tetap ada (status `invited`), jawaban 201 dengan `invited: false` dan pesan agar admin memakai "kirim ulang". Alasannya: undangan bisa diulang, sedangkan akun ganda tidak boleh.
 
@@ -144,7 +144,7 @@ Audit: `create user` (meta `assignedRole`), `update user` (meta `changes: { kolo
 - `dictionary` = `tersedia` bila jabatan punya minimal satu kompetensi.
 - `employeeCount` = akun tenant yang tidak `disabled` dengan `job_role_id` itu.
 - `sources` = nilai `source` berbeda dari kompetensi jabatan itu. `lastImport` = batch `dna_competencies` terakhir berstatus `committed` yang `options.jobRoleId`-nya jabatan itu.
-- Kolom "Sumber" di layar: nama berkas `lastImport` bila ada; bila tidak, label dari `sources` (mis. "DACUM"); bila kamus kosong, "Belum ada kamus".
+- Kolom "Sumber" di layar: label dari `sources` ditambah nama berkas `lastImport` bila ada (mis. "DACUM · DACUM_SD_v2.1.xlsx"); bila kamus kosong, "Belum ada kamus".
 - Jalur lain membuat jabatan: `POST /api/dna/job-roles` (HR). Rute HR itu tidak memeriksa nama kembar tanpa beda huruf dan tidak membatasi panjang; validasi kedua jalur disatukan nanti (bagian 10).
 - Jabatan adalah data organisasi inti, jadi rute jabatan tidak mensyaratkan entitlement submodul tertentu.
 - Nama jabatan dibandingkan tanpa beda huruf besar/kecil pada `POST` dan `PATCH`.
@@ -175,12 +175,12 @@ Audit: `create`/`update` resource `tenant_admin.job_role`.
 
 - `status = terkonfigurasi` bila konfigurasi server (env `ELITEMENTOR_*`) punya `baseUrl`, `tokenUrl`, `clientId`, `clientSecret` **dan** tenant punya `elitementor_organization_id`. Hanya boolean yang dikirim; nilai secret, URL, dan id organisasi tidak pernah dikirim.
 - `sso` = flag `em.sso`, `webhookSync` = flag `em.webhook_sync`.
-- `lms.targets` dari `settings.lms.targets` (bawaan `["elitementor"]`). `gapExport` selalu `true` sebagai keterangan K4 ("LMS perusahaan: ekspor gap bila EliteMentor tidak dipakai"); fitur ekspornya milik B8/B13, tidak dibangun di sini.
+- `lms.targets` dari `settings.lms.targets` (bawaan `["elitementor", "moodle"]` dari `core/settings`). `gapExport` selalu `true` sebagai keterangan K4 ("LMS perusahaan: ekspor gap bila EliteMentor tidak dipakai"); fitur ekspornya milik B8/B13, tidak dibangun di sini.
 - `[⚠️ BELUM TERVERIFIKASI]` "Terkonfigurasi" bukan hasil uji panggil ke EliteMentor. Uji sambungan sungguhan butuh kontrak FR-EM yang belum ada (`integrations/elitementor/client.js` belum punya endpoint).
 
 Perubahan pada modul impor (kode bersama, perlu review Andrian):
 
-1. `importRouter({ submodule, stores, audit, guard, only, ownDrafts })`: parameter baru `guard` (middleware; default tetap `requireRole(HR_ADMIN)`), `only` (daftar kunci jenis yang dibuka; default semua jenis submodul; riwayat batch difilter di SQL sebelum batas 100 baris) dan `ownDrafts` (lihat di bawah). Rute `/api/dna/imports` dan `/api/tna/imports` tidak berubah perilakunya. Dengan `only`, jenis lain beserta riwayat batch-nya dijawab 404. Alasannya: mockup hanya punya dua kartu, dan jenis `employees` bisa mengubah peran lewat berkas tanpa aturan 4.3, sedangkan `dna_results` memuat hasil individu yang bukan urusan admin tenant.
+1. `importRouter({ submodule, stores, audit, guard, only, ownDrafts })`: parameter baru `guard` (middleware; default tetap `requireRole(HR_ADMIN)`), `only` (daftar kunci jenis yang dibuka; default semua jenis submodul; riwayat batch difilter di SQL sebelum batas 100 baris) dan `ownDrafts` (lihat di bawah). Rute `/api/dna/imports` dan `/api/tna/imports` tidak berubah perilakunya, kecuali dua hal kecil: opsi teks kini di-trim, dan opsi `source` `tna_performance` (tidak bertanda `internal`) tampil sebagai isian di layar impor HR. Dengan `only`, jenis lain beserta riwayat batch-nya dijawab 404. Alasannya: mockup hanya punya dua kartu, dan jenis `employees` bisa mengubah peran lewat berkas tanpa aturan 4.3, sedangkan `dna_results` memuat hasil individu yang bukan urusan admin tenant.
 2. Jenis `dna_competencies`: opsi baru `jobRoleId` dan `source`, dikirim di body `preview`/`commit` (`{ options }`) dan tersimpan di `import_batches.options`. Keduanya bertanda `internal`, jadi tidak tampil sebagai isian bebas di layar impor HR. Layar admin mengisi `jobRoleId` dari jabatan yang dipilih dan `source = dacum`. Aturan:
 
    | Kondisi | Hasil |
@@ -219,16 +219,16 @@ E2E `apps/web/e2e/admin-tenant.spec.ts` (4 test) dengan API mock.
 
 `apps/api/tests/unit/tenant-admin.test.js` (tanpa DB, store in-memory):
 
-- flag mati → 403 `FEATURE_DISABLED` untuk semua rute;
-- `learner`, `supervisor`, `pimpinan` → 403; `hr_admin` lolos sementara; `eta_admin` lolos; `tenant_admin` lolos (token buatan);
-- validasi body `POST /users` dan `PATCH /users/:id`;
-- tidak bisa memberi `eta_admin`; tidak bisa mengubah akun `eta_admin`; tidak bisa mengubah peran/status sendiri;
-- opsi impor `jobRoleId`/`source` (tabel aturan 6.3; baris 75–111 berkas ini).
+- `learner`, `supervisor`, `pimpinan` → 403; `hr_admin` lolos sementara; `eta_admin` lolos; `tenant_admin` lolos (token buatan); gerbang membaca peran dari DB (termasuk DC-1);
+- opsi impor `jobRoleId`/`source` (tabel aturan 6.3) dan gerbang impor admin.
 
 `apps/api/tests/unit/gating.test.js`: `requireSubmodule { tenantFlag: false }` (entitlement wajib, kill switch dihormati, flag tenant tidak disyaratkan, tanpa opsi perilaku lama).
 
 `apps/api/tests/integration/tenant-admin.test.js` (Postgres):
 
+- flag mati → 403 `FEATURE_DISABLED` untuk semua rute;
+- validasi body `POST /users` dan `PATCH /users/:id`;
+- tidak bisa memberi `eta_admin`; tidak bisa mengubah akun `eta_admin`; tidak bisa mengubah peran/status sendiri;
 - undang pengguna: akun `invited` dibuat, email undangan terkirim (mailer memory), audit tercatat; email kembar → 409;
 - kirim ulang undangan: hanya untuk akun `pendingLogin`; batas 3 per 15 menit; email gagal → `POST /users` 201 dengan `invited: false`, kirim ulang 502 `MAIL_FAILED`, tanpa audit undangan;
 - ubah peran, jabatan, jenjang, atasan, status; nonaktif → tidak bisa login;
@@ -275,6 +275,7 @@ E2E `apps/web/e2e/admin-tenant.spec.ts` (4 test) dengan API mock.
 | ⏳ | Audit dicatat sesudah simpan: audit gagal → 500 padahal data tersimpan | Diterima (pola repo) |
 | ⏳ | Pratinjau KPI menampilkan baris per karyawan dari berkas yang diunggah admin sendiri | Diterima; kelas visibilitas `tenant_admin` ditetapkan B2 (aturan 4) |
 | ⏳ | Rute impor admin tidak mensyaratkan flag modul tenant (aturan 3) | Persetujuan Andrian |
+| ⏳ | Ringkasan impor membaca maksimal 200 periode dan 1.000 batch tersimpan; di luar itu "impor terakhir" kosong | Diterima untuk POC |
 | ⏳ | Batas kirim ulang undangan diperiksa lalu ditulis (bisa lolos satu lebih saat bersamaan) | Diterima |
 | ⏳ | Nama jabatan kembar tanpa beda huruf hanya dicek aplikasi di rute Admin Tenant; UNIQUE DB peka huruf dan rute HR `POST /api/dna/job-roles` tidak memeriksanya | Indeks `lower(name)` bila diperlukan (review Andrian, migrasi) |
 
