@@ -2,6 +2,8 @@
 # Entrypoint container API ELGOS.
 # - Di AWS, kredensial DB datang terpisah dari Secrets Manager (DB_HOST, DB_USER, ...);
 #   DATABASE_URL dirakit di sini dengan password ter-URL-encode dan TLS wajib.
+# - PK-07 / PD-8: DB_USER + DB_PASSWORD = role aplikasi (tanpa DDL). Migrasi dan ensure-schema memakai
+#   DB_MIGRATION_USER + DB_MIGRATION_PASSWORD bila diisi (src/db/urls.js mengganti user di DATABASE_URL).
 # - RUN_MIGRATIONS=true menjalankan migrasi sebelum server start. Gagal migrasi = container
 #   keluar = ECS circuit breaker mengembalikan versi sebelumnya.
 set -e

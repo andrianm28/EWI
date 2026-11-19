@@ -3,6 +3,8 @@
 # sendiri lewat Cloudflare quick tunnel. Dijalankan lewat dev.sh, bukan langsung:
 #   deploy/dev-worktree/dev.sh up      # build dari worktree ini, migrasi, seed, cetak URL
 # Hanya data sintetis. Data karyawan nyata hanya di prod.
+# Di etavm2 dijalankan sebagai user elgos-dev (Docker rootless, terpisah dari staging/prod).
+# Batas per worktree: DB + API masing-masing 1 vCPU / 768 MB, web 128 MB (8 thread paralel muat).
 services:
   db:
     image: pgvector/pgvector:pg16
@@ -11,8 +13,12 @@ services:
     environment:
       POSTGRES_USER: elgos
       POSTGRES_DB: elgos_dev
+    command: ["postgres", "-c", "shared_buffers=128MB"]
     volumes:
       - db-data:/var/lib/postgresql/data
+    deploy:
+      resources:
+        limits: { cpus: "1", memory: 768m }
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U elgos -d elgos_dev"]
       interval: 3s
@@ -43,6 +49,9 @@ services:
       ENCRYPTION_PROVIDER: local
       MAIL_PROVIDER: log
       TENANT_KEY_PROVIDER: local
+    deploy:
+      resources:
+        limits: { cpus: "1", memory: 768m }
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:4100/api/health | grep -q '\"ok\"'"]
       interval: 3s
@@ -59,6 +68,9 @@ services:
       api: { condition: service_healthy }
     ports:
       - "127.0.0.1:${WEB_PORT:?WEB_PORT wajib}:80"
+    deploy:
+      resources:
+        limits: { cpus: "0.5", memory: 128m }
 
   tunnel:
     profiles: [public]

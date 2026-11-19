@@ -1,0 +1,12 @@
+{
+  "id": "GANTI-DENGAN-UUID-DARI-TERRAFORM",
+  "slug": "hr-elitery",
+  "name": "HR Elitery",
+  "products": ["full_suite"],
+  "flags": ["module.dna", "module.tna"],
+  "users": [
+    { "email": "hr@example.test", "name": "HR Elitery", "role": "hr_admin" },
+    { "email": "admin.eta@example.test", "name": "Admin ETA", "role": "eta_admin" }
+  ],
+  "settings": { "tna": { "interviewScope": "all_members" } }
+}
