@@ -6,10 +6,14 @@ export default defineConfig({
   fullyParallel: true,
   retries: process.env.CI ? 1 : 0,
   reporter: process.env.CI ? 'github' : 'list',
+  // Snapshot visual: toleransi kecil untuk beda anti-alias antar mesin; animasi dimatikan Playwright secara default
+  expect: { toHaveScreenshot: { maxDiffPixelRatio: 0.02 } },
+  snapshotPathTemplate: '{testDir}/__snapshots__/{arg}{ext}',
   use: { baseURL: 'http://localhost:4174', trace: 'off' },
   projects: [{ name: 'chromium', use: { ...devices['Desktop Chrome'] } }],
   webServer: {
-    command: 'npm run build-only && npm run preview',
+    // VITE_UI_KIT=1 memasang halaman referensi komponen dan rute uji (tidak ada di build produksi)
+    command: 'VITE_UI_KIT=1 npm run build-only && npm run preview',
     url: 'http://localhost:4174',
     reuseExistingServer: !process.env.CI,
     timeout: 120_000,
