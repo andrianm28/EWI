@@ -24,7 +24,8 @@ const token = () => useSessionStore().token
 const call = <T>(path: string, init: RequestInit = {}) => api<T>(path, init, token())
 const post = <T>(path: string, body: unknown) => call<T>(path, { method: 'POST', body: JSON.stringify(body) })
 
-async function raw(path: string, init: RequestInit = {}) {
+/** fetch dengan token untuk respons non-JSON (unduhan file). Dipakai juga oleh lna.ts. */
+export async function raw(path: string, init: RequestInit = {}) {
   const headers = new Headers(init.headers)
   const t = token()
   if (t) headers.set('Authorization', `Bearer ${t}`)

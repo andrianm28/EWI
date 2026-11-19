@@ -1,6 +1,7 @@
 // Klien API DNA + TNA (POC Desember). Bentuk data mengikuti apps/api/src/modules/{dna,tna}.
 import { api } from '@/api/client'
 import { useSessionStore } from '@/stores/session'
+import { raw } from '@/api/imports'
 
 export interface Career {
   currentLevel: { id: string; name: string; requiredProgramTier: string | null } | null
@@ -108,6 +109,18 @@ export const lna = {
   classifyFinding: (id: string, classification: ReviewClassification, note?: string) => post<{ data: ReviewItem }>(`/tna/findings/${id}/classify`, { classification, note }),
   reviewSolutions: () => call<{ data: ReviewSolutions }>('/tna/review/solutions'),
   assignPlanItem: (id: string) => post<{ data: PlanItem }>(`/tna/plan-items/${id}/assign`, {}),
+  /** B7: ekspor daftar gap (CSV) untuk LMS klien; diunduh lewat fetch karena butuh token. */
+  async downloadGapCsv(projectId?: string) {
+    const res = await raw(`/tna/plan-items/export.csv${projectId ? `?projectId=${encodeURIComponent(projectId)}` : ''}`)
+    const url = URL.createObjectURL(await res.blob())
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `elgos-gap-${new Date().toISOString().slice(0, 10)}.csv`
+    document.body.appendChild(a)
+    a.click()
+    a.remove()
+    setTimeout(() => URL.revokeObjectURL(url), 1000)
+  },
   handoffImprovement: (findingIds: string[]) => post<{ data: { handedOff: string[]; already: string[]; skipped: string[] } }>('/tna/review/improvement-handoff', { findingIds }),
   reviewFinding: (id: string, body: ReviewDecision) => post<{ data: ReviewItem }>(`/tna/findings/${id}/review`, body),
   myResults: () => call<{ data: MyResults }>('/my/results'),

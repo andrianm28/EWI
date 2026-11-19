@@ -68,7 +68,7 @@ function reviewWorkspaceRouter({ stores, settings, catalog, flags, audit, assign
 
     if (current.reviewStatus === 'draft') {
       // B8: draf dari wawancara yang persetujuannya ditarik tidak diteruskan
-      if (current.consentWithdrawnAt) throw conflict('CONSENT_WITHDRAWN', 'Karyawan menarik persetujuan wawancara ini, temuannya tidak bisa direview');
+      assertNotWithdrawn(current);
       if (classification === 'needs_review') {
         out = await stores.tna.holdFinding(req.tenantId, current.id, { note: cleanNote, reviewerId: base.reviewerId });
         decision = 'hold';
@@ -186,4 +186,9 @@ function reviewWorkspaceRouter({ stores, settings, catalog, flags, audit, assign
   return r;
 }
 
-module.exports = { reviewWorkspaceRouter, toReviewItem };
+/** B8: draf dari wawancara yang persetujuannya ditarik tidak diteruskan (review lama dan klasifikasi B7). */
+function assertNotWithdrawn(item) {
+  if (item.consentWithdrawnAt) throw new HttpError(409, 'CONSENT_WITHDRAWN', 'Karyawan menarik persetujuan wawancara ini, temuannya tidak bisa direview');
+}
+
+module.exports = { reviewWorkspaceRouter, toReviewItem, assertNotWithdrawn };

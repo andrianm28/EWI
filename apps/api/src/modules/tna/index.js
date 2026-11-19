@@ -24,7 +24,7 @@ const { importRouter } = require('../imports');
 const { getKind } = require('../imports/kinds');
 const { validateRows, commitRows } = require('../imports/engine');
 const { PLAN_STATUSES, PLAN_STATUS_LABEL, initialStatus, canTransition } = require('./plan-status');
-const { reviewWorkspaceRouter, toReviewItem } = require('./review-workspace');
+const { reviewWorkspaceRouter, toReviewItem, assertNotWithdrawn } = require('./review-workspace');
 
 const REVIEW_DECISIONS = { approve: 'approved', edit: 'edited', reject: 'rejected' };
 const REVIEWED = ['approved', 'edited'];
@@ -185,8 +185,7 @@ module.exports = {
       const current = await stores.tna.getReviewItem(req.tenantId, req.params.id);
       if (!current) throw notFound('Temuan tidak ditemukan');
       if (current.reviewStatus !== 'draft') throw new HttpError(409, 'ALREADY_REVIEWED', 'Temuan ini sudah direview');
-      // B8: draf dari wawancara yang persetujuannya ditarik tidak diteruskan
-      if (current.consentWithdrawnAt) throw new HttpError(409, 'CONSENT_WITHDRAWN', 'Karyawan menarik persetujuan wawancara ini, temuannya tidak bisa direview');
+      assertNotWithdrawn(current);
       const out = await stores.tna.reviewFinding(req.tenantId, current.id, {
         decision: status, title: patch.title, detail: patch.detail, category: decision === 'edit' ? category : undefined, note: patch.note, reviewerId: req.user.id,
       });
