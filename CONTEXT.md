@@ -45,3 +45,33 @@ _Avoid_: pending review
 **Belum diwawancarai**:
 Keadaan gap yang belum punya wawancara selesai maupun temuan apa pun.
 _Avoid_: pending, belum dianalisis
+
+### Platform
+
+**Tenant**:
+Satu perusahaan klien beserta seluruh datanya di ELGOS; data satu tenant tidak pernah terlihat oleh tenant lain.
+_Avoid_: organisasi (di teks UI boleh), klien, org
+
+**Super Admin**:
+Orang tim ETA yang mengelola semua tenant dari konsol platform: membuat tenant, menyalakan modul, dan mengatur konfigurasi platform. Tidak melihat isi jawaban wawancara karyawan.
+_Avoid_: Admin ETA (nama lama di kode: `eta_admin`), superuser
+
+**Admin Tenant**:
+Orang di perusahaan klien yang menyiapkan tenantnya sendiri: pengguna dan peran, jabatan, dan impor data.
+_Avoid_: admin HR, admin klien
+
+**Modul tenant**:
+Satu dari delapan modul ELGOS (misalnya Training Needs) yang dinyalakan atau dimatikan Super Admin untuk satu tenant.
+_Avoid_: fitur, submodul (submodul adalah istilah lama untuk CCA/DNA/TNA/INA)
+
+**Konfigurasi platform**:
+Kebijakan yang berlaku untuk semua tenant, misalnya batas waktu sesi dan target kesepakatan AI–HR.
+_Avoid_: pengaturan tenant (itu milik satu tenant)
+
+**Kesepakatan AI–HR**:
+Persentase temuan AI yang disetujui HR tanpa diubah saat tinjauan; dipantau harian sebagai angka pendamping, bukan angka akurasi resmi (PM-2).
+_Avoid_: akurasi AI
+
+**Log platform**:
+Catatan kejadian yang tidak milik satu tenant, misalnya percobaan masuk ke organisasi yang tidak dikenal dan perubahan konfigurasi platform.
+_Avoid_: audit tenant (itu catatan per tenant)
