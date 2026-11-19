@@ -20,7 +20,7 @@ ELGOS adalah produk multi-tenant. "5C", "Elitery's DNA 5C", nama nilai, komponen
 | --- | --- | --- |
 | 1 (PR ini) | Migrasi, store, API sumber dan persyaratan, konfigurasi program nilai, impor laporan program, laporan agregat, penugasan wawancara berjenjang (status saja), flag | Tidak ada |
 | 2 | Turunan persyaratan oleh AI dari dokumen visi-misi, percakapan wawancara visi-misi-nilai, ringkasan yang diperiksa peserta, sintesis pimpinan vs karyawan, pengisian nilai aktual dari sintesis | PR B6 (mesin wawancara dan penyedia AI, thread T4) terbuka |
-| 3 | Layar HR (tab Vision & Mission, Corporate Values, Wawancara AI), layar atasan dan karyawan, e2e | PR B0 (fondasi UI, thread T1) terbuka |
+| 3 | Layar HR (tab Vision & Mission, Corporate Values, Wawancara AI), layar atasan dan karyawan, e2e (bagian 13) | PR B0 (fondasi UI, thread T1) terbuka; dikerjakan di PR yang sama setelah B0 #18 digabung ke branch ini |
 
 Tahap 1 sengaja tidak menyentuh `src/modules/interviews` agar tidak bentrok dengan B6. Tahap 1 tidak punya endpoint untuk menyelesaikan penugasan, jadi flag `cca.interview` jangan dinyalakan untuk tenant sungguhan sebelum tahap 2.
 
@@ -232,6 +232,14 @@ Basis integrasi e2d3707 sudah memuat PR #11, jadi paket ini langsung menyambung 
 - [x] `apps/api/tests/integration/cca.test.js`
 - [x] `apps/api/src/modules/employees/index.js` (ekspor memuat data Core Competencies)
 - [x] `docs/designs/b10-core-competencies.md`
+- [x] `apps/api/src/modules/imports/index.js` (penanda `allOrNothing` untuk jenis impor yang mengganti seluruh data)
+
+Tahap 3 (layar):
+
+- [x] `apps/web/src/api/cca.ts`, `apps/web/src/api/imports.ts` (submodul `cca`)
+- [x] `apps/web/src/screens/b10-core-competencies/` (`routes.ts`, `CoreCompetenciesView.vue`, `RequirementsTab.vue`, `ProgramSection.vue`, `ProgramForm.vue`, `ManualReportForm.vue`, `AssignmentsHr.vue`, `InterviewAssignmentView.vue`, `InterviewFlow.vue`, `due.ts`, `cc.css`)
+- [x] hapus `apps/web/src/screens/legacy-cca/`
+- [x] `apps/web/e2e/core-competencies.spec.ts`
 
 ## 10. Di luar cakupan tahap 1
 
@@ -247,6 +255,24 @@ Basis integrasi e2d3707 sudah memuat PR #11, jadi paket ini langsung menyambung 
 - Tabel tema sintesis (blok migrasi 10, berkas kedua): judul, jenis sumber, tautan ke `cca_requirements`, persen pimpinan sepakat, persen karyawan sejalan, jumlah responden, status tinjauan HR. Persen karyawan hanya ditampilkan bila responden cukup banyak untuk tidak menunjuk orang.
 - Port AI ditambah `deriveRequirements` dan `synthesizeCca`; implementasi stub tetap deterministik untuk test.
 - Syarat sintesis mengikuti CCA-B4 (minimal satu pimpinan selesai) dan CCA-B10 (AI menggabung, konflik ditandai, HR memutuskan).
+
+## 13. Layar (tahap 3)
+
+Mengikuti kontrak B0 (`docs/designs/b0-fondasi-ui.md` bagian 4 dan 5.3). `router/index.ts` dan `shell/menu.ts` tidak diedit.
+
+| Rute | Path | Tampilan | Gerbang | Isi |
+| --- | --- | --- | --- | --- |
+| `cc` | `/cc` | hr | submodul `cca` | Tab Corporate Vision & Mission, Corporate Values, dan Wawancara AI. Tab dipilih lewat `?tab=val` atau `?tab=aiv` supaya bisa ditautkan |
+| `cc-lama` | `/m/cca` | - | - | Alih ke `cc` (kartu Beranda lama masih menautkan alamat ini) |
+| `aiv` | `/aiv` | atasan, karyawan | submodul `cca` | Atasan: status wawancara pimpinan sendiri, tabel tim (status saja), tugaskan. Karyawan: penugasan sendiri |
+
+- Flag `cca.interview` tidak dipasang di `meta.flag` rute `aiv`. Alasannya: penjaga rute mengalihkan diam-diam ke beranda, padahal butir menu `aiv` tetap tampil karena syaratnya hanya submodul. Layar menangkap 403 `FEATURE_DISABLED` dan menulis "Wawancara AI Core Competencies belum diaktifkan untuk organisasi Anda." Di layar HR, tab Wawancara AI hanya muncul bila flag menyala.
+- Tampilan atasan dipakai hanya bila API menjawab `role: leader`. Bila tampilan aktif atasan tetapi API menganggap pemanggil karyawan (peran belum dipetakan), layar menampilkan kartu karyawan.
+- Tab Corporate Values: hasil program (laporan agregat, pemilih program bila lebih dari satu, tombol impor, isian agregat, ubah program, program baru), lalu gap perilaku per nilai. Halaman ini tidak pernah menampilkan hasil per orang.
+- Kelola persyaratan memakai formulir sebaris di kartu sumber (tambah, ubah, validasi, tolak). Dialog belum ada di `src/ui`, jadi tidak ditambahkan.
+- Formulir program memakai satu baris per butir dengan pemisah `|` (nilai, komponen, status, rekomendasi). [⏳ DITERIMA: cukup untuk pilot yang dikonfigurasi tim ETA; editor per butir menyusul bila HR klien mengatur sendiri.]
+- Bagian mockup yang belum ada datanya (sintesis tema, pratinjau sesi pimpinan, percakapan, ringkasan) tidak digambar dengan angka contoh. Layar menulis catatan bahwa percakapan menyusul.
+- Batas waktu penugasan default 14 hari dari hari ini, minimal hari ini.
 
 ## 12. Catatan review egm
 
@@ -272,3 +298,22 @@ Review spek oleh subagent tanpa konteks, 19 Nov: 18 temuan (4 berat, 12 sedang, 
 | 16 | Tahap 2 dan 3 tanpa rancangan | Diperbaiki sebagian: spek ini hanya mengikat tahap 1, sketsa di bagian 11 |
 | 17 | Kesiapan bisa lebih dari 100% | Diperbaiki: jepitan di rumus |
 | 18 | Rincian kecil (nama flag, zona waktu, FK batch) | Diperbaiki atau dijelaskan di 4, 5, 6.3 |
+
+Review diff tahap 1 oleh subagent baru, 19 Nov: 11 temuan (0 berat, 5 sedang, 6 ringan). Temuan 1 sampai 7 dibuktikan subagent dengan skrip terhadap Postgres test.
+
+| # | Temuan | Keputusan |
+| --- | --- | --- |
+| D1 | Impor ulang menghapus karyawan yang barisnya ditolak validasi | Diperbaiki: jenis impor ini `allOrNothing`, commit ditolak bila ada baris ditolak. Test ditambah |
+| D2 | Template resmi apa adanya selalu gagal karena slot 1..8 dan 1..10 terpetakan otomatis | Diperbaiki: slot di atas jumlah program boleh terpetakan selama seluruh selnya kosong; teks bantuan diperbaiki. Test memakai template asli |
+| D3 | Divisi lebih dari 255 karakter menghasilkan 500 | Diperbaiki: baris ditolak dengan pesan. Test ditambah |
+| D4 | `PUT /programs/:key` tanpa `cutoffDate` menghapus tanggal dari impor | Diperbaiki: field opsional yang tidak dikirim mempertahankan nilai lama, `null` mengosongkan. Test ditambah |
+| D5 | 409 palsu saat urutan `min` band bertukar | Diperbaiki: himpunan key dibanding setelah diurutkan nama. Test ditambah |
+| D6 | Hitungan tim HR jadi nol setelah putaran baru | Diperbaiki: dihitung per penugas, cocok dengan KPI |
+| D7 | Misi tampil sebelum Visi | Diperbaiki: urutan `vision`, `mission`, `value`, lalu posisi. Test ditambah |
+| D8 | Cakupan tim memakai peran `supervisor` untuk pemanggil `pimpinan` | Tidak diubah sepihak: keputusan visibilitas untuk Andrian (6.3, PR). Bila disetujui, dipindah ke `core/rbac` sebagai aturan eksplisit |
+| D9 | Hanya `/assignments` di balik flag baru | Tidak diubah: sebelum paket ini `module.cca` hanya kerangka dan tidak ada tenant pilot yang menyalakannya; spek bagian 5 sengaja hanya menahan wawancara. Dicatat di PR untuk Andrian |
+| D10 | Penolakan di luar tim tidak diuji untuk `pimpinan` | Diperbaiki: test `dir` menugaskan `u.a` dan mendapat `rejected` |
+| D11 | Test integrasi bergantung urutan | Ditunda: pola yang sama dipakai test integrasi lain di repo (satu tenant per berkas, `it` berurutan); memecahnya tidak mengubah perilaku. Dicatat sebagai utang test |
+
+Layar tahap 3 tidak direview subagent terpisah (batas satu review diff per paket); diperiksa lewat e2e (8 skenario) dan tinjauan sendiri.
+

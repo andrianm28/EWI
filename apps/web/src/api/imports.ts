@@ -4,7 +4,7 @@ import { useSessionStore } from '@/stores/session'
 
 const BASE = import.meta.env.VITE_API_BASE_URL ?? '/api'
 
-export type Submodule = 'dna' | 'tna'
+export type Submodule = 'dna' | 'tna' | 'cca'
 export interface ImportField { key: string; header: string; required: boolean; oneOf: string | null; help: string | null; example: string | number | null }
 export interface ImportOption { key: string; label: string; type: 'text' | 'date' | 'project'; required?: boolean }
 export interface ImportKind { key: string; label: string; description: string; fields: ImportField[]; options: ImportOption[] }
