@@ -1,10 +1,20 @@
 # B12 · Super Admin: tenant, modul, dan konfigurasi platform
 
 - **Author:** Claude (thread T2 "Lanjutkan login, peran, dan super admin dengan egm penuh"), untuk review Andrian
-- **Status:** Draft (spek v2, setelah egm-review tahap 5; tahap 6–9 menyusul)
+- **Status:** Draft (spek v3, setelah egm-review tahap 5 dan 6; tahap 7–9 menyusul)
 - **Date:** 2026-11-19
 - **Paket:** B12 brief bangun penuh 19 Nov (`/mnt/project-files/elgos-eksekusi/brief-bangun-penuh-19nov.md`, T2). Menumpuk di atas B1 (`b1-login.md`) dan B2 (`b2-peran.md`) di branch yang sama.
 - **ADR:** [`docs/adr/0002-konsol-platform-lintas-tenant.md`](../adr/0002-konsol-platform-lintas-tenant.md) (diusulkan). Istilah: bagian "Platform" di [`CONTEXT.md`](../../CONTEXT.md).
+
+## Rujukan dan istilah
+
+- **Aturan arsitektur** = daftar bernomor di `CLAUDE.md`. Yang dilonggarkan paket ini adalah **aturan 2**: "Setiap query data bisnis memfilter `tenant_id` dari `req.tenantId`, tidak pernah dari body/query."
+- **Mockup final** = `/mnt/project-files/mockup-pak-eji/Main.dc.html` (artifact https://claude.ai/artifact/3pRkbt7pJexZqgnFsUGJud). Layar Super Admin "Tenant" dan "Konfigurasi platform" sekitar baris 1198–1232, data demo sekitar baris 1983–1995.
+- **Kode keputusan** (log `/mnt/project-files/ewi-grilling/gap-audit-17nov.md`): **PM-2 = D**, yaitu akurasi resmi per temuan dari transkrip berlabel dua pelabel (opsi A) ditambah persetujuan HR saat tinjauan dipantau harian (opsi C); paket ini membangun bagian C saja. **PO-10 = C**: tanpa plafon biaya, laporan biaya mingguan. **PD-10 = B**: login hanya lewat link email sekali pakai. **PK-13**: onboarding tenant lewat skrip (PR #9, `core/tenant/onboarding.js`). **R2-1**: flag hanya diubah Super Admin. **R2-2**: audit gagal ditulis berarti request gagal.
+- **Paket lain**: B0 fondasi UI (`docs/designs/b0-fondasi-ui.md`, kontrak rute per tampilan), B1 login (`b1-login.md`), B2 peran (`b2-peran.md`), B3 dashboard HR, B11 Admin Tenant (PR #17), B13/B14 Learning Intervention/Delivery, B15 Impact Measurement, B16 Career & Promotion, B18 e2e dan QA malam.
+- **Kontrak B2**: satu akun boleh punya beberapa peran; `req.user.role` adalah **peran aktif** sesi (tampilan yang sedang dipakai) dan satu-satunya dasar otorisasi. Kode `ROLE_VIEW_CHANGED` adalah jawaban 401 B2 saat peran aktif diganti di tab lain; web memuat ulang, bukan menganggap sesi habis.
+- **Super Admin** = akun berperan `eta_admin`. Akun ini milik satu tenant (tenant internal ETA) dan hanya bisa login bila emailnya ada di env `ETA_ADMIN_EMAILS` (PK-16). Peran `eta_admin` selalu tunggal (tidak bisa berganti tampilan). Flag pertama `platform.console` di tenant ETA dinyalakan lewat spesifikasi onboarding atau `PUT /api/admin/flags/platform.console` (rute R2-1 yang sudah ada, hanya Super Admin).
+- **Penanda**: `[⚠️ BELUM TERVERIFIKASI]` = asumsi yang belum dibuktikan; `[⏳ DITERIMA]` = risiko yang diterima sadar, dengan pekerjaan lanjutan.
 
 --------------------------------------------------------------------------------
 
@@ -17,7 +27,7 @@ Super Admin adalah orang tim ETA (peran `eta_admin`). Hari ini ia hanya bisa men
 1. **Tenant dibuat lewat shell.** Menyiapkan tenant baru butuh akses SSH ke etavm2 dan berkas JSON. Akun pengelola pertama dibuat sebagai `hr_admin`, padahal B2 sudah punya peran `tenant_admin` untuk mengurus pengguna dan peran.
 2. **Modul per tenant tidak terlihat dari satu tempat.** Flag hanya bisa diubah untuk tenant sendiri; Super Admin tidak bisa melihat tenant mana memakai modul apa.
 3. **Kebijakan platform tersebar dan sebagian tidak ada.** Sesi berlaku 8 jam tanpa batas diam (mockup dan brief: "batas waktu sesi 30 menit"). Target kesepakatan AI–HR 85%, retensi audit 12 bulan, anonimisasi agregat, dan persetujuan wajib hanya ada di dokumen.
-4. **Kualitas dan biaya AI tidak terpantau.** PM-2 (D) meminta persetujuan HR saat tinjauan dipantau harian. PO-10 (C) meminta laporan biaya AI mingguan tanpa plafon. Data mentahnya sudah ada (`lna_findings.review_status`, `ai_usage_logs`) tetapi tidak ada tampilan.
+4. **Kualitas dan biaya AI tidak terpantau.** PM-2 (D, bagian C) meminta persetujuan HR saat tinjauan dipantau harian. PO-10 (C) meminta laporan biaya AI mingguan tanpa plafon. Data mentahnya sudah ada (`lna_findings.review_status`, `ai_usage_logs`) tetapi tidak ada tampilan.
 5. **Percobaan masuk tanpa tenant tidak tercatat di mana pun** (`b1-login.md` §6, ⏳ "log platform menyusul di B12").
 
 ## Goals
@@ -27,7 +37,7 @@ Super Admin adalah orang tim ETA (peran `eta_admin`). Hari ini ia hanya bisa men
 3. Super Admin menyalakan/mematikan delapan modul tenant per tenant. Perubahan tercatat di audit tenant sasaran dan di log platform.
 4. Super Admin melihat konfigurasi platform dan mengubah dua nilai yang sudah punya pemakai: batas waktu sesi diam (ditegakkan di API, bawaan 30 menit) dan target kesepakatan AI–HR (bawaan 85%). Kebijakan lain tampil sebagai teks tetap seperti di mockup.
 5. Super Admin melihat kesepakatan AI–HR per tenant (30 hari terakhir dan per hari) dibanding target, serta laporan biaya token per tenant per minggu (tampilan dan unduhan CSV).
-6. Percobaan masuk ke organisasi atau email yang tidak dikenal tercatat sebagai hitungan per jam (menutup ⏳ B1 §6), tanpa email atau IP.
+6. Percobaan masuk ke organisasi atau email yang tidak dikenal, dan link masuk yang tidak valid, tercatat sebagai hitungan per jam (menutup ⏳ B1 §6), tanpa email atau IP.
 7. Tidak ada rute B12 yang mengembalikan isi data karyawan; peran selain `eta_admin` mendapat 403.
 
 ## Non-Goals
@@ -43,7 +53,7 @@ Super Admin adalah orang tim ETA (peran `eta_admin`). Hari ini ia hanya bisa men
 
 ## Open Questions
 
-- **2FA** (kartu keputusan di thread, 19 Nov): rekomendasi "Tanpa 2FA, cukup link email". Spek ini memakai rekomendasi itu: baris 2FA tampil "Tidak dipakai (login lewat link email, PD-10)" dan tidak bisa diubah. Bila user memilih lain, butir 2FA ditambah di PR lanjutan.
+- **2FA** (kartu keputusan di thread, 19 Nov): rekomendasi "Tanpa 2FA, cukup link email". Spek ini memakai rekomendasi itu: tidak ada saklar 2FA di layar. Baris 2FA menghitung tenant yang flag `auth.mfa`-nya (flag B1, ada di kode, default mati) menyala; selama tidak ada, tampil "Tidak dipakai (login lewat link email, PD-10)". Bila user memilih lain, saklar 2FA ditambah di PR lanjutan.
 - `[⚠️ BELUM TERVERIFIKASI]` **Entitlement saat modul dinyalakan.** `requireSubmodule()` butuh entitlement aktif dan flag. Spek ini: menyalakan modul CCA/DNA/TNA/INA juga menambah entitlement `source='platform'` bila belum ada yang aktif; mematikan hanya mematikan flag (entitlement tidak diakhiri). Panel modul menampilkan dua kolom, "Akses (entitlement)" dan "Aktif (flag)", supaya keadaan tersimpan sama dengan yang dilihat. Alasannya: Super Admin adalah tim ETA yang menjual akses, dan tanpa ini tenant baru dari layar tidak pernah bisa memakai modul. Perlu dikonfirmasi Andrian di review.
 
 ## Critical User Journeys (CUJs)
@@ -90,9 +100,11 @@ Super Admin adalah orang tim ETA (peran `eta_admin`). Hari ini ia hanya bisa men
 
 | Status | Aturan |
 | --- | --- |
-| Aktif | ada minimal satu akun `tenant_admin` atau `hr_admin` berstatus `active` |
-| Menunggu admin | ada akun pengelola, semuanya `invited` |
-| Draf | tidak ada akun pengelola |
+| Aktif | ada minimal satu akun pengelola (`tenant_admin` atau `hr_admin`) berstatus `active` |
+| Menunggu admin | tidak ada yang `active`, tetapi ada minimal satu yang `invited` |
+| Draf | selain itu: tidak ada akun pengelola, atau semuanya `inactive` |
+
+Aturan dicek berurutan dari atas, jadi setiap tenant mendapat tepat satu status.
 
 Kolom "Admin tenant" = email akun `tenant_admin` pertama (urut dibuat), selain itu `hr_admin` pertama. "Pengguna" = jumlah akun berstatus selain `inactive`.
 
@@ -100,7 +112,7 @@ Kolom "Admin tenant" = email akun `tenant_admin` pertama (urut dibuat), selain i
 
 Registri tetap `src/modules/platform/modules.js`, urutan mengikuti mockup:
 
-| Modul | Flag | Entitlement | Akses awal |
+| Modul | Flag | Entitlement | Label "Akses awal" |
 | --- | --- | --- | --- |
 | Core Competencies | `module.cca` | `cca` | ya |
 | Developmental Needs | `module.dna` | `dna` | |
@@ -110,6 +122,12 @@ Registri tetap `src/modules/platform/modules.js`, urutan mengikuti mockup:
 | Learning Delivery | `module.ld` | – | |
 | Learning Impact Measurement | `module.impact` | – | |
 | Career & Promotion | `promotion.recommendation` | – | |
+
+Kolom "Akses awal" hanya label di mockup (modul dalam tahap akses awal); tidak memberi akses otomatis. Tenant baru dibuat tanpa modul (`products: []`) dan semua modul mati sampai dinyalakan.
+
+Pada base branch ini flag yang sudah ada: `module.cca`, `module.dna`, `module.tna`, `module.ina`, `promotion.recommendation` (Career & Promotion memakai flag G2-A yang sudah ada, bukan pola `module.*`). Tiga lainnya mengikuti nama flag paket B13/B14/B15 saat digabung. Kartu "Modul tersedia" menghitung modul yang flag-nya ada; penyebut "x / 8" tetap delapan seperti mockup.
+
+Menyalakan modul yang belum tersedia menjawab 400 `MODULE_UNAVAILABLE`. Body `PUT /api/platform/tenants/:tenantId/modules/:moduleKey` = `{ enabled: boolean }`. Baris audit tenant sasaran untuk `setModule` dicatat seperti pembuatan tenant: `user_id` kosong, pelaku di `meta.actorUserId`, `meta.via = 'api/platform'`.
 
 `setModule` menulis flag, entitlement (bila perlu), audit tenant sasaran, dan log platform dalam **satu transaksi**; satu langkah gagal berarti tidak ada yang tersimpan. Aturan "tambah entitlement hanya bila belum ada yang aktif" diambil dari onboarding menjadi satu fungsi bersama `ensureEntitlement`, dipakai onboarding dan `setModule`.
 
@@ -156,7 +174,7 @@ Getter `platformSettings.get(key)` di `src/core/platform-settings/index.js` deng
 
 ### Kesepakatan AI–HR (PM-2 opsi C)
 
-Per tenant, jendela 30 hari pada `reviewed_at`: `agreement = approved / (approved + edited + rejected)` dari `lna_findings` (`review_status`, bukan `draft`). Hanya hitungan; tidak ada kolom teks. Tenant dengan kurang dari 10 temuan ditinjau tampil "Data belum cukup (n < 10)" dan tidak diberi tanda lulus/gagal. Seri harian = hitungan yang sama per tanggal (zona Asia/Jakarta).
+`GET /api/platform/ai-quality?days=30`. Per tenant, jendela 30 hari pada `reviewed_at`: `agreement = approved / (approved + edited + rejected)` dari `lna_findings` (`review_status`, bukan `draft`). Hanya hitungan; tidak ada kolom teks. Memenuhi target bila `agreement >= aiHrAgreementTarget` (85% tepat = memenuhi). Tenant dengan kurang dari 10 temuan ditinjau tampil "Data belum cukup (n < 10)" dan tidak diberi tanda lulus/gagal. Seri harian = hitungan yang sama per tanggal (zona Asia/Jakarta).
 
 ### Laporan biaya token mingguan (PO-10 opsi C)
 
@@ -178,10 +196,11 @@ web (tampilan super)
   screens/b12-super-admin/
     TenantsView  ── GET  /api/platform/tenants
                  ── POST /api/platform/tenants
+                 ── POST /api/platform/tenants/:tenantId/invite
                  ── GET/PUT /api/platform/tenants/:tenantId/modules[/:moduleKey]
     PlatformView ── GET/PUT /api/platform/settings
                  ── GET /api/platform/ai-quality, /api/platform/ai-cost
-                 ── GET /api/platform/log
+                 ── GET /api/platform/log, /api/platform/attempts
 api
   /api/platform  auth → tenantContext → onlyEtaAdmin → requireFlag(platform.console)
      └ createPlatformService({ store, flags, onboard, links, platformLog, settings })
@@ -217,9 +236,10 @@ api
 
 ## Non-Functional Requirements
 
+- **Penyedia kunci untuk layar**: `GET /api/platform/settings` mengembalikan `encryptionProvider` (`local` atau `kms`); layar Tenant memakainya untuk menampilkan kolom ID.
 - **Keamanan dan privasi**: rute platform hanya mengembalikan metadata dan agregat; test memeriksa bahwa jawaban tidak memuat kunci `answer`, `transcript`, `text`, `quote`, atau `summary`. Super Admin tetap tidak bisa membaca transkrip (`TRANSCRIPT_PRIVATE`, PR #11).
 - **Kinerja**: daftar tenant satu query agregat (jumlah tenant puluhan). Sesi diam menambah satu UPDATE per sesi per menit paling banyak.
-- **Rollout**: flag `platform.console` mati = semua rute platform 403 `FEATURE_DISABLED`, menu tidak tampil. Sesi diam aktif begitu migrasi jalan (bawaan 30 menit, jam mulai dari deploy) `[⏳ DITERIMA]`: ini perubahan perilaku untuk semua pengguna; dapat dilonggarkan lewat `PUT /api/platform/settings` tanpa deploy. Rollback: migrasi `down` menghapus dua tabel baru dan kolom `last_seen_at`.
+- **Rollout**: flag `platform.console` mati = semua rute platform 403 `FEATURE_DISABLED`, menu tidak tampil. Sesi diam aktif begitu migrasi jalan (bawaan 30 menit, jam mulai dari deploy) `[⏳ DITERIMA]`: ini perubahan perilaku untuk semua pengguna; dapat dilonggarkan lewat `PUT /api/platform/settings` tanpa deploy. Rollback: migrasi `down` menghapus tiga tabel baru (`platform_settings`, `platform_audit_logs`, `platform_attempt_counters`) dan kolom `last_seen_at`.
 
 --------------------------------------------------------------------------------
 
@@ -238,7 +258,7 @@ api
 - [ ] `apps/api/src/core/platform-log/index.js` (baru): `record(actor, action, resource, { targetTenantId, meta }, { transaction })`, `countAttempt(outcome)`, `recent(limit)`, `attemptsByDay(days)`.
 - [ ] `apps/api/src/core/auth/sessions.js` + store di `apps/api/src/db/stores.js`: `last_seen_at`, pemeriksaan diam, sentuh paling sering 60 detik (`UPDATE auth_sessions SET last_seen_at = now() WHERE id = :id AND last_seen_at < now() - interval '60 seconds'`); memory store ikut agar test lama tetap jalan.
 - [ ] `apps/api/src/core/auth/middleware.js`: kode `SESSION_IDLE` diteruskan seperti `ROLE_VIEW_CHANGED`.
-- [ ] `apps/api/src/core/auth/attempts.js`: bila `who.tenantId` kosong dan `platformLog` diberikan, panggil `countAttempt(meta.outcome)`; pemanggil untuk organisasi/email tak dikenal di `routes.js` dan `email-link.js` memanggil `attempts.record({ tenantId: null }, { outcome: 'unknown_org' | 'unknown_account' | 'invalid_link' })`.
+- [ ] `apps/api/src/core/auth/attempts.js`: bila `who.tenantId` kosong dan `platformLog` diberikan, panggil `countAttempt(meta.outcome)`; pemanggil untuk organisasi/email tak dikenal dan link tak valid di `core/auth/routes.js` dan `core/auth/email-link.js` memanggil `attempts.record({ tenantId: null }, { outcome: 'unknown_org' | 'unknown_account' | 'invalid_link' })`.
 - [ ] `apps/api/src/modules/platform/modules.js` (baru): registri delapan modul.
 - [ ] `apps/api/src/modules/platform/service.js` (baru): `createPlatformService` (method di §Antarmuka).
 - [ ] `apps/api/src/modules/platform/store.js` (baru): query Postgres agregat.
@@ -249,11 +269,11 @@ api
 ### Web
 
 - [ ] `apps/web/src/api/platform.ts` (baru): klien tipe untuk rute platform.
-- [ ] `apps/web/src/screens/b12-super-admin/routes.ts` (baru): rute `tenants` (beranda tampilan super) dan `platform`, gerbang `views: ['super']`, `flag: 'platform.console'` (kontrak B0).
+- [ ] `apps/web/src/screens/b12-super-admin/routes.ts` (baru): rute `tenants` (beranda tampilan super) dan `platform`, gerbang `views: ['super']`, `flag: 'platform.console'` (kontrak rute B0, `b0-fondasi-ui.md` tabel menu).
 - [ ] `apps/web/src/screens/b12-super-admin/TenantsView.vue` (baru): tiga KPI, tabel tenant, panel modul untuk tenant terpilih, formulir "Buat tenant baru" (nama, email; kolom ID bila penyedia `kms`), pesan sukses/galat.
-- [ ] `apps/web/src/screens/b12-super-admin/PlatformView.vue` (baru): empat kartu mockup (Isolasi data, Model AI wawancara, Kebijakan bawaan, Autentikasi) dengan dua isian yang bisa diubah + kartu Kesepakatan AI–HR, Biaya token mingguan (unduh CSV), Log platform dan hitungan percobaan masuk.
+- [ ] `apps/web/src/screens/b12-super-admin/PlatformView.vue` (baru): empat kartu mockup (Isolasi data, Model AI wawancara, Kebijakan bawaan, Autentikasi) dengan dua isian yang bisa diubah (Isolasi data: isolasi + enkripsi; Model AI wawancara: model + target kesepakatan; Kebijakan bawaan: retensi, anonimisasi, persetujuan; Autentikasi: SSO, 2FA, batas sesi) + kartu Kesepakatan AI–HR, Biaya token mingguan (unduh CSV), Log platform dan hitungan percobaan masuk.
 - [ ] `apps/web/src/api/client.ts`: tangani `SESSION_IDLE`.
-- [ ] `apps/web/e2e/super-admin.spec.ts` (baru) dengan API mock; perbarui `loginAs` di `e2e/poc-dna-tna.spec.ts` dan `e2e/gating.spec.ts` bila Super Admin kini mendarat di `tenants`.
+- [ ] `apps/web/e2e/super-admin.spec.ts` (baru) dengan API mock; perbarui `loginAs` di `e2e/poc-dna-tna.spec.ts` dan `e2e/gating.spec.ts`: Super Admin dengan `platform.console` menyala kini mendarat di `tenants`, bukan `/`.
 
 ### Test yang ditulis lebih dulu (tdd)
 
