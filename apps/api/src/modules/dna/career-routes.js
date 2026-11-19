@@ -194,9 +194,10 @@ function careerRoutes({ stores, settings, flags, audit }) {
     const ok = await stores.promotion.hrDecide(req.tenantId, { id: open.id, decision, note: body.note, by: req.user.id }, await auditMeta(req, x, 'hr_decision', decision));
     const fresh = await target(req);
     if (!ok) {
-      // balapan: HR lain sudah memutuskan, atau atasan baru saja mengubah ke tunda
+      // balapan: HR lain sudah memutuskan, atasan baru saja mengubah ke tunda, atau posisi karyawan berubah (C9)
       const now = fresh.x.cycle;
       if (!now.approved && now.open && now.open.id === open.id) throw conflictCode('SUPERVISOR_NOT_RECOMMEND', 'Atasan mengubah keputusannya; muat ulang lalu coba lagi');
+      if (!now.approved && !now.open) throw conflictCode('WAITING_SUPERVISOR', 'Posisi karyawan berubah; siklus lama tidak berlaku lagi. Muat ulang');
       throw conflictCode('ALREADY_DECIDED', 'Promosi ke jenjang ini sudah diputuskan HR');
     }
     res.json({ data: decisionRow(req, fresh.x, fresh.okrMin) });

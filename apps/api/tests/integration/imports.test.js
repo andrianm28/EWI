@@ -196,6 +196,22 @@ run('Impor file R3-3 (Postgres)', () => {
     expect(audits.length).toBe(8);
   });
 
+  it('flag dna.development mati: impor kamus berperilaku seperti sebelum B4 (tanpa kolom B4, "Level" = Jenjang, tanpa jenis Job function)', async () => {
+    await db.query(`UPDATE feature_flags SET enabled = false WHERE tenant_id = :t AND key = 'dna.development'`, { replacements: { t: other.id } });
+    const list = (await request(app).get('/api/dna/imports/templates').set(as('luar'))).body.data;
+    expect(list.map((k) => k.key)).not.toContain('dna_job_functions');
+    const comp = list.find((k) => k.key === 'dna_competencies');
+    expect(comp.fields.map((f) => f.key)).not.toEqual(expect.arrayContaining(['code']));
+    expect(comp.fields.map((f) => f.key)).not.toContain('programTier');
+    expect((await upload('dna', 'dna_job_functions', 'jf.csv', csv(['Job Role,No,Job Function', 'X,1,Y']), 'luar')).status).toBe(404);
+    const up = await upload('dna', 'dna_competencies', 'lama.csv', csv(['Job Role,Kompetensi,Level', 'Lain,Uji,Junior']), 'luar');
+    expect(up.status).toBe(201);
+    expect(up.body.data.mapping).toMatchObject({ careerLevel: 'Level' });
+    expect(up.body.data.mapping.programTier).toBeUndefined();
+    const bad = await request(app).post(`/api/dna/imports/batches/${up.body.data.id}/preview`).set(as('luar')).send({ mapping: { jobRole: 'Job Role', name: 'Kompetensi', programTier: 'Level' } });
+    expect(bad.status).toBe(400);
+  });
+
   it('isolasi tenant dan validasi unggahan', async () => {
     const up = await upload('dna', 'employees', 'k.csv', csv(['ID Karyawan,Nama,Email', 'E-9,Nn,nn@imp.test']));
     // R2-3: baris mentah tersimpan terenkripsi

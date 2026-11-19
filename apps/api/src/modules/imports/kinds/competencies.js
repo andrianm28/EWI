@@ -8,6 +8,10 @@ const { TIER_CHOICES } = require('./common');
 const SOURCE_CHOICES = { hr_rule: ['aturan hr', 'hr', 'dokumen hr'], dacum: ['dacum'], cca: ['cca'], both: ['keduanya', 'hr + dacum'] };
 const KIND_CHOICES = { job: ['jabatan', 'teknis', 'kompetensi jabatan'], core: ['inti', 'umum', 'kompetensi inti'] };
 
+// B4 (R1, review diff): kolom kamus B4 hanya tampil bila flag dna.development menyala. Mati = perilaku sebelum B4
+// (tanpa kolom B4, judul "Level" = Jenjang, baris yang sudah ada selalu ditolak).
+const B4_FLAG = 'dna.development';
+
 module.exports = {
   key: 'dna_competencies',
   label: 'Kamus kompetensi',
@@ -15,7 +19,7 @@ module.exports = {
   submodules: ['dna'],
   fields: [
     { key: 'jobRole', header: 'Job Role', aliases: ['jabatan', 'posisi'], example: 'Service Delivery L1', help: 'Kosongkan untuk kompetensi inti yang berlaku semua job role.' },
-    { key: 'careerLevel', header: 'Jenjang', aliases: ['grade', 'jenjang karier'], example: 'Junior', help: 'Jenjang karier (mis. Junior/Senior), bukan Basic/Intermediate/Advanced. Kosong = berlaku semua jenjang job role ini.' },
+    { key: 'careerLevel', header: 'Jenjang', aliases: ['grade', 'jenjang karier'], flagOffAliases: { flag: B4_FLAG, aliases: ['level'] }, example: 'Junior', help: 'Jenjang karier (mis. Junior/Senior), bukan Basic/Intermediate/Advanced. Kosong = berlaku semua jenjang job role ini.' },
     { key: 'kind', header: 'Jenis', aliases: ['jenis kompetensi', 'kind', 'tipe'], example: 'jabatan', help: 'jabatan atau inti. Kosong = jabatan bila Job Role diisi.' },
     { key: 'name', header: 'Kompetensi', required: true, aliases: ['nama kompetensi', 'competency', 'kompetensi'], example: 'Memahami kontrak proyek' },
     { key: 'definition', header: 'Definisi', aliases: ['deskripsi', 'definition'], example: 'Mampu membaca SLA dan ruang lingkup kontrak' },
@@ -23,10 +27,10 @@ module.exports = {
     { key: 'requiredScore', header: 'Skor Minimal', aliases: ['skor minimum', 'target skor', 'required score', 'standar'], example: 3, help: '0-4, default 3.' },
     { key: 'importance', header: 'Kepentingan', aliases: ['bobot', 'importance', 'prioritas'], example: 4, help: '1-5, default 3.' },
     { key: 'source', header: 'Sumber', aliases: ['source', 'asal'], example: 'dacum', help: 'aturan hr (default), dacum, cca, atau keduanya.' },
-    { key: 'code', header: 'Kode', aliases: ['kode modul', 'kode kompetensi', 'code'], example: 'ST-B4', help: 'Kode modul, unik per job role. Butuh Job Role.' },
-    { key: 'stream', header: 'Rumpun', aliases: ['stream', 'kelompok', 'rumpun kompetensi'], example: 'Specific Technical' },
-    { key: 'programTier', header: 'Level Program', aliases: ['level', 'tingkat', 'tingkat program', 'bia'], example: 'basic', help: 'basic (B), intermediate (I), atau advanced (A). Menentukan kurikulum dan tahap pengembangan.' },
-    { key: 'jobFunctions', header: 'Job Function', aliases: ['jf', 'no jf', 'nomor job function'], example: '1; 3', help: 'Nomor job function jabatan ini, pisahkan dengan titik koma. Impor Job function dulu.' },
+    { key: 'code', flag: B4_FLAG, header: 'Kode', aliases: ['kode modul', 'kode kompetensi', 'code'], example: 'ST-B4', help: 'Kode modul, unik per job role. Butuh Job Role.' },
+    { key: 'stream', flag: B4_FLAG, header: 'Rumpun', aliases: ['stream', 'kelompok', 'rumpun kompetensi'], example: 'Specific Technical' },
+    { key: 'programTier', flag: B4_FLAG, header: 'Level Program', aliases: ['level', 'tingkat', 'tingkat program', 'bia'], example: 'basic', help: 'basic (B), intermediate (I), atau advanced (A). Menentukan kurikulum dan tahap pengembangan.' },
+    { key: 'jobFunctions', flag: B4_FLAG, header: 'Job Function', aliases: ['jf', 'no jf', 'nomor job function'], example: '1; 3', help: 'Nomor job function jabatan ini, pisahkan dengan titik koma. Impor Job function dulu.' },
   ],
   async context({ stores, tenantId }) {
     const [roles, comps] = await Promise.all([stores.dna.listJobRoles(tenantId), stores.dna.listCompetencies(tenantId)]);
@@ -35,7 +39,7 @@ module.exports = {
     for (const r of roles) jobFunctions.set(r.id, new Map((await stores.dna.listJobFunctions(tenantId, r.id)).map((f) => [f.order, f.id])));
     const codeKey = (jobRoleId, code) => `${jobRoleId}|${code.trim().toLowerCase()}`;
     const codes = new Map(comps.filter((c) => c.code).map((c) => [codeKey(c.jobRoleId, c.code), c.id]));
-    return { roles, existing: new Map(comps.map((c) => [keyOf(c), { id: c.id, kind: c.kind }])), keyOf, seen: new Set(), jobFunctions, codeKey, codes };
+    return { roles, existing: new Map(comps.map((c) => [keyOf(c), { id: c.id, kind: c.kind, code: c.code, stream: c.stream, programTier: c.programTier }])), keyOf, seen: new Set(), jobFunctions, codeKey, codes };
   },
   validate(row, ctx) {
     const name = v.text(row.name);
@@ -101,7 +105,15 @@ module.exports = {
       ctx.codes.set(ck, self);
     }
     ctx.seen.add(key);
-    if (existingId) return { value: { id: existingId, patch: { ...(code && { code }), ...(stream && { stream }), ...(programTier && { programTier }) }, jobFunctionIds } };
+    if (existingId) {
+      // §7: hanya kolom yang benar-benar berubah masuk patch, supaya impor ulang file yang sama tidak mereset pengesahan
+      const patch = {};
+      if (code && code !== found.code) patch.code = code;
+      if (stream && stream !== found.stream) patch.stream = stream;
+      if (programTier && programTier !== found.programTier) patch.programTier = programTier;
+      if (!Object.keys(patch).length && !jobFunctionIds) return { error: 'Kompetensi ini sudah ada di kamus (tidak ada perubahan)' };
+      return { value: { id: existingId, patch, jobFunctionIds } };
+    }
     const indicators = v.text(row.indicators).split(/[;\n]/).map((s) => s.trim()).filter(Boolean);
     return { value: { jobRoleId, careerLevelId, kind, name, definition: v.text(row.definition) || null, indicators, requiredScore, importance, source, code, stream, programTier, jobFunctionIds } };
   },
@@ -109,7 +121,7 @@ module.exports = {
     let created = 0; let updated = 0;
     for (const { jobFunctionIds, ...c } of values) {
       let id = c.id;
-      if (id) { await stores.dna.updateCompetency(tenantId, id, c.patch); updated += 1; } else { id = (await stores.dna.createCompetency(tenantId, c)).id; created += 1; }
+      if (id) { if (Object.keys(c.patch).length) await stores.dna.updateCompetency(tenantId, id, c.patch); updated += 1; } else { id = (await stores.dna.createCompetency(tenantId, c)).id; created += 1; }
       if (jobFunctionIds) await stores.dna.setCompetencyJobFunctions(tenantId, id, jobFunctionIds);
     }
     return { competencies: created, updated };

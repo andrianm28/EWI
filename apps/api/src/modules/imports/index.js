@@ -27,15 +27,43 @@ const batchSummary = (b) => ({
   mapping: b.mapping, options: b.options, result: b.result, createdAt: b.createdAt, committedAt: b.committedAt, createdByName: b.createdByName || null,
 });
 
-function importRouter({ submodule, stores, audit }) {
+/**
+ * Jenis dan kolom impor yang berlaku untuk tenant: `kind.flag` / `field.flag` disembunyikan bila flag mati,
+ * `field.flagOffAliases` menambah sinonim lama selama flag mati (B4 R1). Tanpa layanan flag = semua flag mati.
+ */
+function flagNames(kinds) {
+  const names = new Set();
+  for (const k of kinds) {
+    if (k.flag) names.add(k.flag);
+    for (const f of k.fields) { if (f.flag) names.add(f.flag); if (f.flagOffAliases) names.add(f.flagOffAliases.flag); }
+  }
+  return [...names];
+}
+function kindView(kind, on) {
+  if (kind.flag && !on.has(kind.flag)) return null;
+  if (!kind.fields.some((f) => f.flag || f.flagOffAliases)) return kind;
+  const fields = kind.fields.filter((f) => !f.flag || on.has(f.flag)).map((f) => (f.flagOffAliases && !on.has(f.flagOffAliases.flag)
+    ? { ...f, aliases: [...(f.aliases || []), ...f.flagOffAliases.aliases] } : f));
+  return { ...kind, fields };
+}
+
+function importRouter({ submodule, stores, audit, flags }) {
   const r = express.Router();
-  const kinds = KINDS.filter((k) => k.submodules.includes(submodule));
+  const allKinds = KINDS.filter((k) => k.submodules.includes(submodule));
+  const names = flagNames(allKinds);
   r.use(requireRole(ROLES.HR_ADMIN));
 
-  const kindOf = (key) => {
+  async function enabled(req) {
+    const on = new Set();
+    for (const n of names) if (flags && await flags.isEnabled(req.tenantId, n)) on.add(n);
+    return on;
+  }
+  const kindsFor = async (req) => { const on = await enabled(req); return allKinds.map((k) => kindView(k, on)).filter(Boolean); };
+  const kindOf = async (req, key) => {
     const k = getKind(key);
-    if (!k || !k.submodules.includes(submodule)) throw notFound('Jenis impor tidak dikenal');
-    return k;
+    const view = k && k.submodules.includes(submodule) ? kindView(k, await enabled(req)) : null;
+    if (!view) throw notFound('Jenis impor tidak dikenal');
+    return view;
   };
   async function loadBatch(req) {
     const b = await stores.imports.get(req.tenantId, req.params.id);
@@ -43,7 +71,7 @@ function importRouter({ submodule, stores, audit }) {
     return b;
   }
   async function run(req, b) {
-    const kind = kindOf(b.kind);
+    const kind = await kindOf(req, b.kind);
     const body = req.body || {};
     const mapping = body.mapping || b.mapping;
     const err = checkMapping(mapping, b.headers, kind.fields);
@@ -54,12 +82,12 @@ function importRouter({ submodule, stores, audit }) {
     return { kind, mapping, options, rows, ...result };
   }
 
-  r.get('/templates', (_req, res) => res.json({ data: kinds.map(publicKind) }));
+  r.get('/templates', wrap(async (req, res) => res.json({ data: (await kindsFor(req)).map(publicKind) })));
 
   r.get('/templates/:file', wrap(async (req, res) => {
     const m = String(req.params.file).match(/^([a-z_]+)\.(xlsx|csv)$/);
     if (!m) throw notFound('Template tidak ditemukan');
-    const kind = kindOf(m[1]);
+    const kind = await kindOf(req, m[1]);
     const name = `template-elgos-${kind.key}.${m[2]}`;
     res.setHeader('Content-Disposition', `attachment; filename="${name}"`);
     if (m[2] === 'csv') return res.type('text/csv; charset=utf-8').send(templateCsv(kind));
@@ -77,7 +105,7 @@ function importRouter({ submodule, stores, audit }) {
 
   // Unggah file mentah (Content-Type selain JSON); nama file lewat ?filename=
   r.post('/:kind', express.raw({ type: (req) => !req.is('application/json'), limit: '10mb' }), wrap(async (req, res) => {
-    const kind = kindOf(req.params.kind);
+    const kind = await kindOf(req, req.params.kind);
     const filename = String(req.query.filename || '').slice(0, 255);
     if (!Buffer.isBuffer(req.body)) throw badRequest('Kirim isi file sebagai body (bukan JSON) dengan ?filename=nama.xlsx');
     const { headers, rows } = await parseUpload(req.body, filename);

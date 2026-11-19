@@ -320,7 +320,10 @@ run('B16 Career & Promotion (Postgres)', () => {
     expect(self.status).toBe(403);
     expect(self.body.error.code).toBe('ROLE_FORBIDDEN');
     await q(`UPDATE users SET role = 'supervisor' WHERE id = :id`, { id: u.spv2 });
+    const [openRow] = await q('SELECT id FROM lna_promotion_decisions WHERE user_id = :u AND hr_decision IS NULL', { u: u.dedi });
     await place('dedi', L.senior);
+    // balapan: rute sudah membaca siklus sebelum posisi berubah; store menolak di bawah kunci karena jenjang asal tidak cocok lagi (C9)
+    expect(await createStores(db).promotion.hrDecide(tenant.id, { id: openRow.id, decision: 'approved', by: u.hr }, { event: 'hr_decision' })).toBe(false);
     const stale = await post(`/decisions/${u.dedi}/hr`, 'hr', { decision: 'hold' });
     expect(stale.status).toBe(409);
     expect(stale.body.error.code).toBe('WAITING_SUPERVISOR');

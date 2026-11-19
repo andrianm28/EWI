@@ -101,6 +101,7 @@ describe('B4 impor kamus: kode, rumpun, level program, job function', () => {
     };
   };
   const base = { jobRole: 'engineer service delivery', name: 'Automation & IaC' };
+  const makeCtxWith = (ctx) => ({ ...ctx, seen: new Set() });
 
   it('judul "Level" dipetakan ke Level Program, bukan Jenjang karier', () => {
     const m = suggestMapping(['Jabatan', 'Kode', 'Kompetensi', 'Rumpun', 'Level', 'Grade'], kind.fields);
@@ -131,6 +132,15 @@ describe('B4 impor kamus: kode, rumpun, level program, job function', () => {
     expect(kind.validate({ jobRole: role.name, name: 'ticket life cycle' }, makeCtx()).error).toMatch(/sudah ada di kamus/);
     const res = kind.validate({ jobRole: role.name, name: 'ticket life cycle', code: 'ST-B4', programTier: 'basic', jobFunctions: '3' }, makeCtx());
     expect(res.value).toEqual({ id: 'c-old', patch: { code: 'ST-B4', programTier: 'basic' }, jobFunctionIds: ['jf-3'] });
+  });
+  it('impor ulang dengan nilai yang sama tidak mengubah apa pun (pengesahan tidak direset); hanya kolom yang berubah masuk patch', () => {
+    const ctx = makeCtx();
+    ctx.existing.set(ctx.keyOf({ jobRoleId: 'r1', name: 'Approved' }), { id: 'c-ok', kind: 'job', code: 'ST-B9', stream: 'Technical', programTier: 'basic' });
+    ctx.codes.set('r1|st-b9', 'c-ok');
+    expect(kind.validate({ jobRole: role.name, name: 'approved', code: 'ST-B9', stream: 'Technical', programTier: 'B' }, ctx).error).toMatch(/sudah ada di kamus.*tidak ada perubahan/);
+    expect(kind.validate({ jobRole: role.name, name: 'approved', code: 'ST-B9', programTier: 'intermediate' }, makeCtxWith(ctx)).value).toEqual({ id: 'c-ok', patch: { programTier: 'intermediate' }, jobFunctionIds: null });
+    // hanya pemetaan job function: diterima tanpa patch (pemetaan tidak mereset pengesahan)
+    expect(kind.validate({ jobRole: role.name, name: 'approved', code: 'ST-B9', jobFunctions: '1' }, makeCtxWith(ctx)).value).toEqual({ id: 'c-ok', patch: {}, jobFunctionIds: ['jf-1'] });
   });
   it('sel Job Function tanpa nomor ditolak (tidak menghapus pemetaan); kompetensi inti yang sudah ada tidak bisa dipetakan', () => {
     expect(kind.validate({ jobRole: role.name, name: 'ticket life cycle', jobFunctions: ';' }, makeCtx()).error).toMatch(/berisi nomor/);

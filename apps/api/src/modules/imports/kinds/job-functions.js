@@ -10,6 +10,7 @@ module.exports = {
   label: 'Job function',
   description: 'Fungsi kerja per jabatan (DACUM Tool 1), bernomor urut. Impor ini sebelum Kamus kompetensi.',
   submodules: ['dna'],
+  flag: 'dna.development', // B4: jenis ini hanya ada bila flag menyala
   fields: [
     { key: 'jobRole', header: 'Job Role', required: true, aliases: ['jabatan', 'posisi'], example: 'Engineer Service Delivery', help: 'Jabatan harus sudah ada (impor Jenjang & program dulu).' },
     { key: 'order', header: 'No', aliases: ['nomor', 'no jf', 'jf', 'urutan'], example: 1, help: 'Nomor job function mulai 1. Kosong = lanjut dari nomor terakhir.' },

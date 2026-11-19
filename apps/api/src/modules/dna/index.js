@@ -246,7 +246,7 @@ module.exports = {
     }));
 
     // R3-3: impor file XLSX/CSV dengan pemetaan kolom (karyawan, jenjang, kamus, status lulus, hasil DNA)
-    r.use('/imports', importRouter({ submodule: 'dna', stores, audit }));
+    r.use('/imports', importRouter({ submodule: 'dna', stores, audit, flags }));
 
     // --- Dashboard karier & gap (learner: dirinya, atasan: timnya, HR: semua) ---
     r.get('/employees', wrap(async (req, res) => {

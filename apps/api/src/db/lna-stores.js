@@ -1300,6 +1300,8 @@ function createLnaStores(sequelize, { cipher } = {}) {
         const [rows] = await sequelize.query(
           `UPDATE lna_promotion_decisions SET hr_decision = :decision, hr_by = :by, hr_at = now(), hr_note = :note, updated_at = now()
             WHERE tenant_id = :tenantId AND id = :id AND hr_decision IS NULL${d.decision === 'approved' ? " AND supervisor_decision = 'recommend'" : ''}
+              -- C9: posisi bisa berubah setelah rute membaca siklus; di bawah kunci baris karyawan jenjang asal harus masih cocok
+              AND from_level_id IS NOT DISTINCT FROM (SELECT career_level_id FROM users WHERE tenant_id = :tenantId AND id = lna_promotion_decisions.user_id)
             RETURNING id`, { replacements: { tenantId, id: d.id, decision: d.decision, by: d.by, note }, transaction });
         if (!rows.length) return false;
         await insertAudit(tenantId, { userId: d.by, meta: { ...audit, decisionId: d.id } }, transaction);
