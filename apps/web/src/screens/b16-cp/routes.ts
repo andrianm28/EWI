@@ -4,6 +4,6 @@ import type { RouteRecordRaw } from 'vue-router'
 export default [
   {
     path: '/cp', name: 'cp', component: () => import('./CareerPromotionView.vue'),
-    meta: { views: ['hr', 'atasan', 'super'], flag: 'promotion.recommendation', submodule: 'dna', menuKey: 'cp', title: 'Career & Promotion' },
+    meta: { views: ['hr', 'atasan', 'super'], roles: ['hr_admin', 'supervisor', 'eta_admin'], flag: 'promotion.recommendation', submodule: 'dna', menuKey: 'cp', title: 'Career & Promotion' },
   },
 ] satisfies RouteRecordRaw[]

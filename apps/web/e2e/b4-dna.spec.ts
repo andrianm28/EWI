@@ -1,11 +1,11 @@
 import { test, expect, type Page } from '@playwright/test'
 
 // B4 Developmental Needs (spek: docs/designs/b4-developmental-needs.md). API di-mock.
-const ACCESS = { submodules: ['cca', 'dna', 'tna', 'ina'], flags: { 'module.dna': true, 'module.tna': true } as Record<string, boolean> }
+const ACCESS = { submodules: ['cca', 'dna', 'tna', 'ina'], flags: { 'module.dna': true, 'module.tna': true, 'dna.development': true } as Record<string, boolean> }
 
-async function loginAs(page: Page, role: string) {
+async function loginAs(page: Page, role: string, access = ACCESS) {
   await page.route('**/api/auth/login', (r) => r.fulfill({ json: { token: 't', user: { id: 'u-1', tenantId: 't-1', email: `${role}@demo.test`, role } } }))
-  await page.route('**/api/me/access', (r) => r.fulfill({ json: ACCESS }))
+  await page.route('**/api/me/access', (r) => r.fulfill({ json: access }))
   await page.route('**/api/auth/me', (r) => r.fulfill({ json: { user: { id: 'u-1', tenantId: 't-1', email: `${role}@demo.test`, role } } }))
   await page.goto('/login')
   await page.getByLabel('Organisasi').fill('demo')
@@ -120,4 +120,21 @@ test('Atasan tidak melihat tombol pengesahan; tanpa jabatan berkamus tampil petu
   await page.route('**/api/dna/development/overview*', (r) => r.fulfill({ json: { data: { ...OVERVIEW, jobs: [OVERVIEW.jobs[1]], selectedJobRoleId: null } } }))
   await page.reload()
   await expect(page.getByTestId('dn-empty')).toContainText('Belum ada jabatan yang punya kamus kompetensi')
+})
+
+test('flag dna.development mati, atau akun karyawan: /dna diarahkan ke halaman POC /m/dna', async ({ page }) => {
+  await mockDna(page)
+  await page.route('**/api/dna/**', (r) => (r.request().url().includes('/development/') ? r.fallback() : r.fulfill({ json: { data: [] } })))
+  await loginAs(page, 'hr_admin', { ...ACCESS, flags: { ...ACCESS.flags, 'dna.development': false } })
+  await page.goto('/dna')
+  await expect(page).toHaveURL(/\/m\/dna$/)
+  await expect(page.getByTestId('dn-jobs')).toHaveCount(0)
+})
+
+test('karyawan membuka menu Developmental Needs: diarahkan ke halaman POC, bukan layar B4', async ({ page }) => {
+  await mockDna(page)
+  await page.route('**/api/dna/**', (r) => (r.request().url().includes('/development/') ? r.fallback() : r.fulfill({ json: { data: [] } })))
+  await loginAs(page, 'learner')
+  await page.goto('/dna')
+  await expect(page).toHaveURL(/\/m\/dna$/)
 })
