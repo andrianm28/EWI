@@ -4,8 +4,9 @@ name: Deploy staging/prod
 #
 #   push ke main     -> CI penuh -> build image GHCR (tag = SHA) -> deploy staging
 #   Run workflow     -> pilih staging/prod + SHA image yang sudah ada di GHCR (promosi image yang
-#                       sama dengan staging). Prod lewat GitHub environment `prod` (set required
-#                       reviewer di Settings > Environments).
+#                       sama dengan staging). Prod lewat GitHub environment `prod` (penyetuju wajib).
+# Pengaman (PK-10, PD-6/PD-11 opsi A): deploy hanya dari branch main; SHA yang dipromosikan harus
+# commit di main; environment prod hanya menerima main + penyetuju. Alur: docs/infra/alur-rilis.md.
 # Deploy jalan di runner self-hosted etavm2 (label etavm2,elgos; koneksi keluar saja) lewat
 # deploy/vps/deploy.sh: backup DB -> migrasi -> ganti container -> health check, gagal = rollback.
 # Detail dan setup VM: docs/infra/vps-etavm2.md.
@@ -44,11 +45,27 @@ jobs:
   guard:
     runs-on: ubuntu-latest
     steps:
+      - name: Hanya dari branch main
+        if: github.ref != 'refs/heads/main'
+        run: |
+          echo "::error::Deploy hanya boleh dijalankan dari branch main (sekarang ${{ github.ref }})."
+          exit 1
       - name: Prod wajib memakai image yang sudah ada
         if: inputs.environment == 'prod' && inputs.image_tag == ''
         run: |
           echo "::error::Deploy prod wajib mengisi image_tag (SHA yang sudah lolos di staging)."
           exit 1
+      - uses: actions/checkout@v4
+        if: inputs.image_tag != ''
+        with: { fetch-depth: 0 }
+      - name: SHA harus berasal dari main
+        if: inputs.image_tag != ''
+        env:
+          TAG: ${{ inputs.image_tag }}
+        run: |
+          [[ "$TAG" =~ ^[0-9a-f]{40}$ ]] || { echo "::error::image_tag harus SHA commit lengkap (40 karakter)"; exit 1; }
+          git merge-base --is-ancestor "$TAG" origin/main \
+            || { echo "::error::$TAG bukan commit di main; image dari branch lain tidak boleh dipromosikan."; exit 1; }
 
   ci:
     needs: guard
@@ -87,7 +104,7 @@ jobs:
     needs: [guard, images]
     # always(): tetap jalan saat promosi image yang sudah ada (ci + images di-skip), tidak bila gagal
     if: >-
-      always() && needs.guard.result == 'success' &&
+      always() && needs.guard.result == 'success' && github.ref == 'refs/heads/main' &&
       (needs.images.result == 'success' || (inputs.image_tag != '' && needs.images.result == 'skipped'))
     runs-on: [self-hosted, etavm2, elgos]
     timeout-minutes: 20

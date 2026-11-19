@@ -17,6 +17,14 @@ PROJECT="elgos-dev-${SLUG:-main}"
 STATE="$WORKTREE/.elgos-dev"
 export WORKTREE DEV_ENV_FILE="$STATE/.env"
 
+# Di host staging/prod (etavm2) dev wajib memakai Docker rootless milik elgos-dev, bukan daemon utama,
+# agar container dev tidak bisa menjangkau container dan data produksi.
+if [ -d /srv/elgos-prod ] && [ "${DEV_ALLOW_ROOTFUL:-0}" != 1 ] \
+   && ! docker info --format '{{.SecurityOptions}}' 2>/dev/null | grep -q rootless; then
+  echo "Di etavm2 jalankan dev sebagai user elgos-dev (Docker rootless): sudo -iu elgos-dev" >&2
+  exit 1
+fi
+
 dc() { docker compose -p "$PROJECT" -f "$HERE/docker-compose.yml" --env-file "$DEV_ENV_FILE" "$@"; }
 envval() { sed -n "s/^$1=//p" "$DEV_ENV_FILE" | tail -1; }
 
