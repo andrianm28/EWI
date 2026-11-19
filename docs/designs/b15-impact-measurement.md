@@ -228,7 +228,7 @@ wawancara ulang. Tanpa bukti di tengah, klaim bahwa pelatihan memperbaiki kinerj
 
 - Opsi `planId` wajib (UUID rencana aktif tenant ini; diperiksa `context()`, fatal bila tidak ada).
 - Opsi didefinisikan seperti `projectId` di `kinds/performance.js` (`{ key: 'planId', type: 'lim_plan', required: true }`).
-  Kind ditambah di akhir `KINDS` (nomor template 10) agar nomor template lama tidak bergeser.
+  Kind ditambah di akhir `KINDS` (nomor template 11, sesudah `cca_program_results` nomor 10) agar nomor template lama tidak bergeser.
 - Kolom: ID Karyawan atau Email, ID Kompetensi (UUID, opsional) atau Nama Kompetensi. Pencocokan hanya di antara
   kompetensi rencana; nama dicocokkan tanpa beda huruf, dan nama yang cocok ke lebih dari satu kompetensi rencana
   ditolak ("isi ID Kompetensi"). Karyawan harus peserta rencana. Skor Pre, Skor Post, Skor Kinerja, Catatan Kinerja. Skor 0–100 atau kosong (kosong = tidak diubah).

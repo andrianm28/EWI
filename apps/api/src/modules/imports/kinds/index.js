@@ -15,6 +15,8 @@ const KINDS = [
   require('./li-modules'),
   // B10: hasil program Core Competencies, nomor template 10
   require('./cca-program-results'),
+  // B15: skor pre/post/kinerja per karyawan per kompetensi rencana Impact Measurement, nomor template 11
+  require('./lim-measurements'),
 ];
 const byKey = new Map(KINDS.map((k) => [k.key, k]));
 module.exports = { KINDS, getKind: (key) => byKey.get(key) || null };

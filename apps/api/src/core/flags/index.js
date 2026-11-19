@@ -9,6 +9,7 @@ const FLAGS = Object.freeze({
   // Bangun penuh 19 Nov (mockup Pak Eji): modul di luar Learning Needs Analysis
   MODULE_LI: 'module.li', // B13 Learning Intervention
   MODULE_LD: 'module.ld', // B14 Learning Delivery
+  MODULE_LIM: 'module.lim', // B15 Learning Impact Measurement
   // Cadence 11 Nov (C2): POC ELGOS memakai hasil wawancara DNA manual; wawancara AI DNA ditahan
   DNA_AI_INTERVIEW: 'dna.ai_interview',
   // G2-A (13 Nov): rekomendasi promosi = modul terpisah, di luar POC DNA+TNA

@@ -38,6 +38,8 @@ async function buildExport({ stores, flags, tenantId, person, self }) {
   ]);
   // B10: hasil program nilai dan penugasan wawancara Core Competencies; ringkasan wawancara hanya untuk karyawan itu sendiri
   const coreCompetencies = stores.cca ? await stores.cca.exportFor(tenantId, person.id, { withSummary: self }) : undefined;
+  // B15: skor dampak belajar; tidak digerbang flag (hak subjek data berlaku apa pun modul yang aktif)
+  const impactMeasurement = stores.lim ? await stores.lim.exportForUser(tenantId, person.id) : undefined;
   return {
     format: EXPORT_VERSION,
     exportedAt: new Date().toISOString(),
@@ -49,6 +51,7 @@ async function buildExport({ stores, flags, tenantId, person, self }) {
     performance,
     dna: { assessments, completions },
     coreCompetencies,
+    impactMeasurement,
   };
 }
 

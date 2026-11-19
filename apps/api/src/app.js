@@ -24,7 +24,7 @@ const { createAnalysisRunner } = require('./modules/interviews/analysis');
 const { createCatalogService, elitementorAdapter, moodleAdapter } = require('./integrations/catalog');
 const { createStorage } = require('./integrations/storage');
 const { createLdSync } = require('./modules/ld/sync');
-const SUBMODULE_MODULES = ['cca', 'dna', 'tna', 'ina', 'li', 'ld'].map((k) => require(`./modules/${k}`));
+const SUBMODULE_MODULES = ['cca', 'dna', 'tna', 'ina', 'li', 'ld', 'lim'].map((k) => require(`./modules/${k}`));
 
 /**
  * Bangun aplikasi Express. Semua akses data lewat `stores` agar bisa diganti di test.

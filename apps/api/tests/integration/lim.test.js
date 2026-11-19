@@ -229,6 +229,8 @@ run('B15 Learning Impact Measurement (Postgres)', () => {
 
     // done hanya lewat store (sambungan mesin wawancara tahap 3)
     await stores.lim.recordReinterview(tenant.id, plan.id, u.b, k1, { score: 66, sessionId: null });
+    expect((await send('post', `/plans/${plan.id}/queue/schedule`, { userIds: [u.b], date: day(3) })).body.data.scheduled).toEqual([u.b]); // k2 belum done
+    await stores.lim.recordReinterview(tenant.id, plan.id, u.b, k2, { score: 80, sessionId: null });
     const skip = await send('post', `/plans/${plan.id}/queue/schedule`, { userIds: [u.b], date: day(3) });
     expect(skip.body.data.skipped).toEqual([{ userId: u.b, reason: 'done' }]);
     const d = (await get(`/plans/${plan.id}/overview`)).body.data;
@@ -268,17 +270,19 @@ run('B15 Learning Impact Measurement (Postgres)', () => {
   });
 
   it('impor lim_measurements: cocok ID atau nama kompetensi rencana, karyawan peserta', async () => {
-    const kinds = (await get('/imports/kinds')).body.data.map((k) => k.key);
+    const kinds = (await get('/imports/templates')).body.data.map((k) => k.key);
     expect(kinds).toContain('lim_measurements');
     const csv = ['ID Karyawan,Nama Kompetensi,Skor Pre,Skor Post,Skor Kinerja,Catatan Kinerja',
       'E-b,ticket life cycle,45,,,', 'E-lama,Ticket Life Cycle,40,,,', 'E-b,Tidak Ada,40,,,', `E-c,${k3},,,61,Dicek atasan`].join('\n');
-    const up = await request(app).post('/api/lim/imports?kind=lim_measurements&filename=lim.csv').set(as('hr')).set('Content-Type', 'text/csv').send(csv);
+    const up = await request(app).post('/api/lim/imports/lim_measurements?filename=lim.csv').set(as('hr')).set('Content-Type', 'text/csv').send(csv);
     expect(up.status).toBe(201);
     const id = up.body.data.id;
-    const val = await send('post', `/imports/${id}/validate`, { options: { planId: plan.id } });
+    expect((await send('post', `/imports/batches/${id}/preview`, {})).status).toBe(400); // rencana wajib dipilih
+    const val = await send('post', `/imports/batches/${id}/preview`, { options: { planId: plan.id } });
     expect(val.status).toBe(200);
-    expect(val.body.data.accepted).toBe(2);
-    const commit = await send('post', `/imports/${id}/commit`, { options: { planId: plan.id } });
+    expect(val.body.data.valid).toBe(2);
+    expect(val.body.data.rejected.map((r) => r.reason)).toEqual(['Karyawan bukan peserta rencana ini', 'Kompetensi bukan bagian rencana ini']);
+    const commit = await send('post', `/imports/batches/${id}/commit`, {});
     expect(commit.status).toBe(200);
     const rows = (await get(`/plans/${plan.id}/measurements`)).body.data;
     expect(rows.find((r) => r.userId === u.b && r.competencyId === k2)).toMatchObject({ preScore: 45, preSource: 'import' });
