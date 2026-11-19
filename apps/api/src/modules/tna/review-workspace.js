@@ -36,6 +36,14 @@ function reviewWorkspaceRouter({ stores, settings, catalog, flags, audit, assign
   const flag = requireFlag(flags, FLAGS.TNA_REVIEW_WORKSPACE, 'Tinjauan HR versi baru belum diaktifkan untuk organisasi Anda');
   const conflict = (code, message) => new HttpError(409, code, message);
 
+  /** projectId opsional di query: harus satu UUID, selain itu 400 (bukan galat cast di database). */
+  const projectIdOf = (req) => {
+    const v = req.query.projectId;
+    if (v === undefined || v === '') return undefined;
+    if (typeof v !== 'string' || !UUID.test(v)) throw badRequest('projectId tidak valid');
+    return v;
+  };
+
   /** Bisakah tenant ini menugaskan langsung ke EliteMentor? Baris 5 dan 6 tabel keputusan di spek. */
   async function assignGate(tenantId, conf) {
     if (conf.lms.delivery === 'lms_export') return conflict('ASSIGN_VIA_EXPORT', `Organisasi Anda belajar di ${conf.lms.lmsName}. Ekspor daftar gap untuk diunggah ke sana.`);
@@ -90,7 +98,7 @@ function reviewWorkspaceRouter({ stores, settings, catalog, flags, audit, assign
   // --- Solusi: rekomendasi course untuk temuan pelatihan, daftar temuan perbaikan ---
   r.get('/review/solutions', flag, hr, wrap(async (req, res) => {
     const [rows, conf, inaEnabled] = await Promise.all([
-      stores.tna.listReviewedForSolutions(req.tenantId, { projectId: req.query.projectId }),
+      stores.tna.listReviewedForSolutions(req.tenantId, { projectId: projectIdOf(req) }),
       settings.get(req.tenantId),
       flags.isEnabled(req.tenantId, FLAGS.MODULE_INA),
     ]);
@@ -122,7 +130,8 @@ function reviewWorkspaceRouter({ stores, settings, catalog, flags, audit, assign
     const blocked = await assignGate(req.tenantId, conf);
     if (blocked) throw blocked;
     if (plan.catalogSource !== 'elitementor') throw conflict('COURSE_NOT_IN_TARGET', 'Course rencana ini bukan course EliteMentor. Ekspor daftar gap untuk LMS perusahaan.');
-    if (!(await stores.tna.claimPlanAssignment(req.tenantId, plan.id))) throw conflict('ASSIGN_IN_PROGRESS', 'Penugasan rencana ini sedang dikirim. Coba lagi sebentar.');
+    const claimedAt = await stores.tna.claimPlanAssignment(req.tenantId, plan.id);
+    if (!claimedAt) throw conflict('ASSIGN_IN_PROGRESS', 'Penugasan rencana ini sedang dikirim. Coba lagi sebentar.');
 
     const meta = { employeeIds: [plan.userId], objectType: 'tna_plan_item', objectIds: [plan.id], target: 'elitementor' };
     let ref;
@@ -133,19 +142,21 @@ function reviewWorkspaceRouter({ stores, settings, catalog, flags, audit, assign
         course: { ref: plan.catalogItemRef, title: plan.catalogItemTitle },
         planItemId: plan.id,
       }));
-    } catch {
-      await stores.tna.finishPlanAssignment(req.tenantId, plan.id, { status: 'failed', ref: null, userId: req.user.id });
+    } catch (e) {
+      // hanya nama galat yang dicatat; pesan bisa memuat data
+      console.error(`Penugasan EliteMentor gagal (rencana ${plan.id}): ${e.name || 'Error'}`);
+      await stores.tna.finishPlanAssignment(req.tenantId, plan.id, { status: 'failed', ref: null, userId: req.user.id, claimedAt });
       await audit.record(req, 'update', 'tna.plan_assignment', { ...meta, result: 'failed' });
       throw new HttpError(502, 'EM_ASSIGN_FAILED', 'EliteMentor tidak menerima penugasan. Coba lagi.');
     }
-    const saved = await stores.tna.finishPlanAssignment(req.tenantId, plan.id, { status: 'sent', ref, userId: req.user.id });
+    const saved = await stores.tna.finishPlanAssignment(req.tenantId, plan.id, { status: 'sent', ref, userId: req.user.id, claimedAt });
     await audit.record(req, 'update', 'tna.plan_assignment', { ...meta, result: 'sent' });
     return res.json({ data: saved });
   }));
 
   // --- Ekspor gap untuk LMS klien (K4). Hanya membaca ---
   r.get('/plan-items/export.csv', flag, hr, wrap(async (req, res) => {
-    const rows = await stores.tna.listPlanExport(req.tenantId, { projectId: req.query.projectId });
+    const rows = await stores.tna.listPlanExport(req.tenantId, { projectId: projectIdOf(req) });
     const csv = toCsv(EXPORT_HEADER, rows.map((p) => [
       p.employeeId, p.userName, p.email, p.competencyName, p.catalogItemRef, p.catalogItemTitle, p.programTier, PLAN_STATUS_LABEL[p.status] || p.status,
     ]));
@@ -167,9 +178,9 @@ function reviewWorkspaceRouter({ stores, settings, catalog, flags, audit, assign
     const ids = [...new Set(raw.map((id) => id.toLowerCase()))];
     const out = await stores.tna.handoffImprovement(req.tenantId, ids, req.user.id);
     if (out.handedOff.length) {
-      await audit.record(req, 'update', 'tna.improvement_handoff', { objectType: 'tna_finding', objectIds: out.handedOff, count: out.handedOff.length });
+      await audit.record(req, 'update', 'tna.improvement_handoff', { employeeIds: out.employeeIds, objectType: 'tna_finding', objectIds: out.handedOff, count: out.handedOff.length });
     }
-    res.json({ data: out });
+    res.json({ data: { handedOff: out.handedOff, already: out.already, skipped: out.skipped } });
   }));
 
   return r;

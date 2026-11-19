@@ -90,6 +90,7 @@ run('B7 tinjauan HR (Postgres)', () => {
       expect((await request(a).get('/api/tna/review/solutions').set(as('hr'))).status).toBe(403);
       expect((await request(a).get('/api/tna/plan-items/export.csv').set(as('hr'))).status).toBe(403);
       expect((await request(a).post('/api/tna/review/improvement-handoff').set(as('hr')).send({ findingIds: [f.t1] })).status).toBe(403);
+      expect((await request(a).post(`/api/tna/plan-items/${f.t1}/assign`).set(as('hr'))).body.error.code).toBe('FEATURE_DISABLED');
       await setFlag('tna.review_workspace', true);
       expect((await classify(a, f.t1, 'training', 'spv')).status).toBe(403);
       expect((await classify(a, f.t1, 'training', 'ani')).status).toBe(403);
@@ -278,7 +279,14 @@ run('B7 tinjauan HR (Postgres)', () => {
       });
       const again = await assign(a, f.planT2);
       expect(again.status).toBe(200);
+      // yang sudah terkirim tetap 200 walau tenant kemudian pindah ke ekspor
+      await setSettings({ lms: { delivery: 'lms_export' } });
+      expect((await assign(a, f.planT2)).status).toBe(200);
+      await ready();
       expect(svc.calls).toHaveLength(2);
+      // course rencana yang sudah ditugaskan tidak bisa diganti
+      const patchRes = await request(a).patch(`/api/tna/plan-items/${f.planT2}`).set(as('hr')).send({ catalogItemRef: 'EM-999' });
+      expect(patchRes.body.error.code).toBe('ALREADY_ASSIGNED');
       const log = await audits('tna.plan_assignment');
       expect(log.map((r) => r.meta.result)).toEqual(['failed', 'sent']);
       expect(log[1].meta).toMatchObject({ employeeIds: [u.beni], target: 'elitementor' });
@@ -329,6 +337,7 @@ run('B7 tinjauan HR (Postgres)', () => {
       const log = await audits('tna.plan_items');
       expect(log.filter((r) => r.action === 'export').pop().meta).toMatchObject({ count: 3 });
       expect((await request(a).get('/api/tna/plan-items/export.csv').set(as('spv'))).status).toBe(403);
+      expect((await request(a).get('/api/tna/plan-items/export.csv?projectId=bukan').set(as('hr'))).status).toBe(400);
       const x = await request(a).get('/api/tna/plan-items/export.csv').set(as('xhr'));
       expect(x.text.replace(/^\uFEFF/, '').trim().split('\r\n')).toHaveLength(1);
       await setSettings({});
@@ -360,7 +369,7 @@ run('B7 tinjauan HR (Postgres)', () => {
       const sol = await request(a).get('/api/tna/review/solutions').set(as('hr'));
       expect(sol.body.data.inaEnabled).toBe(true);
       expect(sol.body.data.improvement.find((x) => x.findingId === f.h).handedOffAt).toBeTruthy();
-      expect((await audits('tna.improvement_handoff'))[0].meta).toMatchObject({ objectIds: [f.h] });
+      expect((await audits('tna.improvement_handoff'))[0].meta).toMatchObject({ objectIds: [f.h], employeeIds: [u.ani] });
     });
 
     it('kontrak B9: listImprovementHandoffs tanpa data individu', async () => {

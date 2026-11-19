@@ -48,7 +48,10 @@ function merge(base, override) {
 const DELIVERIES = Object.freeze(['elitementor', 'lms_export']);
 
 /** Nilai setting yang tidak valid jatuh ke default, supaya salah isi di tenants.settings tidak mematahkan endpoint. */
-function normalize(conf) {
+function normalize(raw) {
+  // tenants.settings bisa berisi bentuk yang salah (mis. "lms": null); bagian itu memakai default seutuhnya
+  const conf = { ...raw };
+  for (const key of ['tna', 'lms']) if (!isPlainObject(conf[key])) conf[key] = DEFAULTS[key];
   const days = conf.tna.reviewTargetDays;
   const name = typeof conf.lms.lmsName === 'string' ? conf.lms.lmsName.trim() : '';
   const org = conf.lms.elitementorOrganizationId;

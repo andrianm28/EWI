@@ -105,6 +105,7 @@ function interviewRouter({ submodule, stores, ai, aiConfig = {}, audit, analysis
     if (!started) throw new HttpError(409, 'INVALID_STATE', 'Sesi sudah dimulai, selesai, atau dihentikan');
     await audit.record(req, 'create', `${submodule}.interview_consent`, { employeeIds: [s.intervieweeId], objectType: 'interview_session', objectIds: [s.id], consentVersion });
     const turn = q ? await stores.interviews.addTurn(req.tenantId, s.id, 'ai', q) : null;
+    if (q && !turn) throw new HttpError(409, 'INVALID_STATE', 'Sesi sudah dihentikan');
     res.json({ data: { status: 'in_progress', consentVersion, question: turn } });
   }));
 
@@ -138,7 +139,8 @@ function interviewRouter({ submodule, stores, ai, aiConfig = {}, audit, analysis
     const saved = await stores.interviews.addTurn(req.tenantId, s.id, 'human', answer);
     if (!saved) throw new HttpError(409, 'INVALID_STATE', 'Sesi belum dimulai atau sudah selesai');
     const turn = q ? await stores.interviews.addTurn(req.tenantId, s.id, 'ai', q) : null;
-    res.json({ data: { question: turn, done: !q || !turn } });
+    if (q && !turn) throw new HttpError(409, 'INVALID_STATE', 'Sesi sudah dihentikan');
+    res.json({ data: { question: turn, done: !q } });
   }));
 
   r.post('/:id/complete', wrap(async (req, res) => {

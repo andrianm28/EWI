@@ -112,7 +112,7 @@ Rute `/me/data-requests` dan `/data-requests` didaftarkan **sebelum** `/:userId`
 
 3. `POST /api/employees/me/data-requests` body `{ type: 'withdraw_consent' | 'delete_data', reason? }` (`reason` maks 1000 karakter, terenkripsi).
    - `delete_data`: akun HR atau Admin ETA → `409 ADMIN_ACCOUNT` ("Hubungi Admin ETA", sama dengan batasan `DELETE /employees/:userId`). Selain itu mencatat permintaan (`201`). Sudah ada yang `open` → `409 REQUEST_EXISTS` (termasuk bila kalah balapan pada indeks unik).
-   - `withdraw_consent`: idempoten. Dalam **satu transaksi**: (a) buat permintaan, atau pakai yang masih `open`; (b) semua sesi wawancara sendiri berstatus `scheduled`/`in_progress` menjadi `abandoned`; (c) semua sesi sendiri yang punya `consent_at` dan belum ditarik diberi `consent_withdrawn_at`; (d) job analisis sesi-sesi itu yang belum `done` ditandai `failed` final dengan `last_error = 'CONSENT_WITHDRAWN'`. Respons `201` (baru) atau `200` (permintaan lama, efek sesi dijalankan ulang untuk sesi baru).
+   - `withdraw_consent`: idempoten. Dalam **satu transaksi**: (a) buat permintaan, atau pakai yang masih `open`; (b) semua sesi wawancara sendiri berstatus `scheduled`/`in_progress` menjadi `abandoned`; (c) semua sesi TNA sendiri yang dihentikan di (b) atau pernah disetujui, dan belum bertanda, diberi `consent_withdrawn_at` (sesi `scheduled` yang dihentikan ikut bertanda supaya HR bisa membedakannya dari sesi yang ditinggalkan biasa); (d) job analisis sesi-sesi itu yang belum `done` ditandai `failed` final dengan `last_error = 'CONSENT_WITHDRAWN'`. Respons `201` (baru) atau `200` (permintaan lama, efek sesi dijalankan ulang untuk sesi baru).
    - Audit `create` `my.data_request` `{ employeeIds: [self], type, requestId, sessions: <jumlah sesi terdampak> }`.
 4. `DELETE /api/employees/me/data-requests/:id`: membatalkan permintaan `delete_data` sendiri yang masih `open` (`cancelled`). `withdraw_consent` tidak bisa dibatalkan (`409 CANNOT_CANCEL`): persetujuan yang sudah ditarik tidak pulih; HR bisa mengundang ulang. Milik orang lain → `404`. Audit `update` `my.data_request`.
 5. `GET /api/employees/data-requests?status=open|done|cancelled|all` (HR; Admin ETA ikut lolos lewat `requireRole`): `[{ id, userId, userName, type, status, reason, createdAt, dueAt, overdue, resolvedAt, resolvedByName }]`. `overdue` = `open`, `dueAt` terisi, dan `now > dueAt` (penarikan persetujuan tidak pernah terlambat). Audit `readIndividual` `employee.data_requests`.
@@ -130,6 +130,7 @@ Sejak `consent_withdrawn_at` terisi (data tetap tersimpan, tetapi tidak diproses
 - Temuan `draft` dari sesi yang ditarik tidak muncul di antrean review dan tidak dihitung di `reviewCounts`; `POST /findings/:id/review|classify` untuk temuan draf dari sesi yang ditarik → `409 CONSENT_WITHDRAWN`.
 - Temuan yang sudah disetujui dan rencananya tetap terlihat dan tetap berjalan (keputusan user: data tidak dihapus). Keduanya hanya hilang bila HR menutup permintaan dengan `erase: true`.
 - `interviews.list` dan `get` mengembalikan `consentWithdrawnAt` supaya HR melihatnya.
+- Undangan massal (`POST /tna/projects/:id/interviews`) melewati karyawan yang menarik persetujuan di proyek itu dan belum punya sesi baru (`skippedWithdrawn` di respons), kecuali HR mengirim `includeWithdrawn: true`. Sesi yang ditarik tidak menghalangi undangan baru.
 - HR tetap bisa mengundang ulang; persetujuan baru di sesi baru berlaku sendiri. Penarikan berikutnya memakai permintaan `open` yang ada atau membuat yang baru (butir 3 idempoten), jadi sesi baru selalu bisa dihentikan.
 
 ## Balapan dengan wawancara yang sedang berjalan
@@ -203,3 +204,21 @@ Review oleh subagent baru tanpa konteks percakapan; 15 temuan (4 berat).
 | 13 | Kartu tanpa skor dan deskripsi | **Perbaiki** `courseScore`, judul pengganti; `description: null` diterima `[⏳]` |
 | 14 | Detail pemasangan | **Perbaiki** |
 | 15 | Tanpa `requireSubmodule`/`visibleEmployeeScope` | **Tolak mengubah desain** (router lintas submodul, hanya data sendiri); helper `submoduleActive` ditambah dan penyimpangan dicatat untuk Andrian |
+
+## Catatan triase review diff (19 Nov)
+
+Review oleh subagent baru (diff + spek saja); 9 temuan, tidak ada yang berat.
+
+| # | Temuan | Putusan |
+| --- | --- | --- |
+| 1 | Tarik persetujuan balapan dengan `fulfill` → 500 setelah commit | **Perbaiki**: permintaan terbuka dikunci `FOR UPDATE`, dicoba ulang bila baru ditutup |
+| 2 | Audit `erase` tidak terikat pada yang dihapus | **Perbaiki**: audit ditulis di dalam transaksi setelah permintaan diklaim dan sesi dikunci, dari daftar yang sama dengan yang dihapus |
+| 3 | Penarikan ikut mengenai sesi DNA | **Perbaiki**: hanya `submodule = 'tna'` sesuai spek; test memastikan sesi DNA tidak tersentuh |
+| 4 | Undang ulang buntu untuk sesi `completed` yang ditarik; undangan massal mengundang lagi otomatis | **Perbaiki**: `openFor` mengabaikan sesi yang ditarik; undangan massal melewatinya kecuali `includeWithdrawn` |
+| 5 | Respons menyesatkan bila penarikan masuk di tengah `consent`/`turns` | **Perbaiki**: `409 INVALID_STATE` |
+| 6 | `interviews.update` tanpa syarat | **Perbaiki**: tidak menimpa sesi yang ditarik |
+| 7 | Sesi `scheduled` yang dihentikan tidak bertanda | **Perbaiki**: ikut bertanda |
+| 8 | Ekspor data tanpa tanda penarikan dan permintaan data | **Perbaiki**: `consentWithdrawnAt` per sesi dan `dataRequests` ikut diekspor |
+| 9 | Celah test | **Perbaiki** sebagian (DNA, undangan massal, penarikan sesi terjadwal). Test konkurensi sungguhan dan isolasi lintas tenant untuk permintaan data **ditunda** ke QA B18 `[⏳ DITERIMA]` |
+
+Catatan untuk pemilik produk (dari temuan 2): `erase: true` menghapus temuan dan rencana dari semua sesi TNA yang pernah ditarik karyawan itu, termasuk rencana yang sudah ditugaskan ke EliteMentor, tanpa pembatalan di sisi EliteMentor. Sesuai keputusan "hapus hanya manual oleh HR".

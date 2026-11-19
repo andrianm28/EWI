@@ -127,13 +127,16 @@ module.exports = {
       const records = await stores.tna.listPerformance(req.tenantId, { all: true }, { period, projectId, userIds: members.map((m) => m.id) });
       const picks = selectInterviewees({ members, records, scope });
       const open = await stores.interviews.openFor(req.tenantId, { projectId, submodule: 'tna' });
-      const created = [];
+      // B8: karyawan yang menarik persetujuan tidak diundang ulang oleh undangan massal, kecuali HR memintanya
+      const withdrawn = body.includeWithdrawn === true ? new Set() : await stores.interviews.withdrawnFor(req.tenantId, { projectId, submodule: 'tna' });
+      const created = []; let skippedWithdrawn = 0;
       for (const p of picks) {
         if (open.has(p.userId)) continue;
+        if (withdrawn.has(p.userId)) { skippedWithdrawn += 1; continue; }
         const m = members.find((x) => x.id === p.userId);
         created.push({ ...(await stores.interviews.create(req.tenantId, { projectId, submodule: 'tna', intervieweeId: p.userId, jobRoleId: m.jobRoleId, triggerRecordIds: p.triggerRecordIds, inviteExpiresAt: inviteExpiry() })), focus: p.focus });
       }
-      res.status(201).json({ data: { scope, scheduled: created.length, skipped: picks.length - created.length, sessions: created } });
+      res.status(201).json({ data: { scope, scheduled: created.length, skipped: picks.length - created.length, skippedWithdrawn, sessions: created } });
     }));
 
     r.use('/sessions', interviewRouter({ submodule: 'tna', stores, ai, aiConfig, audit, analysis }));
@@ -280,12 +283,13 @@ module.exports = {
       const conf = await settings.get(req.tenantId);
       const competency = f.competencyId ? await stores.dna.getCompetency(req.tenantId, f.competencyId) : null;
       const hit = await catalog.match({ tenantId: req.tenantId, targets: conf.lms.targets, competency, tier: req.body?.programTier });
-      const item = await stores.tna.insertPlanItem(req.tenantId, {
-        findingId: f.id, userId: f.userId, origin: 'hr', status: initialStatus('hr'),
+      // B7: temuan dikunci dan diperiksa ulang saat rencana disimpan (klasifikasi bisa berubah sejak dibaca di atas)
+      const item = await stores.tna.planFromFinding(req.tenantId, f.id, {
+        userId: f.userId, origin: 'hr', status: initialStatus('hr'),
         programTier: req.body?.programTier || null, catalogSource: hit?.source, catalogItemRef: hit?.ref, catalogItemTitle: hit?.title,
         note: req.body?.note || null,
       });
-      await stores.tna.setFindingStatus(req.tenantId, f.id, 'planned');
+      if (!item) throw new HttpError(409, 'ALREADY_ACTIONED', 'Klasifikasi temuan ini baru saja berubah. Muat ulang lalu coba lagi.');
       // PK-15: perubahan temuan dan rencana dicatat
       await audit.record(req, 'create', 'tna.plan_item', { employeeIds: [f.userId], objectType: 'tna_plan_item', objectIds: [item.id], findingId: f.id, status: item.status });
       await audit.record(req, 'update', 'tna.finding', { employeeIds: [f.userId], objectType: 'tna_finding', objectIds: [f.id], from: f.status, to: 'planned' });
@@ -326,6 +330,8 @@ module.exports = {
         throw new HttpError(409, 'INVALID_TRANSITION', `Status "${PLAN_STATUS_LABEL[item.status]}" tidak bisa diubah menjadi "${PLAN_STATUS_LABEL[status]}"`);
       }
       const saved = await stores.tna.updatePlanItem(req.tenantId, item.id, { status, catalogItemRef, catalogItemTitle, catalogSource });
+      // B7: course rencana yang sedang atau sudah ditugaskan ke EliteMentor tidak boleh diganti
+      if (!saved) throw new HttpError(409, 'ALREADY_ASSIGNED', 'Rencana ini sudah ditugaskan, course-nya tidak bisa diganti');
       const changed = Object.fromEntries(Object.entries({ status, catalogItemRef, catalogItemTitle, catalogSource }).filter(([, v]) => v !== undefined));
       await audit.record(req, 'update', 'tna.plan_item', { employeeIds: [item.userId], objectType: 'tna_plan_item', objectIds: [item.id], from: { status: item.status }, changed });
       res.json({ data: saved });

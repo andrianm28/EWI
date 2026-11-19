@@ -75,6 +75,13 @@ describe('setting B7', () => {
     expect(normalize(merge(DEFAULTS, { tna: { reviewTargetDays: 2.5 } })).tna.reviewTargetDays).toBe(2);
     expect(normalize(merge(DEFAULTS, { tna: { reviewTargetDays: 31 } })).tna.reviewTargetDays).toBe(2);
   });
+  it('bagian setting yang salah bentuk memakai default, tidak melempar', () => {
+    const conf = normalize(merge(DEFAULTS, { tna: null, lms: 'x' }));
+    expect(conf.tna.reviewTargetDays).toBe(2);
+    expect(conf.lms.delivery).toBe('elitementor');
+    expect(normalize(merge(DEFAULTS, { lms: { elitementorOrganizationId: 42 } })).lms.elitementorOrganizationId).toBe('42');
+    expect(normalize(merge(DEFAULTS, { lms: { elitementorOrganizationId: '  ' } })).lms.elitementorOrganizationId).toBeNull();
+  });
   it('deliveryFor: sumber course rencana menang atas setting tenant', () => {
     const em = normalize(merge(DEFAULTS, {}));
     const lms = normalize(merge(DEFAULTS, { lms: { delivery: 'lms_export', lmsName: 'Moodle Elitery' } }));

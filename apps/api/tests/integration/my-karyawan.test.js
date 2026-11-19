@@ -191,6 +191,9 @@ run('B8 karyawan (Postgres)', () => {
       s.running = await session('citra', 'in_progress');
       s.queued = await session('citra', 'completed');
       s.scheduled = await session('citra');
+      // wawancara DNA tidak tersentuh (hanya wawancara TNA yang punya teks persetujuan)
+      const dna = await stores.interviews.create(tenant.id, { projectId, submodule: 'dna', intervieweeId: u.citra });
+      s.dna = dna.id;
       draftId = (await finding('citra', { sessionId: s.done, reviewStatus: 'draft', title: 'Draf citra' })).id;
       approvedId = (await finding('citra', { sessionId: s.done, title: 'Disetujui citra' })).id;
       planId = (await plan('citra', { findingId: approvedId })).id;
@@ -207,7 +210,8 @@ run('B8 karyawan (Postgres)', () => {
       const by = Object.fromEntries(rows.map((r) => [r.id, r]));
       expect(by[s.done]).toMatchObject({ status: 'completed' }); expect(by[s.done].w).toBeTruthy();
       expect(by[s.running]).toMatchObject({ status: 'abandoned' }); expect(by[s.running].w).toBeTruthy();
-      expect(by[s.scheduled]).toMatchObject({ status: 'abandoned', w: null }); // belum pernah menyetujui
+      expect(by[s.dna]).toMatchObject({ status: 'scheduled', w: null });
+      expect(by[s.scheduled]).toMatchObject({ status: 'abandoned' }); expect(by[s.scheduled].w).toBeTruthy(); // dihentikan karena penarikan, ikut bertanda
       // analisis yang antre dihentikan dan penyedia AI tidak dipanggil, HR tidak bisa mengulangnya
       expect(await stores.analysis.forSession(tenant.id, s.queued)).toMatchObject({ status: 'failed', lastError: 'CONSENT_WITHDRAWN' });
       expect(await a.locals.analysis.processJob(tenant.id, job.id)).toEqual({ skipped: true });
@@ -278,6 +282,20 @@ run('B8 karyawan (Postgres)', () => {
       expect(third.status).toBe(200);
       expect(third.body.data.sessions).toBeGreaterThanOrEqual(1);
       expect((await sql1('SELECT status FROM lna_interview_sessions WHERE id = :id', { id: fresh })).status).toBe('abandoned');
+    });
+
+    it('undangan massal melewati karyawan yang menarik persetujuan, kecuali HR memintanya', async () => {
+      const a = app();
+      await db.query(`INSERT INTO lna_performance_records (tenant_id, project_id, user_id, metric_type, name, target, actual, is_met, period, direction)
+                      VALUES (:t, :p, :u, 'sla', 'Respons', 85, 70, false, '2026-11', 'higher')`, { replacements: { t: tenant.id, p: projectId, u: u.citra } });
+      const res = await request(a).post(`/api/tna/projects/${projectId}/interviews`).set(as('hr')).send({ scope: 'red_only' });
+      expect(res.status).toBe(201);
+      expect(res.body.data.sessions.map((x) => x.intervieweeId)).not.toContain(u.citra);
+      expect(res.body.data.skippedWithdrawn).toBeGreaterThanOrEqual(1);
+      const forced = await request(a).post(`/api/tna/projects/${projectId}/interviews`).set(as('hr')).send({ scope: 'red_only', includeWithdrawn: true });
+      expect(forced.body.data.sessions.map((x) => x.intervieweeId)).toContain(u.citra);
+      // sesi undangan ulang itu dihentikan lagi agar langkah berikut tetap konsisten
+      expect((await dataReq(a, 'citra', { type: 'withdraw_consent' })).status).toBe(200);
     });
 
     it('HR menutup permintaan tanpa menghapus; hapus manual hanya dengan erase', async () => {

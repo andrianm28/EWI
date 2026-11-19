@@ -24,7 +24,7 @@ async function buildExport({ stores, flags, tenantId, person, self }) {
   for (const sub of SUBMODULES) {
     for (const s of await stores.interviews.list(tenantId, sub, only)) {
       const row = { submodule: sub, id: s.id, projectId: s.projectId, status: s.status, consentAt: s.consentAt,
-        consentVersion: s.consentVersion ?? null, startedAt: s.startedAt, endedAt: s.endedAt };
+        consentVersion: s.consentVersion ?? null, consentWithdrawnAt: s.consentWithdrawnAt ?? null, startedAt: s.startedAt, endedAt: s.endedAt };
       row.transcript = self ? await stores.interviews.turns(tenantId, s.id) : undefined;
       interviews.push(row);
     }
@@ -46,6 +46,8 @@ async function buildExport({ stores, flags, tenantId, person, self }) {
     planItems,
     performance,
     dna: { assessments, completions },
+    // B8: permintaan data milik karyawan (tarik persetujuan, minta hapus)
+    dataRequests: stores.dataRequests ? await stores.dataRequests.listForUser(tenantId, person.id) : [],
   };
 }
 
@@ -107,12 +109,12 @@ function employeeRouter({ stores, flags, audit }) {
       if (row.status !== 'open') throw new HttpError(409, 'INVALID_STATE', 'Permintaan ini sudah diproses');
       const erase = (req.body || {}).erase === true;
       const note = String((req.body || {}).note || '').trim().slice(0, 1000) || null;
-      if (erase) {
-        // audit sebelum hapus (pola PK-15): penghapusan tanpa jejak tidak dijalankan
-        const sessionIds = await stores.dataRequests.withdrawnSessionIds(req.tenantId, row.userId);
-        await audit.record(req, 'delete', 'employee.interview_data', { employeeIds: [row.userId], requestId: row.id, objectType: 'interview_session', sessionIds });
-      }
-      const out = await stores.dataRequests.resolveWithdrawal(req.tenantId, row.id, { resolvedBy: req.user.id, note, erase });
+      // Audit sebelum hapus (pola PK-15), ditulis di dalam transaksi setelah permintaan diklaim dan sesi dikunci:
+      // daftar sesinya sama dengan yang dihapus, dan permintaan yang kalah balapan tidak meninggalkan jejak palsu.
+      const beforeErase = (sessionIds) => audit.record(req, 'delete', 'employee.interview_data', {
+        employeeIds: [row.userId], requestId: row.id, objectType: 'interview_session', sessionIds,
+      });
+      const out = await stores.dataRequests.resolveWithdrawal(req.tenantId, row.id, { resolvedBy: req.user.id, note, erase, beforeErase });
       if (!out) throw new HttpError(409, 'INVALID_STATE', 'Permintaan ini sudah diproses');
       await audit.record(req, 'update', 'employee.data_request', { employeeIds: [row.userId], requestId: row.id, type: row.type, erase });
       res.json({ data: out });

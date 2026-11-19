@@ -283,7 +283,19 @@ function createLnaStores(sequelize, { cipher } = {}) {
     },
     async openFor(tenantId, { projectId, submodule }) {
       const rows = await select(`SELECT interviewee_id AS "userId" FROM lna_interview_sessions
-                                  WHERE tenant_id = :tenantId AND project_id = :projectId AND submodule = :submodule AND status <> 'abandoned'`,
+                                  WHERE tenant_id = :tenantId AND project_id = :projectId AND submodule = :submodule AND status <> 'abandoned'
+                                    AND consent_withdrawn_at IS NULL`,
+      { tenantId, projectId, submodule });
+      return new Set(rows.map((r) => r.userId));
+    },
+    /** B8: karyawan yang menarik persetujuan di proyek ini dan belum punya sesi baru sesudahnya. */
+    async withdrawnFor(tenantId, { projectId, submodule }) {
+      const rows = await select(`SELECT DISTINCT s.interviewee_id AS "userId" FROM lna_interview_sessions s
+                                  WHERE s.tenant_id = :tenantId AND s.project_id = :projectId AND s.submodule = :submodule
+                                    AND s.consent_withdrawn_at IS NOT NULL
+                                    AND NOT EXISTS (SELECT 1 FROM lna_interview_sessions n
+                                                     WHERE n.tenant_id = s.tenant_id AND n.project_id = s.project_id AND n.submodule = s.submodule
+                                                       AND n.interviewee_id = s.interviewee_id AND n.created_at > s.consent_withdrawn_at)`,
       { tenantId, projectId, submodule });
       return new Set(rows.map((r) => r.userId));
     },
@@ -340,7 +352,8 @@ function createLnaStores(sequelize, { cipher } = {}) {
       const allowed = { status: 'status', consentAt: 'consent_at', consentVersion: 'consent_version', startedAt: 'started_at', endedAt: 'ended_at' };
       const sets = Object.keys(fields).filter((k) => allowed[k]).map((k) => `${allowed[k]} = :${k}`);
       if (!sets.length) return null;
-      return insert(`UPDATE lna_interview_sessions SET ${sets.join(', ')} WHERE tenant_id = :tenantId AND id = :id RETURNING id, status`,
+      return insert(`UPDATE lna_interview_sessions SET ${sets.join(', ')}
+                      WHERE tenant_id = :tenantId AND id = :id AND consent_withdrawn_at IS NULL RETURNING id, status`,
         { tenantId, id, ...fields });
     },
     /** Q38: HR memperpanjang undangan. Pengingat H-3/H-1 di-reset agar dikirim lagi untuk batas baru. */
@@ -610,7 +623,7 @@ function createLnaStores(sequelize, { cipher } = {}) {
                                    SET original_category = COALESCE(f.original_category, f.category), category = :category,
                                        review_status = 'edited', reviewed_by = :reviewerId, reviewed_at = now()
                                  WHERE f.tenant_id = :tenantId AND f.id = :id AND f.review_status IN ('approved', 'edited')
-                                   AND f.category <> :category AND f.improvement_handoff_at IS NULL
+                                   AND f.category <> :category AND f.improvement_handoff_at IS NULL AND f.status = 'open'
                                    AND NOT EXISTS (SELECT 1 FROM lna_training_plan_items p WHERE p.tenant_id = f.tenant_id AND p.finding_id = f.id)
                                  RETURNING f.id`, { tenantId, id, category, reviewerId });
       return row ? tna.getReviewItem(tenantId, id) : null;
@@ -652,20 +665,22 @@ function createLnaStores(sequelize, { cipher } = {}) {
      */
     async claimPlanAssignment(tenantId, id) {
       const row = await insert(`UPDATE lna_training_plan_items
-                                   SET assignment_status = 'sending', assignment_target = 'elitementor', assignment_claimed_at = now()
+                                   SET assignment_status = 'sending', assignment_target = 'elitementor', assignment_claimed_at = clock_timestamp()
                                  WHERE tenant_id = :tenantId AND id = :id
+                                   AND status IN ('new', 'in_progress') AND catalog_item_ref IS NOT NULL AND catalog_source = 'elitementor'
                                    AND (assignment_status IS NULL OR assignment_status = 'failed'
                                         OR (assignment_status = 'sending' AND assignment_claimed_at < now() - interval '5 minutes'))
-                                 RETURNING id`, { tenantId, id });
-      return Boolean(row);
+                                 RETURNING assignment_claimed_at::text AS "claimedAt"`, { tenantId, id });
+      return row ? row.claimedAt : null;
     },
-    async finishPlanAssignment(tenantId, id, { status, ref, userId }) {
+    /** Hanya pemilik klaim (claimedAt) yang boleh menutupnya, supaya permintaan yang macet tidak menimpa klaim penggantinya. */
+    async finishPlanAssignment(tenantId, id, { status, ref, userId, claimedAt }) {
       await sequelize.query(`UPDATE lna_training_plan_items
                                 SET assignment_status = :status, assignment_ref = :ref,
                                     assigned_at = CASE WHEN :status = 'sent' THEN now() ELSE assigned_at END,
                                     assigned_by = CASE WHEN :status = 'sent' THEN :userId ELSE assigned_by END, updated_at = now()
-                              WHERE tenant_id = :tenantId AND id = :id AND assignment_status = 'sending'`,
-      { replacements: { tenantId, id, status, ref: ref ? String(ref).slice(0, 128) : null, userId } });
+                              WHERE tenant_id = :tenantId AND id = :id AND assignment_status = 'sending' AND assignment_claimed_at = CAST(:claimedAt AS timestamptz)`,
+      { replacements: { tenantId, id, status, ref: ref ? String(ref).slice(0, 128) : null, userId, claimedAt } });
       return tna.getPlanItem(tenantId, id);
     },
     /** Baris ekspor gap untuk LMS klien (K4): rencana aktif, termasuk yang belum punya course. */
@@ -686,16 +701,17 @@ function createLnaStores(sequelize, { cipher } = {}) {
      * permintaan bersamaan tidak menandai dua kali. Return { handedOff, already, skipped } berisi id.
      */
     async handoffImprovement(tenantId, ids, userId) {
-      const eligible = await select(`SELECT id, improvement_handoff_at AS at FROM lna_findings
-                                      WHERE tenant_id = :tenantId AND id IN (:ids) AND category = 'non_training'
-                                        AND review_status IN ('approved', 'edited')`, { tenantId, ids });
       const [done] = await sequelize.query(`UPDATE lna_findings SET improvement_handoff_at = now(), improvement_handoff_by = :userId
                                              WHERE tenant_id = :tenantId AND id IN (:ids) AND category = 'non_training'
                                                AND review_status IN ('approved', 'edited') AND improvement_handoff_at IS NULL
-                                             RETURNING id`, { replacements: { tenantId, ids, userId } });
+                                             RETURNING id, user_id AS "userId"`, { replacements: { tenantId, ids, userId } });
+      // dibaca setelah UPDATE: "already" hanya untuk temuan yang memang sudah bertanda diteruskan
+      const marked = await select(`SELECT id FROM lna_findings
+                                    WHERE tenant_id = :tenantId AND id IN (:ids) AND improvement_handoff_at IS NOT NULL`, { tenantId, ids });
       const handedOff = new Set(done.map((x) => x.id));
-      const known = new Set(eligible.map((x) => x.id));
+      const known = new Set(marked.map((x) => x.id));
       return {
+        employeeIds: [...new Set(done.map((x) => x.userId).filter(Boolean))],
         handedOff: ids.filter((id) => handedOff.has(id)),
         already: ids.filter((id) => known.has(id) && !handedOff.has(id)),
         skipped: ids.filter((id) => !known.has(id) && !handedOff.has(id)),
@@ -717,6 +733,31 @@ function createLnaStores(sequelize, { cipher } = {}) {
     },
     async setFindingStatus(tenantId, id, status) {
       return insert('UPDATE lna_findings SET status = :status WHERE tenant_id = :tenantId AND id = :id RETURNING id, status', { tenantId, id, status });
+    },
+    /**
+     * Rencana HR dari temuan (B7): temuan dikunci dan diperiksa ulang lebih dulu (masih pelatihan, sudah diputus),
+     * supaya klasifikasi ulang yang berjalan bersamaan tidak menghasilkan temuan non-pelatihan yang punya rencana.
+     * null bila temuan sudah tidak memenuhi syarat.
+     */
+    async planFromFinding(tenantId, findingId, plan) {
+      const noteEnc = await enc(tenantId, plan.note);
+      return sequelize.transaction(async (transaction) => {
+        const [[f]] = await sequelize.query(`UPDATE lna_findings SET status = 'planned'
+                                              WHERE tenant_id = :tenantId AND id = :findingId AND category = 'training'
+                                                AND review_status IN ('approved', 'edited') RETURNING id`,
+        { replacements: { tenantId, findingId }, transaction });
+        if (!f) return null;
+        const [[row]] = await sequelize.query(
+          `INSERT INTO lna_training_plan_items (tenant_id, finding_id, user_id, origin, status, program_tier,
+                                                catalog_source, catalog_item_ref, catalog_item_title, note, requested_by)
+           VALUES (:tenantId, :findingId, :userId, :origin, :status, :programTier, :catalogSource, :catalogItemRef, :catalogItemTitle, :note, NULL)
+           RETURNING id, user_id AS "userId", finding_id AS "findingId", origin, status, catalog_source AS "catalogSource",
+                     catalog_item_ref AS "catalogItemRef", catalog_item_title AS "catalogItemTitle",
+                     (catalog_item_ref IS NULL AND origin <> 'learner_request') AS "needsModule"`,
+          { replacements: withNulls({ tenantId, findingId, ...plan, note: noteEnc }, ['programTier', 'catalogSource', 'catalogItemRef', 'catalogItemTitle', 'note']), transaction },
+        );
+        return { ...row, note: plan.note ?? null };
+      });
     },
     async insertPlanItem(tenantId, p) {
       return insert(`INSERT INTO lna_training_plan_items (tenant_id, finding_id, user_id, origin, status, program_tier,
@@ -750,8 +791,10 @@ function createLnaStores(sequelize, { cipher } = {}) {
                             catalog_item_title = COALESCE(:catalogItemTitle, catalog_item_title),
                             catalog_source = COALESCE(:catalogSource, catalog_source),
                             updated_at = now()
-                      WHERE tenant_id = :tenantId AND id = :id RETURNING id, status`,
-      { tenantId, id, status: status ?? null, catalogItemRef: catalogItemRef ?? null, catalogItemTitle: catalogItemTitle ?? null, catalogSource: catalogSource ?? null });
+                      WHERE tenant_id = :tenantId AND id = :id
+                        AND (:lockCourse = false OR assignment_status IS NULL OR assignment_status = 'failed')
+                      RETURNING id, status`,
+      { tenantId, id, lockCourse: catalogItemRef != null || catalogItemTitle != null || catalogSource != null, status: status ?? null, catalogItemRef: catalogItemRef ?? null, catalogItemTitle: catalogItemTitle ?? null, catalogSource: catalogSource ?? null });
     },
   };
 
@@ -947,24 +990,34 @@ function createLnaStores(sequelize, { cipher } = {}) {
       const reasonEnc = reason ? await enc(tenantId, reason) : null;
       return sequelize.transaction(async (transaction) => {
         const q = (sql, replacements) => sequelize.query(sql, { replacements, transaction });
-        const [[created]] = await q(`INSERT INTO data_subject_requests (tenant_id, user_id, type, reason)
+        // Permintaan terbuka dikunci (FOR UPDATE) supaya HR tidak menutupnya di tengah jalan; bila baru saja
+        // ditutup, permintaan baru dibuat pada putaran berikutnya.
+        let request = null; let created = false;
+        for (let i = 0; i < 3 && !request; i += 1) {
+          const [[fresh]] = await q(`INSERT INTO data_subject_requests (tenant_id, user_id, type, reason)
                                      VALUES (:tenantId, :userId, 'withdraw_consent', :reason)
                                      ON CONFLICT (tenant_id, user_id, type) WHERE status = 'open' DO NOTHING
-                                     RETURNING id`, { tenantId, userId, reason: reasonEnc });
-        const [[request]] = await q(`SELECT id, type, status, created_at AS "createdAt", due_at AS "dueAt" FROM data_subject_requests
-                                      WHERE tenant_id = :tenantId AND user_id = :userId AND type = 'withdraw_consent' AND status = 'open'`, { tenantId, userId });
+                                     RETURNING id, type, status, created_at AS "createdAt", due_at AS "dueAt"`, { tenantId, userId, reason: reasonEnc });
+          if (fresh) { request = fresh; created = true; break; }
+          [[request]] = await q(`SELECT id, type, status, created_at AS "createdAt", due_at AS "dueAt" FROM data_subject_requests
+                                  WHERE tenant_id = :tenantId AND user_id = :userId AND type = 'withdraw_consent' AND status = 'open'
+                                  FOR UPDATE`, { tenantId, userId });
+        }
+        if (!request) throw new Error('Permintaan tarik persetujuan tidak bisa dicatat');
+        // Hanya wawancara TNA (wawancara AI DNA belum punya teks persetujuan). Semua sesi yang dihentikan atau
+        // pernah disetujui diberi tanda, supaya HR bisa membedakannya dari sesi yang ditinggalkan biasa.
         const [sessions] = await q(`UPDATE lna_interview_sessions
-                                       SET consent_withdrawn_at = CASE WHEN consent_at IS NOT NULL THEN now() ELSE consent_withdrawn_at END,
+                                       SET consent_withdrawn_at = now(),
                                            status = CASE WHEN status IN ('scheduled', 'in_progress') THEN 'abandoned' ELSE status END,
                                            ended_at = CASE WHEN status IN ('scheduled', 'in_progress') THEN now() ELSE ended_at END
-                                     WHERE tenant_id = :tenantId AND interviewee_id = :userId
-                                       AND (status IN ('scheduled', 'in_progress') OR (consent_at IS NOT NULL AND consent_withdrawn_at IS NULL))
+                                     WHERE tenant_id = :tenantId AND interviewee_id = :userId AND submodule = 'tna' AND consent_withdrawn_at IS NULL
+                                       AND (status IN ('scheduled', 'in_progress') OR consent_at IS NOT NULL)
                                      RETURNING id`, { tenantId, userId });
         if (sessions.length) {
           await q(`UPDATE lna_analysis_jobs SET status = 'failed', last_error = 'CONSENT_WITHDRAWN', locked_until = NULL, finished_at = now()
                     WHERE tenant_id = :tenantId AND session_id IN (:ids) AND status <> 'done'`, { tenantId, ids: sessions.map((s) => s.id) });
         }
-        return { request, created: Boolean(created), sessionIds: sessions.map((s) => s.id) };
+        return { request, created, sessionIds: sessions.map((s) => s.id) };
       });
     },
     /** Batalkan permintaan sendiri yang masih terbuka. */
@@ -972,17 +1025,12 @@ function createLnaStores(sequelize, { cipher } = {}) {
       return insert(`UPDATE data_subject_requests SET status = 'cancelled', resolved_at = now(), resolved_by = :userId
                       WHERE tenant_id = :tenantId AND id = :id AND user_id = :userId AND status = 'open' RETURNING id, status`, { tenantId, id, userId });
     },
-    async withdrawnSessionIds(tenantId, userId) {
-      const rows = await select(`SELECT id FROM lna_interview_sessions
-                                  WHERE tenant_id = :tenantId AND interviewee_id = :userId AND consent_withdrawn_at IS NOT NULL`, { tenantId, userId });
-      return rows.map((x) => x.id);
-    },
     /**
      * HR menutup permintaan tarik persetujuan. erase = true: hapus manual giliran percakapan, temuan (rencana
      * turunannya ikut lewat FK), dan hasil analisis dari sesi yang ditarik. Baris sesi tetap ada. null bila
      * permintaan sudah tidak terbuka.
      */
-    async resolveWithdrawal(tenantId, id, { resolvedBy, note, erase }) {
+    async resolveWithdrawal(tenantId, id, { resolvedBy, note, erase, beforeErase }) {
       const noteEnc = note ? await enc(tenantId, note) : null;
       return sequelize.transaction(async (transaction) => {
         const q = (sql, replacements) => sequelize.query(sql, { replacements, transaction });
@@ -991,9 +1039,12 @@ function createLnaStores(sequelize, { cipher } = {}) {
                                   RETURNING id, user_id AS "userId"`, { tenantId, id, resolvedBy, note: noteEnc });
         if (!req) return null;
         if (!erase) return { erased: false };
+        // Sesi dikunci, lalu audit ditulis dari daftar yang sama dengan yang dihapus (audit gagal = transaksi batal).
         const [sessions] = await q(`SELECT id FROM lna_interview_sessions
-                                     WHERE tenant_id = :tenantId AND interviewee_id = :userId AND consent_withdrawn_at IS NOT NULL`, { tenantId, userId: req.userId });
+                                     WHERE tenant_id = :tenantId AND interviewee_id = :userId AND submodule = 'tna' AND consent_withdrawn_at IS NOT NULL
+                                     FOR UPDATE`, { tenantId, userId: req.userId });
         const ids = sessions.map((s) => s.id);
+        if (beforeErase) await beforeErase(ids);
         if (!ids.length) return { erased: true, deletedTurns: 0, deletedFindings: 0, deletedPlanItems: 0 };
         const [[{ n: deletedPlanItems }]] = await q(`SELECT count(*)::int AS n FROM lna_training_plan_items p JOIN lna_findings f ON f.id = p.finding_id
                                                       WHERE f.tenant_id = :tenantId AND f.session_id IN (:ids)`, { tenantId, ids });
