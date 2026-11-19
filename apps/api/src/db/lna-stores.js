@@ -325,14 +325,14 @@ function createLnaStores(sequelize, { cipher } = {}) {
       // Kunci baris lebih dulu (menunggu addTurn yang sedang menyimpan), lalu hitung giliran di pernyataan baru supaya
       // jawaban yang baru commit ikut terhitung.
       const replacements = { tenantId, id, restartCount, turnCount, findings: JSON.stringify(await cipher.encryptJson(tenantId, findings)) };
+      // Bergantung pada READ COMMITTED (bawaan): hitungan giliran di pernyataan kedua memakai snapshot baru.
       return sequelize.transaction(async (transaction) => {
-        const [[locked]] = await sequelize.query(`SELECT id FROM lna_interview_sessions WHERE tenant_id = :tenantId AND id = :id FOR UPDATE`,
-          { replacements, transaction });
-        if (!locked) return null;
-        const [[row]] = await sequelize.query(`UPDATE lna_interview_sessions s SET summary_findings = CAST(:findings AS jsonb), summary_at = now()
+        const q = (sql) => sequelize.query(sql, { replacements, transaction });
+        await q(`SELECT id FROM lna_interview_sessions WHERE tenant_id = :tenantId AND id = :id FOR UPDATE`);
+        const [[row]] = await q(`UPDATE lna_interview_sessions s SET summary_findings = CAST(:findings AS jsonb), summary_at = now()
                       WHERE s.tenant_id = :tenantId AND s.id = :id AND s.status = 'in_progress' AND s.summary_at IS NULL AND s.restart_count = :restartCount
                         AND (SELECT count(*) FROM lna_interview_turns t WHERE t.session_id = s.id) = :turnCount
-                      RETURNING s.id, s.summary_at AS "summaryAt"`, { replacements, transaction });
+                      RETURNING s.id, s.summary_at AS "summaryAt"`);
         return row || null;
       });
     },

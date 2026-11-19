@@ -205,6 +205,8 @@ run('B5 Training Needs: gap dan penugasan (Postgres)', () => {
     expect((await request(app).get(`/api/tna/gaps/detail?kind=competency&competencyId=${T.cDraft}`).set(as('hr'))).status).toBe(404);
     expect((await request(app).get('/api/tna/gaps/detail?kind=competency&competencyId=bukan-uuid').set(as('hr'))).status).toBe(400);
     expect((await request(app).get('/api/tna/gaps/detail?kind=lain').set(as('hr'))).status).toBe(400);
+    // drift report 19 Nov: periode > 32 karakter di detail gap OKR juga 400, sama dengan endpoint papan
+    expect((await request(app).get(`/api/tna/gaps/detail?kind=okr&metricType=sla&name=Kepuasan&period=${'x'.repeat(33)}`).set(as('hr'))).status).toBe(400);
     expect((await request(app).get('/api/tna/gaps/summary?jobRoleId=x').set(as('hr'))).status).toBe(400);
   });
 

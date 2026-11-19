@@ -116,7 +116,7 @@ function gapRouter({ stores, flags, audit }) {
       return { kind: 'competency', competencyId: q.competencyId };
     }
     if (q.kind === 'okr') {
-      if (!METRIC_TYPES.includes(q.metricType) || typeof q.name !== 'string' || !q.name.trim() || typeof q.period !== 'string' || !q.period) {
+      if (!METRIC_TYPES.includes(q.metricType) || typeof q.name !== 'string' || !q.name.trim() || typeof q.period !== 'string' || !q.period || q.period.length > 32) {
         throw badRequest('Jenis metrik, nama target, dan periode wajib diisi untuk gap OKR');
       }
       return { kind: 'okr', metricType: q.metricType, name: q.name, period: q.period };
