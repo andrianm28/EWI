@@ -1,6 +1,6 @@
 # B10 · Core Competencies (modul `cca`)
 
-Status: tahap 1 (backend dan impor) dikerjakan di PR ini. Spek ini hanya mengikat tahap 1. Tahap 2 dan 3 menunggu PR lain dan mendapat tambahan spek sendiri sebelum dibangun, lihat "Pentahapan" dan bagian 11.
+Status: tahap 1 (backend dan impor) dan tahap 3 (layar, bagian 13) dikerjakan di PR ini dan mengikat. Tahap 2 menunggu PR B6 dan mendapat tambahan spek sendiri sebelum dibangun (bagian 11). Layar `aiv` sudah ada, tetapi penugasan belum bisa diselesaikan sampai tahap 2.
 Acuan layar: mockup Pak Eji `project/Main.dc.html`, layar `s.cc`, `s.ccvm`, `s.ccval`, `s.aiv`.
 Acuan aturan: brief `elgos-eksekusi/brief-bangun-penuh-19nov.md` bagian T7, rekap keputusan bagian 4b (CCA-B1..B15), CLAUDE.md.
 
@@ -47,7 +47,7 @@ Satu migrasi `apps/api/migrations/20261119001000-cca-core-competencies.js` (blok
   - `components`: daftar berurut `[{ name, weight }]`, maksimal 10, `weight` 0–100, jumlah bobot harus 100 bila ada komponen;
   - `totalActivities`: bilangan bulat ≥ 1;
   - `passScore`: 0–100;
-  - `bands`: `[{ key, label, min, description }]`, disimpan urut menurun menurut `min`. `key` dan `min` unik, `key` bukan `not_passed` atau `in_progress`, dan `min` band terendah tidak boleh di bawah `passScore`. Skor akhir di bawah `passScore` selalu `not_passed`.
+  - `bands`: `[{ key, label, min, description }]`, disimpan urut menurun menurut `min`. `key` dan `min` unik, `key` bukan `not_passed` atau `in_progress`, dan `min` band terendah wajib sama dengan `passScore` (P-2). Skor akhir di bawah `passScore` selalu `not_passed`.
   - Nama nilai di `config.values` berdiri sendiri, tidak ditautkan ke `cca_sources` berjenis `value` (ditolak saat triase: program bisa memakai penamaan atau subset yang berbeda).
 - `cca_program_results`: satu baris per karyawan per program. `program_id` FK ON DELETE CASCADE, `user_id` FK `users` ON DELETE CASCADE, `division` varchar, `activities_done` int, `final_score` numeric NULL, `value_scores` jsonb (larik sepanjang `values`, elemen angka atau null), `component_scores` jsonb (larik sepanjang `components`), `import_batch_id` uuid, waktu. `UNIQUE (tenant_id, program_id, user_id)`. `import_batch_id` tanpa FK, sama dengan tabel LNA lain.
 - `cca_assignments`: penugasan wawancara berjenjang. `assignee_id` FK users ON DELETE CASCADE, `assigned_by` FK users ON DELETE SET NULL, `tier` (`leader`, `employee`), `parent_id` FK `cca_assignments` ON DELETE SET NULL (penugasan pimpinan yang menjadi induk penugasan karyawan), `due_date` date, `duration_minutes` smallint default 10, `status` (`assigned`, `in_progress`, `completed`, `cancelled`), `session_id` uuid NULL (diisi tahap 2), `summary` text NULL terenkripsi per tenant (diisi tahap 2), `completed_at`, waktu. Indeks unik parsial `(tenant_id, assignee_id, tier) WHERE status IN ('assigned','in_progress')`: satu penugasan berjalan per orang per tier. Setelah selesai atau batal, putaran baru boleh dibuat. Atasan menengah boleh punya penugasan `leader` (dari HR) dan `employee` (dari atasannya) sekaligus. Yang dipakai layar selalu penugasan terbaru per orang per tier.
@@ -80,7 +80,7 @@ Semua di bawah `/api/cca`, sudah dipasang lewat `requireSubmodule('cca')` di `sr
 | `/imports/*` | HR | `importRouter({ submodule: 'cca' })`: jenis impor baru `cca_program_results`, ditambah `dna_job_levels` dan `employees` yang kini juga terbuka untuk `cca` (CCA dijual satuan, dan penugasan berjenjang butuh data atasan) |
 | `GET /assignments` | semua | dibentuk per peran, lihat aturan 6.3 |
 | `POST /assignments` | HR, `supervisor`, `pimpinan` | `{ assigneeIds, dueDate, durationMinutes }` |
-| `PATCH /assignments/:id` | penugas atau HR | hanya `{ status: 'cancelled' }` |
+| `PATCH /assignments/:id` | penugas, atau HR untuk tier `leader` saja (6.3) | hanya `{ status: 'cancelled' }` |
 | `GET /assignments/:id/summary` | HR (tier pimpinan), peserta sendiri | ringkasan wawancara; dicatat `audit.readIndividual` |
 
 `tenant_id` selalu dari `req.tenantId`. Perubahan data dicatat `audit.record` (aksi `create` atau `update`, resource `cca.source`, `cca.requirement`, `cca.program`, `cca.assignment`). Objek milik tenant lain dan id yang bukan UUID dijawab 404. `eta_admin` lolos `requireRole` seperti di modul lain.
@@ -178,7 +178,7 @@ Laporan (`program-report.js`, fungsi murni):
 - `divisions`: per divisi jumlah peserta, selesai, lulus, rata-rata skor akhir dan rata-rata skor nilai atas peserta selesai (null bila tidak ada yang selesai), diurutkan menurut jumlah peserta; ditambah baris semua divisi;
 - `insight`, `recommendations`, `cutoffDate`, `name`, `provider` dari konfigurasi program.
 
-Angka dibulatkan satu desimal di laporan (kontribusi dua desimal). [⚠️ BELUM TERVERIFIKASI: rumus di atas direkonstruksi dari angka mockup; format berkas laporan Elite Academy yang asli belum dilihat.]
+Persen (`completedPct`, `passedPct`, `pct`, `donePct`) dibulatkan ke bilangan bulat; skor rata-rata satu desimal; kontribusi dua desimal. Skor disimpan `numeric(5,2)` (dua desimal). [⚠️ BELUM TERVERIFIKASI: rumus di atas direkonstruksi dari angka mockup; format berkas laporan Elite Academy yang asli belum dilihat.]
 
 Privasi: endpoint laporan hanya untuk HR, dan HR memang boleh melihat semua karyawan (RG-3). Karena itu divisi kecil tetap ditampilkan, sama dengan mockup; ambang minimum per divisi ditolak saat triase dengan alasan itu. Tidak ada endpoint hasil per orang di paket ini. Mockup menawarkan "Wawancarai karyawan yang belum selesai"; itu butuh membuka status program per orang kepada atasan, jadi ditunda dan dicatat di PR sebagai keputusan pemilik produk.
 
@@ -203,6 +203,14 @@ Basis integrasi e2d3707 sudah memuat PR #11, jadi paket ini langsung menyambung 
 
 - `GET /api/employees/:userId/export` menambah `coreCompetencies: { programResults, interviewAssignments }` lewat `stores.cca.exportFor`. Skor program ditulis dengan nama nilai dan komponennya. Ringkasan wawancara hanya ikut bila karyawan mengekspor datanya sendiri, sama dengan aturan transkrip.
 - Hapus karyawan menghapus hasil program dan penugasannya lewat `ON DELETE CASCADE`.
+
+### 6.5 Batas dan konsistensi (review diff egm)
+
+- Isian agregat harus konsisten: jumlah band lulus = `passed`, `in_progress` = `registered − completed`, `not_passed` = `completed − passed`; status yang tidak dikenal diabaikan dan yang tidak dikirim dianggap 0.
+- Batas teks dan jumlah: `totalActivities` ≤ 1000; rekomendasi ≤ 20 butir, detail ≤ 1000 karakter; teks sumber ≤ 5000, definisi ≤ 2000, insight ≤ 4000; posisi 0–9999; nama divisi isian agregat dipotong 255 karakter.
+- `dueDate` menerima format tanggal impor bersama (`imports/values.js`: ISO, `dd/mm/yyyy`, `dd-mm-yyyy`, nomor seri Excel).
+- Ekspor karyawan membawa `finalScore` yang tersimpan (dari berkas); skor yang dihitung dari komponen hanya ada di laporan.
+- `biggestGap` = null bila tidak ada gap di atas 0.
 
 ## 7. Keputusan default yang dipakai
 
@@ -240,7 +248,7 @@ Tahap 3 (layar):
 
 - [x] `apps/web/src/api/cca.ts`, `apps/web/src/api/imports.ts` (submodul `cca`)
 - [x] `apps/web/src/screens/b10-core-competencies/` (`routes.ts`, `CoreCompetenciesView.vue`, `RequirementsTab.vue`, `ProgramSection.vue`, `ProgramForm.vue`, `ManualReportForm.vue`, `AssignmentsHr.vue`, `InterviewAssignmentView.vue`, `InterviewFlow.vue`, `due.ts`, `cc.css`)
-- [x] hapus `apps/web/src/screens/legacy-cca/`
+- [x] hapus `apps/web/src/screens/legacy-cca/` (terhapus lewat fondasi B0 #18 yang digabung ke branch ini, bukan di diff B10)
 - [x] `apps/web/e2e/core-competencies.spec.ts`
 
 ## 10. Di luar cakupan tahap 1
@@ -320,6 +328,26 @@ Review diff tahap 1 oleh subagent baru, 19 Nov: 11 temuan (0 berat, 5 sedang, 6 
 | D11 | Test integrasi bergantung urutan | Ditunda: pola yang sama dipakai test integrasi lain di repo (satu tenant per berkas, `it` berurutan); memecahnya tidak mengubah perilaku. Dicatat sebagai utang test |
 
 Layar tahap 3 tidak direview subagent terpisah (batas satu review diff per paket); diperiksa lewat e2e (8 skenario) dan tinjauan sendiri.
+
+Review diff ulang dengan plugin egm (19 Nov, thread penerus): dua subagent terdaftar `egm:egm-codebase-details` dan `egm:egm-implementation-readiness`, mode REVIEW, standar `implementation-readiness-standard`, atas diff B10 saja (tanpa berkas B0). Triase dengan `egm-resolve`; laporan: `/mnt/project-files/elgos-eksekusi/egm-b10-b15/b10-goldfish_review_report.md`. 0 berat, 7 sedang (setelah duplikat digabung), 15 ringan.
+
+| # | Temuan | Keputusan |
+| --- | --- | --- |
+| E1 | Baris status spek bertentangan dengan isi PR (tahap 3 ada di PR) | Diperbaiki: baris status |
+| E2 | Aturan band terendah di bagian 4 (≥) beda dengan 6.2 dan kode (=); cabang cadangan `statusOf` mati | Diperbaiki: bagian 4, cabang dihapus |
+| E3 | Jalur izin dan flag tanpa test (eta_admin, `cca.interview` di POST/PATCH/summary, `module.cca` mati, durasi, >200 penerima) | Diperbaiki: test ditambah |
+| E4 | `audit.record` tidak pernah diuji | Diperbaiki: test empat resource |
+| E5 | Isian agregat bisa tidak konsisten (band ≠ lulus) | Diperbaiki: validasi 6.5 + test (merah dulu) |
+| E6 | Keputusan tahap 2 belum diputuskan (`in_progress`, isian HR vs sintesis, bentuk ringkasan, ambang responden, tabel tema) | Ditunda: wajib diputuskan di tambahan spek tahap 2 sebelum dibangun (dicatat di PR) |
+| E7 | Fitur selain `/assignments` hanya di balik `module.cca`; `teamOf` memakai peran palsu | Sama dengan D8/D9: keputusan Andrian |
+| E8 | `?group=toString` menghasilkan 500 | Diperbaiki: pemeriksaan own property + test (merah dulu) |
+| E9 | `NOT IN ()` dengan larik kosong di `replaceProgramResults` | Diperbaiki: `<> ALL(uuid[])` |
+| E10 | Batas teks, format tanggal, presisi, persen bulat, `finalScore` ekspor, `biggestGap` null tidak tertulis | Diperbaiki: 6.5, bagian laporan |
+| E11 | Tabel endpoint lebih longgar dari 6.3 soal pembatalan HR | Diperbaiki: bagian 5 |
+| E12 | Tipe `Requirement` web tanpa `actualSource`/`origin` | Diperbaiki |
+| E13 | Penghapusan `legacy-cca` tidak ada di diff | Dijelaskan di bagian 9 (lewat B0) |
+| E14 | Bagian 12 sesudah 13 | Ditolak: nomor bagian dirujuk dari PR dan dokumen lain |
+| E15 | Test isian agregat `null` dan cabang `PROGRAM_HAS_RESULTS` dari impor belum ada | Ditunda bersama D11 (utang test) |
 
 Code review dua sumbu (`mattpocock-skills:code-review`, aturan 12), 19 Nov, dua subagent paralel atas `git diff review-base-b10 HEAD` (basis = scbrmb + B0).
 
