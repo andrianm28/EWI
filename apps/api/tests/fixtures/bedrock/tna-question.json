@@ -1,0 +1,9 @@
+{
+  "$metadata": { "httpStatusCode": 200 },
+  "output": { "message": { "role": "assistant", "content": [
+    { "text": "Target SLA respons tiket Anda bulan Oktober 85%, sedangkan realisasinya 72%. Menurut Anda, apa yang paling sering membuat tiket terlambat direspons?" }
+  ] } },
+  "stopReason": "end_turn",
+  "usage": { "inputTokens": 812, "outputTokens": 46, "totalTokens": 858 },
+  "metrics": { "latencyMs": 1430 }
+}

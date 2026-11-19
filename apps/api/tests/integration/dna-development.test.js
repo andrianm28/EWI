@@ -99,7 +99,7 @@ run('B4 Developmental Needs (Postgres)', () => {
   });
 
   it('tenant: job role, job function, dan kompetensi tenant lain tidak bisa dipakai', async () => {
-    expect((await post('/competencies', 'hr', { kind: 'job', jobRoleId: otherRole.id, name: 'Menumpang' })).status).toBe(400);
+    expect((await post('/competencies', 'hr', { kind: 'job', jobRoleId: otherRole.id, name: 'Menumpang' })).status).toBe(404);
     expect((await post(`/job-roles/${otherRole.id}/job-functions`, 'hr', { name: 'Menumpang' })).status).toBe(404);
     expect((await get(`/job-roles/${otherRole.id}/dictionary`, 'hr')).status).toBe(404);
     expect((await get(`/job-roles/${role.id}/dictionary`, 'luar')).status).toBe(404);

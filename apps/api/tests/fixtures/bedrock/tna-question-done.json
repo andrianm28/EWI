@@ -1,0 +1,7 @@
+{
+  "$metadata": { "httpStatusCode": 200 },
+  "output": { "message": { "role": "assistant", "content": [ { "text": "[SELESAI]" } ] } },
+  "stopReason": "end_turn",
+  "usage": { "inputTokens": 1530, "outputTokens": 5, "totalTokens": 1535 },
+  "metrics": { "latencyMs": 610 }
+}

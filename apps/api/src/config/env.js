@@ -31,6 +31,7 @@ function loadConfig(env = process.env) {
       else errors.push('EWI_LOCAL_MASTER_KEY wajib diisi untuk ENCRYPTION_PROVIDER=local (buat: openssl rand -hex 32)');
     }
   }
+  const ai = loadAiConfig(env, errors);
   if (errors.length) {
     const err = new Error(`Konfigurasi tidak valid:\n- ${errors.join('\n- ')}`);
     err.code = 'CONFIG_INVALID';
@@ -43,8 +44,9 @@ function loadConfig(env = process.env) {
     dbSchema: env.DB_SCHEMA || 'ewi',
     // Daftar organisasi di halaman login. Hanya untuk dev/staging: di produksi daftar klien tidak boleh terbuka publik.
     loginTenantPicker: env.LOGIN_TENANT_PICKER === 'true',
-    // T3 belum diputuskan: hanya 'stub' yang tersedia
-    aiProvider: env.AI_PROVIDER || 'stub',
+    // PK-06: penyedia AI teks. stub = tiruan deterministik (test/dev), bedrock = Amazon Bedrock (PD-1 A, PD-2 A)
+    aiProvider: ai.provider,
+    ai,
     corsOrigin: (env.CORS_ORIGIN || '').split(',').filter(Boolean),
     elitementor: Object.freeze({
       baseUrl: env.ELITEMENTOR_API_URL || '',
@@ -75,4 +77,45 @@ function loadConfig(env = process.env) {
   });
 }
 
-module.exports = { loadConfig };
+// PD-2 (★A): transkrip hanya diproses di region Singapura. ID profil inferensi lintas region (global., apac., us., ...)
+// mengirim permintaan ke region lain, jadi ditolak kecuali AI_ALLOW_CROSS_REGION=true diputuskan kemudian.
+const SINGAPORE = 'ap-southeast-1';
+const CROSS_REGION_PREFIX = /(^|inference-profile\/)(global|apac|us|us-gov|eu|au|in|jp|ca)\./i;
+
+function numberOr(raw, fallback, { min = 0 } = {}) {
+  if (raw === undefined || raw === '') return fallback;
+  const n = Number(raw);
+  return Number.isFinite(n) && n >= min ? n : NaN;
+}
+
+function loadAiConfig(env, errors) {
+  const production = env.NODE_ENV === 'production';
+  // Tiruan menjadi bawaan di luar produksi; produksi wajib model sungguhan.
+  const provider = env.AI_PROVIDER || (production ? 'bedrock' : 'stub');
+  if (!['stub', 'bedrock'].includes(provider)) errors.push('AI_PROVIDER harus stub atau bedrock');
+  if (production && provider === 'stub') errors.push('AI_PROVIDER=stub tidak boleh di produksi (pakai bedrock)');
+  const allowCrossRegion = env.AI_ALLOW_CROSS_REGION === 'true';
+  const region = env.BEDROCK_REGION || SINGAPORE;
+  const modelId = (env.BEDROCK_MODEL_ID || '').trim();
+  let extraFields = null;
+  if (provider === 'bedrock') {
+    if (!modelId) errors.push('BEDROCK_MODEL_ID wajib diisi untuk AI_PROVIDER=bedrock (ID model Claude yang aktif di ap-southeast-1, lihat docs/ewi/ai-teks.md)');
+    if (!allowCrossRegion && region !== SINGAPORE) errors.push(`BEDROCK_REGION harus ${SINGAPORE} (PD-2: pemrosesan AI hanya di Singapura)`);
+    if (!allowCrossRegion && CROSS_REGION_PREFIX.test(modelId)) {
+      errors.push('BEDROCK_MODEL_ID memakai profil inferensi lintas region; PD-2 hanya mengizinkan model in-region Singapura');
+    }
+    if (env.BEDROCK_EXTRA_FIELDS) {
+      try { extraFields = JSON.parse(env.BEDROCK_EXTRA_FIELDS); } catch { errors.push('BEDROCK_EXTRA_FIELDS harus JSON yang valid'); }
+    }
+  }
+  const nums = {
+    maxQuestions: numberOr(env.AI_MAX_QUESTIONS, 8, { min: 1 }),
+    timeoutMs: numberOr(env.AI_TIMEOUT_MS, 30000, { min: 1000 }),
+    priceInputPerMTok: numberOr(env.AI_PRICE_INPUT_PER_MTOK, null),
+    priceOutputPerMTok: numberOr(env.AI_PRICE_OUTPUT_PER_MTOK, null),
+  };
+  for (const [k, v] of Object.entries(nums)) if (Number.isNaN(v)) errors.push(`Nilai ${k} untuk AI tidak valid`);
+  return Object.freeze({ provider, region, modelId, extraFields, allowCrossRegion, ...nums });
+}
+
+module.exports = { loadConfig, loadAiConfig, SINGAPORE };

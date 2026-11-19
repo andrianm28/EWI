@@ -56,9 +56,9 @@ run('Impor file R3-3 (Postgres)', () => {
 
   it('template bisa diunduh (XLSX + CSV) dan hanya untuk HR', async () => {
     const list = await request(app).get('/api/dna/imports/templates').set(as('hr'));
-    expect(list.body.data.map((k) => k.key)).toEqual(['dna_job_levels', 'employees', 'dna_job_functions', 'dna_competencies', 'dna_completions', 'dna_results']);
+    expect(list.body.data.map((k) => k.key)).toEqual(['dna_job_levels', 'employees', 'dna_competencies', 'dna_completions', 'dna_results', 'catalog_courses', 'catalog_completions', 'dna_job_functions']);
     const tnaList = await request(app).get('/api/tna/imports/templates').set(as('hr'));
-    expect(tnaList.body.data.map((k) => k.key)).toEqual(['employees', 'tna_performance']);
+    expect(tnaList.body.data.map((k) => k.key)).toEqual(['employees', 'tna_performance', 'catalog_courses', 'catalog_completions']);
     const file = await request(app).get('/api/tna/imports/templates/tna_performance.xlsx').set(as('hr')).buffer(true)
       .parse((res, cb) => { const chunks = []; res.on('data', (c) => chunks.push(c)); res.on('end', () => cb(null, Buffer.concat(chunks))); });
     expect(file.status).toBe(200);
