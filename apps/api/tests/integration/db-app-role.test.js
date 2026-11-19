@@ -69,14 +69,17 @@ run('role aplikasi non-superuser (Postgres)', () => {
     })).rejects.toThrow(/permission denied/);
   });
 
-  it('hapus user: aksi foreign key ON DELETE SET NULL ke audit_logs berjalan walau hak UPDATE dicabut (PK-15 butir 1)', async () => {
-    // Hak UPDATE yang dicabut tidak memblokir aksi FK (berjalan sebagai pemilik tabel), dan trigger append-only
-    // sejak migrasi 20261117000502 mengizinkan tepat satu perubahan: user_id terisi menjadi NULL.
+  it('hapus user berhasil sebagai role aplikasi: aksi FK ON DELETE SET NULL berjalan sebagai pemilik tabel', async () => {
+    // Hak UPDATE audit_logs dicabut dari role aplikasi, tetapi aksi FK tetap jalan. Migrasi 20261117000502 (PK-15)
+    // mengizinkan UPDATE yang hanya mengosongkan user_id, jadi baris audit tetap ada dengan user_id NULL.
     const [u] = await sel(owner, `INSERT INTO users (tenant_id, email, name, role) VALUES (:t, :e, 'FK', 'learner') RETURNING id`, { t: tenantId, e: `fk-${Date.now()}@elgos.test` });
-    await owner.query(`INSERT INTO audit_logs (tenant_id, user_id, action, resource) VALUES (:t, :u, 'read', 'fk')`, { replacements: { t: tenantId, u: u.id } });
+    const [a] = await sel(owner, `INSERT INTO audit_logs (tenant_id, user_id, action, resource) VALUES (:t, :u, 'read', 'fk') RETURNING id`, { t: tenantId, u: u.id });
     await app.query('DELETE FROM users WHERE id = :u', { replacements: { u: u.id } });
-    const rows = await sel(owner, `SELECT user_id AS "userId" FROM audit_logs WHERE tenant_id = :t AND resource = 'fk'`, { t: tenantId });
-    expect(rows).toEqual([{ userId: null }]);
+    expect(await sel(app, 'SELECT id FROM users WHERE id = :u', { u: u.id })).toEqual([]);
+    const [row] = await sel(app, 'SELECT user_id AS "userId", resource FROM audit_logs WHERE id = :a', { a: a.id });
+    expect(row).toEqual({ userId: null, resource: 'fk' });
+    // UPDATE langsung oleh aplikasi pada audit_logs tetap ditolak hak, termasuk hanya mengosongkan user_id
+    await expect(app.query('UPDATE audit_logs SET user_id = NULL WHERE id = :a', { replacements: { a: a.id } })).rejects.toThrow(/permission denied/);
   });
 
   it('tanpa DDL: tidak bisa membuat tabel, mengubah tabel, atau mematikan trigger audit', async () => {
