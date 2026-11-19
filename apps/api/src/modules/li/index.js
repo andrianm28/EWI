@@ -4,6 +4,7 @@
 // Hanya HR (mockup: atasan dan karyawan tidak punya menu ini). ELGOS tidak mengirim apa pun ke vendor.
 const express = require('express');
 const { requireRole, ROLES } = require('../../core/rbac');
+const { scopeFor } = require('../../core/rbac/scope');
 const { FLAGS } = require('../../core/flags');
 const { badRequest, notFound, HttpError } = require('../../core/errors');
 const { importRouter } = require('../imports');
@@ -36,9 +37,9 @@ module.exports = {
      * Temuan tanpa kompetensi tidak bisa dihubungkan ke modul, jadi tidak ikut peringkat (dilaporkan di `unlinked`).
      * jobRoleId: batasi ke karyawan jabatan itu (mockup: "total gap jabatan ...").
      */
-    async function loadPareto(tenantId, conf, jobRoleId) {
-      if (!(await flags.isEnabled(tenantId, FLAGS.MODULE_TNA))) return { available: false, priorities: new Map(), rows: [], unlinked: 0 };
-      const gaps = await stores.li.listTrainingGaps(tenantId, { jobRoleId });
+    async function loadPareto(req, conf, jobRoleId) {
+      if (!(await flags.isEnabled(req.tenantId, FLAGS.MODULE_TNA))) return { available: false, priorities: new Map(), rows: [], unlinked: 0 };
+      const gaps = await stores.li.listTrainingGaps(req.tenantId, await scopeFor(req, stores.people), { jobRoleId });
       const linked = gaps.filter((g) => g.competencyKey);
       const rows = rankTrainingNeeds(linked.map((g) => ({
         userId: g.userId, competencyId: g.competencyKey, competencyName: g.competencyName, title: g.competencyName, importance: g.importance,
@@ -48,9 +49,9 @@ module.exports = {
     }
 
     /** Modul + status, prioritas, dan saran sumber. */
-    async function loadLibrary(tenantId, { jobRoleId } = {}) {
-      const conf = await settings.get(tenantId);
-      const [modules, pareto] = await Promise.all([stores.li.listModules(tenantId), loadPareto(tenantId, conf, jobRoleId)]);
+    async function loadLibrary(req, { jobRoleId } = {}) {
+      const conf = await settings.get(req.tenantId);
+      const [modules, pareto] = await Promise.all([stores.li.listModules(req.tenantId), loadPareto(req, conf, jobRoleId)]);
       const rows = modules.map((m) => decorate(m, conf, pareto.priorities));
       return { conf, pareto, rows };
     }
@@ -86,7 +87,7 @@ module.exports = {
     r.get('/modules', hr, wrap(async (req, res) => {
       const q = req.query;
       const jobRoleId = optionalUuid(q.jobRoleId, 'Jabatan');
-      const { conf, pareto, rows } = await loadLibrary(req.tenantId, { jobRoleId });
+      const { conf, pareto, rows } = await loadLibrary(req, { jobRoleId });
       if (q.level && !LEVELS.includes(q.level)) throw badRequest('Level harus basic, intermediate, atau advanced');
       if (q.type && !ITEM_KINDS.includes(q.type)) throw badRequest('Tipe harus K, S, atau A');
       const data = rows.filter((m) => (!jobRoleId || m.jobRoles.some((j) => j.id === jobRoleId))
@@ -109,7 +110,7 @@ module.exports = {
 
     r.get('/modules/:id', hr, idParam, wrap(async (req, res) => {
       // jobRoleId: prioritas dihitung untuk jabatan yang sama dengan daftar yang sedang dilihat
-      const { conf, rows } = await loadLibrary(req.tenantId, { jobRoleId: optionalUuid(req.query.jobRoleId, 'Jabatan') });
+      const { conf, rows } = await loadLibrary(req, { jobRoleId: optionalUuid(req.query.jobRoleId, 'Jabatan') });
       const m = rows.find((x) => x.id === req.params.id);
       if (!m) throw notFound('Modul tidak ditemukan');
       res.json({ data: { ...m, competencyKeys: undefined, vendorName: conf.li.vendorName } });
@@ -124,7 +125,7 @@ module.exports = {
       if (!(await stores.li.getModule(req.tenantId, req.params.id))) throw notFound('Modul tidak ditemukan');
       if (!(await stores.li.setCatalogItem(req.tenantId, req.params.id, catalogItemId))) throw badRequest('Course katalog tidak ditemukan');
       await audit.record(req, 'update', 'li.module', { moduleId: req.params.id, catalogItemId });
-      const { rows } = await loadLibrary(req.tenantId);
+      const { rows } = await loadLibrary(req);
       res.json({ data: summary(rows.find((x) => x.id === req.params.id)) });
     }));
 
@@ -152,7 +153,7 @@ module.exports = {
       if (scope === 'program' && (!jobRoleId || !UUID.test(String(jobRoleId)) || !LEVELS.includes(level))) throw badRequest('Pilih jabatan dan level program');
       // scope pareto: jobRoleId opsional, sama dengan filter Library, agar yang diminta sama dengan yang tampil
       const roleId = scope === 'pareto' ? optionalUuid(jobRoleId, 'Jabatan') : jobRoleId;
-      const { conf, rows } = await loadLibrary(req.tenantId, { jobRoleId: scope === 'pareto' ? roleId : undefined });
+      const { conf, rows } = await loadLibrary(req, { jobRoleId: scope === 'pareto' ? roleId : undefined });
       const inScope = rows.filter((m) => (scope === 'pareto'
         ? !!m.priority && (!roleId || m.jobRoles.some((j) => j.id === roleId))
         : m.level === level && m.jobRoles.some((j) => j.id === jobRoleId)));
@@ -166,7 +167,7 @@ module.exports = {
     }));
 
     r.get('/requests', hr, wrap(async (req, res) => {
-      const { conf, rows } = await loadLibrary(req.tenantId);
+      const { conf, rows } = await loadLibrary(req);
       const [vendor, drafts] = await Promise.all([stores.li.listRequests(req.tenantId), stores.li.listDrafts(req.tenantId)]);
       const candidates = rows.filter((m) => m.recommendation === 'dev' && m.status.key === 'none').sort(byPriorityThenCode)
         .map((m) => ({ id: m.id, code: m.code, name: m.name, priority: m.priority }));
@@ -196,7 +197,7 @@ module.exports = {
     r.get('/programs', hr, wrap(async (req, res) => {
       const jobRoles = (await stores.li.listJobRoles(req.tenantId)).map((j) => ({ id: j.id, name: j.name, division: j.division, hasDictionary: j.moduleCount > 0 }));
       const jobRoleId = optionalUuid(req.query.jobRoleId, 'Jabatan') || (jobRoles.find((j) => j.hasDictionary) || jobRoles[0] || {}).id || null;
-      const { conf, pareto, rows } = await loadLibrary(req.tenantId, { jobRoleId: jobRoleId || undefined });
+      const { conf, pareto, rows } = await loadLibrary(req, { jobRoleId: jobRoleId || undefined });
       const level = req.query.level || 'basic';
       if (!LEVELS.includes(level)) throw badRequest('Level harus basic, intermediate, atau advanced');
       if (jobRoleId && !jobRoles.some((j) => j.id === jobRoleId)) throw notFound('Jabatan tidak ditemukan');

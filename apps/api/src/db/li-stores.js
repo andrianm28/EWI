@@ -2,6 +2,8 @@
 // Store Postgres untuk B13 Learning Intervention. Setiap query memfilter tenant_id. Isi modul bukan data pribadi,
 // jadi tidak dienkripsi per tenant (spek §3).
 const { QueryTypes } = require('sequelize');
+const { REVIEWED } = require('../modules/tna/review-status');
+const { scopeSql } = require('./scope-sql');
 
 const MODULE_COLS = `m.id, m.code, m.name, m.level, m.stream, m.objective, m.catalog_item_id AS "catalogItemId",
   m.created_at AS "createdAt", m.updated_at AS "updatedAt"`;
@@ -152,14 +154,15 @@ function createLiStores(sequelize) {
      * hanya kunci kompetensi (nama dinormalkan), bobot, dan target/realisasi. Sama dengan /api/tna/pareto, hanya temuan
      * yang sudah ditinjau HR (approved/edited) yang dihitung. Temuan tanpa kompetensi dihitung terpisah.
      */
-    async listTrainingGaps(tenantId, { jobRoleId } = {}) {
-      const rep = { tenantId };
+    async listTrainingGaps(tenantId, scope, { jobRoleId } = {}) {
+      const rep = { tenantId, reviewed: REVIEWED };
       let sql = `SELECT f.user_id AS "userId", lower(regexp_replace(btrim(c.name), '\\s+', ' ', 'g')) AS "competencyKey", c.name AS "competencyName",
                         c.importance, pr.target::float AS target, pr.actual::float AS actual, pr.direction, pr.tolerance::float AS tolerance
                    FROM lna_findings f
                    LEFT JOIN lna_competencies c ON c.id = f.competency_id AND c.tenant_id = f.tenant_id
                    LEFT JOIN lna_performance_records pr ON pr.id = f.performance_record_id AND pr.tenant_id = f.tenant_id
-                  WHERE f.tenant_id = :tenantId AND f.category = 'training' AND f.review_status IN ('approved','edited')`;
+                  WHERE f.tenant_id = :tenantId AND f.category = 'training' AND f.review_status IN (:reviewed)`;
+      sql += scopeSql('f.user_id', scope, rep);
       if (jobRoleId) { sql += ' AND f.user_id IN (SELECT u.id FROM users u WHERE u.tenant_id = :tenantId AND u.job_role_id = :jobRoleId)'; rep.jobRoleId = jobRoleId; }
       return select(sql, rep);
     },

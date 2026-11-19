@@ -123,7 +123,13 @@ run('Learning Delivery (Postgres)', () => {
     expect((await send('delete', `/trainings/${training.id}/participants/${u.sari}`)).status).toBe(204);
     expect((await send('delete', `/trainings/${training.id}/participants/${u.sari}`)).status).toBe(404);
     const read = (await audits('ld.training')).pop();
-    expect(read.action).toBe('read');
+    expect(read.action).toBe('read');    // aturan 4 CLAUDE.md: data karyawan lewat cakupan visibleEmployeeScope (HR = semua; cakupan sempit hanya melihat dirinya)
+    const narrow = { userIds: [u.dimas] };
+    expect((await stores.ld.listParticipants(tenant.id, training.id, narrow)).map((p) => p.name)).toEqual(['dimas']);
+    expect((await stores.ld.participantOptions(tenant.id, narrow)).employees.map((e) => e.name)).toEqual(['dimas']);
+    expect((await stores.ld.listParticipants(tenant.id, training.id, { all: true })).length).toBe(2);
+    // daftar karyawan + email di /options tercatat sebagai akses data individu
+    expect((await audits('ld.options')).pop()).toMatchObject({ action: 'read' });
   });
 
   it('kelengkapan: jadwal, materi, kehadiran, asesmen manual, lalu ditutup', async () => {

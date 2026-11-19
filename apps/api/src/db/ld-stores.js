@@ -2,6 +2,7 @@
 // Store Postgres untuk B14 Learning Delivery. Setiap query memfilter tenant_id; rujukan (karyawan, modul, jabatan)
 // selalu dicek milik tenant yang sama di SQL-nya. Kehadiran dan skor adalah data individu: audit dilakukan di router.
 const { QueryTypes } = require('sequelize');
+const { scopeSql } = require('./scope-sql');
 
 const TRAINING_COLS = `t.id, t.title, t.mode, t.source, t.external_ref AS "externalRef", t.catalog_item_id AS "catalogItemId",
   t.module_id AS "moduleId", t.program_tier AS "programTier", t.vendor_name AS "vendorName", t.venue,
@@ -120,26 +121,30 @@ function createLdStores(sequelize) {
     },
 
     /** Pilihan untuk form peserta: jabatan (dengan jumlah karyawan) dan karyawan tenant yang tidak dinonaktifkan. */
-    async participantOptions(tenantId) {
+    async participantOptions(tenantId, scope) {
+      const rep = { tenantId };
+      const scoped = scopeSql('u.id', scope, rep);
       const [jobRoles, employees] = await Promise.all([
         select(`SELECT jr.id, jr.name, count(u.id)::int AS people FROM lna_job_roles jr
                   LEFT JOIN users u ON u.job_role_id = jr.id AND u.tenant_id = jr.tenant_id AND u.status <> 'disabled'
                  WHERE jr.tenant_id = :tenantId GROUP BY jr.id, jr.name ORDER BY jr.name`, { tenantId }),
         select(`SELECT u.id, u.name, u.email, jr.name AS "jobRoleName" FROM users u
                   LEFT JOIN lna_job_roles jr ON jr.id = u.job_role_id AND jr.tenant_id = u.tenant_id
-                 WHERE u.tenant_id = :tenantId AND u.status <> 'disabled' AND u.role <> 'eta_admin' ORDER BY u.name NULLS LAST, u.email`, { tenantId }),
+                 WHERE u.tenant_id = :tenantId AND u.status <> 'disabled' AND u.role <> 'eta_admin'${scoped} ORDER BY u.name NULLS LAST, u.email`, rep),
       ]);
       return { jobRoles, employees };
     },
 
     // --- Peserta, kehadiran, skor ---
-    async listParticipants(tenantId, trainingId) {
+    async listParticipants(tenantId, trainingId, scope) {
+      const rep = { tenantId, trainingId };
+      const scoped = scopeSql('lp.user_id', scope, rep);
       return select(`SELECT lp.user_id AS "userId", u.name, u.email, u.employee_id AS "employeeId", jr.name AS "jobRoleName",
                             lp.progress_pct::float AS "progressPct", lp.status, lp.attendance, lp.attendance_at AS "attendanceAt",
                             lp.score::float AS score, lp.score_source AS "scoreSource", lp.last_activity_at AS "lastActivityAt", lp.completed_at AS "completedAt"
                        FROM ld_participants lp JOIN users u ON u.id = lp.user_id AND u.tenant_id = lp.tenant_id
                        LEFT JOIN lna_job_roles jr ON jr.id = u.job_role_id AND jr.tenant_id = u.tenant_id
-                      WHERE lp.tenant_id = :tenantId AND lp.training_id = :trainingId ORDER BY u.name NULLS LAST, u.email`, { tenantId, trainingId });
+                      WHERE lp.tenant_id = :tenantId AND lp.training_id = :trainingId${scoped} ORDER BY u.name NULLS LAST, u.email`, rep);
     },
     /** Tambah peserta dari daftar id dan/atau satu jabatan; hanya karyawan tenant ini yang tidak dinonaktifkan. Return jumlah baru. */
     async addParticipants(tenantId, trainingId, { userIds = [], jobRoleId = null }) {

@@ -4,6 +4,7 @@
 // Hanya HR (mockup: atasan dan karyawan tidak punya menu ini). ELGOS tidak mengirim apa pun ke vendor.
 const express = require('express');
 const { requireRole, ROLES } = require('../../core/rbac');
+const { scopeFor } = require('../../core/rbac/scope');
 const { FLAGS } = require('../../core/flags');
 const { badRequest, notFound, forbidden, HttpError } = require('../../core/errors');
 const { detectType, allowedFor, safeFilename, newKey } = require('../../integrations/storage');
@@ -48,7 +49,7 @@ module.exports = {
       return [...new Set(list)];
     };
     async function detail(req, t) {
-      const [participants, documents] = await Promise.all([stores.ld.listParticipants(req.tenantId, t.id), stores.ld.listDocuments(req.tenantId, t.id)]);
+      const [participants, documents] = await Promise.all([stores.ld.listParticipants(req.tenantId, t.id, await scopeFor(req, stores.people)), stores.ld.listDocuments(req.tenantId, t.id)]);
       await audit.readIndividual(req, 'ld.training', { employeeIds: participants.map((p) => p.userId), objectType: 'ld_training', objectIds: [t.id] });
       return { ...t, readiness: readiness(t), participantList: participants, documents, storageReady: !!storage };
     }
@@ -73,11 +74,13 @@ module.exports = {
       res.json({ data: rows.filter((x) => (!state || x.group === state) && (!mode || x.mode === mode)) });
     }));
 
-    // Pilihan peserta (jabatan dan karyawan). HR melihat semua karyawan tenant (RG-3).
+    // Pilihan peserta (jabatan dan karyawan) dalam cakupan visibleEmployeeScope (RG-3: HR melihat semua karyawan tenant).
     r.get('/options', wrap(async (req, res) => {
       const conf = await settings.get(req.tenantId);
       const webhookSync = await flags.isEnabled(req.tenantId, FLAGS.WEBHOOK_SYNC);
-      res.json({ data: { ...(await stores.ld.participantOptions(req.tenantId)), vendorName: conf.li.vendorName, storageReady: !!storage, webhookSync } });
+      const options = await stores.ld.participantOptions(req.tenantId, await scopeFor(req, stores.people));
+      await audit.readIndividual(req, 'ld.options', { employeeIds: options.employees.map((e) => e.id), objectType: 'users' });
+      res.json({ data: { ...options, vendorName: conf.li.vendorName, storageReady: !!storage, webhookSync } });
     }));
 
     // --- Pelatihan offline ---

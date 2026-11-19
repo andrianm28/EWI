@@ -8,13 +8,6 @@ const { evaluate, effectiveRule, metricKey } = require('../modules/tna/performan
 const { planAssignments } = require('../modules/tna/assignment');
 const { summaryStateOf, MAX_RESTARTS } = require('../modules/interviews/summary');
 
-/** scope: { all: true } | { userIds: [...] } -> potongan SQL untuk kolom user id. */
-function scopeSql(column, scope, rep) {
-  if (!scope || scope.all) return '';
-  rep.scopeIds = scope.userIds && scope.userIds.length ? scope.userIds : ['00000000-0000-0000-0000-000000000000'];
-  return ` AND ${column} IN (:scopeIds)`;
-}
-
 const COMPETENCY_COLS = `c.id, c.job_role_id AS "jobRoleId", c.career_level_id AS "careerLevelId", c.kind, c.name,
   c.definition, c.indicators, c.source, c.version, c.required_score AS "requiredScore", c.importance,
   c.approved_at AS "approvedAt"`;
@@ -26,6 +19,7 @@ const PLAN_COLS = `p.id, p.user_id AS "userId", u.name AS "userName", p.finding_
 
 // PK-14: hanya temuan yang sudah direview yang boleh dipakai di luar antrean review
 const { REVIEWED } = require('../modules/tna/review-status');
+const { scopeSql } = require('./scope-sql');
 const REVIEW_COLS = `f.id, f.project_id AS "projectId", f.session_id AS "sessionId", f.user_id AS "userId", u.name AS "userName",
   f.category, f.title, f.detail, f.competency_id AS "competencyId", c.name AS "competencyName",
   f.performance_record_id AS "performanceRecordId", pr.name AS "metricName", pr.target::float AS target, pr.actual::float AS actual,

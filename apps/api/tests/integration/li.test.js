@@ -137,6 +137,9 @@ run('Learning Intervention (Postgres)', () => {
     expect(lib.body.data[0]).toMatchObject({ code: 'ST-A2', priority: { rank: 1, label: 'Root Cause Analysis' } }); // prioritas tampil paling atas
     expect(JSON.stringify(lib.body)).not.toMatch(/Rahasia|Temuan tanpa kompetensi/);
     expect((await get('/modules?priority=pareto')).body.data.map((m) => m.code)).toEqual(['ST-A2']);
+    // aturan 4 CLAUDE.md: gap per karyawan dibaca lewat cakupan visibleEmployeeScope
+    expect((await stores.li.listTrainingGaps(tenant.id, { userIds: [u.dimas] })).map((g) => g.userId)).toEqual([u.dimas]);
+    expect((await stores.li.listTrainingGaps(tenant.id, { all: true })).length).toBe(3);
     // modul TNA mati -> prioritas tidak tersedia, library tetap jalan
     await db.query(`UPDATE feature_flags SET enabled = false WHERE tenant_id = :t AND key = 'module.tna'`, { replacements: { t: tenant.id } });
     expect((await get('/modules')).body.pareto).toMatchObject({ available: false, count: 0 });
