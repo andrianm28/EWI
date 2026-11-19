@@ -21,19 +21,36 @@ module.exports = {
     { key: 'importance', header: 'Kepentingan', aliases: ['bobot', 'importance', 'prioritas'], example: 4, help: '1-5, default 3.' },
     { key: 'source', header: 'Sumber', aliases: ['source', 'asal'], example: 'dacum', help: 'aturan hr (default), dacum, cca, atau keduanya.' },
   ],
-  async context({ stores, tenantId }) {
+  // B11: impor per jabatan dari layar Admin Tenant. `internal` = diisi layar, tidak ditampilkan sebagai isian bebas.
+  options: [
+    { key: 'jobRoleId', label: 'Jabatan (untuk baris tanpa kolom Job Role)', type: 'jobRole', internal: true },
+    { key: 'source', label: 'Sumber (untuk baris tanpa kolom Sumber)', type: 'text', internal: true },
+  ],
+  checkOptions(o) {
+    if (!v.blank(o.source) && !v.choice(o.source, SOURCE_CHOICES)) return 'Sumber harus aturan hr, dacum, cca, atau keduanya';
+    return null;
+  },
+  async context({ stores, tenantId, options = {} }) {
     const [roles, comps] = await Promise.all([stores.dna.listJobRoles(tenantId), stores.dna.listCompetencies(tenantId)]);
     const keyOf = (c) => `${c.jobRoleId || ''}|${c.careerLevelId || ''}|${c.name.trim().toLowerCase()}`;
-    return { roles, existing: new Set(comps.map(keyOf)), keyOf, seen: new Set() };
+    // jabatan dari opsi selalu dicari di daftar jabatan tenant ini (aturan 2)
+    const defaultRole = v.blank(options.jobRoleId) ? null : roles.find((r) => r.id === v.text(options.jobRoleId));
+    if (!v.blank(options.jobRoleId) && !defaultRole) return { fatal: 'Jabatan yang dipilih tidak ditemukan di organisasi ini' };
+    return { roles, existing: new Set(comps.map(keyOf)), keyOf, seen: new Set(), defaultRole };
   },
-  validate(row, ctx) {
+  validate(row, ctx, options = {}) {
     const name = v.text(row.name);
     if (!name) return { error: 'Kompetensi wajib diisi' };
     let jobRoleId = null; let careerLevelId = null; let jr = null;
     if (!v.blank(row.jobRole)) {
       jr = ctx.roles.find((r) => r.name.trim().toLowerCase() === v.text(row.jobRole).toLowerCase());
       if (!jr) return { error: `Job role "${v.text(row.jobRole)}" belum ada` };
+      // impor per jabatan (B11): satu berkas untuk satu jabatan, supaya riwayat impor tidak salah atribusi
+      if (ctx.defaultRole && jr.id !== ctx.defaultRole.id) return { error: `Baris ini untuk job role "${jr.name}", sedangkan impor ini untuk ${ctx.defaultRole.name}` };
       jobRoleId = jr.id;
+    } else if (ctx.defaultRole) {
+      if (!v.blank(row.kind) && v.choice(row.kind, KIND_CHOICES) === 'core') return { error: `Kompetensi inti tidak diimpor lewat impor per jabatan (${ctx.defaultRole.name})` };
+      jr = ctx.defaultRole; jobRoleId = jr.id;
     }
     if (!v.blank(row.careerLevel)) {
       if (!jr) return { error: 'Jenjang butuh Job Role' };
@@ -48,7 +65,7 @@ module.exports = {
     if (!(requiredScore >= 0 && requiredScore <= 4)) return { error: 'Skor Minimal harus bilangan bulat 0-4' };
     const importance = v.blank(row.importance) ? 3 : v.integer(row.importance);
     if (!(importance >= 1 && importance <= 5)) return { error: 'Kepentingan harus bilangan bulat 1-5' };
-    const source = v.blank(row.source) ? 'hr_rule' : v.choice(row.source, SOURCE_CHOICES);
+    const source = v.blank(row.source) ? (v.choice(options.source, SOURCE_CHOICES) || 'hr_rule') : v.choice(row.source, SOURCE_CHOICES);
     if (!source) return { error: 'Sumber harus aturan hr, dacum, cca, atau keduanya' };
     const key = ctx.keyOf({ jobRoleId, careerLevelId, name });
     if (ctx.existing.has(key)) return { error: 'Kompetensi ini sudah ada di kamus' };

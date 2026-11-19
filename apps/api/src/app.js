@@ -19,6 +19,7 @@ const { webhookRouter } = require('./integrations/elitementor/webhook');
 const { createSettingsService } = require('./core/settings');
 const { createAiProvider } = require('./ai');
 const { createCatalogService, elitementorAdapter, moodleAdapter } = require('./integrations/catalog');
+const tenantAdmin = require('./modules/tenant-admin');
 const SUBMODULE_MODULES = ['cca', 'dna', 'tna', 'ina'].map((k) => require(`./modules/${k}`));
 
 /**
@@ -68,6 +69,8 @@ function createApp({ config, stores, ai, catalog, mailer }) {
   api.use('/projects', projects.router({ projects: stores.projects }));
   api.use('/admin', flagAdminRouter({ flags, audit }));
   if (stores.loginLinks) api.use('/invitations', invitationRoutes({ users: stores.users, links, audit }));
+  // B11: layar Admin Tenant, di balik flag admin.tenant (bukan submodul berbayar)
+  api.use('/tenant-admin', tenantAdmin.router({ ...deps, entitlements, links, elitementor: config.elitementor }));
   for (const m of SUBMODULE_MODULES) {
     api.use(`/${m.key}`, requireSubmodule(m.key, { entitlements, flags }), m.router(deps));
   }

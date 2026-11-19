@@ -397,6 +397,13 @@ function createLnaStores(sequelize, { cipher } = {}) {
       return select(`SELECT ${BATCH_COLS} FROM import_batches b LEFT JOIN users u ON u.id = b.created_by
                       WHERE b.tenant_id = :tenantId AND b.submodule = :submodule ORDER BY b.created_at DESC LIMIT 100`, { tenantId, submodule });
     },
+    /** B11: impor yang sudah disimpan untuk jenis tertentu, terbaru dulu (ringkasan Admin Tenant; tanpa baris mentah). */
+    async listCommitted(tenantId, kinds) {
+      if (!kinds || !kinds.length) return [];
+      return select(`SELECT ${BATCH_COLS} FROM import_batches b LEFT JOIN users u ON u.id = b.created_by
+                      WHERE b.tenant_id = :tenantId AND b.status = 'committed' AND b.kind IN (:kinds)
+                      ORDER BY b.committed_at DESC NULLS LAST, b.created_at DESC LIMIT 1000`, { tenantId, kinds });
+    },
     async update(tenantId, id, patch) {
       const sets = []; const rep = { tenantId, id };
       for (const k of ['mapping', 'options', 'result', 'rows']) {

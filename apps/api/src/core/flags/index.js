@@ -19,6 +19,8 @@ const FLAGS = Object.freeze({
   WEBHOOK_SYNC: 'em.webhook_sync',
   COST_PER_SESSION: 'cost.per_session',
   INA_DASHBOARD: 'ina.dashboard', // RG-4: ditahan dari POC Desember
+  // B11 (19 Nov): layar Admin Tenant (pengguna & peran, jabatan & kamus, impor & integrasi)
+  TENANT_ADMIN: 'admin.tenant',
 });
 
 const KNOWN = new Set(Object.values(FLAGS));

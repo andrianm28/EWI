@@ -19,7 +19,7 @@ const MAX_REJECTED = 500;
 const publicKind = (k) => ({
   key: k.key, label: k.label, description: k.description,
   fields: k.fields.map(({ key, header, required, oneOf, help, example }) => ({ key, header, required: !!required, oneOf: oneOf || null, help: help || null, example: example ?? null })),
-  options: k.options || [],
+  options: (k.options || []).filter((o) => !o.internal),
 });
 
 const batchSummary = (b) => ({
@@ -27,19 +27,25 @@ const batchSummary = (b) => ({
   mapping: b.mapping, options: b.options, result: b.result, createdAt: b.createdAt, committedAt: b.committedAt, createdByName: b.createdByName || null,
 });
 
-function importRouter({ submodule, stores, audit }) {
+/**
+ * guard: middleware peran. Default HR (rute /api/dna|tna/imports); layar Admin Tenant (B11) memasang gerbangnya sendiri.
+ * only: daftar kunci jenis impor yang dibuka router ini (default semua jenis submodul). Jenis di luar daftar,
+ *       termasuk riwayat batch-nya, dijawab 404.
+ */
+function importRouter({ submodule, stores, audit, guard, only }) {
   const r = express.Router();
-  const kinds = KINDS.filter((k) => k.submodules.includes(submodule));
-  r.use(requireRole(ROLES.HR_ADMIN));
+  const kinds = KINDS.filter((k) => k.submodules.includes(submodule) && (!only || only.includes(k.key)));
+  const allowed = new Set(kinds.map((k) => k.key));
+  r.use(guard || requireRole(ROLES.HR_ADMIN));
 
   const kindOf = (key) => {
     const k = getKind(key);
-    if (!k || !k.submodules.includes(submodule)) throw notFound('Jenis impor tidak dikenal');
+    if (!k || !allowed.has(k.key)) throw notFound('Jenis impor tidak dikenal');
     return k;
   };
   async function loadBatch(req) {
     const b = await stores.imports.get(req.tenantId, req.params.id);
-    if (!b || b.submodule !== submodule) throw notFound('Impor tidak ditemukan');
+    if (!b || b.submodule !== submodule || !allowed.has(b.kind)) throw notFound('Impor tidak ditemukan');
     return b;
   }
   async function run(req, b) {
@@ -67,7 +73,7 @@ function importRouter({ submodule, stores, audit }) {
   }));
 
   r.get('/batches', wrap(async (req, res) => {
-    res.json({ data: (await stores.imports.list(req.tenantId, submodule)).map(batchSummary) });
+    res.json({ data: (await stores.imports.list(req.tenantId, submodule)).filter((b) => allowed.has(b.kind)).map(batchSummary) });
   }));
 
   r.get('/batches/:id', wrap(async (req, res) => {
