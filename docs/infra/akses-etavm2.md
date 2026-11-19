@@ -11,6 +11,7 @@ siapa, apa, sejak kapan, dan kapan ditinjau. Tinjau ulang tiap bulan dan saat or
 | Andrian | _diisi saat setup_ | SSH kunci, sudo | _tgl_ | admin, penyetuju produksi | bulanan |
 | Pringgo | _belum_ | SSH kunci, sudo | – | cadangan siaga (bila disetujui) | bulanan |
 | GitHub Actions runner | `elgos-deploy` (sistem) | grup docker, tanpa sudo, tanpa login | _tgl_ | deploy | – |
+| Pengembang / thread dev | `elgos-dev` (kunci SSH per orang) | Docker rootless sendiri, tanpa grup docker, tanpa sudo, tanpa akses `/srv/elgos-*` | _tgl_ | dev per worktree | bulanan |
 
 Login password dan login root dimatikan oleh `setup-etavm2.sh`. Kunci SSH baru ditambahkan ke
 `~/.ssh/authorized_keys` user masing-masing, bukan dibagi.
@@ -24,7 +25,7 @@ Login password dan login root dimatikan oleh `setup-etavm2.sh`. Kunci SSH baru d
 | `elgos-terraform-apply` | role OIDC GitHub (environment `infra`) | sumber daya elgos-* | – | – |
 | `elgos-prod-app` | IAM user, IP etavm2 | KMS tenant prod, SES, Bedrock | _tgl_ | +90 hari |
 | `elgos-staging-app` | IAM user, IP etavm2 | KMS tenant staging, SES, Bedrock | _tgl_ | +90 hari |
-| `elgos-ops-etavm2` | IAM user, IP etavm2 | PutObject backup, SNS publish | _tgl_ | +90 hari |
+| `elgos-ops-etavm2` | IAM user, IP etavm2 | PutObject backup, SNS publish, baca biaya (Cost Explorer) | _tgl_ | +90 hari |
 | `elgos-restore` | IAM user, tanpa kunci tetap | baca backup | dibuat per pemulihan | dihapus sesudahnya |
 
 ## GitHub

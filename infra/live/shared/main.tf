@@ -51,8 +51,9 @@ variable "alert_emails" {
 }
 
 variable "monthly_budget_usd" {
-  type    = number
-  default = 150 # PO-10 opsi A, dipakai sebagai ambang peringatan
+  type        = number
+  default     = 0
+  description = "PO-10 opsi C (18 Nov): tanpa plafon, diganti laporan biaya mingguan (ops/cost-report.sh). Isi > 0 untuk mengaktifkan peringatan AWS Budgets."
 }
 
 variable "health_check_hosts" {
@@ -163,7 +164,7 @@ resource "aws_s3_bucket_policy" "backup" {
   })
 }
 
-# User host etavm2: unggah backup (tanpa baca/hapus) + kirim peringatan. Hanya dari IP etavm2.
+# User host etavm2: unggah backup (tanpa baca/hapus), kirim peringatan, baca biaya. Hanya dari IP etavm2.
 resource "aws_iam_user" "ops" {
   name = "elgos-ops-etavm2"
 }
@@ -193,6 +194,14 @@ resource "aws_iam_user_policy" "ops" {
         Effect    = "Allow"
         Action    = ["sns:Publish"]
         Resource  = aws_sns_topic.alerts.arn
+        Condition = local.dari_etavm2
+      },
+      {
+        # PO-10 C: laporan biaya mingguan (ops/cost-report.sh). Cost Explorer tidak punya ARN per sumber daya.
+        Sid       = "LaporanBiaya"
+        Effect    = "Allow"
+        Action    = ["ce:GetCostAndUsage"]
+        Resource  = "*"
         Condition = local.dari_etavm2
       },
     ]
@@ -283,6 +292,7 @@ resource "aws_cloudwatch_metric_alarm" "uptime" {
 }
 
 resource "aws_budgets_budget" "monthly" {
+  count        = var.monthly_budget_usd > 0 ? 1 : 0
   name         = "elgos-bulanan"
   budget_type  = "COST"
   limit_amount = tostring(var.monthly_budget_usd)

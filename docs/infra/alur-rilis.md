@@ -6,7 +6,7 @@ P1-6, I-1, I-2, N-2 (PK-10). Asumsi: nilai ★ dipakai sampai PD-6 dan PD-11 dij
 ## Alur
 
 ```
-branch fitur ──PR (review)──> dev ──> deploy dev (etavm1 / dev per worktree)
+branch fitur (dev per worktree di etavm2) ──PR (review)──> dev ──> deploy dev
 dev ──PR (review)──> main ──> CI ──> image ghcr.io/andrianm28/ewi-{api,web}:<sha> ──> staging (otomatis)
 uji asap staging ──> Actions > "Deploy staging/prod" > Run workflow (branch main, prod, image_tag=<sha>)
                  ──> environment prod menunggu penyetuju ──> deploy produksi

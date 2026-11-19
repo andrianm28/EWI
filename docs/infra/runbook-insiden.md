@@ -21,7 +21,7 @@ Kebocoran data atau dugaan akses tidak sah ditangani kapan pun begitu diketahui 
 | container db/api/web tidak sehat, Caddy mati, aplikasi tidak siap | `elgos-monitor.timer` | sama |
 | backup gagal, atau backup prod > 2 jam (jam kerja) / > 26 jam | `backup.sh`, `elgos-monitor.timer`, `OnFailure` unit | sama |
 | job terjadwal gagal | `run-job.sh` | sama |
-| biaya AWS ≥ 80% / 100% dari US$150 (aktual) atau 100% (prakiraan) | AWS Budgets | email |
+| laporan biaya AWS mingguan (PO-10 C, tanpa plafon), Senin 08.00 WIB | `elgos-cost-report.timer` | SNS `elgos-alerts` → email, dibahas di cadence |
 
 Semua peringatan di etavm2 juga tercatat: `journalctl -t elgos-alert --since today`.
 
@@ -51,6 +51,8 @@ Semua peringatan di etavm2 juga tercatat: `journalctl -t elgos-alert --since tod
   setelah IP etavm2 berubah) dan [rotasi-kunci.md](rotasi-kunci.md).
 
 ### Disk penuh
+- Dev per worktree (user `elgos-dev`, Docker rootless) ikut memakai disk yang sama:
+  `sudo -iu elgos-dev docker system df`, hapus worktree yang tidak dipakai dengan `dev.sh down --purge`.
 - `docker system df`, `du -sh /srv/elgos-*/backups/*`, `journalctl --disk-usage`.
 - Aman dihapus: image lama (`docker image prune -a --filter until=168h`), backup lokal lebih tua
   dari retensi (salinan ada di S3), log journal (`journalctl --vacuum-size=500M`).

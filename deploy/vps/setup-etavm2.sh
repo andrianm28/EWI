@@ -12,8 +12,11 @@
 #     dengan secret acak bila belum ada
 #   - /etc/elgos/ops.env (640): kredensial user ops (backup ke S3 + peringatan SNS), isi manual
 #   - Caddy (deploy/vps/proxy) di /opt/elgos-proxy, TLS otomatis
-#   - timer systemd: backup prod tiap jam kerja + malam, backup staging malam, pemantau tiap 5 menit
+#   - timer systemd: backup prod tiap jam kerja + malam, backup staging malam, pemantau tiap 5 menit,
+#     laporan biaya AWS tiap Senin (PO-10 C)
 #   - GitHub Actions runner /opt/actions-runner-elgos, label etavm2,elgos
+#   - dev per worktree (keputusan 17 Nov "dev di sini"): user elgos-dev dengan Docker rootless sendiri,
+#     terpisah dari daemon staging/prod, dibatasi slice systemd (SETUP_DEV=0 untuk melewati)
 # Idempoten: aman dijalankan ulang. Daftar pemegang akses: docs/infra/akses-etavm2.md.
 set -euo pipefail
 
@@ -102,7 +105,14 @@ for ENV in staging prod; do
         -e "s|^DB_PASSWORD=.*|DB_PASSWORD=$(openssl rand -hex 24)|" \
         -e "s|^EWI_JWT_SECRET=.*|EWI_JWT_SECRET=$(openssl rand -hex 48)|" \
         -e "s|^KMS_KEY_ALIAS_PREFIX=.*|KMS_KEY_ALIAS_PREFIX=elgos-$ENV-tenant|" \
-        "$SRC/.env.example" | write_secret_file "$DIR/.env"
+        "$SRC/.env.example" \
+      | if [ "$ENV" = staging ]; then
+          # Staging lebih kecil agar prod + staging + dev per worktree muat di 8 vCPU / 32 GB.
+          sed -e 's|^# DB_CPUS=.*|DB_CPUS=1|' -e 's|^# DB_MEMORY=.*|DB_MEMORY=2g|' \
+              -e 's|^# PG_SHARED_BUFFERS=.*|PG_SHARED_BUFFERS=256MB|' -e 's|^# PG_EFFECTIVE_CACHE=.*|PG_EFFECTIVE_CACHE=1GB|' \
+              -e 's|^# API_CPUS=.*|API_CPUS=1|' -e 's|^# API_MEMORY=.*|API_MEMORY=1g|'
+        else cat; fi \
+      | write_secret_file "$DIR/.env"
     echo "$DIR/.env dibuat: isi AWS_ACCESS_KEY_ID/SECRET, ELITEMENTOR_* dan ETA_ADMIN_EMAILS (wajib di prod) sebelum deploy pertama."
   fi
 done
@@ -170,10 +180,21 @@ SuccessExitStatus=1
 UNIT
 printf '[Unit]\nDescription=Pemantau ELGOS tiap 5 menit\n[Timer]\nOnCalendar=*:0/5\n[Install]\nWantedBy=timers.target\n' \
   | sudo tee /etc/systemd/system/elgos-monitor.timer >/dev/null
+# Laporan biaya AWS mingguan (PO-10 C), Senin 08.00 WIB.
+sudo tee /etc/systemd/system/elgos-cost-report.service >/dev/null <<UNIT
+[Unit]
+Description=Laporan biaya AWS ELGOS mingguan
+[Service]
+Type=oneshot
+User=$DEPLOY_USER
+ExecStart=/bin/bash -c '[ -x /srv/elgos-prod/ops/cost-report.sh ] && exec /srv/elgos-prod/ops/cost-report.sh; exit 0'
+UNIT
+printf '[Unit]\nDescription=Laporan biaya ELGOS tiap Senin\n[Timer]\nOnCalendar=Mon *-*-* 01:00:00 UTC\nPersistent=true\n[Install]\nWantedBy=timers.target\n' \
+  | sudo tee /etc/systemd/system/elgos-cost-report.timer >/dev/null
 sudo rm -f /etc/systemd/system/elgos-backup@prod.timer /etc/systemd/system/elgos-backup@staging.timer
 sudo systemctl daemon-reload
 sudo systemctl enable --now elgos-backup@prod-hourly.timer elgos-backup@prod-nightly.timer \
-  elgos-backup@staging-nightly.timer elgos-monitor.timer
+  elgos-backup@staging-nightly.timer elgos-monitor.timer elgos-cost-report.timer
 
 # Job aplikasi harian (PD-15 A), staging + prod: node scripts/run-job.js <nama> di image API aktif.
 #   interview-reminders     08.00 WIB (PK-23, PR #12)
@@ -183,7 +204,35 @@ for ENV in staging prod; do
   sudo "$SRC/ops/install-job.sh" "$ENV" import-batches-cleanup '*-*-* 20:30:00 UTC' >/dev/null
 done
 
-# 9. Runner GitHub Actions (koneksi keluar saja).
+# 9. Dev per worktree. Daemon Docker rootless milik elgos-dev: container dev tidak bisa melihat atau
+#    menyentuh container, volume, dan secret staging/prod (grup docker utama setara root, jadi user
+#    dev sengaja TIDAK masuk grup itu). Seluruh dev dibatasi slice: maksimal 4 vCPU dan 10 GB RAM.
+if [ "${SETUP_DEV:-1}" = 1 ]; then
+  DEV_USER="${DEV_USER:-elgos-dev}"
+  sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq uidmap dbus-user-session docker-ce-rootless-extras >/dev/null
+  id "$DEV_USER" >/dev/null 2>&1 || sudo useradd --create-home --shell /bin/bash "$DEV_USER"
+  sudo gpasswd -d "$DEV_USER" docker >/dev/null 2>&1 || true
+  DEV_UID="$(id -u "$DEV_USER")"
+  # cgroup v2: izinkan batas cpu/memori per container di daemon rootless.
+  sudo install -d /etc/systemd/system/user@.service.d
+  printf '[Service]\nDelegate=cpu cpuset io memory pids\n' | sudo tee /etc/systemd/system/user@.service.d/delegate.conf >/dev/null
+  sudo install -d "/etc/systemd/system/user-$DEV_UID.slice.d"
+  printf '[Slice]\nCPUQuota=400%%\nMemoryMax=10G\nTasksMax=4096\n' | sudo tee "/etc/systemd/system/user-$DEV_UID.slice.d/50-elgos-dev.conf" >/dev/null
+  sudo systemctl daemon-reload
+  sudo loginctl enable-linger "$DEV_USER"
+  for _ in $(seq 1 20); do sudo test -S "/run/user/$DEV_UID/bus" && break; sleep 1; done
+  sudo -iu "$DEV_USER" env XDG_RUNTIME_DIR="/run/user/$DEV_UID" bash -c '
+    set -e
+    mkdir -p ~/.config/docker
+    [ -f ~/.config/docker/daemon.json ] || echo "{\"log-driver\":\"json-file\",\"log-opts\":{\"max-size\":\"20m\",\"max-file\":\"3\"}}" > ~/.config/docker/daemon.json
+    systemctl --user is-active -q docker 2>/dev/null || dockerd-rootless-setuptool.sh install >/dev/null
+    systemctl --user enable -q docker
+    grep -q DOCKER_HOST ~/.bashrc || echo "export DOCKER_HOST=unix://\$XDG_RUNTIME_DIR/docker.sock" >> ~/.bashrc'
+  sudo install -d -o "$DEV_USER" -g "$DEV_USER" -m 700 "/home/$DEV_USER/.ssh"
+  echo "Dev: user $DEV_USER (Docker rootless). Tambahkan kunci SSH pengembang ke /home/$DEV_USER/.ssh/authorized_keys."
+fi
+
+# 10. Runner GitHub Actions (koneksi keluar saja).
 if [ ! -f "$RUNNER_DIR/.runner" ]; then
   TOKEN="${RUNNER_TOKEN:?RUNNER_TOKEN wajib (lihat komentar di atas)}"
   RUNNER_VERSION="${RUNNER_VERSION:-$(curl -fsSL https://api.github.com/repos/actions/runner/releases/latest | jq -r .tag_name | sed 's/^v//')}"

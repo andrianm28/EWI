@@ -1,4 +1,4 @@
-# Lingkungan ELGOS: staging + prod di VPS etavm2, dev per worktree
+# Lingkungan ELGOS: dev, staging, prod di VPS etavm2
 
 Keputusan user 17 Nov 2026:
 
@@ -6,7 +6,7 @@ Keputusan user 17 Nov 2026:
 |---|---|
 | Staging dan prod di VPS **etavm2** (8 vCPU / 32 GB / 100 GB), bukan AWS | `deploy/vps/` (docker compose, Caddy TLS, backup ke S3, pemantauan), `.github/workflows/deploy.yml` |
 | Kunci per tenant (R2-3) dan email **tetap di AWS** (KMS + SES), plus Bedrock, backup S3, pemantauan | `infra/` (Terraform, R2-8) |
-| Dev per git worktree per thread | `deploy/dev-worktree/dev.sh` |
+| Dev per git worktree per thread, juga di etavm2 ("dev di sini") | `deploy/dev-worktree/dev.sh` sebagai user `elgos-dev` (Docker rootless) |
 | R2-4: pilot ELGOS di prod, data nyata hanya di prod | prod tidak pernah di-seed; staging hanya data uji |
 
 Menggantikan rencana AWS penuh (ECS Fargate + RDS + CloudFront) dari 11–13 Nov.
@@ -36,7 +36,7 @@ api ──HTTPS──> AWS ap-southeast-1: KMS (GenerateDataKey/Decrypt, kunci p
 | push ke `main` | CI → image `ghcr.io/andrianm28/ewi-{api,web}:<sha>` → deploy **staging** |
 | Actions > Deploy > Run workflow (dari `main`) | `prod` + `image_tag` SHA 40 karakter yang ada di `main` → environment `prod` berpenyetuju |
 | Actions > Terraform > Run workflow (dari `main`) | apply lewat environment `infra` berpenyetuju |
-| dev | `deploy-dev.yml` (PR #5) untuk etavm1; dev per worktree lewat `dev.sh` |
+| dev | per worktree lewat `dev.sh` di etavm2 (user `elgos-dev`); `deploy-dev.yml` (PR #5) untuk dev-elgos di etavm1 sampai dipindah |
 
 Alur lengkap, pengaman, dan aturan migrasi: [alur-rilis.md](alur-rilis.md).
 
@@ -103,7 +103,9 @@ atau nama job tidak dikenal image (exit 2). Dilewati bila lingkungan belum perna
   backup dan job gagal → `elgos-alert` → SNS `elgos-alerts` → email. Peringatan yang sama tidak diulang
   dalam 60 menit. Semua tercatat di journal (`journalctl -t elgos-alert`).
 - Log container dirotasi 20 MB × 5 per container (compose dan `daemon.json`).
-- Biaya: AWS Budget `elgos-bulanan` US$150 (PO-10 A), email di 80% dan 100% aktual serta 100% prakiraan.
+- Biaya (PO-10 C, 18 Nov: tanpa plafon): `elgos-cost-report.timer` tiap Senin 08.00 WIB mengirim biaya AWS
+  7 hari per layanan + bulan berjalan ke email peringatan, untuk cadence. AWS Budgets mati
+  (`monthly_budget_usd = 0`), bisa diaktifkan bila nanti ada plafon.
 - Jadwal siaga: [runbook-insiden.md](runbook-insiden.md) (PO-9 B, jam kerja selama pilot).
 
 ## AWS yang tersisa (Terraform, R2-8)
@@ -111,7 +113,7 @@ atau nama job tidak dikenal image (exit 2). Dilewati bila lingkungan belum perna
 | Folder | Isi |
 |---|---|
 | `infra/bootstrap` | bucket state `elgos-tfstate-<akun>` + provider OIDC GitHub + role `elgos-terraform-plan`/`-apply` (sekali per akun, state lokal, oleh admin) |
-| `infra/live/shared` | identitas SES, bucket + kunci backup, user `elgos-ops-etavm2` dan `elgos-restore`, SNS, health check + alarm, budget |
+| `infra/live/shared` | identitas SES, bucket + kunci backup, user `elgos-ops-etavm2` (unggah backup, SNS, baca biaya) dan `elgos-restore`, SNS, health check + alarm, budget opsional |
 | `infra/live/staging`, `infra/live/prod` | modul `app-crypto`: kunci KMS per tenant + alias, IAM user `elgos-<env>-app` |
 
 - User aplikasi: `kms:GenerateDataKey`/`Decrypt` pada kunci bertag lingkungannya dengan encryption
@@ -130,7 +132,8 @@ atau nama job tidak dikenal image (exit 2). Dilewati bila lingkungan belum perna
    `staging`, `prod`, `infra` dan branch protection sesuai [alur-rilis.md](alur-rilis.md).
 3. Actions > Terraform > Run workflow dari `main` (apply shared, staging, prod). Konfirmasi email
    langganan SNS. Tambahkan CNAME DKIM di Cloudflare, ajukan keluar dari SES sandbox, aktifkan akses
-   model Bedrock Anthropic di ap-southeast-1.
+   model Bedrock Anthropic di ap-southeast-1. Aktifkan Cost Explorer (Billing > Cost Explorer) untuk
+   laporan biaya mingguan.
 4. DNS Cloudflare: A record `elgos` dan `stg-elgos` ke IP publik etavm2 (DNS only saat pertama agar
    Let's Encrypt HTTP-01 jalan; boleh di-proxy setelahnya dengan SSL mode Full (strict)).
 5. etavm2 (admin dengan kunci SSH sudah terpasang): clone repo, lalu
@@ -147,17 +150,25 @@ atau nama job tidak dikenal image (exit 2). Dilewati bila lingkungan belum perna
    lama pemulihan.
 9. Setelah semua jalan dari GitHub OIDC: hapus profil SSO `eta-andrian` dari etavm1 (P1-6).
 
-## Dev per worktree
+## Dev per worktree (di etavm2)
 
 ```
+sudo -iu elgos-dev                                       # bukan user admin/deploy
+git clone https://github.com/andrianm28/EWI.git elgos && cd elgos
 git worktree add ../elgos-fitur-x -b feat/ewi-ELITMEN-123
 cd ../elgos-fitur-x && deploy/dev-worktree/dev.sh up     # build, migrasi, seed, URL publik
 deploy/dev-worktree/dev.sh ls                            # semua dev worktree di host ini
 deploy/dev-worktree/dev.sh down --purge                  # hapus stack + DB worktree ini
 ```
 
+- **Isolasi dari produksi:** dev memakai daemon Docker rootless milik user `elgos-dev`, terpisah dari
+  daemon staging/prod. `elgos-dev` tidak masuk grup `docker` dan tidak bisa membaca `/srv/elgos-*`.
+  `dev.sh` menolak jalan di etavm2 bila tidak memakai Docker rootless.
+- **Batas sumber daya:** per worktree DB dan API masing-masing 1 vCPU / 768 MB, web 128 MB; seluruh
+  dev dibatasi slice systemd 4 vCPU / 10 GB. Staging dikecilkan (DB 2 GB, API 1 GB). Prod tetap
+  DB 6 GB / API 4 GB. Total muat untuk 8 thread paralel (T1–T8) di 8 vCPU / 32 GB.
 - Project compose `elgos-dev-<slug branch>`, port lokal bebas 8200–8399, secret acak di `.elgos-dev/.env`
-  (diabaikan git), enkripsi `local`, email `log`, seed demo otomatis.
+  (diabaikan git), enkripsi `local`, email `log`, seed demo otomatis. Hanya data sintetis.
 - URL publik lewat Cloudflare quick tunnel (`*.trycloudflare.com`, berubah bila tunnel di-restart);
   `--local` untuk tanpa URL publik. Diuji lokal: dua worktree berjalan bersamaan dengan port dan DB terpisah.
-- Butuh host dengan Docker dan akses keluar ke Cloudflare: etavm1 atau mesin dev mana pun.
+- Thread yang bekerja lewat Remote Control di etavm2 memakai user `elgos-dev`, bukan admin.
