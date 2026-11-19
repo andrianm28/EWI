@@ -8,7 +8,7 @@ const { authRoutes } = require('./core/auth/routes');
 const { createEmailLinkService, emailLinkRoutes, invitationRoutes } = require('./core/auth/email-link');
 const { createMailer } = require('./integrations/mailer');
 const { tenantContext } = require('./core/tenant');
-const { createFlagService } = require('./core/flags');
+const { createFlagService, FLAGS, requireFlag } = require('./core/flags');
 const { flagAdminRouter } = require('./core/flags/admin-routes');
 const { createAuditService, memoryAuditStore } = require('./core/audit');
 const { createEntitlementService } = require('./core/entitlement');
@@ -17,6 +17,7 @@ const { errorHandler, notFound } = require('./core/errors');
 const { createReadiness, readyHandler } = require('./core/health');
 const projects = require('./modules/projects');
 const { employeeRouter } = require('./modules/employees');
+const { dashboardRouter } = require('./modules/dashboard');
 const { webhookRouter } = require('./integrations/elitementor/webhook');
 const { createSettingsService } = require('./core/settings');
 const { createAiProvider } = require('./ai');
@@ -93,6 +94,11 @@ function createApp({ config, stores, ai, catalog, mailer, readiness, storage }) 
   api.use('/projects', projects.router({ projects: stores.projects }));
   api.use('/admin', flagAdminRouter({ flags, audit }));
   if (stores.people && stores.interviews) api.use('/employees', employeeRouter({ stores, flags, audit }));
+  // B3: dashboard lintas modul. Bukan submodul; di balik flag sendiri dan tiap bagian mengikuti modul sumbernya.
+  if (stores.people && stores.interviews && stores.tna && stores.dna) {
+    api.use('/dashboard', requireFlag(flags, FLAGS.DASHBOARD_MAIN, 'Dashboard belum diaktifkan untuk organisasi Anda'),
+      dashboardRouter({ stores, flags, entitlements, settings, audit }));
+  }
   if (stores.loginLinks) api.use('/invitations', invitationRoutes({ users: stores.users, links, audit }));
   for (const m of SUBMODULE_MODULES) {
     api.use(`/${m.key}`, requireSubmodule(m.key, { entitlements, flags }), m.router(deps));
