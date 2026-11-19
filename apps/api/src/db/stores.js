@@ -3,6 +3,7 @@
 const { QueryTypes } = require('sequelize');
 const crypto = require('crypto');
 const { createLnaStores } = require('./lna-stores');
+const { createCcaStores } = require('./cca-stores');
 const { createFieldCipher, createProvider } = require('../core/crypto');
 const { PRIVILEGED_ROLES, ROLES } = require('../core/rbac/roles');
 const { MAX_ATTEMPTS } = require('../core/auth/mfa');
@@ -234,6 +235,7 @@ function createStores(sequelize, { encryption } = {}) {
       return row;
     },
     ...createLnaStores(sequelize, { cipher }),
+    ...createCcaStores(sequelize, { cipher }),
     users: {
       async listActiveTenants() {
         return q(`SELECT slug, name FROM tenants WHERE status = 'active' ORDER BY name`);

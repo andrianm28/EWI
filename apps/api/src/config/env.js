@@ -52,6 +52,8 @@ function loadConfig(env = process.env) {
   if (etaAdminEmails.some((e) => !/^[^@\s]+@[^@\s]+$/.test(e))) errors.push('ETA_ADMIN_EMAILS berisi alamat email yang tidak valid');
   const trustProxy = parseTrustProxy(env.TRUST_PROXY);
   if (trustProxy === undefined) errors.push('TRUST_PROXY harus angka jumlah hop, true/false, atau daftar alamat');
+  const uploadMaxMb = Number(env.EWI_UPLOAD_MAX_MB || 25);
+  if (!Number.isFinite(uploadMaxMb) || uploadMaxMb <= 0 || uploadMaxMb > 200) errors.push('EWI_UPLOAD_MAX_MB harus angka 1 sampai 200');
   const ai = loadAiConfig(env, errors);
   if (errors.length) {
     const err = new Error(`Konfigurasi tidak valid:\n- ${errors.join('\n- ')}`);
@@ -84,6 +86,8 @@ function loadConfig(env = process.env) {
       kmsAliasPrefix: env.KMS_KEY_ALIAS_PREFIX || 'elgos-tenant',
       region: env.KMS_REGION || env.AWS_REGION || 'ap-southeast-3',
     }),
+    // B14: folder berkas dokumentasi pelatihan (volume di VPS). Kosong = unggah dimatikan (API menjawab 501).
+    uploads: Object.freeze({ dir: env.EWI_UPLOAD_DIR || '', maxBytes: Math.round(uploadMaxMb * 1024 * 1024) }),
     mail: Object.freeze({
       provider: mailProvider,
       from: env.MAIL_FROM || '',
