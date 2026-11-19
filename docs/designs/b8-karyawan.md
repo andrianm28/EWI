@@ -133,7 +133,7 @@ Sejak `consent_withdrawn_at` terisi (data tetap tersimpan, tetapi tidak diproses
 
 - `analysis.processJob` melewati job yang sesinya ditarik dan menandainya `failed` final `CONSENT_WITHDRAWN`, tanpa panggilan model. Penarikan sendiri mengubah job yang belum selesai menjadi `failed`, sehingga job yang sedang berjalan gagal menyimpan (`lockOwned` di transaksi simpan `saveTna`/`saveDna` menolak). HR tidak bisa mengulang analisisnya (`requeue` menolak).
 - Temuan `draft` dari sesi yang ditarik tidak muncul di antrean review dan tidak dihitung di `reviewCounts`; `POST /findings/:id/review|classify` untuk temuan draf dari sesi yang ditarik → `409 CONSENT_WITHDRAWN`.
-- Temuan yang sudah disetujui dan rencananya tetap terlihat dan, untuk sementara, tetap berjalan (keputusan user: data tidak dihapus). Keduanya hanya hilang bila HR menutup permintaan dengan `erase: true`. `[⚠️ BELUM TERVERIFIKASI]` apakah pemrosesannya (rencana, ekspor, penugasan, serah terima, agregat) harus dibekukan sedang ditanyakan ke user (rekomendasi: bekukan, simpan data); lihat Risiko.
+- Temuan yang sudah disetujui dan rencananya **dibekukan, datanya tetap disimpan** `[✅ DIPUTUSKAN]` (kartu keputusan user 19 Nov). Satu predikat `notFrozen` di `db/lna-stores.js` menolak atau menyaring: klasifikasi ulang (`409 CONSENT_WITHDRAWN`), rencana baru (`409 CONSENT_WITHDRAWN`), penugasan (`409 CONSENT_WITHDRAWN`, juga di klaim), solusi (disaring), ekspor CSV (disaring), serah ke Improvement Needs (`skipped`), dan kontrak B9 `listImprovementHandoffs` (disaring, termasuk yang sudah diserahkan sebelum penarikan). Status rencana tidak diubah. Data hanya hilang bila HR menutup permintaan dengan `erase: true`. Agregat anonim (dashboard, gap teratas asisten) tidak disaring.
 - `interviews.list` dan `get` mengembalikan `consentWithdrawnAt` supaya HR melihatnya.
 - Undangan massal (`POST /tna/projects/:id/interviews`) melewati karyawan yang menarik persetujuan di proyek itu dan belum punya sesi baru (`skippedWithdrawn` di respons), kecuali HR mengirim `includeWithdrawn: true`. Sesi yang ditarik tidak menghalangi undangan baru.
 - HR tetap bisa mengundang ulang; persetujuan baru di sesi baru berlaku sendiri. Penarikan berikutnya memakai permintaan `open` yang ada atau membuat yang baru (butir 3 idempoten), jadi sesi baru selalu bisa dihentikan.
@@ -171,7 +171,7 @@ Transisi sesi yang ada dibuat bersyarat supaya penarikan tidak tertimpa:
 
 | Risiko | Mitigasi | Status |
 | --- | --- | --- |
-| Pemrosesan temuan dan rencana yang sudah disetujui berlanjut setelah persetujuan ditarik (UU PDP: penarikan persetujuan mengakhiri pemrosesan) | Kartu keputusan ke user 19 Nov, rekomendasi bekukan dan simpan data | `[⚠️ BELUM TERVERIFIKASI]` menunggu user; perlu cek legal (PK-17, Fasha) |
+| Pemrosesan temuan dan rencana yang sudah disetujui berlanjut setelah persetujuan ditarik (UU PDP: penarikan persetujuan mengakhiri pemrosesan) | Dibekukan lewat satu predikat `notFrozen` (keputusan user 19 Nov) | Dibangun; cek legal agregat anonim tetap perlu (PK-17, Fasha) |
 | Penarikan terjadi tanpa jejak bila proses mati di antara commit dan audit | Audit di dalam transaksi | Dibangun |
 | Hapus manual meninggalkan audit palsu bila transaksi batal | Audit di dalam transaksi pemenuhan | Dibangun |
 | `launchUrl` berbahaya dari katalog | Hanya `https:` (atau `http:` di luar produksi) | Dibangun |

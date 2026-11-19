@@ -281,6 +281,8 @@ module.exports = {
       const f = await stores.tna.getFinding(req.tenantId, req.params.id);
       if (!f || f.category !== 'training') throw notFound('Temuan training tidak ditemukan');
       if (!REVIEWED.includes(f.reviewStatus)) throw new HttpError(409, 'REVIEW_PENDING', 'Setujui temuan ini di antrean review sebelum membuat training plan');
+      // keputusan user 19 Nov: temuan dari wawancara yang persetujuannya ditarik dibekukan
+      assertNotWithdrawn(await stores.tna.getReviewItem(req.tenantId, f.id));
       const conf = await settings.get(req.tenantId);
       const competency = f.competencyId ? await stores.dna.getCompetency(req.tenantId, f.competencyId) : null;
       const hit = await catalog.match({ tenantId: req.tenantId, targets: conf.lms.targets, competency, tier: req.body?.programTier });

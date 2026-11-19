@@ -429,4 +429,50 @@ run('B7 tinjauan HR (Postgres)', () => {
       expect(await stores.tna.listImprovementHandoffs(other.id)).toEqual([]);
     });
   });
+  describe('pembekuan setelah tarik persetujuan (keputusan user 19 Nov: bekukan, data tetap disimpan)', () => {
+    it('temuan dan rencana dari sesi yang ditarik tidak diproses lagi, datanya tetap ada', async () => {
+      const a = app();
+      const ws = await stores.interviews.create(tenant.id, { projectId, submodule: 'tna', intervieweeId: u.beni });
+      await db.query(`UPDATE lna_interview_sessions SET status = 'completed', ended_at = now() WHERE id = :id`, { replacements: { id: ws.id } });
+      const mk = async (title, category, extra = {}) => (await finding('beni', { title, category, sessionId: ws.id, reviewStatus: 'approved', ...extra })).id;
+      const trPlanned = await mk('Beku berencana', 'training');
+      const trOpen = await mk('Beku tanpa rencana', 'training');
+      const imHanded = await mk('Beku sudah diserahkan', 'non_training');
+      const imOpen = await mk('Beku belum diserahkan', 'non_training');
+      await setFlag('module.ina', true);
+      expect((await request(a).post('/api/tna/review/improvement-handoff').set(as('hr')).send({ findingIds: [imHanded] })).body.data.handedOff).toEqual([imHanded]);
+      const plan = await stores.tna.insertPlanItem(tenant.id, { findingId: trPlanned, userId: u.beni, origin: 'hr', status: 'new', catalogSource: 'elitementor', catalogItemRef: 'EM-BEKU', catalogItemTitle: 'Kursus beku' });
+      await db.query(`UPDATE lna_findings SET status = 'planned' WHERE id = :id`, { replacements: { id: trPlanned } });
+
+      // karyawan menarik persetujuan
+      await db.query('UPDATE lna_interview_sessions SET consent_withdrawn_at = now() WHERE id = :id', { replacements: { id: ws.id } });
+
+      const re = await classify(a, trOpen, 'improvement');
+      expect(re.status).toBe(409);
+      expect(re.body.error.code).toBe('CONSENT_WITHDRAWN');
+      const pl = await request(a).post(`/api/tna/findings/${trOpen}/plan`).set(as('hr')).send({});
+      expect(pl.status).toBe(409);
+      expect(pl.body.error.code).toBe('CONSENT_WITHDRAWN');
+      const as1 = await request(a).post(`/api/tna/plan-items/${plan.id}/assign`).set(as('hr')).send({});
+      expect(as1.status).toBe(409);
+      expect(as1.body.error.code).toBe('CONSENT_WITHDRAWN');
+
+      const sol = (await request(a).get('/api/tna/review/solutions').set(as('hr'))).body.data;
+      const solIds = [...sol.training, ...sol.improvement].map((x) => x.findingId);
+      for (const id of [trPlanned, trOpen, imHanded, imOpen]) expect(solIds).not.toContain(id);
+
+      const csv = await request(a).get('/api/tna/plan-items/export.csv').set(as('hr'));
+      expect(csv.text).not.toContain('EM-BEKU');
+
+      const ho = (await request(a).post('/api/tna/review/improvement-handoff').set(as('hr')).send({ findingIds: [imOpen] })).body.data;
+      expect(ho).toMatchObject({ handedOff: [], skipped: [imOpen] });
+      expect((await stores.tna.listImprovementHandoffs(tenant.id)).map((x) => x.findingId)).not.toContain(imHanded);
+
+      // data tetap disimpan
+      const [{ n }] = await db.query('SELECT count(*)::int AS n FROM lna_findings WHERE session_id = :id', { replacements: { id: ws.id }, type: 'SELECT' });
+      expect(n).toBe(4);
+      const [[kept]] = await db.query('SELECT status FROM lna_training_plan_items WHERE id = :id', { replacements: { id: plan.id } });
+      expect(kept.status).toBe('new');
+    });
+  });
 });
