@@ -124,6 +124,21 @@ atau nama job tidak dikenal image (exit 2). Dilewati bila lingkungan belum perna
 - Biaya: US$1 per kunci per bulan (tenant + backup) + permintaan KMS, SES US$0,10 per 1.000 email,
   S3 backup beberapa sen per GB, health check Route 53 ±US$1–2 per bulan, Bedrock sesuai pemakaian.
 
+## QA malam dengan AI sungguhan (B18)
+
+Keputusan user 19 Nov: akun Bedrock siap 24 Nov, QA malam 24–26 Nov untuk Go/No-Go 27 Nov.
+`infra/live/shared/qa-malam.tf` membuat role `elgos-qa-malam` (OIDC dari environment GitHub
+`qa-malam` yang hanya boleh dari `main`, izin hanya `bedrock:InvokeModel` pada model QA, ditambah
+inference profile bila memakai profil `apac.`) dan budget `elgos-qa-malam` (★ US$100/bulan, peringatan
+50%/80%/prakiraan 100%, seluruh akun). Role terpisah dari user aplikasi (KMS/SES) dan tidak dibuat
+selama `qa_bedrock_model_id` kosong. Region mengikuti PD-2b: Jakarta `ap-southeast-3` (region
+opt-in), Singapura bila Claude tidak tersedia di Jakarta. Ketersediaan dicek saat akun ada.
+
+Langkah tangan admin (akun, region, bootstrap, akses model, variabel repo, apply) dibungkus wizard
+`bash infra/setup-akun-elgos.sh` dari laptop admin. Variabel repo hasilnya: `QA_MALAM_ROLE_ARN`,
+`QA_MALAM_BEDROCK_REGION`, `QA_MALAM_BEDROCK_MODEL_ID`. Cadangan bila akun terlambat: satu run manual
+oleh Andrian 26 Nov.
+
 ## Setup sekali
 
 1. AWS (dari laptop admin, profil SSO akun ELGOS, setelah akun ada): `infra/bootstrap` apply
