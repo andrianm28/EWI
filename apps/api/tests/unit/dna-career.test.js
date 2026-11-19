@@ -1,4 +1,4 @@
-const { careerStatus, okrAchievement, careerState, findCycle, decisionView, decisionState } = require('../../src/modules/dna/career');
+const { careerStatus, okrAchievement, careerState, findCycle, decisionView, decisionState, promotionSettings } = require('../../src/modules/dna/career');
 
 const rec = (o) => ({ metricType: 'okr', name: 'Resolusi tiket', target: 100, actual: 90, direction: 'higher', valueType: 'angka', isMet: false, period: '2026-11', createdAt: '2026-11-10T00:00:00Z', ...o });
 const okr = (rows, types) => okrAchievement(rows, types);
@@ -128,5 +128,20 @@ describe('B16 siklus dan tindakan (C6-C10)', () => {
     expect(view({ viewer: hr, employee: { ...emp, supervisorId: null, supervisorRole: null } }).blockedReason).toBe('no_supervisor');
     expect(view({ viewer: hr, employee: { ...emp, supervisorRole: 'role_leader' } }).blockedReason).toBe('no_supervisor');
     expect(view({ viewer: { id: 'x', role: 'eta_admin' }, cycle: findCycle([row()], 'l1', 'l2') })).toEqual({ actions: [], blockedReason: 'view_only' });
+  });
+});
+
+describe('B16 setelan rusak (C11)', () => {
+  it('dna null atau promotion bukan objek jatuh ke default, tidak melempar', () => {
+    const def = { okrMin: 80, metricTypes: ['okr'], visibleTo: ['hr_admin'] };
+    expect(promotionSettings(null)).toEqual(def);
+    expect(promotionSettings({ promotion: null })).toEqual(def);
+    expect(promotionSettings({ promotion: 'x', promotionVisibleTo: null })).toEqual(def);
+  });
+});
+
+describe('B16 tombol atasan mengikuti peran di basis data (C6)', () => {
+  it('atasan yang perannya sudah dicabut di basis data tidak mendapat tombol', () => {
+    expect(view({ employee: { ...emp, supervisorRole: 'learner' } })).toEqual({ actions: [], blockedReason: 'view_only' });
   });
 });

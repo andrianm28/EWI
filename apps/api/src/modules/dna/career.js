@@ -111,7 +111,8 @@ function decisionView({ viewer, employee, eligible, cycle }) {
   if (viewer.role === 'eta_admin') return blocked('view_only');
   if (cycle.approved) return blocked('approved');
   const hasSupervisor = Boolean(employee.supervisorId) && employee.supervisorRole === 'supervisor';
-  if (viewer.role === 'supervisor' && viewer.id === employee.supervisorId) {
+  // peran atasan dibaca dari basis data (supervisorRole), sama dengan rute (C6)
+  if (viewer.role === 'supervisor' && viewer.id === employee.supervisorId && employee.supervisorRole === 'supervisor') {
     if (eligible) return { actions: ['recommend', 'hold'], blockedReason: null };
     // rekomendasi terbuka tetap bisa ditarik walau karyawan tidak lagi memenuhi syarat
     return cycle.open ? { actions: ['hold'], blockedReason: null } : blocked('not_eligible');
@@ -131,11 +132,13 @@ function decisionView({ viewer, employee, eligible, cycle }) {
 }
 
 /** C2/C11: konfigurasi tenant yang rusak jatuh ke default, bukan meloloskan semua atau 500. */
-function promotionSettings(dna = {}) {
-  const p = dna.promotion || {};
+function promotionSettings(dna) {
+  const obj = (v) => (v && typeof v === 'object' && !Array.isArray(v) ? v : {});
+  const d = obj(dna); // null = keputusan bisnis belum diambil (core/settings), bukan 500
+  const p = obj(d.promotion);
   const okrMin = typeof p.okrMin === 'number' && Number.isFinite(p.okrMin) && p.okrMin >= 0 && p.okrMin <= 100 ? p.okrMin : 80;
   const metricTypes = Array.isArray(p.metricTypes) && p.metricTypes.length && p.metricTypes.every((x) => typeof x === 'string') ? p.metricTypes : ['okr'];
-  const visibleTo = Array.isArray(dna.promotionVisibleTo) ? dna.promotionVisibleTo.filter((x) => typeof x === 'string') : ['hr_admin'];
+  const visibleTo = Array.isArray(d.promotionVisibleTo) ? d.promotionVisibleTo.filter((x) => typeof x === 'string') : ['hr_admin'];
   return { okrMin, metricTypes, visibleTo };
 }
 

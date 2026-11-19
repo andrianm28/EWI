@@ -347,12 +347,12 @@ function createLnaStores(sequelize, { cipher } = {}) {
     async assessments(tenantId, userId) {
       return open(tenantId, await select(`SELECT id, competency_id AS "competencyId", score, confidence, evidence, session_id AS "sessionId", source, assessor,
                             assessed_at AS "assessedAt", created_at AS "createdAt"
-                       FROM lna_assessments WHERE tenant_id = :tenantId AND user_id = :userId ORDER BY created_at`, { tenantId, userId }), ['evidence']);
+                       FROM lna_assessments WHERE tenant_id = :tenantId AND user_id = :userId ORDER BY created_at, id`, { tenantId, userId }), ['evidence']);
     },
     async assessmentsFor(tenantId, userIds) {
       if (!userIds.length) return [];
       return select(`SELECT user_id AS "userId", competency_id AS "competencyId", score, source, assessed_at AS "assessedAt", created_at AS "createdAt"
-                       FROM lna_assessments WHERE tenant_id = :tenantId AND user_id IN (:userIds)`, { tenantId, userIds });
+                       FROM lna_assessments WHERE tenant_id = :tenantId AND user_id IN (:userIds) ORDER BY created_at, id`, { tenantId, userIds });
     },
     async addAssessment(tenantId, a) {
       return insert(`INSERT INTO lna_assessments (tenant_id, user_id, competency_id, session_id, score, confidence, evidence, source, assessor, assessed_at, import_batch_id)

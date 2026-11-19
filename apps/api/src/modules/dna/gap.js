@@ -10,12 +10,16 @@ const when = (a) => new Date(a.assessedAt || a.createdAt).getTime();
 /** Skor minimal bila kompetensi tidak menyebutkannya (skala 0-4). Dipakai juga B4 (A3). */
 const DEFAULT_TARGET = 3;
 
-/** Asesmen terbaru per kompetensi; waktu sama = baris terakhir menang. Dipakai juga B4 (A2). */
+const created = (a) => new Date(a.createdAt).getTime() || 0;
+/**
+ * Asesmen terbaru per kompetensi. Tanggal asesmen sama (mis. impor koreksi dengan tanggal yang sama):
+ * yang dibuat paling akhir menang; masih sama = baris terakhir (store mengurutkan created_at, id). Dipakai juga B4 (A2).
+ */
 function latestByCompetency(assessments) {
   const latest = new Map();
   for (const a of assessments) {
     const prev = latest.get(a.competencyId);
-    if (!prev || when(a) >= when(prev)) latest.set(a.competencyId, a);
+    if (!prev || when(a) > when(prev) || (when(a) === when(prev) && created(a) >= created(prev))) latest.set(a.competencyId, a);
   }
   return latest;
 }
