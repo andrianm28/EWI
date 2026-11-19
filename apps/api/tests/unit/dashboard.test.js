@@ -3,14 +3,14 @@ const request = require('supertest');
 const { createApp } = require('../../src/app');
 const { createTokenService } = require('../../src/core/auth/tokens');
 const { memoryAuditStore } = require('../../src/core/audit');
-const { markHot, median, agreement, latestUnmet } = require('../../src/modules/dashboard/summary');
+const { markHot, median, agreement } = require('../../src/modules/dashboard/summary');
 const { makeConfig, makeStores } = require('../helpers');
 
 const T = 't-1';
 const ALL_ON = { 'dashboard.main': true, 'module.dna': true, 'module.tna': true };
 
 /** Store tiruan yang mencatat cakupan setiap panggilan, supaya isolasi tenant dan tim bisa diperiksa. */
-function fakeStores({ flags = ALL_ON, entitlements = ['dna', 'tna'], grant = false } = {}) {
+function fakeStores({ flags = ALL_ON, entitlements = ['dna', 'tna'], grant = false, improvementOnly = false, titleFinding = false } = {}) {
   const base = makeStores({ entitlements: { [T]: entitlements }, flags: { [T]: flags } });
   const calls = [];
   const note = (name, tenantId, scope) => { calls.push({ name, tenantId, scope }); };
@@ -20,12 +20,17 @@ function fakeStores({ flags = ALL_ON, entitlements = ['dna', 'tna'], grant = fal
     { id: 'u-b', role: 'learner', jobRoleId: 'jr', careerLevelId: null, supervisorId: 'u-spv' },
     { id: 'u-c', role: 'learner', jobRoleId: 'jr', careerLevelId: null, supervisorId: 'u-other' },
   ];
+  // u-d: bawahan atasan yang hanya punya temuan Improvement Needs (non-pelatihan) yang sudah ditinjau (K1)
+  if (improvementOnly) people.push({ id: 'u-d', role: 'learner', jobRoleId: null, careerLevelId: null, supervisorId: 'u-spv' });
   const pick = (scope, rows, key) => (scope.all ? rows : rows.filter((r) => scope.userIds.includes(r[key])));
   const findings = [
     { id: 'f1', userId: 'u-a', category: 'training', competencyId: 'c1', competencyName: 'Root Cause Analysis', title: 'RCA', importance: 5, target: 100, actual: 60, direction: 'higher', tolerance: 0 },
     { id: 'f2', userId: 'u-b', category: 'training', competencyId: 'c1', competencyName: 'Root Cause Analysis', title: 'RCA', importance: 5, target: 100, actual: 80, direction: 'higher', tolerance: 0 },
     { id: 'f3', userId: 'u-c', category: 'training', competencyId: 'c2', competencyName: 'Ticket Life Cycle', title: 'Tiket', importance: 3, target: null },
   ];
+  if (improvementOnly) findings.push({ id: 'f4', userId: 'u-d', category: 'non_training', competencyId: null, title: 'Beban kerja', target: null });
+  // Temuan pelatihan tanpa kompetensi: baris Pareto memakai judul temuan (isi individu, R2-2)
+  if (titleFinding) findings.push({ id: 'f5', userId: 'u-c', category: 'training', competencyId: null, competencyName: null, title: 'Bahasa Inggris', importance: 3, target: null });
   return {
     calls,
     audit: memoryAuditStore(),
@@ -45,7 +50,8 @@ function fakeStores({ flags = ALL_ON, entitlements = ['dna', 'tna'], grant = fal
             { userId: 'u-c', competencyId: 'c2', score: 0, createdAt: '2026-11-01' },
           ].filter((a) => ids.includes(a.userId));
         },
-        competenciesForPosition: async () => [{ id: 'c1', name: 'Root Cause Analysis', kind: 'job', requiredScore: 3 }, { id: 'c2', name: 'Ticket Life Cycle', kind: 'job', requiredScore: 3 }],
+        // c2 belum disahkan HR: bukan target gap (CONTEXT.md "Gap kompetensi", sama dengan papan gap B5)
+        competenciesForPosition: async () => [{ id: 'c1', name: 'Root Cause Analysis', kind: 'job', requiredScore: 3, approvedAt: '2026-11-02' }, { id: 'c2', name: 'Ticket Life Cycle', kind: 'job', requiredScore: 3, approvedAt: null }],
         listCompetencies: async (tenantId) => { note('dna.listCompetencies', tenantId); return [{ id: 'c1', approvedAt: '2026-11-02' }, { id: 'c2', approvedAt: null }]; },
       },
       interviews: {
@@ -56,11 +62,15 @@ function fakeStores({ flags = ALL_ON, entitlements = ['dna', 'tna'], grant = fal
             { id: 's2', intervieweeId: 'u-b', status: 'scheduled' },
             { id: 's3', intervieweeId: 'u-c', status: 'in_progress' },
             { id: 's4', intervieweeId: 'u-gone', status: 'scheduled' },
+            // undangan kedaluwarsa tidak bisa diselesaikan lagi: bukan wawancara terbuka (isOpen B5)
+            { id: 's5', intervieweeId: 'u-a', status: 'scheduled', inviteExpiresAt: '2026-01-01T00:00:00Z' },
           ], 'intervieweeId');
         },
       },
       tna: {
         listFindings: async (tenantId, scope, { categories }) => { note('tna.listFindings', tenantId, scope); return pick(scope, findings, 'userId').filter((f) => categories.includes(f.category)); },
+        // periode unggahan terbaru lebih dulu (B5); bukan urutan teks
+        performancePeriods: async (tenantId, scope) => { note('tna.performancePeriods', tenantId, scope); return ['2026-11', '2026-10']; },
         listPerformance: async (tenantId, scope) => {
           note('tna.listPerformance', tenantId, scope);
           return pick(scope, [
@@ -131,8 +141,8 @@ describe('GET /api/dashboard', () => {
     expect(d.people).toBe(4);
     expect(d.kpis).toEqual({
       employeesAnalyzed: 3, // u-a, u-c (penilaian DNA), u-b (temuan ditinjau)
-      competencyGaps: 2, // c1 (u-a) dan c2 (u-c)
-      okrGaps: 2, // periode terbaru saja: u-a Tiket, u-c Tiket
+      competencyGaps: 1, // c1 (u-a); c2 belum disahkan HR
+      okrGaps: 1, // periode unggahan terbaru 2026-11: metrik Tiket (u-a, u-c) satu gap
       aiHrAgreement: { percent: 88, approved: 22, reviewed: 25, targetPercent: 85 },
       analysisDays: { median: 7, sessions: 2, targetDays: 14 },
     });
@@ -164,7 +174,7 @@ describe('GET /api/dashboard', () => {
     expect(d.scope).toBe('team');
     expect(d.people).toBe(2);
     // Tanpa angka yang bergantung pada draf: kesepakatan AI–HR dan lama analisis hanya untuk HR
-    expect(d.kpis).toEqual({ employeesAnalyzed: 2, competencyGaps: 1, okrGaps: 1, aiHrAgreement: null, analysisDays: null });
+    expect(d.kpis).toEqual({ employeesAnalyzed: 2, competencyGaps: 1, okrGaps: 1, aiHrAgreement: null, analysisDays: null }); // c1 u-a; Tiket u-a
     expect(d.pareto.rows).toHaveLength(1);
     expect(d.pareto.rows[0]).toMatchObject({ label: 'Root Cause Analysis', people: 2 });
     expect(d.actions).toEqual([{ key: 'interviews_open', count: 1 }]);
@@ -203,19 +213,55 @@ describe('GET /api/dashboard', () => {
     const tnaOff = setup({ flags: { 'dashboard.main': true, 'module.dna': true, 'module.tna': false } });
     let d = (await tnaOff.get('u-hr', 'hr_admin')).body.data;
     expect(d.pareto).toBeNull();
-    expect(d.kpis).toMatchObject({ okrGaps: null, analysisDays: null, aiHrAgreement: null, competencyGaps: 2, employeesAnalyzed: 2 });
+    expect(d.kpis).toMatchObject({ okrGaps: null, analysisDays: null, aiHrAgreement: null, competencyGaps: 1, employeesAnalyzed: 2 });
     expect(d.actions).toEqual([{ key: 'competencies_unapproved', count: 1 }]);
     expect(tnaOff.calls.filter((c) => c.name.startsWith('tna.') || c.name.startsWith('interviews.'))).toEqual([]);
 
     // Flag menyala tetapi tenant tidak berlangganan DNA: tetap tertutup
     const dnaOff = setup({ entitlements: ['tna'] });
     d = (await dnaOff.get('u-hr', 'hr_admin')).body.data;
-    expect(d.kpis).toMatchObject({ competencyGaps: null, employeesAnalyzed: 3, okrGaps: 2 });
+    expect(d.kpis).toMatchObject({ competencyGaps: null, employeesAnalyzed: 3, okrGaps: 1 });
     expect(dnaOff.calls.filter((c) => c.name.startsWith('dna.'))).toEqual([]);
 
     const bothOff = setup({ flags: { 'dashboard.main': true }, entitlements: [] });
     d = (await bothOff.get('u-hr', 'hr_admin')).body.data;
     expect(d.kpis).toEqual({ employeesAnalyzed: null, competencyGaps: null, okrGaps: null, aiHrAgreement: null, analysisDays: null });
+  });
+
+  it('modul 2–5 mengikuti gerbang API modulnya: li/ld/lim butuh full_suite, cp butuh DNA terbuka', async () => {
+    const flags = { ...ALL_ON, 'module.li': true, 'module.ld': true, 'module.lim': true, 'promotion.recommendation': true };
+    const status = async (entitlements) => (await setup({ flags, entitlements }).get('u-hr', 'hr_admin')).body.data.modules.map((m) => [m.key, m.active]);
+    expect(await status(['dna', 'tna'])).toEqual([['lna', true], ['li', false], ['ld', false], ['lim', false], ['cp', true]]);
+    expect(await status(['full_suite'])).toEqual([['lna', true], ['li', true], ['ld', true], ['lim', true], ['cp', true]]);
+    expect(await status(['tna'])).toEqual([['lna', true], ['li', false], ['ld', false], ['lim', false], ['cp', false]]);
+  });
+
+  it('K1: temuan Improvement Needs menghitung "dianalisis" untuk atasan hanya bila diberi akses HR', async () => {
+    const flags = { ...ALL_ON, 'tna.non_training_hr': true };
+    const without = (await setup({ flags, improvementOnly: true, entitlements: ['tna'] }).get('u-spv', 'supervisor')).body.data;
+    expect(without.people).toBe(3);
+    expect(without.kpis.employeesAnalyzed).toBe(2); // u-a, u-b; u-d tidak boleh tersimpulkan
+    const granted = (await setup({ flags, improvementOnly: true, entitlements: ['tna'], grant: true }).get('u-spv', 'supervisor')).body.data;
+    expect(granted.kpis.employeesAnalyzed).toBe(3);
+  });
+
+  it('audit HR: baris Pareto dari judul temuan dicatat sebagai baca data individu', async () => {
+    const { get, audit } = setup({ titleFinding: true });
+    const res = await get('u-hr', 'hr_admin');
+    expect(res.body.data.pareto.rows.map((r) => r.label)).toContain('Bahasa Inggris');
+    const row = audit.rows.find((r) => r.resource === 'dashboard.pareto');
+    expect(row).toBeTruthy();
+    expect(row.meta.employeeIds).toEqual(['u-c']);
+  });
+
+  it('audit HR gagal: dashboard gagal (gagal-tertutup)', async () => {
+    const fake = fakeStores();
+    const config = makeConfig();
+    const app = createApp({ config, stores: { ...fake.stores, audit: { async insert() { throw new Error('audit mati'); } } } });
+    const tokens = createTokenService(config.jwt);
+    const res = await request(app).get('/api/dashboard').set({ Authorization: `Bearer ${tokens.sign({ id: 'u-hr', tenantId: T, role: 'hr_admin', email: 'h@elgos.test' })}` });
+    expect(res.status).toBe(500);
+    expect(res.body.data).toBeUndefined();
   });
 
   it('status modul mengikuti entitlement dan flag; atasan hanya modul di menunya', async () => {
@@ -285,15 +331,9 @@ describe('fungsi ringkasan dashboard', () => {
     expect(median([3.000004])).toBe(3);
   });
 
-  it('latestUnmet: hanya periode terbaru per karyawan dan metrik', () => {
-    expect(latestUnmet([])).toBe(0);
-    expect(latestUnmet([
-      { userId: 'a', metricType: 'kpi', name: 'X', period: '2026-10', isMet: false },
-      { userId: 'a', metricType: 'kpi', name: ' x ', period: '2026-11', isMet: true },
-      { userId: 'b', metricType: 'kpi', name: 'X', period: '2026-11', isMet: false },
-      { userId: 'b', metricType: 'sla', name: 'X', period: '2026-09', isMet: false },
-      { userId: 'c', metricType: 'kpi', name: 'X', period: '2026-11', isMet: null },
-    ])).toBe(2);
+  it('median: lama negatif dihitung 0, nilai bukan angka diabaikan', () => {
+    expect(median([-2, 3])).toBe(2);
+    expect(median([Number.NaN])).toBeNull();
   });
 
   it('agreement: persen temuan yang disetujui tanpa diubah; null bila belum ada yang ditinjau', () => {
