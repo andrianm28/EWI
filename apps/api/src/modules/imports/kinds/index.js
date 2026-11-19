@@ -3,6 +3,7 @@
 const KINDS = [
   require('./job-levels'),
   require('./employees'),
+  require('./job-functions'),
   require('./competencies'),
   require('./completions'),
   require('./dna-results'),

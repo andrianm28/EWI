@@ -26,9 +26,9 @@ function employeeError(row) {
 const NOT_FOUND = 'Karyawan tidak ditemukan di organisasi ini (impor Data Karyawan dulu)';
 
 const TIER_CHOICES = {
-  basic: ['dasar', 'program dasar', 'learning program basic'],
-  intermediate: ['menengah', 'program menengah', 'learning program intermediate'],
-  advanced: ['lanjutan', 'mahir', 'program lanjutan', 'learning program advanced'],
+  basic: ['b', 'dasar', 'program dasar', 'learning program basic'],
+  intermediate: ['i', 'menengah', 'program menengah', 'learning program intermediate'],
+  advanced: ['a', 'advance', 'lanjutan', 'mahir', 'program lanjutan', 'learning program advanced'],
 };
 
 module.exports = { EMPLOYEE_FIELDS, employeeFinder, employeeError, NOT_FOUND, TIER_CHOICES };

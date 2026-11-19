@@ -12,6 +12,7 @@ const unauthorized = (msg = 'Perlu login') => new HttpError(401, 'UNAUTHORIZED',
 const forbidden = (code = 'FORBIDDEN', msg = 'Akses ditolak') => new HttpError(403, code, msg);
 const notFound = (msg = 'Tidak ditemukan') => new HttpError(404, 'NOT_FOUND', msg);
 const badRequest = (msg) => new HttpError(400, 'BAD_REQUEST', msg);
+const conflict = (msg = 'Data bentrok dengan yang sudah ada') => new HttpError(409, 'CONFLICT', msg);
 
 function errorHandler(err, _req, res, _next) {
   const status = err.status || 500;
@@ -22,4 +23,4 @@ function errorHandler(err, _req, res, _next) {
   res.status(status).json({ error: { code: err.code || 'INTERNAL', message } });
 }
 
-module.exports = { HttpError, unauthorized, forbidden, notFound, badRequest, errorHandler };
+module.exports = { HttpError, unauthorized, forbidden, notFound, badRequest, conflict, errorHandler };

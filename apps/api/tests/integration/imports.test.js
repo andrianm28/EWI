@@ -56,7 +56,7 @@ run('Impor file R3-3 (Postgres)', () => {
 
   it('template bisa diunduh (XLSX + CSV) dan hanya untuk HR', async () => {
     const list = await request(app).get('/api/dna/imports/templates').set(as('hr'));
-    expect(list.body.data.map((k) => k.key)).toEqual(['dna_job_levels', 'employees', 'dna_competencies', 'dna_completions', 'dna_results']);
+    expect(list.body.data.map((k) => k.key)).toEqual(['dna_job_levels', 'employees', 'dna_job_functions', 'dna_competencies', 'dna_completions', 'dna_results']);
     const tnaList = await request(app).get('/api/tna/imports/templates').set(as('hr'));
     expect(tnaList.body.data.map((k) => k.key)).toEqual(['employees', 'tna_performance']);
     const file = await request(app).get('/api/tna/imports/templates/tna_performance.xlsx').set(as('hr')).buffer(true)
@@ -129,6 +129,27 @@ run('Impor file R3-3 (Postgres)', () => {
     expect(comps.find((c) => c.name === 'Triase tiket')).toMatchObject({ kind: 'job', source: 'dacum', importance: 5, indicators: ['Mengenali prioritas', 'Eskalasi tepat'] });
     expect(comps.find((c) => c.name === 'Komunikasi pelanggan')).toMatchObject({ kind: 'core', requiredScore: 2 });
 
+    // 3b. B4: job function, lalu melengkapi kamus yang sudah ada dengan kode, level program, dan job function
+    up = await upload('dna', 'dna_job_functions', 'jf.csv', csv(['Job Role,No,Job Function', 'Service Desk,1,Penanganan tiket', 'Service Desk,,Eskalasi', 'Service Desk,1,Bentrok nomor']));
+    done = await request(app).post(`/api/dna/imports/batches/${up.body.data.id}/commit`).set(as('hr')).send({});
+    expect(done.body.data.result).toMatchObject({ imported: 2, rejectedCount: 1, jobFunctions: 2 });
+    up = await upload('dna', 'dna_competencies', 'kamus-b4.csv', csv([
+      'Job Role,Jenjang,Kompetensi,Kode,Rumpun,Level,Job Function',
+      'Service Desk,Junior,Triase tiket,SD-B1,Specific Technical,B,1; 2',
+      'Service Desk,,Penulisan laporan,SD-I1,Non-Technical,Intermediate,2',
+      'Service Desk,,Kode kembar,sd-b1,,,',
+      'Service Desk,,JF tidak ada,SD-X,,,9',
+    ]));
+    expect(up.body.data.mapping).toMatchObject({ code: 'Kode', stream: 'Rumpun', programTier: 'Level', jobFunctions: 'Job Function', careerLevel: 'Jenjang' });
+    done = await request(app).post(`/api/dna/imports/batches/${up.body.data.id}/commit`).set(as('hr')).send({});
+    expect(done.body.data.result).toMatchObject({ imported: 2, rejectedCount: 2, competencies: 1, updated: 1 });
+    const sdRole = (await request(app).get('/api/dna/job-roles').set(as('hr'))).body.data.find((r) => r.name === 'Service Desk');
+    const dict = (await request(app).get(`/api/dna/job-roles/${sdRole.id}/dictionary`).set(as('hr'))).body.data;
+    expect(dict.jobFunctions.map((f) => [f.order, f.name, f.competencyCount])).toEqual([[1, 'Penanganan tiket', 1], [2, 'Eskalasi', 2]]);
+    expect(dict.competencies.map((c) => [c.code, c.name, c.programTier, c.jobFunctionIds.length])).toEqual([['SD-B1', 'Triase tiket', 'basic', 2], ['SD-I1', 'Penulisan laporan', 'intermediate', 1]]);
+    // kolom lama kompetensi yang diperbarui tidak berubah
+    expect((await request(app).get('/api/dna/competencies').set(as('hr'))).body.data.find((c) => c.name === 'Triase tiket')).toMatchObject({ source: 'dacum', importance: 5, stream: 'Specific Technical' });
+
     // 4. Status lulus program
     up = await upload('dna', 'dna_completions', 'lulus.csv', csv(['Email,Program,Status,Tanggal Lulus', 'dimas@imp.test,dasar,lulus,30/10/2026', 'nobody@imp.test,basic,lulus,']));
     done = await request(app).post(`/api/dna/imports/batches/${up.body.data.id}/commit`).set(as('hr')).send({});
@@ -167,12 +188,12 @@ run('Impor file R3-3 (Postgres)', () => {
 
     // Riwayat + audit; baris mentah dibuang setelah disimpan
     const hist = (await request(app).get('/api/dna/imports/batches').set(as('hr'))).body.data;
-    expect(hist.length).toBe(5);
+    expect(hist.length).toBe(7);
     expect(hist.every((b) => b.status === 'committed' && b.createdByName === 'hr')).toBe(true);
     const [{ n }] = await db.query(`SELECT count(*)::int AS n FROM import_batches WHERE tenant_id = :t AND (jsonb_typeof(rows) <> 'array' OR jsonb_array_length(rows) > 0)`, { replacements: { t: tenant.id }, type: 'SELECT' });
     expect(n).toBe(0);
     const audits = await db.query(`SELECT resource FROM audit_logs WHERE tenant_id = :t AND action = 'create' AND resource LIKE 'import.%'`, { replacements: { t: tenant.id }, type: 'SELECT' });
-    expect(audits.length).toBe(6);
+    expect(audits.length).toBe(8);
   });
 
   it('isolasi tenant dan validasi unggahan', async () => {

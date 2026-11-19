@@ -7,13 +7,14 @@ const express = require('express');
 const { FLAGS, requireFlag } = require('../../core/flags');
 const { requireRole, ROLES } = require('../../core/rbac');
 const { scopeFor, inScope } = require('../../core/rbac/scope');
-const { badRequest, notFound, HttpError } = require('../../core/errors');
+const { badRequest, notFound, conflict, HttpError } = require('../../core/errors');
 const { interviewRouter, wrap } = require('../interviews');
 const { computeGap } = require('./gap');
 const { careerStatus } = require('./career');
 const { importRouter } = require('../imports');
 const { getKind } = require('../imports/kinds');
 const { validateRows, commitRows } = require('../imports/engine');
+const { developmentRoutes, isUuid, orConflict } = require('./development-routes');
 
 const TIERS = ['basic', 'intermediate', 'advanced'];
 const KINDS = ['core', 'job'];
@@ -28,13 +29,25 @@ function validateCompetency(b) {
   if (c.source && !SOURCES.includes(c.source)) return `source harus salah satu: ${SOURCES.join(', ')}`;
   if (c.requiredScore != null && !(Number.isInteger(c.requiredScore) && c.requiredScore >= 0 && c.requiredScore <= 4)) return 'requiredScore 0-4';
   if (c.importance != null && !(Number.isInteger(c.importance) && c.importance >= 1 && c.importance <= 5)) return 'importance 1-5';
+  return validateDictionaryFields(c, { hasJobRole: Boolean(c.jobRoleId) });
+}
+
+/** B4: kode modul, rumpun, dan tingkat program (BIA). Kode hanya untuk kompetensi yang punya job role. */
+function validateDictionaryFields(c, { hasJobRole }) {
+  if (c.code != null && (typeof c.code !== 'string' || !c.code.trim() || c.code.trim().length > 32)) return 'code harus teks 1-32 karakter';
+  if (c.code != null && !hasJobRole) return 'code hanya untuk kompetensi yang punya jobRoleId';
+  if (c.stream != null && (typeof c.stream !== 'string' || c.stream.trim().length > 64)) return 'stream maksimal 64 karakter';
+  if (c.programTier != null && !TIERS.includes(c.programTier)) return 'programTier harus basic, intermediate, atau advanced';
   return null;
 }
+const cleanCode = (v) => (v == null ? null : String(v).trim());
+const cleanText = (v) => (v == null || !String(v).trim() ? null : String(v).trim());
 
 const toCompetency = (c) => ({
   jobRoleId: c.jobRoleId || null, careerLevelId: c.careerLevelId || null, kind: c.kind, name: String(c.name),
   definition: c.definition || null, indicators: Array.isArray(c.indicators) ? c.indicators : [],
   source: c.source || 'hr_rule', requiredScore: c.requiredScore ?? 3, importance: c.importance ?? 3,
+  code: cleanCode(c.code), stream: cleanText(c.stream), programTier: c.programTier || null,
 });
 
 /** Profil DNA beberapa karyawan sekaligus (dashboard). */
@@ -90,10 +103,60 @@ module.exports = {
     r.get('/competencies', wrap(async (req, res) => {
       res.json({ data: await stores.dna.listCompetencies(req.tenantId, { jobRoleId: req.query.jobRoleId, careerLevelId: req.query.careerLevelId }) });
     }));
+    /** A12: jobRoleId/careerLevelId di body harus milik tenant (dan jenjang milik job role itu), selain itu 400. */
+    async function positionError(tenantId, items) {
+      const roles = await stores.dna.listJobRoles(tenantId);
+      for (const [index, c] of items.entries()) {
+        if (!c.jobRoleId && c.careerLevelId) return { index, error: 'careerLevelId butuh jobRoleId' };
+        if (!c.jobRoleId) continue;
+        const role = roles.find((x) => x.id === c.jobRoleId);
+        if (!role) return { index, error: 'jobRoleId bukan jabatan di organisasi ini' };
+        if (c.careerLevelId && !role.levels.some((l) => l.id === c.careerLevelId)) return { index, error: 'careerLevelId bukan jenjang dari job role ini' };
+      }
+      return null;
+    }
+    /** Kode unik per jabatan tanpa beda huruf besar/kecil: cek di dalam batch dan terhadap kamus, sebelum menulis. */
+    async function assertCodesFree(tenantId, items, exceptId) {
+      const seen = new Set(); const existing = new Map();
+      for (const c of items.filter((x) => x.code != null)) {
+        const key = `${c.jobRoleId}|${cleanCode(c.code).toLowerCase()}`;
+        if (seen.has(key)) throw conflict(`Kode ${cleanCode(c.code)} muncul lebih dari sekali untuk jabatan yang sama`);
+        seen.add(key);
+        if (!existing.has(c.jobRoleId)) existing.set(c.jobRoleId, await stores.dna.listCompetencies(tenantId, { jobRoleId: c.jobRoleId }));
+        if (existing.get(c.jobRoleId).some((x) => x.id !== exceptId && x.code && x.code.toLowerCase() === cleanCode(c.code).toLowerCase())) {
+          throw conflict(`Kode ${cleanCode(c.code)} sudah dipakai di jabatan ini`);
+        }
+      }
+    }
+    const CODE_TAKEN = 'Kode kompetensi sudah dipakai di jabatan ini';
+
     r.post('/competencies', hr, wrap(async (req, res) => {
       const err = validateCompetency(req.body);
       if (err) throw badRequest(err);
-      res.status(201).json({ data: await stores.dna.createCompetency(req.tenantId, toCompetency(req.body)) });
+      const pos = await positionError(req.tenantId, [req.body]);
+      if (pos) throw badRequest(pos.error);
+      await assertCodesFree(req.tenantId, [req.body]);
+      res.status(201).json({ data: await orConflict(stores.dna.createCompetency(req.tenantId, toCompetency(req.body)), CODE_TAKEN) });
+    }));
+    // B4: melengkapi/koreksi kamus yang sudah ada. Perubahan mereset pengesahan (A7).
+    r.patch('/competencies/:id', hr, wrap(async (req, res) => {
+      const current = isUuid(req.params.id) ? await stores.dna.getCompetency(req.tenantId, req.params.id) : null;
+      if (!current) throw notFound('Kompetensi tidak ditemukan');
+      const b = req.body || {};
+      const patch = {};
+      for (const k of ['name', 'definition', 'code', 'stream', 'programTier', 'requiredScore', 'importance']) if (b[k] !== undefined) patch[k] = b[k];
+      if (!Object.keys(patch).length) throw badRequest('Tidak ada kolom yang diubah');
+      if (patch.name !== undefined && (typeof patch.name !== 'string' || !patch.name.trim())) throw badRequest('name wajib diisi');
+      if (patch.requiredScore != null && !(Number.isInteger(patch.requiredScore) && patch.requiredScore >= 0 && patch.requiredScore <= 4)) throw badRequest('requiredScore 0-4');
+      if (patch.importance != null && !(Number.isInteger(patch.importance) && patch.importance >= 1 && patch.importance <= 5)) throw badRequest('importance 1-5');
+      if (patch.requiredScore === null || patch.importance === null) throw badRequest('requiredScore dan importance tidak boleh dikosongkan');
+      const err = validateDictionaryFields(patch, { hasJobRole: Boolean(current.jobRoleId) });
+      if (err) throw badRequest(err);
+      if (patch.name !== undefined) patch.name = patch.name.trim();
+      if (patch.code !== undefined) patch.code = cleanCode(patch.code);
+      if (patch.stream !== undefined) patch.stream = cleanText(patch.stream);
+      if (patch.code) await assertCodesFree(req.tenantId, [{ jobRoleId: current.jobRoleId, code: patch.code }], current.id);
+      res.json({ data: await orConflict(stores.dna.updateCompetency(req.tenantId, current.id, patch), CODE_TAKEN) });
     }));
     // Impor massal (mis. dari dokumen jenjang HR atau hasil DACUM yang sudah ada)
     r.post('/competencies/bulk', hr, wrap(async (req, res) => {
@@ -101,8 +164,11 @@ module.exports = {
       if (!Array.isArray(items) || !items.length || items.length > 500) throw badRequest('items wajib berisi 1-500 kompetensi');
       const errors = items.map((c, i) => ({ index: i, error: validateCompetency(c) })).filter((e) => e.error);
       if (errors.length) return res.status(400).json({ error: { code: 'BAD_REQUEST', message: 'Sebagian kompetensi tidak valid', details: errors } });
+      const pos = await positionError(req.tenantId, items);
+      if (pos) return res.status(400).json({ error: { code: 'BAD_REQUEST', message: 'Sebagian kompetensi tidak valid', details: [pos] } });
+      await assertCodesFree(req.tenantId, items);
       const created = [];
-      for (const c of items) created.push(await stores.dna.createCompetency(req.tenantId, toCompetency(c)));
+      for (const c of items) created.push(await orConflict(stores.dna.createCompetency(req.tenantId, toCompetency(c)), CODE_TAKEN));
       return res.status(201).json({ data: created });
     }));
     r.post('/competencies/:id/approve', hr, wrap(async (req, res) => {
@@ -110,6 +176,9 @@ module.exports = {
       if (!row) throw notFound('Kompetensi tidak ditemukan');
       res.json({ data: row });
     }));
+
+    // B4: kamus per job function, kurikulum BIA, tahap dan rencana pengembangan
+    developmentRoutes(r, { stores, audit });
 
     // RG-1c terbuka: wawancara SME -> DACUM belum dibangun.
     r.post('/dacum/sessions', hr, (_req, _res, next) => next(new HttpError(501, 'DECISION_PENDING',

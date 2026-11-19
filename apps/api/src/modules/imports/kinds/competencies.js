@@ -1,6 +1,9 @@
 'use strict';
 // Kamus kompetensi (RG-1a: semua sumber boleh, dicatat di kolom source). Duplikat di kamus tidak dibuat ulang.
+// B4: kolom Kode, Rumpun, Level Program (BIA), dan Job Function. Baris yang kompetensinya sudah ada dan mengisi
+// salah satu kolom B4 memperbarui kompetensi itu (hanya kolom B4), sehingga kamus POC bisa dilengkapi.
 const v = require('../values');
+const { TIER_CHOICES } = require('./common');
 
 const SOURCE_CHOICES = { hr_rule: ['aturan hr', 'hr', 'dokumen hr'], dacum: ['dacum'], cca: ['cca'], both: ['keduanya', 'hr + dacum'] };
 const KIND_CHOICES = { job: ['jabatan', 'teknis', 'kompetensi jabatan'], core: ['inti', 'umum', 'kompetensi inti'] };
@@ -8,11 +11,11 @@ const KIND_CHOICES = { job: ['jabatan', 'teknis', 'kompetensi jabatan'], core: [
 module.exports = {
   key: 'dna_competencies',
   label: 'Kamus kompetensi',
-  description: 'Kompetensi per job role/jenjang dengan skor minimal (0-4) dan bobot kepentingan.',
+  description: 'Kompetensi per job role/jenjang dengan skor minimal (0-4), bobot kepentingan, kode modul, rumpun, dan level program.',
   submodules: ['dna'],
   fields: [
     { key: 'jobRole', header: 'Job Role', aliases: ['jabatan', 'posisi'], example: 'Service Delivery L1', help: 'Kosongkan untuk kompetensi inti yang berlaku semua job role.' },
-    { key: 'careerLevel', header: 'Jenjang', aliases: ['level', 'grade'], example: 'Junior', help: 'Kosong = berlaku semua jenjang job role ini.' },
+    { key: 'careerLevel', header: 'Jenjang', aliases: ['grade', 'jenjang karier'], example: 'Junior', help: 'Jenjang karier (mis. Junior/Senior), bukan Basic/Intermediate/Advanced. Kosong = berlaku semua jenjang job role ini.' },
     { key: 'kind', header: 'Jenis', aliases: ['jenis kompetensi', 'kind', 'tipe'], example: 'jabatan', help: 'jabatan atau inti. Kosong = jabatan bila Job Role diisi.' },
     { key: 'name', header: 'Kompetensi', required: true, aliases: ['nama kompetensi', 'competency', 'kompetensi'], example: 'Memahami kontrak proyek' },
     { key: 'definition', header: 'Definisi', aliases: ['deskripsi', 'definition'], example: 'Mampu membaca SLA dan ruang lingkup kontrak' },
@@ -20,11 +23,19 @@ module.exports = {
     { key: 'requiredScore', header: 'Skor Minimal', aliases: ['skor minimum', 'target skor', 'required score', 'standar'], example: 3, help: '0-4, default 3.' },
     { key: 'importance', header: 'Kepentingan', aliases: ['bobot', 'importance', 'prioritas'], example: 4, help: '1-5, default 3.' },
     { key: 'source', header: 'Sumber', aliases: ['source', 'asal'], example: 'dacum', help: 'aturan hr (default), dacum, cca, atau keduanya.' },
+    { key: 'code', header: 'Kode', aliases: ['kode modul', 'kode kompetensi', 'code'], example: 'ST-B4', help: 'Kode modul, unik per job role. Butuh Job Role.' },
+    { key: 'stream', header: 'Rumpun', aliases: ['stream', 'kelompok', 'rumpun kompetensi'], example: 'Specific Technical' },
+    { key: 'programTier', header: 'Level Program', aliases: ['level', 'tingkat', 'tingkat program', 'bia'], example: 'basic', help: 'basic (B), intermediate (I), atau advanced (A). Menentukan kurikulum dan tahap pengembangan.' },
+    { key: 'jobFunctions', header: 'Job Function', aliases: ['jf', 'no jf', 'nomor job function'], example: '1; 3', help: 'Nomor job function jabatan ini, pisahkan dengan titik koma. Impor Job function dulu.' },
   ],
   async context({ stores, tenantId }) {
     const [roles, comps] = await Promise.all([stores.dna.listJobRoles(tenantId), stores.dna.listCompetencies(tenantId)]);
     const keyOf = (c) => `${c.jobRoleId || ''}|${c.careerLevelId || ''}|${c.name.trim().toLowerCase()}`;
-    return { roles, existing: new Set(comps.map(keyOf)), keyOf, seen: new Set() };
+    const jobFunctions = new Map(); // jobRoleId -> Map(nomor -> id)
+    for (const r of roles) jobFunctions.set(r.id, new Map((await stores.dna.listJobFunctions(tenantId, r.id)).map((f) => [f.order, f.id])));
+    const codeKey = (jobRoleId, code) => `${jobRoleId}|${code.trim().toLowerCase()}`;
+    const codes = new Map(comps.filter((c) => c.code).map((c) => [codeKey(c.jobRoleId, c.code), c.id]));
+    return { roles, existing: new Map(comps.map((c) => [keyOf(c), c.id])), keyOf, seen: new Set(), jobFunctions, codeKey, codes };
   },
   validate(row, ctx) {
     const name = v.text(row.name);
@@ -50,15 +61,47 @@ module.exports = {
     if (!(importance >= 1 && importance <= 5)) return { error: 'Kepentingan harus bilangan bulat 1-5' };
     const source = v.blank(row.source) ? 'hr_rule' : v.choice(row.source, SOURCE_CHOICES);
     if (!source) return { error: 'Sumber harus aturan hr, dacum, cca, atau keduanya' };
+    // --- kolom B4 ---
+    const code = v.text(row.code) || null;
+    if (code && !jobRoleId) return { error: 'Kode butuh Job Role' };
+    if (code && code.length > 32) return { error: 'Kode maksimal 32 karakter' };
+    const stream = v.text(row.stream) || null;
+    if (stream && stream.length > 64) return { error: 'Rumpun maksimal 64 karakter' };
+    const programTier = v.blank(row.programTier) ? null : v.choice(row.programTier, TIER_CHOICES);
+    if (!v.blank(row.programTier) && !programTier) return { error: 'Level Program harus basic, intermediate, atau advanced' };
+    let jobFunctionIds = null; // null = kolom kosong, pemetaan tidak disentuh
+    if (!v.blank(row.jobFunctions)) {
+      if (!jobRoleId || kind !== 'job') return { error: 'Job Function hanya untuk kompetensi jabatan' };
+      const known = ctx.jobFunctions.get(jobRoleId);
+      const numbers = v.text(row.jobFunctions).split(/[;,]/).map((s) => s.trim().replace(/^jf\s*/i, '')).filter(Boolean).map((s) => v.integer(s));
+      const bad = numbers.find((n) => !known.has(n));
+      if (bad !== undefined) return { error: Number.isNaN(bad) ? 'Job Function berisi nomor, pisahkan dengan titik koma' : `Job function nomor ${bad} belum ada di job role ${jr.name}` };
+      jobFunctionIds = [...new Set(numbers.map((n) => known.get(n)))];
+    }
     const key = ctx.keyOf({ jobRoleId, careerLevelId, name });
-    if (ctx.existing.has(key)) return { error: 'Kompetensi ini sudah ada di kamus' };
+    const existingId = ctx.existing.get(key);
+    const hasB4 = Boolean(code || stream || programTier || jobFunctionIds);
+    if (existingId && !hasB4) return { error: 'Kompetensi ini sudah ada di kamus' };
     if (ctx.seen.has(key)) return { error: 'Kompetensi muncul lebih dari sekali di file' };
+    if (code) {
+      const ck = ctx.codeKey(jobRoleId, code);
+      const owner = ctx.codes.get(ck);
+      const self = existingId || `baris:${key}`; // baris baru dikenali lewat kunci kamusnya
+      if (owner !== undefined && owner !== self) return { error: `Kode ${code} sudah dipakai kompetensi lain di job role ini` };
+      ctx.codes.set(ck, self);
+    }
     ctx.seen.add(key);
+    if (existingId) return { value: { id: existingId, patch: { ...(code && { code }), ...(stream && { stream }), ...(programTier && { programTier }) }, jobFunctionIds } };
     const indicators = v.text(row.indicators).split(/[;\n]/).map((s) => s.trim()).filter(Boolean);
-    return { value: { jobRoleId, careerLevelId, kind, name, definition: v.text(row.definition) || null, indicators, requiredScore, importance, source } };
+    return { value: { jobRoleId, careerLevelId, kind, name, definition: v.text(row.definition) || null, indicators, requiredScore, importance, source, code, stream, programTier, jobFunctionIds } };
   },
   async commit({ stores, tenantId, values }) {
-    for (const c of values) await stores.dna.createCompetency(tenantId, c);
-    return { competencies: values.length };
+    let created = 0; let updated = 0;
+    for (const { jobFunctionIds, ...c } of values) {
+      let id = c.id;
+      if (id) { await stores.dna.updateCompetency(tenantId, id, c.patch); updated += 1; } else { id = (await stores.dna.createCompetency(tenantId, c)).id; created += 1; }
+      if (jobFunctionIds) await stores.dna.setCompetencyJobFunctions(tenantId, id, jobFunctionIds);
+    }
+    return { competencies: created, updated };
   },
 };
