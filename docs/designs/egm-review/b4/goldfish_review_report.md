@@ -1,5 +1,7 @@
 # Goldfish Annotated Review Report · B4
 
+**Status:** resolved (19 Nov). Semua PROPOSE FIX diterapkan di spek dan kode PR #22; R10 bagian kode (bungkus commit per baris) diturunkan ke ⏳ di §10 spek; nit "test lima baris nol" sudah ada di test unit distribusi tahap.
+
 **Target:** `docs/designs/b4-developmental-needs.md` (full file)
 **Sumber temuan:** tahap 5–9 egm-review (`zoom_out_report.md`, `comprehension_report.md`, `critic_report.md`, `intermediate_zoom_out_report.md`, `implementation_readiness_report.md`).
 **Kategori egm-resolve:** PROPOSE FIX, CONTEST, ESCALATE, DECLINE. Temuan yang sama dari beberapa reviewer digabung.

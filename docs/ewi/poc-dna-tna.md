@@ -14,9 +14,10 @@ arahan cadence 11 Nov (Ahmad Gilang) yang ditetapkan berlaku penuh pada 12 Nov:
 - **F6-A** (grilling komersial 13 Nov, menggantikan RG-1d): DNA = impor/bangun kamus kompetensi + asesmen
   gap individu yang proaktif; TNA tetap reaktif terhadap masalah kinerja. Kode POC sudah sesuai (gap individu
   ada di DNA lewat `lna_assessments`; TNA dipicu target merah), jadi tidak ada perubahan.
-- **G2-A** (13 Nov): rekomendasi promosi adalah modul terpisah, di luar POC. Kode tetap ada tetapi di balik
-  flag `promotion.recommendation` (default mati): `GET /api/dna/promotion-candidates` 403 dan
-  `career.promotionCandidate` tidak dikirim. G4: pilot Desember 2026 (1 bulan).
+- **G2-A** (13 Nov): rekomendasi promosi adalah modul terpisah, di luar POC. **Diganti "ya revisi" 19 Nov:**
+  promosi masuk janji 2 Des sebagai Career & Promotion (B16, `docs/designs/b16-career-promotion.md`), tetap di
+  balik flag `promotion.recommendation` (default mati): flag mati → `GET /api/dna/promotion-candidates` dan
+  `/api/dna/career/*` 403, `career.promotionCandidate` tidak dikirim. G4: pilot Desember 2026 (1 bulan).
 - **G3-A** (13 Nov): nama produk resmi **ELGOS**. Teks yang dibaca orang memakai ELGOS; identifier teknis
   (schema `ewi`, variabel `EWI_*`, audience JWT `ewi`, path `docs/ewi/`) belum diganti dan menunggu keputusan user.
 - **C4** TNA bisa berjalan tanpa DACUM/DNA: karyawan tanpa job role atau kamus kompetensi tetap bisa
@@ -33,7 +34,7 @@ INA tidak ikut POC (RG-4): temuan non-training tetap direkam, disembunyikan sela
 | Career & Promotion (B16) | `GET /api/dna/career/map`, `GET /api/dna/career/employees/:id/evidence`, `GET /api/dna/career/paths`, `GET /api/dna/career/decisions`, `POST /api/dna/career/decisions/:id/supervisor`, `POST /api/dna/career/decisions/:id/hr` | Di balik flag `promotion.recommendation`. Status jenjang dari program lulus dan pencapaian OKR (ambang `dna.promotion.okrMin`, default 80). Keputusan dua tahap: atasan langsung merekomendasi, HR menyetujui. Menyetujui tidak mengubah jenjang. Spek: `docs/designs/b16-career-promotion.md`. |
 | Posisi & program | `PUT /api/dna/employees/:id/position`, `POST /api/dna/program-completions` | Status lulus Basic/Intermediate/Advanced, sumber `manual` (HR). |
 | Hasil DNA manual (C2) | `POST /api/dna/assessments/import` (rows JSON) atau impor file R3-3 | HR mengunggah: `employeeId`/`email`, `competency` (nama di kamus) atau `competencyId`, `score` 0–4, `evidence`. Pewawancara dan tanggal wawancara dicatat; baris tak dikenal ditolak per baris. Sumber skor (`manual_interview`, `ai_interview`, `eta_review`) tampil di detail karyawan. |
-| Gap & karier | `GET /api/dna/employees`, `GET /api/dna/employees/:id`, `GET /api/dna/promotion-candidates` | Gap = skor terbaru vs skor minimal (0–4). Kandidat promosi (sudah lulus program jenjang berikutnya) hanya bila flag `promotion.recommendation` aktif (G2-A). |
+| Gap & karier | `GET /api/dna/employees`, `GET /api/dna/employees/:id`, `GET /api/dna/promotion-candidates` | Gap = skor terbaru vs skor minimal (0–4). Kandidat promosi lama (sudah lulus program jenjang berikutnya, tanpa OKR) hanya bila flag `promotion.recommendation` aktif, dan hanya untuk HR/Super Admin; atasan memakai Career & Promotion (B16 C14). |
 | Wawancara AI (teks) | `/api/{dna,tna}/sessions` (+ `/:id/consent`, `/:id/turns`, `/:id/complete`) | Persetujuan wajib sebelum pertanyaan pertama. Analisis lewat port AI. Sesi DNA butuh flag `dna.ai_interview` (403 `FEATURE_DISABLED` bila mati). |
 | Data kinerja | `POST /api/tna/performance/import`, `GET /api/tna/performance` | OKR/KPI/SLA, arah target higher/lower, baris tak dikenal ditolak per baris. |
 | Aturan KPI (PK-20) | `GET/PUT /api/tna/kpi-rules` | Arah + toleransi per KPI (PM-1 ★ B). Kolom Toleransi di template kinerja; kosong = aturan tersimpan atau 0. Aturan berubah (lewat impor atau PUT) -> status semua periode KPI itu dihitung ulang dan diaudit (`tna.kpi_rule`). Sesi wawancara yang sudah terjadwal tidak dibatalkan otomatis. |
@@ -52,7 +53,7 @@ Visibilitas (RG-3) berlaku di semua endpoint data karyawan: learner dirinya, ata
 | RG-1a sumber kamus kompetensi | Semua sumber boleh masuk, dicatat di kolom `source` | `src/modules/dna` |
 | RG-1b sumber status lulus | Hanya input manual HR; Sync Back belum disambungkan | `lna_program_completions.source` |
 | RG-1c alur wawancara SME/DACUM | `POST /api/dna/dacum/sessions` -> 501 `DECISION_PENDING` | `src/modules/dna` |
-| RG-1e kandidat promosi untuk atasan | Default paling sempit: hanya HR | `settings.dna.promotionVisibleTo` |
+| RG-1e kandidat promosi untuk atasan | Default sejak B16: HR dan atasan (`['hr_admin','supervisor']`, mengikuti mockup final 19 Nov) untuk Career & Promotion; endpoint lama tetap khusus HR | `settings.dna.promotionVisibleTo` |
 | RG-1g kekhususan klien | Disimpan di `tenants.settings` | `src/core/settings` |
 | BT-30 rumus Pareto | Rumus ★ (meleset × orang × kepentingan), komponen bisa dimatikan | `settings.tna.pareto` |
 | BT-31 alur request training | HR dan atasan sama-sama bisa mengubah status | `PATCH /api/tna/plan-items/:id` |

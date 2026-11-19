@@ -1,5 +1,7 @@
 # Goldfish Annotated Review Report · B16
 
+**Status:** resolved (19 Nov). Semua PROPOSE FIX diterapkan di spek dan kode PR #22; S6 dieskalasi (§8 spek, pertanyaan di PR); S7 dibantah (§7 spek, baris `cp` B0 §5.2); S15/S16 ⏳ di §8.
+
 **Target:** `docs/designs/b16-career-promotion.md` (full file)
 **Sumber temuan:** tahap 5–9 egm-review di folder ini.
 

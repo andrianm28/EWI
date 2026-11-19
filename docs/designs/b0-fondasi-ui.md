@@ -122,13 +122,13 @@ Mockup punya lima tampilan. Kuncinya dipakai di seluruh web app:
 | hr, atasan | grup Learning Needs Analysis | grup `lna` | punya anak yang tampil |
 | hr | Core Competencies | `cc` | submodul `cca` |
 | atasan | Wawancara AI | `aiv` | submodul `cca` |
-| hr, atasan | Developmental Needs | `dna` | submodul `dna` |
+| hr, atasan | Developmental Needs | `dna` | submodul `dna`; layar B4 juga butuh flag `dna.development`, selain itu dialihkan ke `/m/dna` (B4 §11) |
 | hr, atasan | Training Needs | `tna` | submodul `tna` |
 | hr, atasan | Improvement Needs | `ina` | submodul `ina` |
 | hr | grup Learning Intervention: Library, Program & Course, Permintaan & pengembangan | `lib`, `prog`, `req` | flag `module.li` |
 | hr | Learning Delivery | `ld` | flag `module.ld` |
 | hr, atasan | Learning Impact Measurement | `lim` | flag `module.lim` |
-| hr, atasan | Career & Promotion | `cp` | flag `promotion.recommendation` |
+| hr, atasan | Career & Promotion | `cp` | flag `promotion.recommendation` + submodul `dna` (setara API `requireSubmodule('dna')`; bukan `meta.entitlement 'full_suite'`, lihat B16 §7) |
 | karyawan | Hasil saya | `my` | rute ada |
 | karyawan | Wawancara visi & nilai | `aiv` | submodul `cca` |
 | karyawan | Wawancara akar masalah | `iv` | submodul `tna` |

@@ -1,12 +1,20 @@
-# B4 · Developmental Needs (backend)
+# B4 · Developmental Needs
 
 - Submodul: DNA
 - Paket: B4 (brief bangun penuh 19 Nov, thread T3)
-- Flag: `module.dna` (sudah ada). Tidak ada flag baru: seluruh endpoint baru berada di router `dna` yang sudah dipasang lewat `requireSubmodule('dna')`.
+- Flag: `module.dna` (sudah ada, lewat `requireSubmodule('dna')`) **dan flag baru `dna.development`** (default mati). Semua endpoint B4 di §6 memakai `requireFlag(flags, FLAGS.DNA_DEVELOPMENT)`; flag mati → 403 `FEATURE_DISABLED`, endpoint POC DNA tetap jalan. Layar `/dna` mengalihkan ke halaman POC `/m/dna` bila flag mati (§11).
 - Migrasi: blok 04 → `20261119000400-dna-developmental-needs.js`
-- Cakupan: API, domain, store, impor, test, dan layar Vue di atas B0 (`apps/web/src/screens/b4-dna`, rute `dna` di `/dna`). Sesi thread ini hanya boleh push ke satu branch, jadi B4, B16, dan layarnya berada di satu PR dengan commit terpisah.
-- Reviewer wajib: Andrian (migrasi, `core/errors`, kode impor bersama).
-- Gerbang: `npm run lint`, `npm test`, `npm run build`, `npm run e2e` (e2e tidak berubah di tahap backend).
+- Cakupan: API, domain, store, impor, test, dan layar Vue di atas B0 (`apps/web/src/screens/b4-dna`, rute `dna` di `/dna`). Sesi thread ini hanya boleh push ke satu branch, jadi B4, B16, dan layarnya berada di satu PR (#22) dengan commit terpisah.
+- Reviewer wajib: Andrian (migrasi, `core/errors`, `core/flags`, kode impor bersama).
+- Gerbang: `npm run lint`, `npm test`, `npm run build`, `npm run e2e`.
+
+Sumber acuan:
+
+- Mockup Pak Eji (final, 19 Nov): layar "Developmental Needs" (`s.dna`) di `Main.dc.html` (salinan di folder proyek `mockup-pak-eji/`; aslinya https://claude.ai/artifact/3pRkbt7pJexZqgnFsUGJud).
+- Brief bangun penuh 19 Nov (`/mnt/project-files/elgos-eksekusi/brief-bangun-penuh-19nov.md`), bagian T3 dan default K1–K4.
+- **B0** = `docs/designs/b0-fondasi-ui.md` (cangkang layar, menu, kontrak rute).
+- Kode keputusan: **Q12** skala skor 0–4 (grilling BRD), **RG-3** visibilitas data karyawan, **R2-2** audit baca data individu, **F6-A** DNA = impor/bangun kamus + asesmen proaktif (formulir komersial Pak Eji 13 Nov). Log keputusan di `/mnt/project-files/ewi-grilling/`.
+- `CLAUDE.md` repo ini (aturan arsitektur 1–7).
 
 ## 1. Tujuan
 
@@ -41,37 +49,13 @@ Di luar cakupan B4: kartu "Agen AI · Validasi kamus kompetensi" (wawancara AI, 
 
 ## 4. Data dan migrasi
 
-`20261119000400-dna-developmental-needs.js` (raw SQL, schema `ewi`, punya `down`):
+`20261119000400-dna-developmental-needs.js` (raw SQL, schema `ewi`, punya `down`).
 
-```sql
-ALTER TABLE lna_competencies
-  ADD COLUMN code varchar(32),
-  ADD COLUMN stream varchar(64),
-  ADD COLUMN program_tier varchar(16) CHECK (program_tier IN ('basic','intermediate','advanced'));
--- kode unik per jabatan, tanpa beda huruf besar/kecil; kode hanya boleh pada kompetensi yang punya job role
-ALTER TABLE lna_competencies ADD CONSTRAINT lna_competencies_code_role_ck CHECK (code IS NULL OR job_role_id IS NOT NULL);
-CREATE UNIQUE INDEX lna_competencies_code_uq ON lna_competencies (tenant_id, job_role_id, lower(code)) WHERE code IS NOT NULL;
+(Ringkasan; DDL lengkap ada di file migrasi.)
 
-CREATE TABLE lna_job_functions (
-  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  tenant_id uuid NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
-  job_role_id uuid NOT NULL REFERENCES lna_job_roles(id) ON DELETE CASCADE,
-  fn_order smallint NOT NULL CHECK (fn_order >= 1),  -- nomor JF
-  name varchar(255) NOT NULL,
-  created_at timestamptz NOT NULL DEFAULT now(),
-  UNIQUE (job_role_id, fn_order)
-);
-CREATE UNIQUE INDEX lna_job_functions_name_uq ON lna_job_functions (job_role_id, lower(name));
-CREATE INDEX lna_job_functions_tenant_idx ON lna_job_functions (tenant_id, job_role_id);
-
-CREATE TABLE lna_job_function_competencies (
-  tenant_id uuid NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
-  job_function_id uuid NOT NULL REFERENCES lna_job_functions(id) ON DELETE CASCADE,
-  competency_id uuid NOT NULL REFERENCES lna_competencies(id) ON DELETE CASCADE,
-  PRIMARY KEY (job_function_id, competency_id)
-);
-CREATE INDEX lna_jf_competencies_comp_idx ON lna_job_function_competencies (tenant_id, competency_id);
-```
+- `lna_competencies` + kolom `code varchar(32)`, `stream varchar(64)`, `program_tier` (CHECK `basic|intermediate|advanced`). Kode hanya boleh pada kompetensi yang punya job role (CHECK) dan unik per `(tenant_id, job_role_id, lower(code))`.
+- Tabel baru `lna_job_functions` (`tenant_id`, `job_role_id`, `fn_order` ≥ 1 unik per jabatan, `name` unik tanpa beda huruf per jabatan).
+- Tabel baru `lna_job_function_competencies` (`tenant_id`, `job_function_id`, `competency_id`; PK pasangan, keduanya `ON DELETE CASCADE`).
 
 Migrasi diawali `SET search_path TO "${S}"` seperti migrasi lain. `tenant_id` di tabel penghubung dijaga aplikasi (A12): job function dan kompetensi divalidasi satu tenant dan satu job role sebelum disisipkan.
 
@@ -81,33 +65,35 @@ Tidak ada tabel untuk rencana pengembangan: rencana dihitung dari kamus dan ases
 
 ## 5. Aturan bisnis
 
-- **A1 Skala skor.** Skor dan target tetap skala 0–4 (keputusan Q12, kolom `score`/`required_score` yang ada). Mockup memakai angka 0–100 sebagai ilustrasi. `[⚠️ BELUM TERVERIFIKASI]` Pak Eji belum menyatakan mengganti skala; API mengembalikan `score` dan `target` apa adanya sehingga layar tidak bergantung pada skalanya.
-- **A2 Asesmen terbaru.** Per karyawan × kompetensi dipakai asesmen terbaru (`assessedAt`, bila kosong `createdAt`), sama dengan `computeGap`.
-- **A3 Status modul per pegawai.**
+- **A1 Skala skor.** Skor dan target tetap skala 0–4 (keputusan Q12, kolom `score`/`required_score` yang ada). Mockup memakai angka 0–100 sebagai ilustrasi. Pak Eji belum menyatakan mengganti skala (status di §10); API mengembalikan `score` dan `target` apa adanya sehingga layar tidak bergantung pada skalanya.
+- **A2 Asesmen terbaru.** Per karyawan × kompetensi dipakai asesmen terbaru (`assessedAt`, bila kosong `createdAt`; waktu sama = baris terakhir menang). Fungsinya satu: `latestByCompetency` di `dna/gap.js`, dipakai `computeGap` dan B4.
+- **A3 Status modul per pegawai.** Target = `requiredScore`; bila kosong dipakai `DEFAULT_TARGET` = 3 dari `dna/gap.js` (sama dengan gap individu).
   - `met` (Tercapai): skor ≥ target.
   - `develop` (Perlu dikembangkan): skor < target dan tingkat modul sama dengan atau di bawah tahap pegawai.
   - `locked` (Belum dibuka): skor < target dan tingkat modul di atas tahap pegawai.
   - `not_assessed` (Belum dinilai): belum ada asesmen.
-  - `mastery` (Menguasai/Sebagian/Belum di brief; dipakai "Hasil saya", B8): skor ≥ target → `mastered`; kurang tepat satu tingkat (target − skor = 1) → `partial`; kurang dua tingkat atau lebih → `not_yet`; `null` bila belum dinilai. Mockup memakai rasio ≥ 75% pada skala 0–100; pada skala 0–4 rasio itu hampir tidak pernah menghasilkan "Sebagian", jadi dipakai selisih tingkat. Target 0 selalu `mastered`.
+  - `mastery` (Menguasai/Sebagian/Belum di brief). Konsumennya "Hasil saya" (B8); B4 hanya menyediakan nilainya: skor ≥ target → `mastered`; kurang tepat satu tingkat (target − skor = 1) → `partial`; kurang dua tingkat atau lebih → `not_yet`; `null` bila belum dinilai. Mockup memakai rasio ≥ 75% pada skala 0–100; pada skala 0–4 rasio itu hampir tidak pernah menghasilkan "Sebagian", jadi dipakai selisih tingkat. Target 0 selalu `mastered`.
   - Modul yang belum dinilai selalu `not_assessed`, juga bila tingkatnya di atas tahap pegawai (bukan `locked`).
 - **A4 Tahap pengembangan** (mockup: "Tahap ditentukan oleh modul pada level terendah yang belum mencapai target"). **Himpunan modul pegawai** = kompetensi `kind = 'job'` milik job role pegawai yang punya `programTier`, dari **semua jenjang karier** (roadmap BIA mencakup seluruh jalur jabatan, seperti kolom Basic/Intermediate/Advanced di mockup). Kompetensi `core` dan kompetensi tanpa `programTier` tidak ikut; jumlah yang tanpa tingkat dilaporkan sebagai `untiered`. `met`, `assessed`, `total` hanya menghitung himpunan ini, jadi bisa berbeda dari `gap.summary` di `GET /dna/employees/:userId` (yang memakai kompetensi posisi + inti).
   - Tahap = tingkat terendah (basic → intermediate → advanced) yang punya minimal satu modul **sudah dinilai** dengan skor < target.
   - Bila tidak ada modul dinilai yang di bawah target dan minimal satu modul sudah dinilai → `done` (Tuntas).
   - Bila belum ada modul yang dinilai sama sekali → `not_assessed` (Belum dinilai). Mockup tidak punya kategori ini karena semua pegawai demo sudah dinilai; ditambahkan agar pegawai tanpa data tidak tampil sebagai "Tuntas".
-  - `[⏳ DITERIMA]` Mengikuti mockup, modul yang belum dinilai tidak menahan tahap, jadi pegawai bisa `done` padahal baru sebagian kamus dinilai. Respons selalu menyertakan `assessed` dan `total` agar layar menampilkan "x / y modul dinilai". Test: `dna-development.test.js` kasus "done dengan cakupan sebagian". Dicatat di PR sebagai pertanyaan terbuka untuk Pak Eji.
+  - Mengikuti mockup, modul yang belum dinilai tidak menahan tahap, jadi pegawai bisa `done` padahal baru sebagian kamus dinilai. Respons selalu menyertakan `assessed` dan `total` agar layar menampilkan "x / y modul dinilai" (risiko di §10).
 - **A5 Fokus pengembangan** = kode modul pada tahap pegawai yang statusnya `develop` (kode kosong → nama).
-- **A6 Saran rencana** (teks Indonesia, mengikuti mockup): tahap `done` → "Semua modul yang dinilai tercapai. Pertimbangkan peran mentor dan pemetaan ke jenjang karier."; `not_assessed` → "Belum ada hasil asesmen untuk pegawai ini."; selain itu "Fokus pada modul <Tingkat> yang belum tercapai: <kode>. Modul level berikutnya dibuka setelah semua modul <Tingkat> tercapai."
+- **A6 Saran rencana** (teks Indonesia, mengikuti mockup): tahap `done` → "Semua modul yang dinilai tercapai. Pertimbangkan peran mentor dan pemetaan ke jenjang karier."; `not_assessed` → "Belum ada hasil asesmen untuk pegawai ini."; selain itu "Fokus pada modul <Tingkat> yang belum tercapai: <kode>. Modul level berikutnya dibuka setelah semua modul <Tingkat> yang dinilai tercapai." ("yang dinilai" karena modul belum dinilai tidak menahan tahap, A4)
 - **A7 Status kamus per jabatan.** `available` bila jabatan punya ≥ 1 kompetensi jabatan, selain itu `none`. Tool 1 = ada ≥ 1 job function; Tool 2 = ada ≥ 1 kompetensi jabatan; Tool 3 = ada ≥ 1 kompetensi dengan `programTier`. `approved` = jabatan punya ≥ 1 kompetensi dan semuanya sudah disahkan (`approved_at`); jabatan tanpa kompetensi → `false`. Kompetensi baru atau yang diubah (PATCH/impor) belum disahkan, sehingga `approved` kembali `false`; itu disengaja. `assessedCompetencyCount` = jumlah kompetensi jabatan yang sudah punya minimal satu asesmen (mockup: "7 dari 48 modul sudah memiliki data asesmen"); hitungan ini se-tenant, bukan per scope pemanggil, karena hanya agregat jumlah modul. Kamus yang belum disahkan tetap tampil dengan tanda "menunggu pengesahan HR", dan tahap serta rencana B4 tetap memakainya.
 - **A8 Pengesahan kamus.** HR mengesahkan seluruh kamus satu jabatan sekaligus; hanya baris yang belum disahkan yang diubah (`approved_at`, `approved_by`). Tercatat di audit: aksi `update` pada `dna.dictionary` dengan meta `{ event: 'approve', jobRoleId, approved }` (kolom `audit_logs.action` dibatasi CHECK ke read/create/update/delete/export/login, jadi tidak ada aksi `approve`). Apakah Training Needs (B5) hanya memakai kompetensi yang sudah disahkan diputuskan di B5; B4 hanya menyediakan `approvedAt`.
 - **A9 Visibilitas (RG-3).** Semua data per pegawai lewat `scopeFor()` → `visibleEmployeeScope()`: HR semua, atasan timnya, karyawan dirinya. Hitungan pegawai dan distribusi tahap di overview dihitung dari pegawai dalam scope pemanggil. Pegawai di luar scope → 404 (bukan 403), sama dengan `GET /dna/employees/:userId`.
-- **A10 Peran.** Overview, kamus, kurikulum, dan daftar pegawai: `hr_admin` dan `supervisor` (menu mockup hanya untuk HR dan Atasan; `eta_admin` selalu lolos `requireRole`). Rencana pengembangan satu pegawai: semua peran, dibatasi scope (karyawan boleh melihat miliknya, dipakai B8). Menulis (job function, pemetaan, pengesahan): `hr_admin`.
+- **A10 Peran.** Semua endpoint B4 butuh flag `dna.development`. Overview, kamus, kurikulum, dan daftar pegawai: `hr_admin` dan `supervisor` (menu mockup hanya untuk HR dan Atasan; `eta_admin` selalu lolos `requireRole`). Rencana pengembangan satu pegawai: semua peran, dibatasi scope (karyawan boleh melihat miliknya, dipakai B8). Menulis (job function, pemetaan, pengesahan): `hr_admin`.
 - **A11 Audit baca (R2-2).** Daftar pegawai dan rencana per pegawai memanggil `audit.readIndividual` (`dna.development_needs`, `dna.development_plan`; `objectType: 'dna_development'`). Overview adalah agregat dan tidak dicatat untuk HR; untuk pemanggil yang scope-nya bukan `all` (atasan) distribusi tahap bisa setara data individu, jadi dicatat dengan `dna.development_overview` dan daftar pegawai yang dihitung.
 - **A12 Tenant.** Semua query memfilter `tenant_id` dari `req.tenantId`. `:id` job role, job function, dan `competencyIds` di body divalidasi milik tenant (dan milik job role yang sama, `kind = 'job'`) sebelum dipakai: resource di path → 404, id di body atau query → 400. `jobRoleId`/`careerLevelId` di `POST /competencies` dan `/competencies/bulk` sudah dicek oleh `checkPositionIds` dari basis integrasi (e2d3707): 404 untuk `POST /competencies`, 400 per baris untuk bulk; B4 memakainya apa adanya. Id yang bukan UUID → 404 (path) atau 400 (body/query), bukan 500.
 - **A13 Pegawai yang dihitung** = user peran `learner`, `supervisor`, `role_leader`, `sme` dengan `job_role_id` = jabatan terpilih, status bukan `disabled` (sama dengan `GET /dna/employees`).
 
 ## 6. Endpoint
 
-Semua di bawah `/api/dna` (auth + tenant + `requireSubmodule('dna')`).
+Semua di bawah `/api/dna` (auth + tenant + `requireSubmodule('dna')` + `requireFlag('dna.development')`). Endpoint tulis job function dan `PATCH /competencies/:id` belum punya tombol di layar B4: itu **kontrak untuk B11** (Admin Tenant "Jabatan & kamus kompetensi") dan untuk koreksi data lewat API selama POC.
+
+`dictionary` (status kamus A7) di respons = `{ status: 'available'|'none', tool1, tool2, tool3, competencyCount, approvedCount, approved, assessedCompetencyCount }`.
 
 | Metode | Path | Peran | Respons `data` |
 | --- | --- | --- | --- |
@@ -125,7 +111,7 @@ Semua di bawah `/api/dna` (auth + tenant + `requireSubmodule('dna')`).
 
 Catatan:
 
-- `overview` tanpa `jobRoleId` memilih jabatan pertama (urut nama) yang kamusnya `available`; bila tidak ada, `selectedJobRoleId: null`, KPI nol, `stageDistribution` lima baris bernilai nol.
+- `overview` tanpa `jobRoleId` memilih jabatan pertama (urut nama) yang punya kurikulum (≥ 1 kompetensi jabatan dengan `programTier`, Tool 3); bila tidak ada, jabatan pertama yang kamusnya `available` (kamus POC tanpa tingkat). Tujuannya: tenant yang punya kamus POC lama dan kamus DACUM baru langsung melihat kamus DACUM, bukan semua pegawai "Belum dinilai". Bila tidak ada jabatan berkamus, bila tidak ada, `selectedJobRoleId: null`, KPI nol, `stageDistribution` lima baris bernilai nol.
 - `stageDistribution` selalu berisi lima baris berurutan: `basic`, `intermediate`, `advanced`, `done`, `not_assessed`. `percent` dibulatkan dari jumlah pegawai dalam scope; 0 bila tidak ada pegawai.
 - `dictionary` dan `curriculum` hanya memuat kompetensi `kind = 'job'` milik job role itu (semua jenjang karier). `tier` di query: `basic|intermediate|advanced`; nilai lain → 400.
 - `order` job function kosong → nomor terakhir + 1. Nomor bentrok → 409 `CONFLICT`.
@@ -143,8 +129,8 @@ Catatan:
 
 - Jenis `dna_competencies` mendapat kolom opsional: **Kode** (`code`), **Rumpun** (`stream`), **Level Program** (`programTier`, memakai `TIER_CHOICES`), **Job Function** (`jobFunctions`, nomor JF dipisah titik koma, mis. `1; 3`; nomor harus sudah ada di jabatan itu, bila tidak seluruh baris ditolak). Kode ganda di file, atau kode yang sudah dipakai kompetensi lain di jabatan itu, ditolak per baris.
 - **Melengkapi kamus yang sudah ada.** Baris yang kompetensinya sudah ada di kamus (kunci lama: job role + jenjang + nama) sebelumnya selalu ditolak. Sekarang: bila baris itu mengisi minimal satu kolom baru (Kode, Rumpun, Level Program, Job Function), kompetensi yang ada **diperbarui** hanya pada kolom baru yang terisi (pemetaan job function diganti bila kolomnya terisi) dan pengesahannya direset bila ada kolom kompetensi yang berubah (pemetaan job function saja tidak mereset: pemetaan adalah Tool 1, bukan isi kompetensi yang disahkan; sama dengan `PUT /job-functions/:id/competencies`); bila tidak ada kolom baru yang terisi, tetap ditolak "sudah ada di kamus". Hasil commit melaporkan `competencies` (baru) dan `updated`.
-- Alias judul kolom `level` dipindah dari Jenjang (karier) ke Level Program, karena di data DACUM dan mockup "Level" berarti Basic/Intermediate/Advanced. `TIER_CHOICES` mendapat sinonim `b`, `i`, `a`, dan `advance`.
-- `[⏳ DITERIMA]` Commit impor kompetensi menulis kompetensi lalu pemetaan job function baris demi baris tanpa satu transaksi (pola `commit` jenis impor lain yang sudah ada). Gagal di tengah meninggalkan sebagian baris; impor ulang aman karena baris yang sudah masuk diperlakukan sebagai "sudah ada". Tidak ada test khusus.
+- Judul kolom `Level` dipetakan ke Level Program, karena di data DACUM dan mockup "Level" berarti Basic/Intermediate/Advanced. `TIER_CHOICES` mendapat sinonim `b`, `i`, `a`, dan `advance`. **File lama** yang memakai "Level" untuk jenjang karier tetap terbaca: nilai yang bukan tingkat B/I/A tetapi sama dengan nama jenjang job role itu, dan kolom Jenjang kosong, dibaca sebagai Jenjang. Nilai lain ditolak "Level Program harus basic, intermediate, atau advanced".
+- Commit impor kompetensi menulis kompetensi lalu pemetaan job function baris demi baris tanpa satu transaksi (pola `commit` jenis impor lain yang sudah ada). Gagal di tengah meninggalkan sebagian baris. Mengimpor ulang file yang sama **tidak menggandakan** baris yang sudah masuk (kunci job role + jenjang + nama), tetapi baris itu ditolak "sudah ada di kamus" kecuali membawa kolom baru, jadi HR perlu membaca hasil validasi. Risiko di §10.
 - Jenis baru `dna_job_functions` (label "Job function"): kolom **Job Role** (wajib, harus sudah ada), **No** (opsional, bilangan bulat ≥ 1; kosong = lanjut dari nomor terakhir), **Job Function** (wajib). Nomor atau nama ganda per jabatan ditolak. Diimpor sebelum kamus kompetensi, tetapi diletakkan di akhir `KINDS` agar nomor template yang sudah dibagikan ke HR tidak bergeser (aturan PK-18).
 - Template XLSX klien di `/mnt/project-files/elgos-import-templates/` perlu dibuat ulang setelah PR ini masuk (bukan bagian PR; dicatat di deskripsi PR).
 
@@ -154,69 +140,80 @@ Catatan:
 - K1, K3, K4 tidak menyentuh paket ini.
 - Q12 (skala 0–4), RG-3 (scope), R2-2 (audit baca), F6-A (DNA = impor/bangun kamus + asesmen proaktif).
 
-## 9. Asumsi dan risiko
+## 9. Alternatif yang dipertimbangkan
 
-- `[⚠️ BELUM TERVERIFIKASI]` A1 skala.
-- `[⚠️ BELUM TERVERIFIKASI]` Data DACUM Mas Abdan (masuk 26 Nov) punya kode modul, rumpun, tingkat BIA, dan pemetaan job function seperti di mockup, dan seluruh modul kurikulum (48 di mockup) hadir sebagai baris kompetensi. Semua kolom itu opsional sehingga data tanpa kolom tersebut tetap bisa diimpor.
-- `[⏳ DITERIMA]` A4 modul belum dinilai tidak menahan tahap (test dijadwalkan di PR ini).
-- `[⏳ DITERIMA]` Rencana dihitung saat diminta (N pegawai × M modul di memori). Untuk POC satu jabatan ±50 pegawai × ±50 modul ini kecil; tidak ada test beban di PR ini.
+| Keputusan | Dipilih | Ditolak | Alasan |
+| --- | --- | --- | --- |
+| Rencana pengembangan | dihitung saat diminta dari kamus + asesmen | tabel rencana yang disimpan | tidak ada data yang hanya hidup di rencana; sama dengan gap di `dna/gap.js`; tidak ada sinkronisasi ulang saat kamus berubah |
+| Sumber tahap | skor asesmen | `lna_program_completions` (lulus program) | mockup menurunkan tahap dari modul di bawah target; lulus program adalah bukti B16 (§3) |
+| Tempat tingkat BIA | kolom `program_tier` di `lna_competencies` | entitas "modul" terpisah | mockup menyamakan modul dengan kompetensi; gap, asesmen, dan impor yang ada tetap dipakai |
+| Job function | tabel `lna_job_functions` + tabel pemetaan | kolom teks di kompetensi | satu kompetensi bisa di beberapa JF; nomor JF unik per jabatan butuh constraint |
+| `mastery` | selisih tingkat (skala 0–4) | rasio ≥ 75% seperti mockup | pada skala 0–4 rasio hampir tidak pernah menghasilkan "Sebagian" (A3) |
+| Flag | flag baru `dna.development` | hanya `module.dna` | B4 mengubah perilaku tenant yang sudah memakai DNA (layar `/dna`, arti kolom impor "Level", impor memperbarui baris lama); aturan arsitektur 3 |
+| Tenant di tabel pemetaan | cek aplikasi (A12) | FK komposit `(tenant_id, id)` | tabel lama belum punya kunci unik komposit; menambahkannya menyentuh migrasi lama |
 
-## 9a. Triase review spek (ikan mas, 19 Nov)
+## 10. Asumsi dan risiko
 
-20 temuan. **Diperbaiki di spek ini:** tidak ada jalan melengkapi/koreksi kamus (PATCH kompetensi, PATCH/DELETE job function, impor memperbarui); `mastery` tidak cocok skala 0–4; himpunan modul pegawai tidak terdefinisi; perilaku input kosong/tidak valid; bentrok unik menjadi 500; alias "Level"; sinonim B/I/A; kode pada kompetensi tanpa job role; hubungan tiga "tier"; audit overview untuk atasan; kasus tepi pengesahan; bentuk respons; validasi tenant di `POST /competencies`; nama job function unik; `assessedCompetencyCount`; detail migrasi; reviewer dan gerbang.
+Satu-satunya daftar status terbuka spek ini.
 
-**Ditolak dengan alasan:**
-- *Flag baru (CLAUDE.md aturan 3).* Brief B4 menetapkan flag `module.dna`, dan endpoint baru hanya tampilan lain atas data modul yang sama; tidak ada perilaku tenant yang berubah sampai layar baru dipasang. Dicatat di PR agar Andrian bisa meminta flag terpisah.
-- *Spek di `docs/ewi/tickets/ELITMEN-xxx.md`.* Aturan bersama nomor 11 di brief menetapkan `docs/designs/<paket>.md`; paket ini belum punya nomor ELITMEN.
-- *Tabel contoh A3/A5/A6.* Contohnya ada sebagai kasus di `tests/unit/dna-development.test.js`.
-
-**Ditunda (dicatat di PR):** chip "Tuntas" saat baru sebagian modul dinilai (pertanyaan untuk Pak Eji; respons sudah membawa `assessed`/`total`); transaksi untuk commit impor.
-
-## 10. Test yang ditulis lebih dulu
-
-- `tests/unit/dna-development.test.js`: tahap (basic/intermediate/advanced/done/not_assessed), status modul termasuk `locked`, `mastery`, fokus, saran, asesmen terbaru menang, done dengan cakupan sebagian, distribusi tahap dan persen, status kamus (A7).
-- `tests/unit/imports.test.js` (tambahan): validasi kolom baru `dna_competencies` dan jenis `dna_job_functions`.
-- `tests/integration/dna-development.test.js` (Postgres): alur HR membuat job function + kamus berkode, pengesahan + audit, overview, kamus dengan filter, kurikulum, daftar pegawai, rencana; atasan hanya timnya; karyawan 403 untuk daftar dan 404 untuk rencana orang lain; tenant lain tidak bisa membaca atau memetakan (404/400); kode ganda 409; flag `module.dna` mati → 403.
-- CI yang ada menjalankan migrasi naik-turun-naik.
-
-## 11. Perubahan file
-
-- [x] `apps/api/migrations/20261119000400-dna-developmental-needs.js`
-- [x] `apps/api/src/modules/dna/development.js` (domain murni)
-- [x] `apps/api/src/modules/dna/development-routes.js` (router endpoint bagian 6)
-- [x] `apps/api/src/modules/dna/index.js` (pasang router, field baru kompetensi)
-- [x] `apps/api/src/db/lna-stores.js` (kolom baru, job function, pengesahan kamus)
-- [x] `apps/api/src/core/errors/index.js` (helper `conflict` bila belum ada)
-- [x] `apps/api/src/modules/imports/kinds/competencies.js`
-- [x] `apps/api/src/modules/imports/kinds/job-functions.js`
-- [x] `apps/api/src/modules/imports/kinds/index.js`
-- [x] `apps/api/src/modules/imports/kinds/common.js` (sinonim tingkat)
-- [x] `apps/api/tests/unit/dna-development.test.js`
-- [x] `apps/api/tests/unit/imports.test.js`
-- [x] `apps/api/tests/integration/dna-development.test.js`
-- [x] `docs/ewi/poc-dna-tna.md` (tautan ke spek ini bila ada daftar endpoint DNA)
-
-## 9b. Triase review diff (ikan mas, 19 Nov)
-
-14 temuan, tidak ada yang berat. **Diperbaiki:** impor memetakan kompetensi non-jabatan dan sel Job Function tanpa nomor menghapus pemetaan (1); `PATCH /competencies` 500 untuk `definition` bukan teks dan `name` > 255 (2); nomor job function dibatasi 1–999 (5); job function terhapus paralel → 404/409, bukan 500 (6); `updateCompetency` memakai `Object.hasOwn` (8); subquery pemetaan memfilter `tenant_id` dan berurutan (9); UUID huruf besar pada rencana pegawai (11); overview tanpa jabatan mengembalikan lima baris nol (12); test tambahan untuk kasus 1, 2, 5 (14, sebagian).
-
-**Diperjelas di spek:** pemetaan job function tidak mereset pengesahan, di impor maupun PUT (4); `assessedCompetencyCount` se-tenant (10).
-
-**Ditolak dengan alasan:** flag baru (3), sama dengan §9a; diminta persetujuan eksplisit Andrian di PR.
-
-**Ditunda:** dua `POST job-functions` tanpa nomor bersamaan, satu mendapat 409 (7; HR tunggal, cukup ulangi); commit impor tanpa `orConflict` (6, bagian impor; ikut penundaan transaksi impor §9a); alias "Level" di file kamus lama (13; dicatat di PR dan template); sisa klaim tanpa test: jalur 23505, `careerLevelId` lintas jabatan, pengguna nonaktif (14).
+- `[⚠️ BELUM TERVERIFIKASI]` **A1 skala.** Skala 0–4 (Q12) vs angka 0–100 di mockup. Pemicu: file DACUM Mas Abdan (26 Nov) dan jawaban Pak Eji. Pemilik: Andrian (keputusan skema), Pak Eji (keputusan produk). Bila skala berubah, CHECK `score`/`required_score` dan A3 ikut berubah.
+- `[⚠️ BELUM TERVERIFIKASI]` Data DACUM Mas Abdan punya kode modul, rumpun, tingkat BIA, dan pemetaan job function seperti di mockup, dan seluruh modul kurikulum (48 di mockup) hadir sebagai baris kompetensi. Semua kolom itu opsional sehingga data tanpa kolom tersebut tetap bisa diimpor.
+- `[⏳ DITERIMA]` **A4 cakupan sebagian.** Pegawai bisa `done` padahal baru sebagian modul dinilai; layar menampilkan "Baru x dari y modul yang dinilai". Pertanyaan terbuka untuk Pak Eji. Test: unit "done dengan cakupan sebagian".
+- `[⏳ DITERIMA]` Rencana dihitung saat diminta (N pegawai × M modul di memori). POC satu jabatan ±50 × ±50 kecil; tidak ada test beban.
+- `[⏳ DITERIMA]` **Impor tanpa transaksi.** Commit impor kompetensi tidak bertransaksi dan pelanggaran indeks unik yang lolos karena balapan (dua impor bersamaan) menjadi 500 untuk seluruh commit, bukan penolakan satu baris. HR tunggal per tenant pada POC; pola sama dengan jenis impor lain. Pemicu peninjauan: impor paralel atau lebih dari satu admin HR.
+- `[⏳ DITERIMA]` **Pengesahan tanpa versi.** "Sahkan kamus" mengesahkan semua baris yang belum disahkan saat itu, tanpa daftar id atau versi dari layar. Satu admin HR per tenant pada POC.
+- `[⏳ DITERIMA]` **Penulisan kamus tidak diaudit.** Modul DNA saat ini tidak mengaudit penulisan kamus (`POST /competencies`, impor); B4 mengikuti, hanya pengesahan yang diaudit (A8). Keputusan tingkat modul untuk Andrian.
+- `[⏳ DITERIMA]` Dua `POST job-functions` tanpa nomor bersamaan: satu mendapat 409 (cukup ulangi).
+- `[⏳ DITERIMA]` Tidak dites otomatis: jalur 23505 balapan, `careerLevelId` lintas jabatan di impor, pengguna nonaktif di daftar pegawai.
+- `[⏳ DITERIMA]` Peran tampilan `atasan` di B0 mencakup `role_leader` dan pimpinan, sedangkan API B4 hanya `hr_admin` dan `supervisor`. Layar mengalihkan peran lain ke halaman POC (§11). Konstanta peran bersama di `core/rbac` ditunda karena menyentuh B5/B9.
 
 ## 11. Layar (di atas B0)
 
-- Rute `dna` (`/dna`, `meta.views` hr/atasan/super, `submodule: 'dna'`) menggantikan `screens/legacy-dna`. Halaman POC lama tetap di `/m/dna` dengan nama rute `dna-poc` (`menuKey: 'dna'`) sampai impor (B11) dan hasil karyawan (B8) punya layar pengganti; tautan "Buka" di Beranda tetap ke `/m/dna`.
+- Rute `dna` (`/dna`) memakai `meta.views` kelima tampilan (`hr`, `atasan`, `karyawan`, `admin`, `super`) sesuai aturan B0 nomor 6, sehingga butir menu peralihan karyawan tetap ada. `beforeEnter` memanggil `b4Open()`: layar B4 hanya dibuka bila flag `dna.development` menyala, akun punya peran `hr_admin`/`supervisor`/`eta_admin`, dan tampilan aktif `hr`/`atasan`/`super`. Selain itu diarahkan ke `dna-poc`.
+- `dna-poc` (`/m/dna`, `views/DnaView.vue`, `menuKey: 'dna'`) adalah halaman POC lama (impor, gap per karyawan, mulai wawancara). Pemiliknya `screens/b4-dna/routes.ts`; dihapus saat B8 (`my`, hasil karyawan) dan B11 (`cfg`, impor) terpasang. Tautan "Buka" di Beranda tetap ke `/m/dna`.
 - Empat tab mockup: Ringkasan, Kamus kompetensi (job function sebagai tombol filter, segmen level), Kurikulum BIA, Kebutuhan pegawai (tabel + rencana). Label status modul: Tercapai, Perlu dikembangkan, Belum dibuka, Belum dinilai. Chip jabatan: Kamus tersedia / Belum tersedia.
 - Tambahan di luar mockup: tombol "Sahkan kamus" untuk HR (A8) dan catatan cakupan "Baru x dari y modul yang dinilai" (A4).
 - Kartu "Agen AI · Validasi kamus kompetensi" tidak dibangun (§2, milik B6/B10).
 
-- [x] `apps/web/src/screens/b4-dna/routes.ts`, `api.ts`, `DevelopmentNeedsView.vue`
-- [x] hapus `apps/web/src/screens/legacy-dna/`
-- [x] `apps/web/e2e/b4-dna.spec.ts`
+## 12. Test
 
-## 12. Cek drift (19 Nov)
+- `apps/api/tests/unit/dna-development.test.js`: tahap terendah, `not_assessed`, cakupan sebagian, status modul (`met`/`develop`/`locked`/`not_assessed`), modul basic belum dinilai tidak menahan, asesmen terbaru, `mastery`, `untiered`, fokus dan saran, fokus memakai nama, distribusi lima baris, status kamus (A7).
+- `apps/api/tests/unit/imports.test.js`: judul "Level" → Level Program; file lama "Level" = jenjang; kolom baru dan alasan penolakan; kompetensi yang ada diperbarui/ditolak; jenis `dna_job_functions`.
+- `apps/api/tests/integration/dna-development.test.js` (Postgres): flag `dna.development` mati → 403 dan POC tetap jalan; alur HR (jabatan, kamus berkode, job function); 409/400; tenant lain; ubah pemetaan dan PATCH, peran lain tidak boleh menulis; kamus berfilter dan kurikulum; pengesahan + audit; tahap/daftar/rencana; visibilitas; ringkasan; jabatan default berkurikulum; audit baca; PATCH mereset pengesahan; `module.dna` mati.
+- `apps/api/tests/integration/imports.test.js`: alur impor job function lalu kamus berkode.
+- `apps/web/e2e/b4-dna.spec.ts`: HR (ringkasan, kamus + filter + pengesahan, kurikulum, rencana); atasan tanpa tombol pengesahan dan petunjuk tanpa kamus; flag mati → `/m/dna`; karyawan → `/m/dna`. `e2e/shell.spec.ts` (milik B0) memeriksa menu karyawan.
+- Tidak dites: lihat §10.
+- CI menjalankan migrasi naik-turun-naik.
 
-Dilakukan manual (plugin egm tidak terpasang di sesi). Dibandingkan: aturan A1–A13 dan §6 dengan `dna/development.js`, `dna/development-routes.js`, store, impor, dan migrasi 0400; §11 dengan layar. Yang diselaraskan di spek: pemetaan job function tidak mereset pengesahan (§7), `stageDistribution` lima baris nol tanpa jabatan (§6), `assessedCompetencyCount` se-tenant (A7), batas nomor job function 1–999 (§9b), cakupan layar. Tidak ada perbedaan lain yang ditemukan.
+## 13. Perubahan file
+
+(B) baru, (U) ubah, (H) hapus.
+
+- (B) `apps/api/migrations/20261119000400-dna-developmental-needs.js`
+- (B) `apps/api/src/modules/dna/development.js` (domain murni)
+- (B) `apps/api/src/modules/dna/development-routes.js` (endpoint §6, di balik flag)
+- (U) `apps/api/src/modules/dna/gap.js` (ekspor `latestByCompetency`, `DEFAULT_TARGET`)
+- (U) `apps/api/src/modules/dna/index.js` (pasang router, field baru kompetensi)
+- (U) `apps/api/src/db/lna-stores.js` (kolom baru, job function, pengesahan, `tieredCount`)
+- (U) `apps/api/src/core/errors/index.js` (helper `conflict`)
+- (U) `apps/api/src/core/flags/index.js` (`DNA_DEVELOPMENT`)
+- (U) `apps/api/src/modules/imports/kinds/competencies.js`, `common.js` (sinonim tingkat), `index.js`
+- (B) `apps/api/src/modules/imports/kinds/job-functions.js`
+- (B) `apps/api/tests/unit/dna-development.test.js`, `apps/api/tests/integration/dna-development.test.js`
+- (U) `apps/api/tests/unit/imports.test.js`, `apps/api/tests/integration/imports.test.js`
+- (B) `apps/web/src/screens/b4-dna/routes.ts`, `api.ts`, `DevelopmentNeedsView.vue`
+- (H) `apps/web/src/screens/legacy-dna/routes.ts`
+- (B) `apps/web/e2e/b4-dna.spec.ts`
+- (U) `docs/ewi/poc-dna-tna.md` (tautan ke spek ini)
+
+## Lampiran A. Riwayat review
+
+Status terbuka hanya di §10; lampiran ini catatan sejarah.
+
+**Review spek ikan mas (19 Nov, sebelum plugin egm terpasang).** 20 temuan; diperbaiki: jalan melengkapi/koreksi kamus, `mastery` skala 0–4, himpunan modul pegawai, input kosong/tidak valid, bentrok unik → 409, alias "Level", sinonim B/I/A, kode tanpa job role, tiga "tier", audit overview atasan, kasus tepi pengesahan, bentuk respons, validasi tenant `POST /competencies`, nama JF unik, `assessedCompetencyCount`, detail migrasi, reviewer dan gerbang. Ditolak: spek di `docs/ewi/tickets/` (brief aturan 11 menetapkan `docs/designs/`), tabel contoh A3/A5/A6 (ada sebagai test unit). Penolakan flag baru dibatalkan oleh review egm (R1).
+
+**Review diff ikan mas (19 Nov).** 14 temuan; diperbaiki: impor kompetensi non-jabatan dan sel JF tanpa nomor, `PATCH /competencies` 500, nomor JF 1–999, JF terhapus paralel, `Object.hasOwn`, subquery pemetaan memfilter tenant, UUID huruf besar, overview lima baris nol, test tambahan. Sisa yang ditunda pindah ke §10.
+
+**Review egm (19 Nov, plugin `egm`, tahap 5–9).** Laporan: `docs/designs/egm-review/b4/` (zoom-out, comprehension, critic, intermediate zoom-out, implementation readiness) dan triase egm-resolve di `goldfish_review_report.md`. Diterapkan: flag `dna.development` dan pengalihan layar (R1, R2, R4), alternatif (R3), jabatan default berkurikulum (R5), teks saran (R6), satu fungsi asesmen terbaru (R7), struktur spek (R8, R9), kalimat impor ulang (R10), label kontrak B11 (R14), sumber acuan (R15), daftar test (R16), tanda B/U/H (R17), pemilik `dna-poc` (R18). Eskalasi: skala 0–4 (R11). Ditolak dengan catatan di §10: pengesahan berversi (R12), audit penulisan kamus (R13).
+
+**Cek drift.** 19 Nov manual (sebelum plugin terpasang); setelah review egm dijalankan ulang dengan skill `egm-drift-report`, laporan di `docs/designs/egm-review/`.
