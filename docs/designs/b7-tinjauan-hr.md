@@ -1,18 +1,20 @@
 # B7 · Tinjauan HR atas temuan AI
 
-Status: spek (19 Nov 2026). Paket T5 di brief bangun penuh. Dasar kode: PR #16 (review hasil AI, PK-14), PR #12 (status rencana K-3), PR #13 (katalog course), PR #11 (privasi).
+Status: backend terbangun dan direview egm tahap 5–9 (19 Nov 2026), PR #24. Paket T5 di brief bangun penuh. Dasar kode: PR #16 (review hasil AI, PK-14), PR #12 (status rencana K-3), PR #13 (katalog course), PR #11 (privasi).
+
+Penanda: `[⚠️ BELUM TERVERIFIKASI]` = asumsi yang belum dikonfirmasi pemiliknya; `[⏳ DITERIMA]` = kekurangan yang sengaja diterima untuk POC 2 Des, dicatat di PR. Laporan review: `docs/designs/egm/b7/`.
 
 ## Tujuan
 
-HR memastikan klasifikasi tiap temuan AI sebelum solusi dijalankan ("AI tidak memutuskan sendiri", mockup Pak Eji layar "Tinjauan temuan AI"). Setelah klasifikasi, temuan pelatihan mendapat rekomendasi modul dan bisa ditugaskan, temuan non-pelatihan diteruskan ke Improvement Needs.
+HR memastikan klasifikasi tiap temuan AI sebelum solusi dijalankan ("AI tidak memutuskan sendiri", mockup Pak Eji layar "Tinjauan temuan AI"). Setelah klasifikasi, temuan Training Needs mendapat rekomendasi modul dan bisa ditugaskan, temuan Improvement Needs (kategori `non_training`) diteruskan ke modul Improvement Needs.
 
-Bukan tujuan paket ini: tabel dan layar Improvement Needs (B9, thread T6), Library modul (B13), sinkron progres dari EliteMentor (B14), layar web (menumpuk di PR B0, dikerjakan setelah PR B0 terbuka; spek ini hanya backend).
+Bukan tujuan paket ini: tabel dan layar Improvement Needs (B9, thread T6), Library modul (B13), sinkron progres dari EliteMentor (B14). Layar web dibangun di PR lanjutan di atas B0: rute bernama `review` (B0 §5.3, `meta.roles: ['hr_admin', 'eta_admin']`), dan `screens/legacy-review` dihapus begitu rute itu ada (B0 §4). Spek ini mencakup backend dan kontrak layar.
 
 ## Layar mockup yang dicakup
 
 `project/Main.dc.html` bagian `TINJAUAN HR` (baris 671–702) dan logika `tinjauan HR` (baris 1933–1944):
 
-1. Kartu "Temuan dan klasifikasi": tiap temuan menampilkan teks, keyakinan AI (%), dan tiga tombol: **Training Needs**, **Improvement Needs**, **Perlu ditinjau HR**.
+1. Kartu "Temuan dan klasifikasi": tiap temuan menampilkan teks, keyakinan AI (%), dan tiga tombol: **Training Needs**, **Improvement Needs**, **Perlu ditinjau HR**. Label tombol ketiga mengikuti mockup; di model dan di spek ini artinya "ditahan" (lihat pemetaan di bawah).
 2. Kartu "Solusi pelatihan": modul rekomendasi (kode, nama, level) dan tombol "Tugaskan di EliteMentor". Catatan mockup: "Bila klien tidak memakai EliteMentor, gap diekspor ke LMS klien."
 3. Kartu "Tindakan perbaikan": tombol "Buat tindakan di Improvement Needs".
 
@@ -56,12 +58,12 @@ Konfigurasi tenant (`tenants.settings`, lewat `core/settings`), tanpa migrasi. N
 
 1. HR membuka antrean (`GET /review`), mengklasifikasi tiap temuan (`POST /findings/:id/classify`).
 2. HR membuka solusi (`GET /review/solutions`): temuan training dengan rekomendasi course, temuan improvement.
-3. Untuk temuan training, HR membuat rencana lewat endpoint yang ada `POST /findings/:id/plan` (mengisi course dari katalog), lalu menugaskannya (`POST /plan-items/:id/assign`) atau mengekspor daftar (`GET /plan-items/export.csv`). Di web keduanya satu tombol: "Tugaskan" memanggil plan lalu assign.
+3. Untuk temuan training, HR membuat rencana lewat endpoint yang ada `POST /findings/:id/plan` (mengisi course dari katalog), lalu menugaskannya (`POST /plan-items/:id/assign`) atau mengekspor daftar (`GET /plan-items/export.csv`). Di web: bila `delivery.assignAvailable` benar, satu tombol "Tugaskan" memanggil plan lalu assign; bila salah (termasuk tenant pilot `lms_export`), tombolnya "Buat rencana" dan hanya memanggil plan, lalu HR mengunduh CSV. Rencana per temuan idempoten: klik ulang mendapat `409 ALREADY_ACTIONED`, tidak membuat baris kedua.
 4. Untuk temuan improvement, HR meneruskannya ke Improvement Needs (`POST /review/improvement-handoff`).
 
 ## Endpoint
 
-Semua di router `tna`, jadi lewat `requireSubmodule('tna')`. Semua hanya HR (`requireRole(HR_ADMIN)`). Admin ETA ikut lolos seperti di seluruh `requireRole`; setiap aksesnya tercatat di audit dengan perannya, dan itu dianggap memenuhi "akses tercatat" PM-3 `[⏳ DITERIMA]` (pembatasan Super Admin adalah urusan B2). `tenant_id` dari `req.tenantId`; objek tenant lain selalu `404`.
+Semua di router `tna`, jadi lewat `requireSubmodule('tna')`. Semua hanya HR (`requireRole(HR_ADMIN)`, dipasang sebelum pemeriksaan flag supaya peran lain mendapat `403 ROLE_FORBIDDEN`, bukan status flag). Karena hanya HR (cakupan seluruh tenant), `visibleEmployeeScope()` tidak dipanggil. Admin ETA ikut lolos seperti di seluruh `requireRole`; setiap aksesnya tercatat di audit dengan perannya, dan itu dianggap memenuhi "akses tercatat" PM-3 `[⏳ DITERIMA]` (pembatasan Super Admin adalah urusan B2). `tenant_id` dari `req.tenantId`; objek tenant lain selalu `404`.
 
 ### Tanpa flag (hanya menambah field baca pada pengaman review PR #16)
 
@@ -75,8 +77,9 @@ Semua di router `tna`, jadi lewat `requireSubmodule('tna')`. Semua hanya HR (`re
 Aturan CLAUDE.md nomor 3: klasifikasi, tahan, solusi, penugasan, ekspor, dan serah ke Improvement Needs adalah perilaku baru, jadi semuanya di balik satu flag. Flag mati → `403 FEATURE_DISABLED`.
 
 2. `POST /api/tna/findings/:id/classify` body `{ classification: 'training' | 'improvement' | 'needs_review', note? }`.
+   - Temuan dari sesi yang persetujuannya ditarik (B8) → `409 CONSENT_WITHDRAWN`.
    - Temuan `draft`: `training`/`improvement` memakai `stores.tna.reviewFinding` (bersyarat `review_status = 'draft'`, dua HR bersamaan tidak saling timpa; yang kalah `409 ALREADY_REVIEWED`); `needs_review` memakai `stores.tna.holdFinding` (bersyarat `draft`).
-   - Temuan `approved`/`edited`: hanya `training`/`improvement`, lewat `stores.tna.reclassifyFinding` (satu `UPDATE` bersyarat: belum ada baris rencana untuk temuan itu dan `improvement_handoff_at IS NULL`; `original_category` diisi bila belum terisi; `review_status` menjadi `edited`). Tidak memenuhi syarat → `409 ALREADY_ACTIONED`. Kategori sama → `200` tanpa perubahan. `needs_review` → `409 ALREADY_REVIEWED`.
+   - Temuan `approved`/`edited`: hanya `training`/`improvement`, lewat `stores.tna.reclassifyFinding` (satu `UPDATE` bersyarat: `status = 'open'`, belum ada baris rencana untuk temuan itu, dan `improvement_handoff_at IS NULL`; `original_category` diisi bila belum terisi; `review_status` menjadi `edited`). Tidak memenuhi syarat → `409 ALREADY_ACTIONED`. Kategori sama → `200` tanpa perubahan. `needs_review` → `409 ALREADY_REVIEWED`.
    - Temuan `rejected` → `409 ALREADY_REVIEWED`. `classification` lain → `400`. `note` maks 2000 karakter.
    - Audit `update` `tna.finding_review` `{ employeeIds, objectIds, decision: 'approved' | 'edited' | 'hold' | 'reclassified', classification, from, confidence }`. Audit ditulis setelah perubahan tersimpan (pola PR #16) `[⏳ DITERIMA]`.
    - Respons: item review terbaru (bentuk butir 1).
@@ -91,8 +94,8 @@ Aturan CLAUDE.md nomor 3: klasifikasi, tahan, solusi, penugasan, ekspor, dan ser
        "delivery": { "target", "label", "assignAvailable" },
        "inaEnabled": true | false } }
    ```
-   - Hanya temuan `approved`/`edited`. `planItem` = rencana terbaru untuk temuan itu yang tidak `rejected`. `recommendation` hanya dihitung bila belum ada `planItem`, dari `catalog.match` (hasil kosong = `null`, artinya perlu modul baru); satu panggilan per temuan `[⏳ DITERIMA]` (antrean pilot puluhan baris).
-   - Daftar `improvement` tampil untuk HR tanpa flag `tna.non_training_hr`: HR sudah melihat temuan yang sama di antrean review.
+   - Hanya temuan `approved`/`edited`. `planItem` = rencana terbaru untuk temuan itu yang tidak `rejected`. `recommendation` hanya dihitung bila belum ada `planItem` dan temuan punya kompetensi, dari `catalog.match`. `null` berarti perlu modul baru, termasuk temuan tanpa kompetensi (katalog dicocokkan per kompetensi, jadi tidak dicari). Satu panggilan per temuan `[⏳ DITERIMA]` (antrean pilot puluhan baris).
+   - Daftar `improvement` tampil untuk HR tanpa flag `tna.non_training_hr` maupun `module.ina`: HR sudah melihat temuan yang sama di antrean review. Tombol serah ke Improvement Needs di web memakai `inaEnabled`.
    - `delivery.label`: `EliteMentor` atau `lms.lmsName`. `delivery.assignAvailable`: lihat tabel keputusan.
    - Tidak pernah memuat giliran percakapan. Audit `readIndividual` `tna.review_solutions`.
 4. `POST /api/tna/plan-items/:id/assign`. Menugaskan satu rencana ke EliteMentor.
@@ -109,30 +112,36 @@ Aturan CLAUDE.md nomor 3: klasifikasi, tahan, solusi, penugasan, ekspor, dan ser
    | 8 | Klaim gagal (permintaan lain sedang mengirim) | `409 ASSIGN_IN_PROGRESS` |
 
    - `delivery.assignAvailable` di butir 3 = baris 5 dan 6 lolos.
-   - Klaim: `UPDATE ... SET assignment_status = 'sending', assignment_claimed_at = now() WHERE id = :id AND tenant_id = :tenantId AND (assignment_status IS NULL OR assignment_status = 'failed' OR (assignment_status = 'sending' AND assignment_claimed_at < now() - interval '5 minutes')) RETURNING id`. Hanya pemenang klaim yang memanggil EliteMentor.
-   - Panggilan keluar memakai batas waktu 10 detik dan `planItemId` sebagai kunci idempotensi (dikirim di body dan header `Idempotency-Key`), sehingga percobaan ulang setelah timeout tidak menggandakan penugasan di sisi EliteMentor.
-   - Sukses: `assignment_status = 'sent'`, `assignment_ref`, `assigned_at/by`; status rencana tidak berubah (progres datang dari sinkron B14). Gagal: `failed`, respons `502 EM_ASSIGN_FAILED`; boleh dicoba lagi.
-   - Data pribadi yang keluar ke EliteMentor: `employeeId` dan email karyawan, serta kode dan judul course. Tercatat di audit `update` `tna.plan_assignment` `{ employeeIds, objectIds, target, result }`.
+   - Klaim: `UPDATE ... SET assignment_status = 'sending', assignment_target = 'elitementor', assignment_claimed_at = clock_timestamp() WHERE tenant_id = :tenantId AND id = :id AND status IN ('new','in_progress') AND catalog_item_ref IS NOT NULL AND catalog_source = 'elitementor' AND (assignment_status IS NULL OR assignment_status = 'failed' OR (assignment_status = 'sending' AND assignment_claimed_at < now() - interval '5 minutes')) RETURNING assignment_claimed_at`. Syarat diulang di klaim karena rencana bisa berubah sejak dibaca. Hanya pemenang klaim yang memanggil EliteMentor.
+   - Panggilan keluar memakai batas waktu 10 detik (termasuk pengambilan token) dan `planItemId` sebagai kunci idempotensi (field `idempotencyKey` di body dan header `Idempotency-Key`). `[⚠️ BELUM TERVERIFIKASI]` dukungan kunci ini di EliteMentor.
+   - Penutupan klaim (`finishPlanAssignment`) hanya berlaku untuk pemilik klaim (`assignment_claimed_at` sama). Sukses: `assignment_status = 'sent'`, `assignment_ref`, `assigned_at/by`; status rencana tidak berubah (progres datang dari sinkron B14). Gagal: `failed`, respons `502 EM_ASSIGN_FAILED`; boleh dicoba lagi. Bila klaimnya sudah diambil alih permintaan lain (macet > 5 menit), hasilnya tidak disimpan: respons `409 ASSIGN_IN_PROGRESS` dan audit `result: 'superseded'`.
+   - Data pribadi yang keluar ke EliteMentor: `employeeId` dan email karyawan, serta kode dan judul course. Payload: `{ idempotencyKey, employeeId, email, courseRef, courseTitle }`; `assignment_ref` diambil dari `id` respons. Tercatat di audit `update` `tna.plan_assignment` `{ employeeIds, objectIds, target, result: 'sent' | 'failed' | 'superseded' }`.
 5. `GET /api/tna/plan-items/export.csv` (`projectId` opsional). Ekspor gap untuk LMS klien (K4); tersedia apa pun nilai `lms.delivery`. Hanya membaca, tidak menandai apa pun (yang sudah diekspor ikut lagi di ekspor berikutnya; LMS klien yang menyaring) `[⏳ DITERIMA]`.
-   - Baris: rencana berstatus `new`/`in_progress`, semua origin, termasuk yang belum punya course (kolom course kosong).
+   - Baris: rencana berstatus `new`/`in_progress`, semua origin, termasuk yang belum punya course (kolom course kosong). Filter `projectId` lewat proyek temuan, jadi rencana tanpa temuan (permintaan karyawan) tidak ikut bila `projectId` diisi.
    - Kolom: `ID Karyawan, Nama, Email, Kompetensi, Kode Course, Judul Course, Program, Status Rencana`. Sel yang diawali `= + - @` (atau tab/CR) diberi awalan `'`.
    - Audit `export` `tna.plan_items` `{ employeeIds, count }` ditulis sebelum respons dikirim (audit gagal = ekspor gagal).
 6. `POST /api/tna/review/improvement-handoff` body `{ findingIds: [uuid] }` (1–200 id).
    - Flag `module.ina` mati → `409 INA_DISABLED`.
    - Satu `UPDATE ... WHERE tenant_id = :tenantId AND id IN (:ids) AND category = 'non_training' AND review_status IN ('approved','edited') AND improvement_handoff_at IS NULL RETURNING id` → `handedOff`. Id yang memenuhi syarat tetapi sudah ditandai → `already`. Sisanya (draf, training, ditolak, tenant lain, tidak ada) → `skipped`.
-   - Respons `{ handedOff, already, skipped }`. Audit `update` `tna.improvement_handoff`.
+   - Respons `{ handedOff, already, skipped }`. Audit `update` `tna.improvement_handoff` `{ employeeIds, objectIds, count }`, hanya bila ada yang diteruskan.
    - Teks di web: "N temuan diteruskan ke Improvement Needs" (bukan "tindakan dibuat"), karena tindakan dibuat oleh modul B9.
+
+### Perubahan pada endpoint yang ada
+
+- `POST /api/tna/findings/:id/plan`: temuan dikunci dan diperiksa ulang dalam satu transaksi (`UPDATE ... SET status = 'planned' WHERE ... category = 'training' AND status = 'open' AND review_status IN ('approved','edited')`). Gagal (klasifikasi berubah sejak dibaca, atau rencana sudah dibuat) → `409 ALREADY_ACTIONED`.
+- `PATCH /api/tna/plan-items/:id`: mengganti course rencana yang `assignment_status`-nya `sending`/`sent` → `409 ALREADY_ASSIGNED`.
 
 ### Kontrak untuk B9 (Improvement Needs, thread T6)
 
 B7 tidak membuat tabel tindakan perbaikan. B9 membaca temuan yang diteruskan lewat `stores.tna.listImprovementHandoffs(tenantId, { since? })` → `[{ findingId, projectId, title, metricName, handedOffAt, handedOffBy }]`, lalu membuat tindakan dengan kategori, pemilik, dan tenggat di modulnya sendiri.
 
-- Kontrak sengaja **tidak** memuat `userId`, nama karyawan, maupun `detail` temuan: brief B9 menyatakan temuan yang menyangkut individu tidak ditampilkan, dan daftar non-pelatihan PM-6 memang ringkas. Bila B9 butuh data individu, itu mengubah batas privasi dan diputuskan user.
+- Kontrak sengaja **tidak** memuat `userId`, nama karyawan, maupun `detail` temuan: brief B9 menyatakan temuan yang menyangkut individu tidak ditampilkan, dan daftar Improvement Needs PM-6 memang ringkas. Bila B9 butuh data individu, itu mengubah batas privasi dan diputuskan user.
+- `since` dibandingkan dengan `>=`; baris yang dicatat dalam transaksi yang commit belakangan bisa punya waktu lebih awal, jadi B9 menyaring duplikat per `findingId` dan membaca ulang dengan jeda.
 - `[⚠️ BELUM TERVERIFIKASI]` T6 belum mengonfirmasi kontrak ini (sudah dikirim lewat koordinator). Bila T6 memilih bentuk lain, butir 6 disesuaikan.
 
 ### Port penugasan EliteMentor
 
-`apps/api/src/integrations/elitementor/assignments.js`: `createAssignmentService({ client, timeoutMs = 10000 })` → `{ assign({ organizationId, employee: { employeeId, email }, course: { ref, title }, planItemId }) -> { ref } }`. Memanggil `client.request('POST', '/api/ewi/assignments', { organizationId, body })`.
+`apps/api/src/integrations/elitementor/assignments.js`: `createAssignmentService({ client, timeoutMs = 10000 })` → `{ assign({ organizationId, employee: { employeeId, email }, course: { ref, title }, planItemId }) -> { ref } }`. Memanggil `client.request('POST', '/api/ewi/assignments', { organizationId, body, headers: { 'Idempotency-Key' }, signal })` dengan `body` seperti di butir 4.
 
 - `[⚠️ BELUM TERVERIFIKASI]` kontrak FR-EM belum disepakati dengan tim EliteMentor (path, payload, dan dukungan `Idempotency-Key` sementara). Karena itu `createApp` hanya memasang adapter bila `config.elitementor.assignmentsEnabled` benar (env `ELITEMENTOR_ASSIGNMENTS_ENABLED=true`, default mati), sehingga produksi menjawab `ASSIGN_UNAVAILABLE` sampai kontrak final. Test memakai adapter tiruan lewat `createApp({ assignments })`.
 - Kolom lama `elitementor_program_id` tidak dipakai: penugasan merujuk course katalog (`catalog_source` + `catalog_item_ref`), sama dengan rencana PR #13.
@@ -147,75 +156,61 @@ B7 tidak membuat tabel tindakan perbaikan. B9 membaca temuan yang diteruskan lew
 - K-3 / PM-8 C: status rencana `requested | new | in_progress | completed | rejected`.
 - RG-4 diganti "ya revisi" 19 Nov: INA masuk 2 Des, tetap di balik flag `module.ina`.
 
-## Test yang akan ditulis
+## Alternatif yang dipertimbangkan
 
-`apps/api/tests/unit/review-sla.test.js`: `addWorkingDays` (lima contoh di butir 1), `suggestedClassification`, `csvCell` (awalan `'`), validasi setting.
+| Alternatif | Keputusan | Alasan |
+| --- | --- | --- |
+| Status review baru `held` untuk "Perlu ditinjau HR" | Ditolak; kolom `review_hold_*` | Status `draft` sudah menjadi pengaman PR #16 (draf tidak tampil di luar antrean); status baru harus diajarkan ke semua query pembaca |
+| Ekspor CSV menandai baris yang sudah diekspor | Ditolak untuk POC | Ekspor tetap hanya membaca, jadi aman diulang; LMS klien yang menyaring |
+| Outbox + worker untuk penugasan EliteMentor | Ditolak untuk POC | Kontrak FR-EM belum final dan adapter mati di produksi; klaim bersyarat cukup mencegah kiriman ganda |
+| Tabel tindakan perbaikan di B7 | Ditolak | Tindakan, pemilik, dan tenggat milik B9; B7 hanya menandai serah terima |
+| Menegakkan "persetujuan ditarik" di tiap endpoint pembaca | Menunggu keputusan user | Lihat Risiko; bentuk penegakan bergantung pada jawaban kartu keputusan B8 |
+
+## Risiko dan mitigasi
+
+| Risiko | Mitigasi | Status |
+| --- | --- | --- |
+| Temuan yang sudah disetujui dari sesi yang persetujuannya ditarik tetap diproses (rencana, ekspor, penugasan, serah terima) | Kartu keputusan ke user (rekomendasi: bekukan pemrosesan, simpan data) | `[⚠️ BELUM TERVERIFIKASI]` menunggu user |
+| Rencana ganda karena klik ulang | `planFromFinding` mensyaratkan `status = 'open'` | Dibangun |
+| Laporan "terkirim" palsu dari permintaan yang macet | Penutupan klaim per pemilik; `409` + audit `superseded` | Dibangun |
+| Penugasan tergantung kontrak FR-EM yang belum final | Adapter hanya dipasang bila `ELITEMENTOR_ASSIGNMENTS_ENABLED=true`; tenant pilot memakai ekspor | `[⚠️ BELUM TERVERIFIKASI]` |
+| Tanpa kalender libur nasional di target 2 hari kerja | Dicatat | `[⏳ DITERIMA]` |
+| Audit klasifikasi ditulis setelah perubahan tersimpan (pola PR #16) | Dicatat | `[⏳ DITERIMA]` |
+| `down` migrasi menghapus data tahan, serah terima, dan penugasan | Hanya untuk rollback dev/CI | `[⏳ DITERIMA]` |
+| `lms.elitementorOrganizationId` belum punya penulis di UI | Diisi lewat skrip onboarding tenant (PK-13) atau Admin ETA | `[⚠️ BELUM TERVERIFIKASI]` layar Admin Tenant B11 |
+
+## Test
+
+`apps/api/tests/unit/review-sla.test.js`: `addWorkingDays` (lima contoh di butir 1), `suggestedClassification`, `csvCell` (awalan `'`), validasi setting, `deliveryFor`. `apps/api/tests/unit/elitementor.test.js`: payload, header idempotensi, dan `signal` adapter penugasan.
 
 `apps/api/tests/integration/tinjauan-hr.test.js` (Postgres):
 
-1. Klasifikasi: flag mati → 403; training tanpa ubah → `approved`; ubah ke improvement → `edited` + `original_category`; `needs_review` → tetap draf, `held`, tidak tampil di `/findings`, lalu bisa diklasifikasi; klasifikasi ulang sebelum ada rencana → berpindah kategori; setelah ada rencana atau handoff → `ALREADY_ACTIONED`; temuan ditolak → 409; atasan dan karyawan → 403; tenant lain → 404; audit tercatat.
+1. Klasifikasi: flag mati → 403; training tanpa ubah → `approved`; ubah ke improvement → `edited` + `original_category`; `needs_review` → tetap draf, `held`, tidak tampil di `/findings`, lalu bisa diklasifikasi; klasifikasi ulang sebelum ada rencana → berpindah kategori; setelah ada rencana atau handoff → `ALREADY_ACTIONED`; temuan ditolak → 409; dua HR bersamaan; atasan dan karyawan → 403; tenant lain → 404; audit tercatat.
 2. Target 2 hari kerja: `reviewDueAt` dari `ended_at` sesi, `overdue`, `counts.overdue`, `counts.held`.
-3. Solusi: rekomendasi dari katalog, `null` bila tak ada course; `planItem` terisi setelah rencana dibuat; respons tidak memuat transkrip.
-4. Penugasan: tiap baris tabel keputusan; sukses dengan adapter tiruan; dua permintaan paralel → adapter dipanggil sekali; gagal → 502 + `failed`, coba lagi sukses; `sending` basi bisa diklaim ulang.
-5. Ekspor CSV: kolom, hanya tenant sendiri, awalan `'`, tidak mengubah data, audit `export`.
-6. Serah ke Improvement Needs: `INA_DISABLED`; sukses; `already`; `skipped`; `listImprovementHandoffs` tanpa data individu.
-7. Migrasi naik-turun-naik (CI).
+3. Solusi: rekomendasi dari katalog, `null` bila tanpa kompetensi; `planItem` terisi setelah rencana dibuat; respons tidak memuat transkrip.
+4. Penugasan: tiap baris tabel keputusan; rencana kedua untuk temuan yang sama → `ALREADY_ACTIONED`; sukses dengan adapter tiruan; dua permintaan paralel → adapter dipanggil sekali; gagal → 502 + `failed`, coba lagi sukses; `sent` lalu `lms_export` tetap 200; PATCH course terkunci; `sending` basi bisa diklaim ulang; permintaan yang klaimnya diambil alih → 409 dan audit `superseded`.
+5. Ekspor CSV: kolom, hanya tenant sendiri, awalan `'`, tanpa baris ganda, tidak mengubah data, audit `export`, `projectId` tidak valid → 400.
+6. Serah ke Improvement Needs: `INA_DISABLED`; sukses; `already`; `skipped`; terkunci dari klasifikasi ulang; `listImprovementHandoffs` tanpa data individu.
+7. Migrasi naik-turun-naik dijalankan CI (`.github/workflows/ci.yml`).
 
 ## Daftar perubahan file
 
-- [x] `docs/designs/b7-tinjauan-hr.md`
+- [x] `docs/designs/b7-tinjauan-hr.md`, laporan `docs/designs/egm/b7/`
 - [x] `apps/api/migrations/20261119000700-tinjauan-hr.js`
 - [x] `apps/api/src/core/flags/index.js` (flag `tna.review_workspace`)
 - [x] `apps/api/src/core/settings/index.js` (default dan validasi `tna.reviewTargetDays`, `lms.delivery`, `lms.lmsName`, `lms.elitementorOrganizationId`)
 - [x] `apps/api/src/modules/tna/review-sla.js` (baru: hari kerja, saran klasifikasi)
 - [x] `apps/api/src/modules/tna/review-workspace.js` (baru: router butir 2–6)
-- [x] `apps/api/src/modules/tna/index.js` (butir 1, pasang router)
-- [x] `apps/api/src/db/lna-stores.js` (`holdFinding`, `reclassifyFinding`, kolom review + `REVIEW_ENC`, `listReviewedForSolutions`, `getPlanForAssignment`, `claimPlanAssignment`, `finishPlanAssignment`, `listPlanExport`, `handoffImprovement`, `listImprovementHandoffs`)
+- [x] `apps/api/src/modules/tna/index.js` (butir 1, pasang router, `409 ALREADY_ACTIONED` di plan, `409 ALREADY_ASSIGNED` di PATCH)
+- [x] `apps/api/src/db/lna-stores.js` (`holdFinding`, `reclassifyFinding`, kolom review + `REVIEW_ENC`, `listReviewedForSolutions`, `getPlanForAssignment`, `claimPlanAssignment`, `finishPlanAssignment`, `listPlanExport`, `handoffImprovement`, `listImprovementHandoffs`, `planFromFinding` dalam transaksi, `updatePlanItem` dengan `lockCourse`, kolom penugasan di `PLAN_COLS`)
 - [x] `apps/api/src/integrations/elitementor/assignments.js` (baru)
 - [x] `apps/api/src/modules/tna/csv.js` (baru: sel CSV)
 - [x] `apps/api/src/integrations/elitementor/client.js` (`headers` dan `signal` opsional)
 - [x] `apps/api/src/app.js` (pasang `assignments`)
 - [x] `.env.example`
 - [x] `apps/api/src/config/env.js` (`ELITEMENTOR_ASSIGNMENTS_ENABLED`)
-- [x] `apps/api/tests/unit/review-sla.test.js`, `apps/api/tests/integration/tinjauan-hr.test.js`
-- [x] `apps/web/src/api/lna.ts` (tipe dan pemanggil baru; layar menyusul di atas PR B0)
+- [x] `apps/api/tests/unit/review-sla.test.js`, `apps/api/tests/unit/elitementor.test.js`, `apps/api/tests/integration/tinjauan-hr.test.js`
+- [x] `apps/web/src/api/lna.ts` (tipe dan pemanggil baru)
+- [ ] `apps/web/src/screens/b7-tinjauan/` (rute `review`), hapus `screens/legacy-review`, e2e
 
-## Catatan triase review spek (19 Nov)
-
-Review oleh subagent baru tanpa konteks percakapan; 15 temuan (4 berat).
-
-| # | Temuan | Putusan |
-| --- | --- | --- |
-| 1 | Penugasan ganda saat klik bersamaan atau timeout | **Perbaiki**: status `sending`, klaim bersyarat, kunci idempotensi, batas waktu, test paralel |
-| 2 | Course Moodle terkirim ke EliteMentor; `lms.delivery` vs `lms.targets` | **Perbaiki**: `COURSE_NOT_IN_TARGET`, penjelasan dua setting, setelan tenant pilot |
-| 3 | Alur pembuatan rencana tidak tertulis; `requested` dan course kosong lolos | **Perbaiki**: bagian Alur, cek `catalog_item_ref`, hanya `new`/`in_progress` |
-| 4 | Kontrak B9 membawa data individu | **Perbaiki**: kontrak tanpa `userId` dan `detail` |
-| 5 | "Perlu ditinjau HR" sebagai saran AI | **Perbaiki**: `suggestedClassification = needs_review` untuk keyakinan rendah |
-| 6 | Klasifikasi langsung final | **Perbaiki**: klasifikasi ulang selama belum ditindaklanjuti |
-| 7 | `GET` ekspor menulis data | **Perbaiki**: ekspor hanya membaca |
-| 8 | Empat gerbang penugasan tanpa tabel | **Perbaiki**: tabel keputusan, fallback setting |
-| 9 | `organizationIdFor` tanpa sumber | **Perbaiki**: `lms.elitementorOrganizationId`; data keluar dicatat |
-| 10 | Awal hitungan dan akhir pekan ambigu | **Perbaiki**: dari `ended_at` sesi, contoh eksplisit |
-| 11 | Klasifikasi tanpa flag melanggar aturan 3 | **Perbaiki**: semua aksi baru di balik `tna.review_workspace`; hanya field baca yang tanpa flag |
-| 12 | Definisi field kurang | **Perbaiki**; N panggilan katalog diterima `[⏳]` |
-| 13 | Sukses handoff tanpa tindakan nyata | **Perbaiki** teks dan `UPDATE` bersyarat; konfirmasi T6 dikirim |
-| 14 | Status PO-6 dan PD-14 | **Perbaiki**: PO-6 sudah dijawab 18 Nov (Sheet Ronde 4), PD-14 ditandai default |
-| 15 | Admin ETA, enkripsi, urutan audit | Admin ETA dan urutan audit **diterima** `[⏳]` dengan alasan di spek; `REVIEW_ENC` **diperbaiki** |
-
-## Catatan triase review diff (19 Nov)
-
-Review oleh subagent baru (diff + spek saja); 11 temuan, tidak ada yang berat.
-
-| # | Temuan | Putusan |
-| --- | --- | --- |
-| 1 | Klasifikasi ulang balapan dengan pembuatan rencana | **Perbaiki**: `planFromFinding` mengunci dan memeriksa ulang temuan dalam satu transaksi (`409 ALREADY_ACTIONED`); `reclassifyFinding` juga mensyaratkan `status = 'open'` |
-| 2 | Course rencana bisa diganti lewat PATCH setelah ditugaskan; klaim tidak memeriksa ulang | **Perbaiki**: PATCH course ditolak bila `sending`/`sent` (`409 ALREADY_ASSIGNED`); klaim mensyaratkan status aktif, course ada, sumber `elitementor` |
-| 3 | Batas waktu tidak mencakup pengambilan token; galat tidak dicatat | **Perbaiki**: `signal` diteruskan ke fetch token; nama galat dicatat di log |
-| 4 | Setting salah bentuk (`"lms": null`) melempar 500 | **Perbaiki**: bagian yang bukan objek memakai default; test unit |
-| 5 | Celah test | **Perbaiki** sebagian: flag mati untuk assign, `sent` lalu `lms_export` tetap 200, PATCH terkunci, `projectId` tidak valid, normalisasi org id. Balapan dua HR dibiarkan longgar (urutan tidak deterministik) `[⏳ DITERIMA]` |
-| 6 | `already` pada handoff bisa salah | **Perbaiki**: dibaca setelah `UPDATE` |
-| 7 | Audit handoff tanpa `employeeIds` | **Perbaiki** |
-| 8 | `projectId` tidak divalidasi | **Perbaiki** di endpoint baru (400) |
-| 9 | Penutupan klaim tanpa pemilik | **Perbaiki**: `finishPlanAssignment` mensyaratkan `assignment_claimed_at` milik klaim itu |
-| 10 | Field tambahan di respons review, `delivery.target = 'lms'` | **Diterima**: `consentWithdrawnAt`/`handedOffAt` hanya untuk HR; `target` bernilai `elitementor` atau `lms` (sama dengan B8 `where.target`); `note` pada klasifikasi ulang diabaikan |
-| 11 | `counts.draft` dan `held`/`overdue` dari dua query | **Diterima** (kosmetik) |
+Catatan triase awal dipindahkan ke `docs/designs/egm/b7/triase-awal.md`; hasil egm-resolve di `docs/designs/egm/b7/goldfish_review_report.md`.
