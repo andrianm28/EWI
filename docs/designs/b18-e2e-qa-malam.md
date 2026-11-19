@@ -118,6 +118,9 @@ apps/api/tests/
 | Rekomendasi promosi | Atasan merekomendasi → HR setuju; nama dan waktu tercatat | B16 | thread B16 |
 | Modul mati | Dengan `module.ina` mati: tindakan perbaikan dari tinjauan HR tidak bisa dibuat dan API Improvement Needs mengembalikan 404/403; modul lain tetap jalan. Diulang untuk modul yang ditahan Go/No-Go | B7, B9 | thread integrasi |
 | Entitlement vs flag | Flag menyala tetapi tenant tidak punya entitlement submodul: rute ditolak | sekarang ada | thread integrasi |
+| Gap TNA ke intervensi | HR mengimpor library modul KSA (`li_modules`) → gap TNA yang sudah disetujui HR muncul di Pareto `/api/li/library`, gap yang belum ditinjau tidak → HR meminta modul ke vendor → status `delivered` dan tautkan course katalog → modul tampil "tersedia"; atasan dan karyawan ditolak 403; `module.li` mati → 404/403 | B13, B5 | thread B13/B14 (setelah `driver.js` dirilis) |
+| Pelatihan offline sampai skor | HR membuat pelatihan offline → menambah peserta dari jabatan → mencatat kehadiran → mengisi skor vendor → dashboard `/api/ld/dashboard` menghitung peserta hadir saja; pengingat kedua dalam 24 jam ditolak 409 | B14 | thread B13/B14 (setelah `driver.js` dirilis) |
+| Webhook EliteMentor ke pelatihan online | Course LMS tersinkron jadi pelatihan → event `learning.progress` dan `assessment.result` ber-HMAC memperbarui peserta dan skor; event ulang tidak berefek; dengan `em.webhook_sync` atau `module.ld` mati event diabaikan tanpa galat | B14 | thread B13/B14 (setelah `driver.js` dirilis) |
 
 Baris milik paket ditulis oleh thread paket itu di PR-nya, memakai `driver.js`. Thread integrasi memeriksanya saat menggabung (bagian dari review "Spec").
 
