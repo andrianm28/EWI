@@ -83,9 +83,20 @@ function employeeRouter({ stores, flags, audit }) {
         return res.status(201).json({ data: row });
       }
       // Keputusan user 19 Nov: tarik persetujuan menghentikan wawancara dan menandai sesi; data tidak dihapus.
-      const out = await stores.dataRequests.withdrawConsent(req.tenantId, me, reason || null);
-      await audit.record(req, 'create', 'my.data_request', { employeeIds: [me], type, requestId: out.request.id, sessions: out.sessionIds.length, objectType: 'interview_session', objectIds: out.sessionIds });
+      // Audit di dalam transaksi: aksi ini tidak bisa dibatalkan, jadi tidak boleh terjadi tanpa jejak.
+      const out = await stores.dataRequests.withdrawConsent(req.tenantId, me, reason || null, {
+        beforeCommit: (o, transaction) => audit.record(req, 'create', 'my.data_request', {
+          employeeIds: [me], type, requestId: o.request.id, sessions: o.sessionIds.length, objectType: 'interview_session', objectIds: o.sessionIds,
+        }, { transaction }),
+      });
       return res.status(out.created ? 201 : 200).json({ data: { ...out.request, sessions: out.sessionIds.length } });
+    }));
+
+    // Daftar permintaan sendiri, tanpa flag beranda (hak subjek data).
+    r.get('/me/data-requests', wrap(async (req, res) => {
+      const rows = await stores.dataRequests.listForUser(req.tenantId, req.user.id);
+      await audit.readIndividual(req, 'my.data_requests', { employeeIds: rows.length ? [req.user.id] : [], objectType: 'data_request', objectIds: rows.map((x) => x.id) });
+      res.json({ data: rows });
     }));
 
     r.delete('/me/data-requests/:id', wrap(async (req, res) => {
@@ -115,14 +126,18 @@ function employeeRouter({ stores, flags, audit }) {
       if (row.status !== 'open') throw new HttpError(409, 'INVALID_STATE', 'Permintaan ini sudah diproses');
       const erase = (req.body || {}).erase === true;
       const note = String((req.body || {}).note || '').trim().slice(0, 1000) || null;
-      // Audit sebelum hapus (pola PK-15), ditulis di dalam transaksi setelah permintaan diklaim dan sesi dikunci:
-      // daftar sesinya sama dengan yang dihapus, dan permintaan yang kalah balapan tidak meninggalkan jejak palsu.
-      const beforeErase = (sessionIds) => audit.record(req, 'delete', 'employee.interview_data', {
-        employeeIds: [row.userId], requestId: row.id, objectType: 'interview_session', sessionIds,
+      // Audit sebelum hapus (pola PK-15) dan audit penutupan ditulis di dalam transaksi setelah permintaan diklaim
+      // dan sesi dikunci: daftar sesinya sama dengan yang dihapus, dan bila apa pun gagal tidak ada jejak palsu.
+      const out = await stores.dataRequests.resolveWithdrawal(req.tenantId, row.id, {
+        resolvedBy: req.user.id, note, erase,
+        beforeErase: (sessionIds, transaction) => audit.record(req, 'delete', 'employee.interview_data', {
+          employeeIds: [row.userId], requestId: row.id, objectType: 'interview_session', sessionIds,
+        }, { transaction }),
+        beforeCommit: (_result, transaction) => audit.record(req, 'update', 'employee.data_request', {
+          employeeIds: [row.userId], requestId: row.id, type: row.type, erase,
+        }, { transaction }),
       });
-      const out = await stores.dataRequests.resolveWithdrawal(req.tenantId, row.id, { resolvedBy: req.user.id, note, erase, beforeErase });
       if (!out) throw new HttpError(409, 'INVALID_STATE', 'Permintaan ini sudah diproses');
-      await audit.record(req, 'update', 'employee.data_request', { employeeIds: [row.userId], requestId: row.id, type: row.type, erase });
       res.json({ data: out });
     }));
   }

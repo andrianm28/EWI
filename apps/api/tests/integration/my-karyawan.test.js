@@ -54,7 +54,7 @@ run('B8 karyawan (Postgres)', () => {
       tok[key] = tokens.sign({ id: row.id, tenantId: t, role, email: `${key}@b8.test` });
     };
     await add('hr', 'hr_admin'); await add('hr2', 'hr_admin'); await add('spv', 'supervisor'); await add('ani', 'learner'); await add('beni', 'learner'); await add('citra', 'learner');
-    await add('xl', 'learner', other.id);
+    await add('xl', 'learner', other.id); await add('xhr', 'hr_admin', other.id);
     await db.query('UPDATE users SET supervisor_id = :spv WHERE id IN (:ids)', { replacements: { spv: u.spv, ids: [u.ani, u.beni, u.citra] } });
     await db.query(`INSERT INTO entitlements (tenant_id, product) VALUES (:t, 'full_suite')`, { replacements: { t: tenant.id } });
     await db.query(`INSERT INTO entitlements (tenant_id, product) VALUES (:t, 'dna')`, { replacements: { t: other.id } });
@@ -321,6 +321,16 @@ run('B8 karyawan (Postgres)', () => {
       // permintaan baru, lalu HR menghapus manual
       const next = await dataReq(a, 'citra', { type: 'withdraw_consent' });
       expect(next.status).toBe(201);
+      // tenant lain tidak melihat dan tidak bisa menutup permintaan ini
+      expect((await request(a).get('/api/employees/data-requests?status=all').set(as('xhr'))).body.data.map((x) => x.id)).not.toContain(next.body.data.id);
+      expect((await request(a).post(`/api/employees/data-requests/${next.body.data.id}/fulfill`).set(as('xhr')).send({ erase: true })).status).toBe(404);
+      // audit penutupan gagal -> seluruh hapus batal, termasuk jejak audit hapus (tidak ada jejak palsu)
+      const failingAudit = { insert: async (row, opts) => { if (row.resource === 'employee.data_request') throw new Error('audit mati'); return stores.audit.insert(row, opts); } };
+      const broken = createApp({ config, stores: { ...stores, audit: failingAudit } });
+      expect((await request(broken).post(`/api/employees/data-requests/${next.body.data.id}/fulfill`).set(as('hr2')).send({ erase: true })).status).toBe(500);
+      expect((await sql1('SELECT count(*)::int AS n FROM lna_findings WHERE user_id = :u', { u: u.citra })).n).toBe(2);
+      expect((await audits('employee.interview_data'))).toHaveLength(0);
+      expect((await sql1('SELECT status FROM data_subject_requests WHERE id = :id', { id: next.body.data.id })).status).toBe('open');
       // B6: ringkasan temuan dan catatan karyawan di baris sesi ikut terhapus
       await sql1(`UPDATE lna_interview_sessions SET summary_findings = '{"x":1}'::jsonb, summary_at = now(), summary_note = 'catatan',
                          summary_disputed = true, summary_confirmed_at = now()
@@ -342,6 +352,16 @@ run('B8 karyawan (Postgres)', () => {
       expect(done.body.data.map((x) => x.resolvedByName).sort()).toEqual(['hr', 'hr2']);
     });
 
+    it('audit gagal saat tarik persetujuan -> tidak ada yang berubah (audit di dalam transaksi)', async () => {
+      const sid = await session('ani', 'in_progress');
+      const failingAudit = { insert: async () => { throw new Error('audit mati'); } };
+      const broken = createApp({ config, stores: { ...stores, audit: failingAudit } });
+      expect((await dataReq(broken, 'ani', { type: 'withdraw_consent' })).status).toBe(500);
+      expect(await sql1('SELECT status, consent_withdrawn_at AS w FROM lna_interview_sessions WHERE id = :id', { id: sid })).toEqual({ status: 'in_progress', w: null });
+      expect((await sql1(`SELECT count(*)::int AS n FROM data_subject_requests WHERE user_id = :u`, { u: u.ani })).n).toBe(0);
+      await db.query(`UPDATE lna_interview_sessions SET status = 'abandoned' WHERE id = :id`, { replacements: { id: sid } });
+    });
+
     it('HR tidak bisa memenuhi permintaannya sendiri', async () => {
       const a = app();
       const own = await dataReq(a, 'hr', { type: 'withdraw_consent' });
@@ -361,6 +381,14 @@ run('B8 karyawan (Postgres)', () => {
       expect(Math.round(due / 3600e3)).toBe(72);
       expect((await dataReq(a, 'beni', { type: 'delete_data' })).body.error.code).toBe('REQUEST_EXISTS');
       const id = res.body.data.id;
+      // daftar permintaan sendiri tersedia tanpa flag beranda (hak subjek data)
+      await setFlag('learner.home', false);
+      const mine = await request(a).get('/api/employees/me/data-requests').set(as('beni'));
+      expect(mine.status).toBe(200);
+      expect(mine.body.data).toEqual([expect.objectContaining({ id, type: 'delete_data', status: 'open' })]);
+      expect(JSON.stringify((await request(a).get('/api/employees/me/data-requests').set(as('ani'))).body.data)).not.toContain(id);
+      expect((await request(a).get('/api/employees/me/data-requests').set(as('xl'))).body.data).toEqual([]);
+      await setFlag('learner.home', true);
       expect((await request(a).delete(`/api/employees/me/data-requests/${id}`).set(as('ani'))).status).toBe(404);
       expect((await request(a).delete('/api/employees/me/data-requests/bukan-uuid').set(as('beni'))).status).toBe(404);
       expect((await request(a).post(`/api/employees/data-requests/${id}/fulfill`).set(as('hr'))).body.error.code).toBe('USE_DELETE_EMPLOYEE');

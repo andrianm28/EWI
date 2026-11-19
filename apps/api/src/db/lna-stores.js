@@ -1213,7 +1213,8 @@ function createLnaStores(sequelize, { cipher } = {}) {
      * (atau pakai yang masih terbuka), hentikan sesi yang masih terbuka, tandai semua sesi yang pernah disetujui,
      * dan hentikan analisis yang belum selesai. Aman diulang.
      */
-    async withdrawConsent(tenantId, userId, reason) {
+    /** beforeCommit(out, transaction): audit di dalam transaksi; gagal = penarikan batal. */
+    async withdrawConsent(tenantId, userId, reason, { beforeCommit } = {}) {
       const reasonEnc = reason ? await enc(tenantId, reason) : null;
       return sequelize.transaction(async (transaction) => {
         const q = (sql, replacements) => sequelize.query(sql, { replacements, transaction });
@@ -1244,7 +1245,9 @@ function createLnaStores(sequelize, { cipher } = {}) {
           await q(`UPDATE lna_analysis_jobs SET status = 'failed', last_error = 'CONSENT_WITHDRAWN', locked_until = NULL, finished_at = now()
                     WHERE tenant_id = :tenantId AND session_id IN (:ids) AND status <> 'done'`, { tenantId, ids: sessions.map((s) => s.id) });
         }
-        return { request, created, sessionIds: sessions.map((s) => s.id) };
+        const out = { request, created, sessionIds: sessions.map((s) => s.id) };
+        if (beforeCommit) await beforeCommit(out, transaction);
+        return out;
       });
     },
     /** Batalkan permintaan sendiri yang masih terbuka. */
@@ -1255,9 +1258,10 @@ function createLnaStores(sequelize, { cipher } = {}) {
     /**
      * HR menutup permintaan tarik persetujuan. erase = true: hapus manual giliran percakapan, temuan (rencana
      * turunannya ikut lewat FK), dan hasil analisis dari sesi yang ditarik. Baris sesi tetap ada. null bila
-     * permintaan sudah tidak terbuka.
+     * permintaan sudah tidak terbuka. beforeErase(ids, transaction) dan beforeCommit(result, transaction) menulis audit
+     * di dalam transaksi: audit gagal = penutupan dan hapus batal bersama jejaknya.
      */
-    async resolveWithdrawal(tenantId, id, { resolvedBy, note, erase, beforeErase }) {
+    async resolveWithdrawal(tenantId, id, { resolvedBy, note, erase, beforeErase, beforeCommit }) {
       const noteEnc = note ? await enc(tenantId, note) : null;
       return sequelize.transaction(async (transaction) => {
         const q = (sql, replacements) => sequelize.query(sql, { replacements, transaction });
@@ -1265,14 +1269,15 @@ function createLnaStores(sequelize, { cipher } = {}) {
                                   WHERE tenant_id = :tenantId AND id = :id AND type = 'withdraw_consent' AND status = 'open'
                                   RETURNING id, user_id AS "userId"`, { tenantId, id, resolvedBy, note: noteEnc });
         if (!req) return null;
-        if (!erase) return { erased: false };
+        const done = async (result) => { if (beforeCommit) await beforeCommit(result, transaction); return result; };
+        if (!erase) return done({ erased: false });
         // Sesi dikunci, lalu audit ditulis dari daftar yang sama dengan yang dihapus (audit gagal = transaksi batal).
         const [sessions] = await q(`SELECT id FROM lna_interview_sessions
                                      WHERE tenant_id = :tenantId AND interviewee_id = :userId AND submodule = 'tna' AND consent_withdrawn_at IS NOT NULL
                                      FOR UPDATE`, { tenantId, userId: req.userId });
         const ids = sessions.map((s) => s.id);
-        if (beforeErase) await beforeErase(ids);
-        if (!ids.length) return { erased: true, deletedTurns: 0, deletedFindings: 0, deletedPlanItems: 0 };
+        if (beforeErase) await beforeErase(ids, transaction);
+        if (!ids.length) return done({ erased: true, deletedTurns: 0, deletedFindings: 0, deletedPlanItems: 0 });
         const [[{ n: deletedPlanItems }]] = await q(`SELECT count(*)::int AS n FROM lna_training_plan_items p JOIN lna_findings f ON f.id = p.finding_id
                                                       WHERE f.tenant_id = :tenantId AND f.session_id IN (:ids)`, { tenantId, ids });
         const [turns] = await q('DELETE FROM lna_interview_turns WHERE session_id IN (:ids) RETURNING id', { ids });
@@ -1282,7 +1287,7 @@ function createLnaStores(sequelize, { cipher } = {}) {
         await q(`UPDATE lna_interview_sessions SET summary_findings = NULL, summary_note = NULL, summary_at = NULL,
                         summary_confirmed_at = NULL, summary_disputed = false
                   WHERE tenant_id = :tenantId AND id IN (:ids)`, { tenantId, ids });
-        return { erased: true, deletedTurns: turns.length, deletedFindings: findings.length, deletedPlanItems };
+        return done({ erased: true, deletedTurns: turns.length, deletedFindings: findings.length, deletedPlanItems });
       });
     },
   };

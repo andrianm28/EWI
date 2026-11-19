@@ -150,11 +150,11 @@ function createStores(sequelize, { encryption } = {}) {
       },
     },
     audit: {
-      async insert(row) {
+      async insert(row, { transaction } = {}) {
         await sequelize.query(
           `INSERT INTO audit_logs (tenant_id, user_id, action, resource, meta, at)
            VALUES (:tenantId, :userId, :action, :resource, CAST(:meta AS jsonb), :at)`,
-          { replacements: { ...row, userId: row.userId || null, meta: JSON.stringify(row.meta || {}) } },
+          { replacements: { ...row, userId: row.userId || null, meta: JSON.stringify(row.meta || {}) }, transaction },
         );
       },
     },
