@@ -289,3 +289,69 @@ run('Learning Intervention (Postgres)', () => {
     await db.query(`UPDATE feature_flags SET enabled = true WHERE tenant_id = :t AND key = 'module.li'`, { replacements: { t: tenant.id } });
   });
 });
+
+// Spek B13 §3 "Tautan modul ke kompetensi lewat kode": kode modul = lna_competencies.code di jabatan modul (B4),
+// dibaca saat request. Tenant sendiri supaya hitungan di blok di atas tidak berubah.
+run('Learning Intervention: tautan modul ke kompetensi lewat kode (Postgres)', () => {
+  let db; let app; let stores; let tenant; let other; const tok = {}; const u = {};
+  let roleA; let roleB; let otherRole; let project;
+  const as = (who) => ({ Authorization: `Bearer ${tok[who]}` });
+  const get = (path, who = 'hr') => request(app).get(`/api/li${path}`).set(as(who));
+  const HEADER = 'Kode Modul,Nama Modul,Level,Rumpun,Tujuan,Jabatan,Kompetensi,Tipe Butir,Butir';
+  async function importModules(lines, who = 'hr') {
+    const up = await request(app).post('/api/li/imports/li_modules?filename=modul.csv').set(as(who)).set('Content-Type', 'application/octet-stream')
+      .send(Buffer.from(`${[HEADER, ...lines].join('\n')}\n`));
+    expect(up.status).toBe(201);
+    const done = await request(app).post(`/api/li/imports/batches/${up.body.data.id}/commit`).set(as(who)).send({});
+    expect(done.status).toBe(200);
+    return done;
+  }
+  const detail = async (code, who = 'hr') => {
+    const m = (await get('/modules', who)).body.data.find((x) => x.code === code);
+    return (await get(`/modules/${m.id}`, who)).body.data;
+  };
+  const competency = (t, jobRoleId, name, code) => stores.dna.createCompetency(t, {
+    jobRoleId, careerLevelId: null, kind: 'job', name, definition: null, indicators: [], source: 'dacum', requiredScore: 3, importance: 5, code,
+  });
+
+  beforeAll(async () => {
+    const config = makeConfig();
+    db = createDb({ databaseUrl: process.env.DATABASE_URL, dbSchema: process.env.DB_SCHEMA || 'ewi' });
+    stores = createStores(db);
+    app = createApp({ config, stores });
+    const tokens = createTokenService(config.jwt);
+    const slug = `li-kode-${Date.now()}`;
+    [[tenant]] = await db.query(`INSERT INTO tenants (slug, name) VALUES (:slug, 'LI kode') RETURNING id`, { replacements: { slug } });
+    [[other]] = await db.query(`INSERT INTO tenants (slug, name) VALUES (:slug, 'LI kode lain') RETURNING id`, { replacements: { slug: `${slug}-x` } });
+    for (const [key, t] of [['hr', tenant.id], ['luar', other.id]]) {
+      const [[row]] = await db.query(
+        `INSERT INTO users (tenant_id, email, name, employee_id, role, status) VALUES (:t, :email, :key, :emp, 'hr_admin', 'active') RETURNING id`,
+        { replacements: { t, email: `${key}@li-kode.test`, key, emp: `E-${key}` } },
+      );
+      u[key] = row.id;
+      tok[key] = tokens.sign({ id: row.id, tenantId: t, role: 'hr_admin', email: `${key}@li-kode.test` });
+    }
+    for (const t of [tenant.id, other.id]) {
+      await db.query(`INSERT INTO entitlements (tenant_id, product) VALUES (:t, 'full_suite')`, { replacements: { t } });
+      await db.query(`INSERT INTO feature_flags (tenant_id, key, enabled) VALUES (:t, 'module.li', true), (:t, 'module.tna', true), (:t, 'module.dna', true), (:t, 'dna.development', true)`, { replacements: { t } });
+    }
+    [[roleA]] = await db.query(`INSERT INTO lna_job_roles (tenant_id, name) VALUES (:t, 'Engineer Service Delivery') RETURNING id`, { replacements: { t: tenant.id } });
+    [[roleB]] = await db.query(`INSERT INTO lna_job_roles (tenant_id, name) VALUES (:t, 'Network Engineer') RETURNING id`, { replacements: { t: tenant.id } });
+    [[otherRole]] = await db.query(`INSERT INTO lna_job_roles (tenant_id, name) VALUES (:t, 'Engineer Service Delivery') RETURNING id`, { replacements: { t: other.id } });
+    [[project]] = await db.query(`INSERT INTO lna_projects (tenant_id, name) VALUES (:t, 'Pilot') RETURNING id`, { replacements: { t: tenant.id } });
+  });
+
+  afterAll(async () => {
+    await db.transaction(async (transaction) => {
+      await db.query("SET LOCAL ewi.audit_maintenance = 'on'", { transaction });
+      await db.query('DELETE FROM tenants WHERE id IN (:ids)', { replacements: { ids: [tenant.id, other.id] }, transaction });
+    });
+    await db.close();
+  });
+
+  it('kamus diimpor dulu: modul ber-kode sama di jabatannya terhubung tanpa kolom Kompetensi (via code)', async () => {
+    const rca = await competency(tenant.id, roleA.id, 'Root Cause Analysis', 'ST-A2');
+    await importModules(['ST-A2,Root Cause Analysis,advanced,Specific Technical,,Engineer Service Delivery,,K,Konsep 5 Whys']);
+    expect((await detail('ST-A2')).competencies).toEqual([{ id: rca.id, code: 'ST-A2', name: 'Root Cause Analysis', jobRoleId: roleA.id, via: 'code' }]);
+  });
+});
