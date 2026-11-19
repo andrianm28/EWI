@@ -444,6 +444,7 @@ run('B7 tinjauan HR (Postgres)', () => {
       const plan = await stores.tna.insertPlanItem(tenant.id, { findingId: trPlanned, userId: u.beni, origin: 'hr', status: 'new', catalogSource: 'elitementor', catalogItemRef: 'EM-BEKU', catalogItemTitle: 'Kursus beku' });
       await db.query(`UPDATE lna_findings SET status = 'planned' WHERE id = :id`, { replacements: { id: trPlanned } });
 
+      const liBefore = (await stores.li.listTrainingGaps(tenant.id, { all: true })).filter((g) => g.userId === u.beni).length;
       // karyawan menarik persetujuan
       await db.query('UPDATE lna_interview_sessions SET consent_withdrawn_at = now() WHERE id = :id', { replacements: { id: ws.id } });
 
@@ -453,9 +454,9 @@ run('B7 tinjauan HR (Postgres)', () => {
       const pl = await request(a).post(`/api/tna/findings/${trOpen}/plan`).set(as('hr')).send({});
       expect(pl.status).toBe(409);
       expect(pl.body.error.code).toBe('CONSENT_WITHDRAWN');
-      const as1 = await request(a).post(`/api/tna/plan-items/${plan.id}/assign`).set(as('hr')).send({});
-      expect(as1.status).toBe(409);
-      expect(as1.body.error.code).toBe('CONSENT_WITHDRAWN');
+      const asg = await request(a).post(`/api/tna/plan-items/${plan.id}/assign`).set(as('hr')).send({});
+      expect(asg.status).toBe(409);
+      expect(asg.body.error.code).toBe('CONSENT_WITHDRAWN');
 
       const sol = (await request(a).get('/api/tna/review/solutions').set(as('hr'))).body.data;
       const solIds = [...sol.training, ...sol.improvement].map((x) => x.findingId);
@@ -466,6 +467,31 @@ run('B7 tinjauan HR (Postgres)', () => {
 
       const ho = (await request(a).post('/api/tna/review/improvement-handoff').set(as('hr')).send({ findingIds: [imOpen] })).body.data;
       expect(ho).toMatchObject({ handedOff: [], skipped: [imOpen] });
+      // yang sudah diserahkan sebelum penarikan tidak dilaporkan "sudah diserahkan" (INA tidak melihatnya lagi)
+      const ho2 = (await request(a).post('/api/tna/review/improvement-handoff').set(as('hr')).send({ findingIds: [imHanded] })).body.data;
+      expect(ho2).toMatchObject({ handedOff: [], already: [], skipped: [imHanded] });
+
+      // jalur lain yang memproses temuan/rencana
+      const patch = await request(a).patch(`/api/tna/plan-items/${plan.id}`).set(as('hr')).send({ status: 'in_progress' });
+      expect(patch.status).toBe(409);
+      expect(patch.body.error.code).toBe('CONSENT_WITHDRAWN');
+      expect(await stores.catalog.completePlansForPassed(tenant.id, [{ userId: u.beni, ref: 'EM-BEKU' }], 'elitementor')).toBe(0);
+      await setFlag('ina.dashboard', true);
+      const act = await request(a).post('/api/ina/actions').set(as('hr')).send({
+        title: 'Dari temuan beku', category: 'sop', ownerUserId: u.hr, dueDate: '2030-01-31', findingId: imOpen, involvesIndividual: false,
+      });
+      expect(act.status).toBe(409);
+      expect(act.body.error.code).toBe('CONSENT_WITHDRAWN');
+      await setFlag('tna.training_request', true);
+      const trq = await request(a).post('/api/tna/training-requests').set(as('beni')).send({ findingId: trOpen });
+      expect(trq.status).toBe(409);
+      expect(trq.body.error.code).toBe('CONSENT_WITHDRAWN');
+      await setFlag('tna.training_request', false);
+      const par = (await request(a).get('/api/tna/pareto').set(as('hr'))).body.data.map((x) => x.id || x.findingId);
+      for (const id of [trPlanned, trOpen]) expect(par).not.toContain(id);
+      expect((await stores.tna.findingsForGaps(tenant.id, { all: true })).map((x) => x.id)).not.toContain(trOpen);
+      const liAfter = (await stores.li.listTrainingGaps(tenant.id, { all: true })).filter((g) => g.userId === u.beni).length;
+      expect(liAfter).toBe(liBefore - 2); // trPlanned dan trOpen tidak lagi dihitung
       expect((await stores.tna.listImprovementHandoffs(tenant.id)).map((x) => x.findingId)).not.toContain(imHanded);
 
       // data tetap disimpan

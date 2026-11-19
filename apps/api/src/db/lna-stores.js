@@ -42,12 +42,7 @@ const REVIEW_COLS = `f.id, f.project_id AS "projectId", f.session_id AS "session
   s.summary_disputed AS "summaryDisputed", s.summary_note AS "summaryNote"`;
 // B8: temuan draf dari sesi yang persetujuannya ditarik tidak diteruskan ke antrean review
 const NOT_WITHDRAWN_DRAFT = `NOT (f.review_status = 'draft' AND s.consent_withdrawn_at IS NOT NULL)`;
-/**
- * Keputusan user 19 Nov (UU PDP): temuan dari sesi yang persetujuannya ditarik dibekukan, datanya tetap disimpan.
- * Satu predikat untuk semua tindak lanjut: klasifikasi ulang, solusi, rencana, penugasan, ekspor, serah ke INA.
- */
-const notFrozen = (alias) => `NOT EXISTS (SELECT 1 FROM lna_interview_sessions ws WHERE ws.id = ${alias}.session_id
-                                          AND ws.tenant_id = ${alias}.tenant_id AND ws.consent_withdrawn_at IS NOT NULL)`;
+const { isFrozen, notFrozen, planFrozen } = require('./frozen-sql');
 const REVIEW_FROM = `FROM lna_findings f
                    LEFT JOIN users u ON u.id = f.user_id
                    LEFT JOIN users r ON r.id = f.reviewed_by
@@ -613,7 +608,7 @@ function createLnaStores(sequelize, { cipher } = {}) {
                             f.competency_id AS "competencyId", pr.metric_type AS "metricType", pr.name AS "metricName", pr.period AS "metricPeriod"
                        FROM lna_findings f
                        LEFT JOIN lna_performance_records pr ON pr.id = f.performance_record_id AND pr.tenant_id = f.tenant_id
-                      WHERE f.tenant_id = :tenantId${scopeSql('f.user_id', scope, rep)}`, rep);
+                      WHERE f.tenant_id = :tenantId AND ${notFrozen('f')}${scopeSql('f.user_id', scope, rep)}`, rep);
     },
     async performanceByIds(tenantId, ids) {
       if (!ids || !ids.length) return [];
@@ -693,7 +688,7 @@ function createLnaStores(sequelize, { cipher } = {}) {
      * Temuan yang boleh dipakai: hanya yang sudah disetujui atau diubah HR (PM-5 ★A). Draf dan yang ditolak
      * tidak ikut ke daftar, Pareto, dashboard, rencana, maupun ekspor data karyawan. Antrean review memakai reviewQueue.
      */
-    async listFindings(tenantId, scope, { projectId, categories }) {
+    async listFindings(tenantId, scope, { projectId, categories, excludeFrozen = false }) {
       const rep = { tenantId, categories, reviewed: REVIEWED };
       let sql = `SELECT f.id, f.project_id AS "projectId", f.user_id AS "userId", u.name AS "userName", f.category, f.title, f.detail,
                         f.status, f.competency_id AS "competencyId", c.name AS "competencyName", c.importance,
@@ -704,6 +699,7 @@ function createLnaStores(sequelize, { cipher } = {}) {
                    LEFT JOIN lna_competencies c ON c.id = f.competency_id
                    LEFT JOIN lna_performance_records pr ON pr.id = f.performance_record_id
                   WHERE f.tenant_id = :tenantId AND f.category IN (:categories) AND f.review_status IN (:reviewed)`;
+      if (excludeFrozen) sql += ` AND ${notFrozen('f')}`;
       sql += scopeSql('f.user_id', scope, rep);
       if (projectId) { sql += ' AND f.project_id = :projectId'; rep.projectId = projectId; }
       return open(tenantId, await select(`${sql} ORDER BY f.created_at DESC`, rep), ['title', 'detail']);
@@ -876,7 +872,7 @@ function createLnaStores(sequelize, { cipher } = {}) {
       return one(`SELECT p.id, p.user_id AS "userId", p.status, p.catalog_source AS "catalogSource", p.catalog_item_ref AS "catalogItemRef",
                          p.catalog_item_title AS "catalogItemTitle", p.assignment_status AS "assignmentStatus",
                          u.employee_id AS "employeeId", u.email,
-                         (f.id IS NOT NULL AND NOT ${notFrozen('f')}) AS frozen
+                         (f.id IS NOT NULL AND ${isFrozen('f')}) AS frozen
                     FROM lna_training_plan_items p JOIN users u ON u.id = p.user_id AND u.tenant_id = p.tenant_id
                     LEFT JOIN lna_findings f ON f.id = p.finding_id AND f.tenant_id = p.tenant_id
                    WHERE p.tenant_id = :tenantId AND p.id = :id`, { tenantId, id });
@@ -890,8 +886,7 @@ function createLnaStores(sequelize, { cipher } = {}) {
                                    SET assignment_status = 'sending', assignment_target = 'elitementor', assignment_claimed_at = clock_timestamp()
                                  WHERE tenant_id = :tenantId AND id = :id
                                    AND status IN ('new', 'in_progress') AND catalog_item_ref IS NOT NULL AND catalog_source = 'elitementor'
-                                   AND NOT EXISTS (SELECT 1 FROM lna_findings f WHERE f.id = lna_training_plan_items.finding_id
-                                                     AND f.tenant_id = lna_training_plan_items.tenant_id AND NOT ${notFrozen('f')})
+                                   AND NOT ${planFrozen('lna_training_plan_items')}
                                    AND (assignment_status IS NULL OR assignment_status = 'failed'
                                         OR (assignment_status = 'sending' AND assignment_claimed_at < now() - interval '5 minutes'))
                                  RETURNING assignment_claimed_at::text AS "claimedAt"`, { tenantId, id });
@@ -920,7 +915,7 @@ function createLnaStores(sequelize, { cipher } = {}) {
                    JOIN users u ON u.id = p.user_id AND u.tenant_id = p.tenant_id
                    LEFT JOIN lna_findings f ON f.id = p.finding_id AND f.tenant_id = p.tenant_id
                    LEFT JOIN lna_competencies c ON c.id = f.competency_id AND c.tenant_id = p.tenant_id
-                  WHERE p.tenant_id = :tenantId AND p.status IN ('new', 'in_progress') AND (f.id IS NULL OR ${notFrozen('f')})`;
+                  WHERE p.tenant_id = :tenantId AND p.status IN ('new', 'in_progress') AND ${notFrozen('f')}`;
       if (projectId) { sql += ' AND f.project_id = :projectId'; rep.projectId = projectId; }
       return select(`${sql} ORDER BY u.name NULLS LAST, u.email, p.created_at`, rep);
     },
@@ -935,8 +930,10 @@ function createLnaStores(sequelize, { cipher } = {}) {
                                                AND ${notFrozen('lna_findings')}
                                              RETURNING id, user_id AS "userId"`, { replacements: { tenantId, ids, userId } });
       // dibaca setelah UPDATE: "already" hanya untuk temuan yang memang sudah bertanda diteruskan
+      // temuan beku yang sudah diserahkan sebelum penarikan masuk "skipped": INA tidak melihatnya lagi
       const marked = await select(`SELECT id FROM lna_findings
-                                    WHERE tenant_id = :tenantId AND id IN (:ids) AND improvement_handoff_at IS NOT NULL`, { tenantId, ids });
+                                    WHERE tenant_id = :tenantId AND id IN (:ids) AND improvement_handoff_at IS NOT NULL
+                                      AND ${notFrozen('lna_findings')}`, { tenantId, ids });
       const handedOff = new Set(done.map((x) => x.id));
       const known = new Set(marked.map((x) => x.id));
       return {
@@ -1037,6 +1034,11 @@ function createLnaStores(sequelize, { cipher } = {}) {
     async getPlanItem(tenantId, id) {
       return open(tenantId, await one(`SELECT ${PLAN_COLS} FROM lna_training_plan_items p JOIN users u ON u.id = p.user_id
                    WHERE p.tenant_id = :tenantId AND p.id = :id`, { tenantId, id }), ['note']);
+    },
+    /** Keputusan user 19 Nov: rencana dari temuan yang persetujuannya ditarik tidak diubah lagi. */
+    async isPlanFrozen(tenantId, id) {
+      const row = await one(`SELECT ${planFrozen('p')} AS frozen FROM lna_training_plan_items p WHERE p.tenant_id = :tenantId AND p.id = :id`, { tenantId, id });
+      return Boolean(row && row.frozen);
     },
     async updatePlanItem(tenantId, id, { status, catalogItemRef, catalogItemTitle, catalogSource }) {
       return insert(`UPDATE lna_training_plan_items
@@ -1155,7 +1157,7 @@ function createLnaStores(sequelize, { cipher } = {}) {
         const [, meta] = await sequelize.query(
           `UPDATE lna_training_plan_items SET status = 'completed', updated_at = now()
             WHERE tenant_id = :tenantId AND user_id = :userId AND catalog_source = :source AND catalog_item_ref = :ref
-              AND status IN ('new','in_progress')`,
+              AND status IN ('new','in_progress') AND NOT ${planFrozen('lna_training_plan_items')}`,
           { replacements: { tenantId, userId, source, ref } },
         );
         n += (meta && meta.rowCount) || 0;

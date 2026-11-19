@@ -24,7 +24,7 @@ const { importRouter } = require('../imports');
 const { getKind } = require('../imports/kinds');
 const { validateRows, commitRows } = require('../imports/engine');
 const { PLAN_STATUSES, PLAN_STATUS_LABEL, initialStatus, canTransition } = require('./plan-status');
-const { reviewWorkspaceRouter, toReviewItem, assertNotWithdrawn } = require('./review-workspace');
+const { reviewWorkspaceRouter, toReviewItem, assertNotWithdrawn, frozenError } = require('./review-workspace');
 const { gapRouter } = require('./gap-routes');
 
 const REVIEW_DECISIONS = { approve: 'approved', edit: 'edited', reject: 'rejected' };
@@ -271,7 +271,7 @@ module.exports = {
       if (req.user.role === ROLES.LEARNER) throw forbidden('ROLE_FORBIDDEN', 'Prioritas tim hanya untuk HR dan atasan');
       const scope = await scopeFor(req, stores.people);
       const conf = await settings.get(req.tenantId);
-      const findings = await stores.tna.listFindings(req.tenantId, scope, { projectId: req.query.projectId, categories: ['training'] });
+      const findings = await stores.tna.listFindings(req.tenantId, scope, { projectId: req.query.projectId, categories: ['training'], excludeFrozen: true });
       const rows = rankFindings(findings, conf.tna.pareto);
       res.json({ data: rows, formula: conf.tna.pareto });
     }));
@@ -281,8 +281,6 @@ module.exports = {
       const f = await stores.tna.getFinding(req.tenantId, req.params.id);
       if (!f || f.category !== 'training') throw notFound('Temuan training tidak ditemukan');
       if (!REVIEWED.includes(f.reviewStatus)) throw new HttpError(409, 'REVIEW_PENDING', 'Setujui temuan ini di antrean review sebelum membuat training plan');
-      // keputusan user 19 Nov: temuan dari wawancara yang persetujuannya ditarik dibekukan
-      assertNotWithdrawn(await stores.tna.getReviewItem(req.tenantId, f.id));
       const conf = await settings.get(req.tenantId);
       const competency = f.competencyId ? await stores.dna.getCompetency(req.tenantId, f.competencyId) : null;
       const hit = await catalog.match({ tenantId: req.tenantId, targets: conf.lms.targets, competency, tier: req.body?.programTier });
@@ -292,7 +290,11 @@ module.exports = {
         programTier: req.body?.programTier || null, catalogSource: hit?.source, catalogItemRef: hit?.ref, catalogItemTitle: hit?.title,
         note: req.body?.note || null,
       });
-      if (!item) throw new HttpError(409, 'ALREADY_ACTIONED', 'Klasifikasi temuan ini baru saja berubah. Muat ulang lalu coba lagi.');
+      if (!item) {
+        // planFromFinding juga menolak temuan beku (keputusan user 19 Nov); bedakan alasannya untuk pesan
+        assertNotWithdrawn(await stores.tna.getReviewItem(req.tenantId, f.id));
+        throw new HttpError(409, 'ALREADY_ACTIONED', 'Klasifikasi temuan ini baru saja berubah. Muat ulang lalu coba lagi.');
+      }
       // PK-15: perubahan temuan dan rencana dicatat
       await audit.record(req, 'create', 'tna.plan_item', { employeeIds: [f.userId], objectType: 'tna_plan_item', objectIds: [item.id], findingId: f.id, status: item.status });
       await audit.record(req, 'update', 'tna.finding', { employeeIds: [f.userId], objectType: 'tna_finding', objectIds: [f.id], from: f.status, to: 'planned' });
@@ -307,6 +309,7 @@ module.exports = {
       if (findingId) {
         const f = await stores.tna.getFinding(req.tenantId, findingId);
         if (!f || f.userId !== req.user.id || !REVIEWED.includes(f.reviewStatus)) throw notFound('Temuan tidak ditemukan');
+        assertNotWithdrawn(await stores.tna.getReviewItem(req.tenantId, f.id));
       }
       const item = await stores.tna.insertPlanItem(req.tenantId, {
         findingId: findingId || null, userId: req.user.id, origin: 'learner_request', status: initialStatus('learner_request'), note: note || null, requestedBy: req.user.id,
@@ -329,6 +332,7 @@ module.exports = {
       if (!item || !inScope(scope, item.userId)) throw notFound('Item training plan tidak ditemukan');
       const { status, catalogItemRef, catalogItemTitle, catalogSource } = req.body || {};
       if (status && !PLAN_STATUSES.includes(status)) throw badRequest(`status harus salah satu: ${PLAN_STATUSES.join(', ')}`);
+      if (await stores.tna.isPlanFrozen(req.tenantId, item.id)) throw frozenError();
       if (status && status !== item.status && !canTransition(item.status, status)) {
         throw new HttpError(409, 'INVALID_TRANSITION', `Status "${PLAN_STATUS_LABEL[item.status]}" tidak bisa diubah menjadi "${PLAN_STATUS_LABEL[status]}"`);
       }

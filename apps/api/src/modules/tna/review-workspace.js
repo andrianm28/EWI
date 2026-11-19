@@ -123,7 +123,7 @@ function reviewWorkspaceRouter({ stores, settings, catalog, flags, audit, assign
   r.post('/plan-items/:id/assign', hr, flag, wrap(async (req, res) => {
     const plan = UUID.test(req.params.id) ? await stores.tna.getPlanForAssignment(req.tenantId, req.params.id) : null;
     if (!plan) throw notFound('Item training plan tidak ditemukan');
-    if (plan.frozen) throw conflict('CONSENT_WITHDRAWN', 'Karyawan menarik persetujuan wawancara ini, rencananya dibekukan');
+    if (plan.frozen) throw frozenError();
     if (!ACTIVE_PLAN.includes(plan.status)) throw conflict('INVALID_STATE', `Rencana berstatus "${PLAN_STATUS_LABEL[plan.status]}" tidak bisa ditugaskan`);
     if (!plan.catalogItemRef) throw conflict('NEEDS_MODULE', 'Rencana ini belum punya course. Pilih atau buat modulnya dulu.');
     if (plan.assignmentStatus === 'sent') return res.json({ data: await stores.tna.getPlanItem(req.tenantId, plan.id) });
@@ -190,9 +190,12 @@ function reviewWorkspaceRouter({ stores, settings, catalog, flags, audit, assign
   return r;
 }
 
-/** B8: draf dari wawancara yang persetujuannya ditarik tidak diteruskan (review lama dan klasifikasi B7). */
+/** Keputusan user 19 Nov: temuan dan rencana dari wawancara yang persetujuannya ditarik dibekukan, data tetap disimpan. */
+const frozenError = () => new HttpError(409, 'CONSENT_WITHDRAWN', 'Karyawan menarik persetujuan wawancara ini. Temuan dan rencananya dibekukan.');
+
+/** B8: temuan (draf maupun sudah diputus) dari wawancara yang persetujuannya ditarik tidak diproses lagi. */
 function assertNotWithdrawn(item) {
-  if (item.consentWithdrawnAt) throw new HttpError(409, 'CONSENT_WITHDRAWN', 'Karyawan menarik persetujuan wawancara ini, temuannya dibekukan');
+  if (item && item.consentWithdrawnAt) throw frozenError();
 }
 
-module.exports = { reviewWorkspaceRouter, toReviewItem, assertNotWithdrawn };
+module.exports = { reviewWorkspaceRouter, toReviewItem, assertNotWithdrawn, frozenError };
