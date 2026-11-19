@@ -287,7 +287,9 @@ Keluaran: `qa-malam-<tanggal>.json` (angka, pelanggaran, dan teks pendek yang me
 
 **Run manual (cadangan sebelum workflow aktif):** dijalankan manusia (Andrian atau yang ditunjuk) di mesinnya dengan kredensial berumur pendek (`aws sso login` atau STS) dan Postgres lokal `ewi_qa`. Tidak pernah dari sesi agen, dan tidak pernah dengan kunci IAM aplikasi.
 
-`[⚠️ BELUM TERVERIFIKASI]` Akun AWS ELGOS dengan akses model Claude di Bedrock belum terkonfirmasi (PD-1 dan PD-7 belum dijawab). Sampai ada, QA malam tidak bisa jalan dengan LLM sungguhan. Pelaksana dan persona tetap dibangun dan diuji dengan `stub`. Dasar Go/No-Go untuk mutu AI sungguhan dibawa ke user.
+**Keputusan user 19 Nov 21.00 WIB (kartu di thread integrasi):** uji AI sungguhan wajib untuk Go/No-Go. Akun AWS ELGOS dengan akses Bedrock dan role QA harus siap paling lambat 24 Nov, lalu QA malam berjalan tiga malam (24, 25, 26 Nov) dan hasilnya masuk tabel Go/No-Go. Bila akun terlambat, Andrian menjalankan satu run manual pada 26 Nov.
+
+`[⚠️ BELUM TERVERIFIKASI]` Akun itu belum ada saat spek ini ditulis (PD-1 dan PD-7 belum dijawab). Sampai ada, pelaksana dan persona dibangun dan diuji dengan `stub`. Workflow terjadwal dan `workflow_dispatch` hanya berjalan bila berkasnya ada di default branch (`main`, masih kosong); langkah manusia untuk itu (menaruh `qa-malam.yml` di `main` atau mengganti default branch) ditulis di `docs/ewi/qa-malam.md`. Bila belum selesai 24 Nov, tiga malam kalibrasi dijalankan sebagai run manual.
 
 ## 6. Bahan Go/No-Go
 
@@ -352,7 +354,7 @@ Satu subagent baru tanpa riwayat percakapan membaca spek v1, kode yang dirujuk, 
 
 | Temuan | Bobot | Keputusan |
 | --- | --- | --- |
-| QA malam belum bisa jalan dengan LLM sungguhan sebelum Go/No-Go | Berat | Diangkat ke user (dasar Go/No-Go berubah); spek menulis status ⚠️ dan cadangan run manual (5.5) |
+| QA malam belum bisa jalan dengan LLM sungguhan sebelum Go/No-Go | Berat | Diangkat ke user. User memilih 19 Nov: wajib, akun siap 24 Nov, cadangan run manual 26 Nov (5.5) |
 | QA malam hanya mencakup TNA | Berat | Diperbaiki: cakupan per operasi AI dan laporan celah cakupan (5.1) |
 | E2E mock tidak menguji sambungan antar paket | Sedang | Diperbaiki: alur lintas paket pindah ke test API dengan Postgres dan stub (bagian 3); e2e dipangkas (bagian 4) |
 | Konfigurasi live (modul mati, entitlement) tidak diuji | Sedang | Diperbaiki: `alur-modul-mati.test.js`, variasi entitlement di 3.3 dan 4.3 |
