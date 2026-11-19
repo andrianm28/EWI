@@ -122,6 +122,15 @@ run('Learning Intervention (Postgres)', () => {
     await stores.tna.insertFinding(tenant.id, { projectId: project.id, userId: u.dimas, competencyId: comp.id, category: 'training', title: 'Rahasia Dimas' });
     await stores.tna.insertFinding(tenant.id, { projectId: project.id, userId: u.rina, competencyId: comp.id, category: 'training', title: 'Rahasia Rina' });
     await stores.tna.insertFinding(tenant.id, { projectId: project.id, userId: u.rina, competencyId: null, category: 'training', title: 'Temuan tanpa kompetensi' });
+    // temuan yang belum ditinjau HR tidak dihitung (sama dengan /api/tna/pareto)
+    await db.query("UPDATE lna_findings SET review_status = 'draft' WHERE tenant_id = :t", { replacements: { t: tenant.id } });
+    expect((await get('/modules')).body.pareto).toMatchObject({ count: 0, unlinkedFindings: 0 });
+    await db.query("UPDATE lna_findings SET review_status = 'approved' WHERE tenant_id = :t", { replacements: { t: tenant.id } });
+    // prioritas per jabatan: jabatan tanpa gap tidak punya modul prioritas, dan permintaan massal mengikutinya
+    const [[pm]] = await db.query("SELECT id FROM lna_job_roles WHERE tenant_id = :t AND name = 'Project Manager'", { replacements: { t: tenant.id } });
+    expect((await get(`/modules?jobRoleId=${pm.id}`)).body.pareto.count).toBe(0);
+    expect((await post('/requests/bulk', { scope: 'pareto', jobRoleId: pm.id })).body.data).toMatchObject({ created: 0, skipped: 0 });
+    expect((await post('/requests/bulk', { scope: 'pareto', jobRoleId: 'x' })).status).toBe(400);
     const lib = await get('/modules');
     expect(lib.body.pareto).toMatchObject({ available: true, count: 1, codes: ['ST-A2'], withoutGapData: 2, unlinkedFindings: 1 });
     expect(lib.body.data[0]).toMatchObject({ code: 'ST-A2', priority: { rank: 1, label: 'Root Cause Analysis' } }); // prioritas tampil paling atas
@@ -200,6 +209,7 @@ run('Learning Intervention (Postgres)', () => {
     // SME belum bisa meninjau draf yang belum diajukan; antrian SME kosong
     expect((await post(`/drafts/${d.id}/review`, { decision: 'approved' }, 'sme')).body.error.code).toBe('INVALID_STATE');
     expect((await get('/drafts', 'sme')).body.data).toEqual([]);
+    expect((await get(`/drafts/${d.id}`, 'sme')).status).toBe(404); // belum diajukan: bukan urusan SME
     expect((await post(`/drafts/${d.id}/submit`)).body.data.status).toBe('sme_review');
     expect((await request(app).put(`/api/li/drafts/${d.id}`).set(as('hr')).send({ sessions: [] })).body.error.code).toBe('INVALID_STATE');
     expect((await request(app).delete(`/api/li/drafts/${d.id}`).set(as('hr'))).status).toBe(409);

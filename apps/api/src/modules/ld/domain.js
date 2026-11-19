@@ -2,7 +2,7 @@
 // B14 Learning Delivery: aturan murni (tanpa DB). Spek: docs/designs/b14-learning-delivery.md §4.
 // Baris pelatihan (row) = kolom ld_trainings + hitungan peserta dari store:
 //   { mode, source, status, startsOn, endsOn, venue, sessionCount, sessionsDone, materialsReady, assessmentMode,
-//     participants, completed, avgProgress, attendanceRecorded, present, scored, inactive, photoDocs, materialDocs }
+//     participants, completed, avgProgress, attendanceRecorded, present, scored, scoredPresent, inactive, photoDocs, materialDocs }
 
 const WATCH_LAG = 15;          // poin progres tertinggal dari jadwal linear
 const READY_WINDOW_DAYS = 7;   // offline yang mulai dalam sekian hari harus sudah siap
@@ -40,8 +40,9 @@ function groupOf(row, today) {
 function assessmentStatus(row) {
   if (row.assessmentMode === 'none' || !row.assessmentMode) return 'none';
   // yang diharapkan punya skor: peserta yang hadir; sebelum kehadiran dicatat, semua peserta
-  const expected = n(row.attendanceRecorded) > 0 ? n(row.present) : n(row.participants);
-  const complete = expected > 0 && n(row.scored) >= expected;
+  const byPresence = n(row.attendanceRecorded) > 0;
+  const expected = byPresence ? n(row.present) : n(row.participants);
+  const complete = expected > 0 && n(byPresence ? row.scoredPresent : row.scored) >= expected;
   if (row.assessmentMode === 'elitementor') return complete ? 'synced' : 'awaiting';
   return complete ? 'manual' : 'manual_pending';
 }
@@ -161,6 +162,7 @@ function buildInsights(rows, today) {
   return { insights, actions };
 }
 
+const MAX_CLOCK_SKEW_MS = 5 * 60 * 1000;
 const EVENT_TYPES = ['learning.progress', 'assessment.result'];
 const EVENT_STATUS = ['in_progress', 'completed', 'failed'];
 const str = (v, max) => (v === null || v === undefined ? '' : String(v).trim().slice(0, max));
@@ -171,7 +173,7 @@ const inRange = (v) => v === null || (Number.isFinite(v) && v >= 0 && v <= 100);
  * Rapikan event webhook EliteMentor ke bentuk internal. Satu-satunya tempat yang tahu bentuk payload
  * (kontrak belum disepakati, spek §3). Return { event } atau { error }.
  */
-function normalizeEvent(raw) {
+function normalizeEvent(raw, now = new Date()) {
   if (!raw || typeof raw !== 'object') return { error: 'payload bukan objek' };
   const id = str(raw.id, 128); const type = str(raw.type, 64);
   const organizationId = Number(raw.organizationId);
@@ -184,8 +186,9 @@ function normalizeEvent(raw) {
   const email = str(user.email, 255).toLowerCase() || null;
   const emUserId = Number.isInteger(Number(user.elitementorUserId)) && user.elitementorUserId !== null && user.elitementorUserId !== undefined ? Number(user.elitementorUserId) : null;
   if (!email && emUserId === null) return { error: 'user tanpa email dan elitementorUserId' };
-  const occurredAt = new Date(raw.occurredAt);
-  if (Number.isNaN(occurredAt.getTime())) return { error: 'occurredAt tidak valid' };
+  const occurredAt = ['string', 'number'].includes(typeof raw.occurredAt) ? new Date(raw.occurredAt) : new Date(NaN);
+  // waktu jauh di depan akan membuat semua event berikutnya dianggap usang
+  if (Number.isNaN(occurredAt.getTime()) || occurredAt.getTime() > now.getTime() + MAX_CLOCK_SKEW_MS) return { error: 'occurredAt tidak valid' };
   const progressPct = pct(raw.progressPct); const score = pct(raw.score);
   if (!inRange(progressPct)) return { error: 'progressPct harus 0-100' };
   if (!inRange(score)) return { error: 'score harus 0-100' };

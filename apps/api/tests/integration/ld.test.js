@@ -251,6 +251,17 @@ run('Learning Delivery (Postgres)', () => {
     expect(done).toMatchObject({ endsOn: day(30), group: 'done', completed: 1 });
     expect(done.participantList[0]).toMatchObject({ userId: u.dimas, status: 'completed', progressPct: 100, score: 91, scoreSource: 'elitementor' });
     expect((await get('/trainings', 'luar')).body.data).toEqual([]);
+    // batas dari event yang lebih awal dari tanggal mulai isian HR diabaikan, bukan membuat webhook gagal terus
+    expect((await hook(progress({ id: 'ev-g', course: { ref: 'EM-BARU', title: 'Baru' } }))).status).toBe(202);
+    const baru = (await get('/trainings?mode=online')).body.data.find((t) => t.externalRef === 'EM-BARU');
+    expect((await send('patch', `/trainings/${baru.id}`, { startsOn: day(20) })).status).toBe(200);
+    expect((await hook(progress({ id: 'ev-h', course: { ref: 'EM-BARU', title: 'Baru', dueAt: `${day(5)}T00:00:00Z` } }))).status).toBe(202);
+    expect((await get(`/trainings/${baru.id}`)).body.data).toMatchObject({ startsOn: day(20), endsOn: null });
+    // modul dimatikan: event diterima tetapi tidak diproses
+    await flag('module.ld', false);
+    expect((await hook(progress({ id: 'ev-i' }))).status).toBe(202);
+    await flag('module.ld', true);
+    expect((await events()).map((e) => e.event_id)).not.toContain('ev-i');
   });
 
   it('webhook: skor asesmen pelatihan offline dicocokkan lewat kode asesmen', async () => {
@@ -260,6 +271,9 @@ run('Learning Delivery (Postgres)', () => {
     expect(set.status).toBe(200);
     expect(set.body.data.assessmentStatus).toBe('awaiting');
     expect((await send('put', `/trainings/${t.id}/assessment`, { mode: 'elitementor' })).status).toBe(400);
+    // kode asesmen yang sama di pelatihan lain akan membuat skor tidak bisa dicocokkan
+    const dup = (await send('post', '/trainings', { title: 'Angkatan 2', startsOn: day(3) })).body.data;
+    expect((await send('put', `/trainings/${dup.id}/assessment`, { mode: 'elitementor', assessmentRef: 'ASM-KOM' })).body.error.code).toBe('ASSESSMENT_REF_TAKEN');
     const result = (email, score, id) => hook({ id, type: 'assessment.result', course: { ref: 'ASM-KOM' }, user: { email }, score });
     await result('dimas@ld.test', 77, 'as-1');
     await result('sari@ld.test', 60, 'as-2'); // bukan peserta
@@ -281,5 +295,11 @@ run('Learning Delivery (Postgres)', () => {
     expect((await send('post', `/trainings/${lms.id}/reminders`)).body.data).toEqual({ recipients: 1, sent: 1, failed: 0 });
     expect(mailer.sent[0].to).toBe('rina@ld.test');
     expect(mailer.sent[0].text).toContain('https://elgos.test');
+    // semua email gagal: jatah 24 jam dilepas supaya HR bisa mencoba lagi
+    await db.query('UPDATE ld_trainings SET last_reminded_at = NULL WHERE id = :id', { replacements: { id: lms.id } });
+    const realSend = mailer.send; mailer.send = async () => { throw new Error('smtp mati'); };
+    expect((await send('post', `/trainings/${lms.id}/reminders`)).body.data).toEqual({ recipients: 1, sent: 0, failed: 1 });
+    mailer.send = realSend;
+    expect((await send('post', `/trainings/${lms.id}/reminders`)).body.data).toEqual({ recipients: 1, sent: 1, failed: 0 });
   });
 });

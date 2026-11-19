@@ -19,7 +19,7 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const conflict = (code, msg) => new HttpError(409, code, msg);
 const PATH_ACTIVE = {
   request: 'Modul ini sudah punya permintaan ke vendor yang masih berjalan',
-  draft: 'Modul ini sudah punya draf pengembangan. Hapus drafnya dulu bila ingin meminta ke vendor',
+  draft: 'Modul ini sudah punya draf pengembangan. Draf yang belum diajukan bisa dihapus dulu bila ingin meminta ke vendor',
 };
 
 module.exports = {
@@ -108,7 +108,8 @@ module.exports = {
     }));
 
     r.get('/modules/:id', hr, idParam, wrap(async (req, res) => {
-      const { conf, rows } = await loadLibrary(req.tenantId);
+      // jobRoleId: prioritas dihitung untuk jabatan yang sama dengan daftar yang sedang dilihat
+      const { conf, rows } = await loadLibrary(req.tenantId, { jobRoleId: optionalUuid(req.query.jobRoleId, 'Jabatan') });
       const m = rows.find((x) => x.id === req.params.id);
       if (!m) throw notFound('Modul tidak ditemukan');
       res.json({ data: { ...m, competencyKeys: undefined, vendorName: conf.li.vendorName } });
@@ -146,8 +147,12 @@ module.exports = {
       const { scope, jobRoleId, level } = req.body || {};
       if (!['pareto', 'program'].includes(scope)) throw badRequest('scope harus pareto atau program');
       if (scope === 'program' && (!jobRoleId || !UUID.test(String(jobRoleId)) || !LEVELS.includes(level))) throw badRequest('Pilih jabatan dan level program');
-      const { conf, rows } = await loadLibrary(req.tenantId);
-      const inScope = rows.filter((m) => (scope === 'pareto' ? !!m.priority : m.level === level && m.jobRoles.some((j) => j.id === jobRoleId)));
+      // scope pareto: jobRoleId opsional, sama dengan filter Library, agar yang diminta sama dengan yang tampil
+      const roleId = scope === 'pareto' ? optionalUuid(jobRoleId, 'Jabatan') : jobRoleId;
+      const { conf, rows } = await loadLibrary(req.tenantId, { jobRoleId: scope === 'pareto' ? roleId : undefined });
+      const inScope = rows.filter((m) => (scope === 'pareto'
+        ? !!m.priority && (!roleId || m.jobRoles.some((j) => j.id === roleId))
+        : m.level === level && m.jobRoles.some((j) => j.id === jobRoleId)));
       const targets = inScope.filter((m) => m.recommendation === 'vendor' && m.status.key === 'none');
       const created = [];
       for (const m of targets) {
@@ -232,7 +237,12 @@ module.exports = {
       res.json({ data: await stores.li.listDrafts(req.tenantId, { status }) });
     }));
 
-    r.get('/drafts/:id', reviewer, idParam, wrap(async (req, res) => res.json({ data: await loadDraft(req) })));
+    r.get('/drafts/:id', reviewer, idParam, wrap(async (req, res) => {
+      const d = await loadDraft(req);
+      // SME/role leader hanya melihat draf yang sedang menunggu tinjauan (sama dengan antreannya)
+      if (![ROLES.HR_ADMIN, ROLES.ETA_ADMIN].includes(req.user.role) && d.status !== 'sme_review') throw notFound('Draf tidak ditemukan');
+      res.json({ data: d });
+    }));
 
     r.put('/drafts/:id', hr, idParam, wrap(async (req, res) => {
       editable(await loadDraft(req));

@@ -64,7 +64,7 @@ function createLdStores(sequelize) {
       let sql = `SELECT ${TRAINING_COLS}, m.code AS "moduleCode", m.name AS "moduleName",
           COALESCE(p.participants, 0)::int AS participants, COALESCE(p.completed, 0)::int AS completed,
           COALESCE(p.avg_progress, 0)::float AS "avgProgress", COALESCE(p.attendance_recorded, 0)::int AS "attendanceRecorded",
-          COALESCE(p.present, 0)::int AS present, COALESCE(p.scored, 0)::int AS scored, COALESCE(p.inactive, 0)::int AS inactive,
+          COALESCE(p.present, 0)::int AS present, COALESCE(p.scored, 0)::int AS scored, COALESCE(p.scored_present, 0)::int AS "scoredPresent", COALESCE(p.inactive, 0)::int AS inactive,
           (SELECT count(*)::int FROM ld_documents d WHERE d.training_id = t.id AND d.tenant_id = t.tenant_id AND d.kind IN ('photo','video')) AS "photoDocs",
           (SELECT count(*)::int FROM ld_documents d WHERE d.training_id = t.id AND d.tenant_id = t.tenant_id AND d.kind = 'material') AS "materialDocs"
         FROM ld_trainings t
@@ -76,6 +76,7 @@ function createLdStores(sequelize) {
                  count(*) FILTER (WHERE lp.attendance IS NOT NULL) AS attendance_recorded,
                  count(*) FILTER (WHERE lp.attendance) AS present,
                  count(*) FILTER (WHERE lp.score IS NOT NULL AND (lp.attendance IS NOT FALSE)) AS scored,
+                 count(*) FILTER (WHERE lp.score IS NOT NULL AND lp.attendance) AS scored_present,
                  count(*) FILTER (WHERE lp.status IN ('enrolled','in_progress') AND lp.last_activity_at IS NOT NULL AND lp.last_activity_at < :inactiveBefore) AS inactive
             FROM ld_participants lp WHERE lp.training_id = t.id AND lp.tenant_id = t.tenant_id
         ) p ON true
@@ -204,6 +205,15 @@ function createLdStores(sequelize) {
                                    AND (last_reminded_at IS NULL OR last_reminded_at < :since) RETURNING id`, { tenantId, trainingId, since });
       return rows.length > 0;
     },
+    /** Lepas jatah pengingat bila tidak ada satu pun email yang terkirim, supaya HR bisa mencoba lagi. */
+    async releaseReminder(tenantId, trainingId) {
+      await write('UPDATE ld_trainings SET last_reminded_at = NULL WHERE tenant_id = :tenantId AND id = :trainingId', { tenantId, trainingId });
+    },
+    /** Kode asesmen dipakai pelatihan manual lain yang masih aktif (skor tidak akan bisa dicocokkan). */
+    async assessmentRefTaken(tenantId, trainingId, ref) {
+      return !!(await one(`SELECT 1 AS x FROM ld_trainings WHERE tenant_id = :tenantId AND id <> :trainingId AND source = 'manual'
+                              AND assessment_mode = 'elitementor' AND assessment_ref = :ref AND status <> 'cancelled'`, { tenantId, trainingId, ref }));
+    },
     /** Penerima pengingat: online = yang belum selesai; offline = semua peserta. Akun dinonaktifkan dilewati. */
     async reminderRecipients(tenantId, trainingId, { pendingOnly }) {
       return select(`SELECT u.id, u.email, u.name FROM ld_participants lp JOIN users u ON u.id = lp.user_id AND u.tenant_id = lp.tenant_id
@@ -253,10 +263,10 @@ function createLdStores(sequelize) {
     const [tr] = await write(
       `INSERT INTO ld_trainings (tenant_id, title, mode, source, external_ref, program_tier, ends_on, status, module_id, last_event_at)
        VALUES (:tenantId, :title, 'online', 'elitementor', :ref, :tier, :dueAt, 'running',
-               (SELECT m.id FROM li_modules m WHERE m.tenant_id = :tenantId AND m.code = :ref), :at)
+               (SELECT m.id FROM li_modules m WHERE m.tenant_id = :tenantId AND upper(m.code) = upper(:ref) ORDER BY m.code LIMIT 1), :at)
        ON CONFLICT (tenant_id, source, external_ref) WHERE external_ref IS NOT NULL DO UPDATE
          SET title = CASE WHEN ld_trainings.last_event_at IS NULL OR ld_trainings.last_event_at <= EXCLUDED.last_event_at THEN EXCLUDED.title ELSE ld_trainings.title END,
-             ends_on = COALESCE(ld_trainings.ends_on, EXCLUDED.ends_on),
+             ends_on = COALESCE(ld_trainings.ends_on, CASE WHEN ld_trainings.starts_on IS NULL OR EXCLUDED.ends_on >= ld_trainings.starts_on THEN EXCLUDED.ends_on END),
              program_tier = COALESCE(ld_trainings.program_tier, EXCLUDED.program_tier),
              last_event_at = GREATEST(ld_trainings.last_event_at, EXCLUDED.last_event_at), updated_at = now()
        RETURNING id`,

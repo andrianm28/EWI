@@ -176,12 +176,23 @@ per tenant; rancangan yang disetujui SME bukan berarti course tersedia (`dev_app
 Ditolak, dengan alasan:
 - Foreign key komposit `(tenant_id, id)`: pola repo adalah pengecekan tenant di store ditambah test isolasi; mengubahnya
   hanya untuk tabel `li_*` membuat dua pola.
-- Menyaring temuan menurut status tinjauan: dibiarkan sama dengan `/api/tna/pareto` agar dua layar tidak menampilkan
-  peringkat berbeda.
+- Menyaring temuan menurut status tinjauan dengan aturan sendiri: ditolak; B13 mengikuti aturan `/api/tna/pareto` agar
+  dua layar tidak menampilkan peringkat berbeda (lihat review diff di bawah).
 
 Ditunda (dicatat di PR): draf dari LLM (sekarang templat), HR mencatat keputusan SME selama peran SME belum pasti,
 `isMeasurable` hanya memeriksa adanya angka (sama dengan mockup), pengaturan `settings.li` belum punya endpoint tulis,
 impor ulang tidak menyesuaikan draf yang sudah ada.
+
+### Review diff (subagen baru, setelah kode selesai)
+
+Tidak ada temuan berat. Diperbaiki: Pareto hanya menghitung temuan yang sudah ditinjau HR (`approved`/`edited`), sama
+dengan `/api/tna/pareto` setelah PK-14 masuk (keputusan "ditolak" di atas soal status tinjauan tidak berlaku lagi);
+permintaan massal `scope: "pareto"` dan detail modul menerima `jobRoleId` agar sama dengan daftar yang tampil; SME hanya
+bisa membuka draf berstatus `sme_review`; kode modul disimpan huruf besar agar impor ulang tidak menggandakan; pesan 409
+untuk modul yang sudah punya draf diperjelas.
+
+Ditunda: menarik kembali draf yang sudah disetujui SME (belum ada jalan mundur dari `approved`), test balapan dengan
+permintaan bersamaan.
 
 ## 9. Batas dengan paket lain
 

@@ -15,7 +15,7 @@ const same = (a, b) => key(a) === key(b);
 /** Validasi semua baris satu modul. Return { error } atau { module }. */
 function checkGroup(rows, ctx) {
   const first = rows[0];
-  const code = v.text(first.code);
+  const code = v.text(first.code).toUpperCase(); // kode disimpan huruf besar agar impor ulang tidak menggandakan modul
   if (code.length > 32) return { error: 'Kode Modul paling panjang 32 karakter' };
   const name = v.text(first.name);
   if (!name) return { error: `Nama Modul wajib diisi di baris pertama modul ${code}` };

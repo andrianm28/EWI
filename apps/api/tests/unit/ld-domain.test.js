@@ -61,7 +61,7 @@ describe('asesmen dan kelengkapan', () => {
     expect(assessmentStatus(offline({ assessmentMode: 'none' }))).toBe('none');
     expect(assessmentStatus(offline({ scored: 0 }))).toBe('manual_pending');
     expect(assessmentStatus(offline({ scored: 6 }))).toBe('manual');
-    expect(assessmentStatus(offline({ attendanceRecorded: 6, present: 5, scored: 5 }))).toBe('manual'); // yang tidak hadir tidak ditunggu
+    expect(assessmentStatus(offline({ attendanceRecorded: 6, present: 5, scored: 5, scoredPresent: 5 }))).toBe('manual'); // yang tidak hadir tidak ditunggu
     expect(assessmentStatus(offline({ assessmentMode: 'elitementor', scored: 2 }))).toBe('awaiting');
     expect(assessmentStatus(offline({ assessmentMode: 'elitementor', scored: 6 }))).toBe('synced');
   });
@@ -99,12 +99,26 @@ describe('KPI dan insight', () => {
   });
 });
 
+describe('normalizeEvent: waktu dan skor', () => {
+  const base = { id: 'e', type: 'learning.progress', organizationId: 1, course: { ref: 'C' }, user: { email: 'a@b.c' }, status: 'in_progress' };
+  it('menolak occurredAt kosong atau jauh di depan', () => {
+    expect(normalizeEvent({ ...base, occurredAt: null }).error).toMatch(/occurredAt/);
+    expect(normalizeEvent({ ...base, occurredAt: new Date(Date.now() + 3600e3).toISOString() }).error).toMatch(/occurredAt/);
+    expect(normalizeEvent({ ...base, occurredAt: new Date().toISOString() }).event).toBeTruthy();
+  });
+  it('asesmen: setelah kehadiran dicatat, hanya skor peserta yang hadir yang dihitung', () => {
+    const row = { assessmentMode: 'vendor_manual', participants: 3, attendanceRecorded: 1, present: 1, scored: 2, scoredPresent: 0 };
+    expect(assessmentStatus(row)).toBe('manual_pending');
+    expect(assessmentStatus({ ...row, scoredPresent: 1 })).toBe('manual');
+  });
+});
+
 describe('normalizeEvent', () => {
-  const ok = { id: 'evt-1', type: 'learning.progress', organizationId: 42, course: { ref: 'ST-B4', title: 'Ticket Life Cycle', programTier: 'basic', dueAt: '2026-12-15' }, user: { email: 'A@Klien.co.id' }, progressPct: 78, status: 'in_progress', occurredAt: '2026-11-20T03:00:00Z' };
+  const ok = { id: 'evt-1', type: 'learning.progress', organizationId: 42, course: { ref: 'ST-B4', title: 'Ticket Life Cycle', programTier: 'basic', dueAt: '2026-12-15' }, user: { email: 'A@Klien.co.id' }, progressPct: 78, status: 'in_progress', occurredAt: '2026-11-18T03:00:00Z' };
   it('merapikan event yang valid', () => {
     const { event } = normalizeEvent(ok);
     expect(event).toMatchObject({ id: 'evt-1', type: 'learning.progress', organizationId: 42, course: { ref: 'ST-B4', dueAt: '2026-12-15', programTier: 'basic' }, user: { email: 'a@klien.co.id', elitementorUserId: null }, progressPct: 78, status: 'in_progress', score: null });
-    expect(event.occurredAt.toISOString()).toBe('2026-11-20T03:00:00.000Z');
+    expect(event.occurredAt.toISOString()).toBe('2026-11-18T03:00:00.000Z');
   });
   it('menolak payload yang tidak lengkap atau di luar rentang', () => {
     expect(normalizeEvent(null).error).toBeTruthy();
@@ -130,6 +144,8 @@ describe('storage', () => {
     expect(detectType(jpeg)).toMatchObject({ mime: 'image/jpeg', media: 'photo' });
     expect(detectType(png).mime).toBe('image/png');
     expect(detectType(mp4)).toMatchObject({ mime: 'video/mp4', media: 'video' });
+    // HEIC memakai kotak ftyp yang sama tetapi bukan MP4
+    expect(detectType(Buffer.concat([Buffer.from([0, 0, 0, 0x18]), Buffer.from('ftypheic'), Buffer.alloc(16)]))).toBeNull();
     expect(detectType(pdf).mime).toBe('application/pdf');
     expect(detectType(Buffer.from('<html><script>alert(1)</script></html>'))).toBeNull();
     expect(detectType(Buffer.from('MZ'))).toBeNull();

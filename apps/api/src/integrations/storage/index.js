@@ -8,13 +8,16 @@ const path = require('path');
 
 const KEY = /^[0-9a-f-]{36}\/[0-9a-f-]{36}$/i;
 
+const MP4_BRANDS = ['isom', 'iso2', 'mp41', 'mp42', 'avc1', 'M4V ', 'dash'];
+
 /** Tipe berkas dari tanda tangan isi (magic bytes), bukan dari nama atau Content-Type kiriman klien. */
 function detectType(buf) {
   if (!Buffer.isBuffer(buf) || buf.length < 12) return null;
   if (buf[0] === 0xff && buf[1] === 0xd8 && buf[2] === 0xff) return { mime: 'image/jpeg', ext: 'jpg', media: 'photo' };
   if (buf.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]))) return { mime: 'image/png', ext: 'png', media: 'photo' };
   if (buf.toString('latin1', 0, 4) === 'RIFF' && buf.toString('latin1', 8, 12) === 'WEBP') return { mime: 'image/webp', ext: 'webp', media: 'photo' };
-  if (buf.toString('latin1', 4, 8) === 'ftyp') return { mime: 'video/mp4', ext: 'mp4', media: 'video' };
+  // ISO-BMFF: hanya merek MP4. HEIC/AVIF, QuickTime, dan M4A memakai kotak ftyp yang sama tetapi bukan MP4.
+  if (buf.toString('latin1', 4, 8) === 'ftyp' && MP4_BRANDS.includes(buf.toString('latin1', 8, 12))) return { mime: 'video/mp4', ext: 'mp4', media: 'video' };
   if (buf.toString('latin1', 0, 5) === '%PDF-') return { mime: 'application/pdf', ext: 'pdf', media: 'document' };
   return null;
 }

@@ -223,6 +223,17 @@ Ditunda (dicatat di PR): hapus EXIF foto, kehadiran per sesi, data LD di ekspor/
 datang saat flag mati tidak disimpan, angkatan (lebih dari satu pelatihan per `course.ref`), retensi dan dasar hukum
 foto (UU PDP), kebutuhan infra (volume `EWI_UPLOAD_DIR`, cadangan, enkripsi disk, pembersihan saat hapus tenant).
 
+### Review diff (subagen baru, setelah kode selesai)
+
+Tidak ada temuan berat. Diperbaiki: batas dari event yang lebih awal dari tanggal mulai isian HR diabaikan (sebelumnya
+melanggar CHECK dan membuat webhook gagal terus); kode asesmen yang sudah dipakai pelatihan aktif lain ditolak 409
+`ASSESSMENT_REF_TAKEN`; setelah kehadiran dicatat, hanya skor peserta yang hadir yang dihitung; jatah pengingat dilepas
+bila tidak ada email yang terkirim; hapus dokumen dijawab 501 bila storage tidak ada (baris tidak dihapus); hanya merek
+MP4 yang diterima sebagai video (HEIC, MOV, M4A ditolak); `occurredAt` kosong atau lebih dari 5 menit di depan ditolak.
+
+Ditunda: skor asesmen yang datang sebelum karyawan dijadikan peserta tidak diisi ulang otomatis (tercatat di
+`ld_sync_events` sebagai `not_participant_or_stale`); test balapan, batas 60 berkas, dan batas ukuran body.
+
 ## 9. Batas dengan paket lain
 
 - B13: `ld_trainings.module_id` menunjuk `li_modules`; B14 tidak mengubah tabel B13.

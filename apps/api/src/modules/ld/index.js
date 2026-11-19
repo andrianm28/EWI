@@ -173,6 +173,7 @@ module.exports = {
         if (!(await flags.isEnabled(req.tenantId, FLAGS.WEBHOOK_SYNC))) throw forbidden('FEATURE_DISABLED', 'Sinkron skor dari EliteMentor belum diaktifkan. Pakai input skor dari vendor');
         patch.assessmentRef = text(assessmentRef, 128);
         if (!patch.assessmentRef) throw badRequest('Isi kode asesmen di EliteMentor agar skor bisa dicocokkan');
+        if (await stores.ld.assessmentRefTaken(req.tenantId, t.id, patch.assessmentRef)) throw conflict('ASSESSMENT_REF_TAKEN', 'Kode asesmen ini sudah dipakai pelatihan lain');
       }
       await stores.ld.updateTraining(req.tenantId, t.id, patch);
       await audit.record(req, 'update', 'ld.assessment', { trainingId: t.id, mode });
@@ -233,8 +234,12 @@ module.exports = {
 
     r.delete('/documents/:id', idParam, wrap(async (req, res) => {
       const d = await loadDoc(req);
+      // tanpa storage barisnya tidak dihapus, supaya berkas tidak tertinggal tanpa catatan
+      if (!storage) throw new HttpError(501, 'STORAGE_NOT_CONFIGURED', 'Penyimpanan berkas belum dikonfigurasi di server ini');
       const key = await stores.ld.deleteDocument(req.tenantId, d.id);
-      if (key && storage) await storage.remove(key);
+      if (key) {
+        try { await storage.remove(key); } catch (e) { console.error(`[ld.document] berkas ${key} gagal dihapus dari penyimpanan: ${e.message}`); }
+      }
       await audit.record(req, 'delete', 'ld.document', { trainingId: d.trainingId, documentId: d.id, kind: d.kind });
       res.status(204).end();
     }));
@@ -258,6 +263,7 @@ module.exports = {
           sent += 1;
         } catch (e) { failed += 1; console.error(`[ld.reminder] gagal kirim: ${e.message}`); }
       }
+      if (!sent) await stores.ld.releaseReminder(req.tenantId, t.id);
       await audit.record(req, 'create', 'ld.reminder', { trainingId: t.id, recipients: recipients.length, sent, failed, employeeIds: recipients.map((u) => u.id) });
       res.status(201).json({ data: { recipients: recipients.length, sent, failed } });
     }));
