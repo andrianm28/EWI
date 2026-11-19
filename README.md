@@ -17,6 +17,13 @@ infra/     Terraform: hanya KMS per tenant + SES di AWS (docs/infra/vps-etavm2.m
 deploy/    vps/ = staging + prod di etavm2; dev-worktree/ = dev per worktree; dev-public/ = dev etavm1 + pipeline deploy
 ```
 
+## UI web
+
+Design system, komponen bersama (`apps/web/src/ui/`), shell, dan kontrak rute untuk paket layar dijelaskan di
+`docs/designs/b0-fondasi-ui.md`. Ringkasnya: layar baru menambah `apps/web/src/screens/<paket>/routes.ts`, memakai
+nama rute sesuai kunci menu, membungkus isi dengan `<AppShell>`, dan hanya memakai komponen `Ui*` serta token `--el-*`.
+Referensi komponen: `VITE_UI_KIT=1 npm run dev:web`, lalu buka `/ui-kit`.
+
 ## Branch dan lingkungan
 
 | Branch | Lingkungan | Workflow |
