@@ -12,7 +12,7 @@ async function main() {
   // PK-06: gagal saat boot dengan pesan jelas bila kredensial penyedia AI tidak ada
   const ai = createAiProvider(config.ai);
   await ai.verify();
-  console.log(`AI: ${ai.name}${ai.model && ai.model !== ai.name ? ` (${ai.model}, ${config.ai.region})` : ''}`);
+  console.log(`AI: ${ai.name}${ai.model && ai.model !== ai.name ? ` (${ai.model}, ${config.ai.processing})` : ''}`);
   const app = createApp({ config, stores: createStores(db, { encryption: config.encryption }), ai });
   app.listen(config.port, () => console.log(`ewi-api listening on :${config.port}`));
   // PK-14: jalankan ulang job analisis yang tertinggal (proses mati di tengah jalan) atau gagal dan masih boleh diulang.
