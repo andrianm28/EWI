@@ -3,14 +3,21 @@
 #   ELGOS_ENV=staging  -> project elgos-staging, data di volume elgos-staging_db-data, web di 127.0.0.1:8181
 #   ELGOS_ENV=prod     -> project elgos-prod,    data di volume elgos-prod_db-data,    web di 127.0.0.1:8180
 # Normalnya dipanggil oleh deploy.sh (pipeline .github/workflows/deploy.yml). Secret di
-# /srv/elgos-<env>/.env (lihat .env.example). Data karyawan nyata HANYA di prod (R2-4).
+# /srv/elgos-<env>/.env (aplikasi) dan /srv/elgos-<env>/db.env (password pemilik DB, hanya untuk
+# container db dan langkah migrasi). Data karyawan nyata HANYA di prod (R2-4).
 name: elgos-${ELGOS_ENV:?ELGOS_ENV wajib staging atau prod}
+
+# N-3: rotasi log tiap container (maks 5 x 20 MB) agar log staging tidak memenuhi disk produksi.
+x-logging: &logging
+  driver: json-file
+  options: { max-size: "20m", max-file: "5" }
 
 services:
   db:
     image: pgvector/pgvector:pg16
     restart: unless-stopped
-    env_file: ${ELGOS_ENV_FILE:?ELGOS_ENV_FILE wajib}   # POSTGRES_PASSWORD
+    logging: *logging
+    env_file: ${ELGOS_DB_ENV_FILE:?ELGOS_DB_ENV_FILE wajib}   # POSTGRES_PASSWORD (superuser bawaan, bootstrap)
     environment:
       POSTGRES_USER: elgos
       POSTGRES_DB: elgos
@@ -31,9 +38,10 @@ services:
     restart: unless-stopped
     depends_on:
       db: { condition: service_healthy }
-    # Secret: POSTGRES_PASSWORD, EWI_JWT_SECRET, AWS_ACCESS_KEY_ID/SECRET (IAM user elgos-<env>-app),
-    # ELITEMENTOR_*. Variabel non-secret per lingkungan (PUBLIC_URL, MAIL_FROM, KMS_*) juga di .env.
-    env_file: ${ELGOS_ENV_FILE}
+    logging: *logging
+    # Secret: DB_PASSWORD (role elgos_app), EWI_JWT_SECRET, AWS_ACCESS_KEY_ID/SECRET (IAM user
+    # elgos-<env>-app), ELITEMENTOR_*. Password pemilik DB TIDAK ada di sini (P1-7).
+    env_file: ${ELGOS_ENV_FILE:?ELGOS_ENV_FILE wajib}
     environment:
       NODE_ENV: production
       EWI_ENV: ${ELGOS_ENV}
@@ -41,7 +49,6 @@ services:
       DB_HOST: db
       DB_PORT: 5432
       DB_NAME: elgos
-      DB_USER: elgos
       DB_SSL: "false"          # Postgres di jaringan compose yang sama, tidak terekspos ke host
       DB_SCHEMA: ewi
       RUN_MIGRATIONS: "false"  # migrasi dijalankan deploy.sh sebelum container diganti
@@ -54,6 +61,9 @@ services:
       KMS_REGION: ap-southeast-1
       MAIL_PROVIDER: ses
       MAIL_REGION: ap-southeast-1
+      # PD-1 A (PK-06): AI teks lewat Bedrock in-region Singapura; BEDROCK_MODEL_ID di .env
+      AI_PROVIDER: bedrock
+      BEDROCK_REGION: ap-southeast-1
       AWS_REGION: ap-southeast-1
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:4100/api/health | grep -q '\"ok\"'"]
@@ -68,6 +78,7 @@ services:
   web:
     image: ${ELGOS_WEB_IMAGE:?ELGOS_WEB_IMAGE wajib}
     restart: unless-stopped
+    logging: *logging
     depends_on:
       api: { condition: service_healthy }
     ports:
