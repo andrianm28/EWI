@@ -39,11 +39,11 @@ const HR_DATA = {
   ],
 }
 
-interface Opts { role?: string; flags?: Record<string, boolean>; dashboard?: unknown; status?: number }
+interface Opts { role?: string; roles?: string[]; flags?: Record<string, boolean>; dashboard?: unknown; status?: number }
 
 async function loginAs(page: Page, o: Opts = {}) {
   const role = o.role ?? 'hr_admin'
-  const user = { id: 'u-1', tenantId: 't-1', email: `${role}@demo.test`, role }
+  const user = { id: 'u-1', tenantId: 't-1', email: `${role}@demo.test`, role, ...(o.roles ? { roles: o.roles } : {}) }
   await page.route('**/api/auth/tenants', (r) => r.fulfill({ json: { data: [] } }))
   await page.route('**/api/auth/login', (r) => r.fulfill({ json: { token: 't', user } }))
   await page.route('**/api/auth/me', (r) => r.fulfill({ json: { user } }))
@@ -102,6 +102,15 @@ test('atasan: Dashboard tim tanpa angka khusus HR', async ({ page }) => {
   await expect(kpi).toHaveCount(2)
   await expect(kpi.nth(0)).toContainText('dari 5 pegawai')
   await expect(page.getByText('Kesepakatan AI–HR')).toHaveCount(0)
+})
+
+test('multi-peran di tampilan Atasan: label ikut cakupan data dari API, bukan tampilan aktif', async ({ page }) => {
+  // API menghitung dengan peran utama (hr_admin) sehingga mengirim scope 'all'; layar tidak boleh menyebutnya "tim"
+  await page.addInitScript(() => { try { sessionStorage.setItem('elgos.view', 'atasan') } catch { /* abaikan */ } })
+  await loginAs(page, { role: 'hr_admin', roles: ['hr_admin', 'supervisor'] })
+  await page.goto('/dashboard')
+  await expect(page.getByRole('heading', { level: 1, name: 'Dashboard utama' })).toBeVisible()
+  await expect(page.getByTestId('kpi')).toHaveCount(4)
 })
 
 test('angka kosong: tanda – dengan alasannya', async ({ page }) => {
