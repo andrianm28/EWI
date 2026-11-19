@@ -57,7 +57,7 @@ const SUPERVISOR_TEXT: Record<string, string> = { recommend: 'Merekomendasikan',
 const decisionTone = (d?: string): Tone => (d === 'approved' || d === 'recommend' ? 'success' : d === 'hold' ? 'review' : 'neutral')
 const BLOCKED: Record<string, string> = {
   not_eligible: 'Belum memenuhi syarat', no_supervisor: 'Data atasan belum ada', waiting_supervisor: 'Menunggu atasan',
-  waiting_hr: 'Menunggu HR', approved: 'Sudah disetujui', held: 'Ditunda HR', view_only: 'Hanya melihat',
+  self_recommended: 'Anda yang merekomendasi', approved: 'Sudah disetujui', held: 'Ditunda HR', view_only: 'Hanya melihat',
 }
 const ACTION_LABEL: Record<Action, string> = { recommend: 'Rekomendasikan', hold: 'Tunda', approve: 'Setujui' }
 

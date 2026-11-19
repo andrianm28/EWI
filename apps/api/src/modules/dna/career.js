@@ -118,6 +118,8 @@ function decisionView({ viewer, employee, eligible, cycle }) {
   }
   if (viewer.role === 'hr_admin') {
     if (cycle.open) {
+      // pemisahan tugas: yang mencatat rekomendasi atasan pada siklus ini tidak boleh memutuskan sebagai HR (rute membalas 403)
+      if (cycle.open.supervisorBy === viewer.id) return blocked('self_recommended');
       const approve = eligible && cycle.open.supervisorDecision === 'recommend';
       return { actions: approve ? ['approve', 'hold'] : ['hold'], blockedReason: null };
     }

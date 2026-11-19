@@ -118,6 +118,11 @@ describe('B16 siklus dan tindakan (C6-C10)', () => {
     expect(view({ viewer: hr, cycle: findCycle([row({ hrDecision: 'hold' })], 'l1', 'l2') })).toEqual({ actions: [], blockedReason: 'held' });
     expect(view({ viewer: hr, cycle: findCycle([row({ hrDecision: 'approved' })], 'l1', 'l2') }).blockedReason).toBe('approved');
   });
+  it('HR yang mencatat rekomendasi atasan pada siklus itu tidak mendapat tombol keputusan HR (pemisahan tugas, C7)', () => {
+    const hr = { id: 'h1', role: 'hr_admin' };
+    expect(view({ viewer: hr, cycle: findCycle([row({ supervisorBy: 'h1' })], 'l1', 'l2') })).toEqual({ actions: [], blockedReason: 'self_recommended' });
+    expect(view({ viewer: hr, cycle: findCycle([row({ supervisorBy: 's1' })], 'l1', 'l2') }).actions).toEqual(['approve', 'hold']);
+  });
   it('tanpa atasan yang sah: no_supervisor; Super Admin hanya melihat', () => {
     const hr = { id: 'h1', role: 'hr_admin' };
     expect(view({ viewer: hr, employee: { ...emp, supervisorId: null, supervisorRole: null } }).blockedReason).toBe('no_supervisor');

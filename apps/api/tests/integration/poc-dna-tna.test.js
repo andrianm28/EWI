@@ -181,7 +181,7 @@ run('POC DNA + TNA (Postgres)', () => {
     expect(detail.body.data.career.promotionCandidate).toBeUndefined(); // learner tidak melihat saran promosi
   });
 
-  it('RG-3: learner dirinya, atasan timnya, HR semua; kandidat promosi untuk HR dan atasan', async () => {
+  it('RG-3: learner dirinya, atasan timnya, HR semua; kandidat promosi hanya HR', async () => {
     const names = async (who) => (await request(app).get('/api/dna/employees').set(as(who))).body.data.map((p) => p.name).sort();
     expect(await names('dimas')).toEqual(['dimas']);
     expect(await names('spv')).toEqual(['dimas', 'rina', 'spv']);
@@ -197,11 +197,7 @@ run('POC DNA + TNA (Postgres)', () => {
     expect(hrList.every((p) => p.career.promotionCandidate === undefined)).toBe(true);
     await db.query(`INSERT INTO feature_flags (tenant_id, key, enabled) VALUES (:t, 'promotion.recommendation', true)`, { replacements: { t: tenant.id } });
 
-    // B16 C14: default kini HR dan atasan; atasan melihat kandidat timnya, learner tetap ditolak
-    const spvCand = await request(app).get('/api/dna/promotion-candidates').set(as('spv'));
-    expect(spvCand.status).toBe(200);
-    expect(spvCand.body.data.map((p) => p.name)).toEqual(['rina']);
-    expect((await request(app).get('/api/dna/promotion-candidates').set(as('dimas'))).status).toBe(403);
+    expect((await request(app).get('/api/dna/promotion-candidates').set(as('spv'))).status).toBe(403);
     const cand = await request(app).get('/api/dna/promotion-candidates').set(as('hr'));
     expect(cand.body.data.map((p) => p.name)).toEqual(['rina']);
   });

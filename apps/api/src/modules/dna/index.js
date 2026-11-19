@@ -10,7 +10,7 @@ const { scopeFor, inScope } = require('../../core/rbac/scope');
 const { badRequest, notFound, conflict, HttpError } = require('../../core/errors');
 const { interviewRouter, wrap } = require('../interviews');
 const { computeGap } = require('./gap');
-const { careerStatus } = require('./career');
+const { careerStatus, promotionSettings } = require('./career');
 const { careerRoutes } = require('./career-routes');
 const { importRouter } = require('../imports');
 const { getKind } = require('../imports/kinds');
@@ -84,11 +84,16 @@ async function profiles(stores, tenantId, people) {
   return out;
 }
 
-/** Saran kandidat promosi hanya bila modul promosi aktif (G2-A) dan peran diizinkan (RG-1e). */
+/**
+ * Saran kandidat promosi lama (lulus program saja, tanpa OKR) hanya bila modul promosi aktif dan peran diizinkan (RG-1e).
+ * C14: tetap hanya HR seperti sebelum B16, walau default `promotionVisibleTo` kini memuat supervisor untuk layar /cp;
+ * atasan memakai status `eligible` B16 (program + OKR) supaya tidak ada dua jawaban berbeda.
+ */
 async function canSeePromotion(req, flags, settings) {
   if (!(await flags.isEnabled(req.tenantId, FLAGS.PROMOTION_RECOMMENDATION))) return false;
   if (req.user.role === ROLES.ETA_ADMIN) return true;
-  return (await settings.get(req.tenantId)).dna.promotionVisibleTo.includes(req.user.role);
+  if (req.user.role !== ROLES.HR_ADMIN) return false;
+  return promotionSettings((await settings.get(req.tenantId)).dna).visibleTo.includes(req.user.role);
 }
 
 module.exports = {

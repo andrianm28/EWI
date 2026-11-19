@@ -327,13 +327,24 @@ run('B16 Career & Promotion (Postgres)', () => {
     expect((await get('/map', 'hr')).body.data.employees.find((e) => e.name === 'dedi')).toMatchObject({ status: 'next_no_requirement', decisionState: 'none' });
   });
 
-  it('endpoint lama: atasan kini melihat kandidat timnya, tanpa dirinya', async () => {
+  it('endpoint lama (kandidat program saja) tetap hanya untuk HR; atasan memakai /cp (C14)', async () => {
     const res = await request(app).get('/api/dna/promotion-candidates').set(as('spv'));
-    expect(res.status).toBe(200);
-    expect(res.body.data.map((p) => p.name).sort()).toEqual(['ani', 'budi']);
+    expect(res.status).toBe(403);
+    expect(res.body.error.code).toBe('ROLE_FORBIDDEN');
     const list = (await request(app).get('/api/dna/employees').set(as('spv'))).body.data;
-    expect(list.find((p) => p.name === 'spv').career.promotionCandidate).toBeUndefined();
-    expect(list.find((p) => p.name === 'ani').career.promotionCandidate).toBe(true);
+    expect(list.find((p) => p.name === 'ani').career.promotionCandidate).toBeUndefined();
+    const hr = await request(app).get('/api/dna/promotion-candidates').set(as('hr'));
+    expect(hr.status).toBe(200);
+    expect(hr.body.data.map((p) => p.name)).toEqual(expect.arrayContaining(['ani', 'budi']));
+  });
+
+  it('endpoint lama tidak 500 bila promotionVisibleTo rusak (string, null, objek)', async () => {
+    for (const bad of ['"hr_admin,supervisor"', 'null', '{"a":1}']) {
+      await q(`UPDATE tenants SET settings = jsonb_build_object('dna', jsonb_build_object('promotionVisibleTo', CAST(:bad AS jsonb))) WHERE id = :t`, { t: tenant.id, bad });
+      expect((await request(app).get('/api/dna/employees').set(as('hr'))).status).toBe(200);
+      expect((await request(app).get('/api/dna/promotion-candidates').set(as('spv'))).status).toBe(403);
+    }
+    await q(`UPDATE tenants SET settings = '{}'::jsonb WHERE id = :t`, { t: tenant.id });
   });
 
   it('audit baca: peta, bukti, dan daftar keputusan dicatat', async () => {

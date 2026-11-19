@@ -45,7 +45,7 @@ async function mockCp(page: Page, decisions: unknown[]) {
   await page.route('**/api/dna/career/decisions', (r) => r.fulfill({ json: { data: rows } }))
   await page.route('**/api/dna/career/decisions/*/*', (r) => {
     posts.push({ url: r.request().url(), body: r.request().postDataJSON() })
-    rows = [decision({ supervisor: { decision: 'recommend', byName: 'Sari', at: '2026-11-19T09:00:00Z', note: 'Siap' }, actions: [], blockedReason: 'waiting_hr' })]
+    rows = [decision({ supervisor: { decision: 'recommend', byName: 'Sari', at: '2026-11-19T09:00:00Z', note: 'Siap' }, actions: ['recommend', 'hold'], blockedReason: null })]
     return r.fulfill({ json: { data: rows[0] } })
   })
   return posts
@@ -91,7 +91,15 @@ test('Atasan merekomendasikan dengan catatan; keputusan tercatat dengan nama', a
   expect(posts[0]!.body).toEqual({ decision: 'recommend', note: 'Siap' })
   await expect(page.getByTestId('cp-dec')).toContainText('Sari')
   await expect(page.getByTestId('cp-dec')).toContainText('Merekomendasikan')
-  await expect(page.getByTestId('cp-dec')).toContainText('Menunggu HR')
+})
+
+test('HR yang mencatat rekomendasi itu sendiri tidak mendapat tombol keputusan', async ({ page }) => {
+  await mockCp(page, [decision({ supervisor: { decision: 'recommend', byName: 'Rina', at: '2026-11-19T09:00:00Z', note: null }, actions: [], blockedReason: 'self_recommended' })])
+  await loginAs(page, 'hr_admin')
+  await page.goto('/cp')
+  await page.getByRole('tab', { name: 'Keputusan promosi' }).click()
+  await expect(page.getByTestId('cp-dec')).toContainText('Anda yang merekomendasi')
+  await expect(page.getByRole('button', { name: 'Setujui Ani' })).toHaveCount(0)
 })
 
 test('Menu dan rute tertutup bila flag promotion.recommendation mati', async ({ page }) => {
