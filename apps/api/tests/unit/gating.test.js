@@ -32,7 +32,7 @@ describe('entitlement + feature flag gating', () => {
     const app = makeApp({ entitlements: { 't-1': ['full_suite'] }, flags: { 't-1': { 'module.dna': true } } });
     const token = await tokenFor(app);
     const access = await request(app).get('/api/me/access').set('Authorization', `Bearer ${token}`);
-    expect(access.body.submodules).toEqual(['cca', 'dna', 'tna', 'ina']);
+    expect(access.body.submodules).toEqual(['cca', 'dna', 'tna', 'ina', 'li', 'ld']);
     expect(access.body.flags['module.dna']).toBe(true);
     expect(access.body.flags['module.ina']).toBe(false);
   });

@@ -27,7 +27,9 @@ function webhookRouter({ secret, handler = async () => {} }) {
       if (!verify(secret, req.get('x-em-timestamp'), raw, req.get('x-em-signature'))) {
         return res.status(401).json({ error: { code: 'BAD_SIGNATURE', message: 'Tanda tangan webhook tidak valid' } });
       }
-      await handler(JSON.parse(raw));
+      let event;
+      try { event = JSON.parse(raw); } catch { return res.status(400).json({ error: { code: 'BAD_PAYLOAD', message: 'Isi webhook bukan JSON yang valid' } }); }
+      await handler(event);
       return res.status(202).json({ received: true });
     } catch (e) { return next(e); }
   });
