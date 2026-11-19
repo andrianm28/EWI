@@ -32,7 +32,11 @@ function competencyBlock(competencies) {
   }).join('\n');
 }
 
-function triggerBlock(triggers) {
+function triggerBlock(triggers, focus = null) {
+  // B6 (A10): sesi yang ditugaskan untuk gap kompetensi tidak membahas target kerja
+  if (!triggers.length && focus && focus.label) {
+    return `Topik wawancara: gap kompetensi "${focus.label}" (skor asesmen karyawan ini di bawah target jabatan). Tidak ada target kerja yang dibahas.`;
+  }
   if (!triggers.length) return '(Tidak ada target yang meleset. Karyawan diwawancarai karena seluruh anggota Job Role ikut TNA.)';
   return triggers.map((t) => {
     const unit = t.unit ? ` ${clip(t.unit, 20)}` : '';
@@ -66,18 +70,22 @@ ${COMMON_RULES}
 
 Balas hanya dengan teks pertanyaan berikutnya, tanpa awalan, tanpa tanda kutip, tanpa penjelasan.`;
   }
+  const focus = !triggers.length && context.focus && context.focus.label ? context.focus : null;
+  const startRule = focus
+    ? '- Mulai dari pengalaman kerja terakhir terkait topik, gali bagian yang sulit, ketersediaan panduan/alat, dan kesempatan praktik.'
+    : '- Mulai dari target yang meleset, satu per satu. Tanyakan penyebab menurut karyawan, lalu gali apakah ia tahu cara mengerjakannya.';
   return `Anda adalah pewawancara ELGOS (Elite Learning & Growth Operating System) untuk Training Needs Analysis (TNA).
 Tujuan: memahami mengapa target kerja karyawan ini belum tercapai, lalu membedakan penyebab yang bisa diatasi dengan pelatihan
 (pengetahuan atau keterampilan) dari penyebab non-pelatihan (SOP, tools, sistem, akses, beban kerja, koordinasi).
 
 Target milik karyawan ini yang belum tercapai (boleh Anda sebut nama dan angkanya):
-${triggerBlock(triggers)}
+${triggerBlock(triggers, focus)}
 
 Kompetensi jabatan (konteks, tidak perlu dibacakan):
 ${competencyBlock(competencies)}
 
 ${COMMON_RULES}
-- Mulai dari target yang meleset, satu per satu. Tanyakan penyebab menurut karyawan, lalu gali apakah ia tahu cara mengerjakannya.
+${startRule}
 - Bila karyawan menyebut kendala operasional (SOP, tools, sistem, akses), gali singkat satu pertanyaan lalu kembali ke topik.
 - Sisa kuota pertanyaan: ${remaining}. Bila penyebab setiap target sudah jelas atau kuota habis, balas hanya dengan ${DONE_TOKEN}.
 

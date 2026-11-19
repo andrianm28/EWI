@@ -139,7 +139,7 @@ module.exports = {
     // B5: papan gap dan penugasan wawancara akar masalah (flag tna.gap_board, tna.interview_assignment)
     r.use(gapRouter({ stores, flags, audit }));
 
-    r.use('/sessions', interviewRouter({ submodule: 'tna', stores, ai, aiConfig, audit, analysis }));
+    r.use('/sessions', interviewRouter({ submodule: 'tna', stores, ai, aiConfig, audit, analysis, flags }));
 
     // --- Review hasil AI oleh HR (PK-14: PD-14 ★A, PM-3 ★A, PM-5 ★A) ---
     // Temuan dari analisis AI berstatus draf. Draf tidak terlihat atasan dan karyawan, dan tidak dihitung di

@@ -78,8 +78,9 @@ Status sesi di DB tidak ditambah (`scheduled`, `in_progress`, `completed`, `aban
 - **A9 Tanda untuk HR.** `stores.tna.reviewQueue` dan `getReviewItem` menambah `summaryState` dan `summaryNote` dari sesi temuan. B7 yang menampilkannya; B6 hanya menyediakan data. Tidak ada transkrip untuk HR (PO-6). Nilai `summaryState` (fungsi `summaryStateOf` di `summary.js`, dipakai juga di `GET /sessions/:id`):
   - `confirmed`: `summary_confirmed_at` terisi dan tidak disengketakan;
   - `disputed`: dikirim dengan catatan tidak sesuai (A5b);
-  - `unchecked`: sesi punya `summary_at` tetapi tidak dikonfirmasi (ditutup HR, atau flag dimatikan);
-  - `not_applicable`: sesi tidak pernah punya ringkasan (alur lama, DNA) atau temuan tidak lagi tertaut ke sesi.
+  - `unchecked`: sesi **selesai** tanpa konfirmasi karyawan (ditutup HR, flag dimatikan, atau alur lama tanpa langkah ringkasan). Penyimpangan saat membangun: spek v2 menyebut sesi alur lama `not_applicable`; dipilih `unchecked` karena bagi HR artinya sama (karyawan tidak memeriksa temuan);
+  - `pending`: ringkasan sudah dibuat dan sesi masih berjalan (hanya muncul di `GET /sessions/:id`, karena temuan baru masuk antrean HR setelah sesi selesai). Ditambahkan saat membangun untuk langkah stepper;
+  - `not_applicable`: belum ada ringkasan dan sesi belum selesai, atau temuan tidak lagi tertaut ke sesi.
 - **A10 Durasi dan topik (dari B5).** `duration_minutes` 15 → paling banyak 5 pertanyaan, 30 atau kosong → `aiConfig.maxQuestions` (bawaan 8); tidak pernah melebihi `aiConfig.maxQuestions`. `[⚠️ BELUM TERVERIFIKASI]` pemetaan menit → jumlah pertanyaan adalah perkiraan (±3 menit per pertanyaan); disetel setelah QA malam dengan LLM sungguhan. Bila sesi punya `focus_kind = 'competency'`, kompetensi fokus dikirim ke AI sebagai `context.focus = { kind, label }` (nama kompetensi saja, bukan data orang, PM-10). Di prompt wawancara TNA, bila `triggers` kosong **dan** ada fokus, blok target diganti: "Topik wawancara: gap kompetensi \"<label>\" (skor asesmen karyawan ini di bawah target jabatan). Tidak ada target kerja yang dibahas." dan baris aturan "Mulai dari target yang meleset" diganti "Mulai dari pengalaman kerja terakhir terkait topik, gali bagian yang sulit, ketersediaan panduan/alat, dan kesempatan praktik". Tanpa fokus, teks lama tidak berubah. Prompt analisis tidak diubah (daftar kompetensi sudah dikirim; temuan ditautkan lewat kode K). Stub: bila ada fokus dan tidak ada target, pertanyaan pembuka menyebut label lalu satu pertanyaan penutup yang sama dengan sekarang. Untuk fokus OKR tidak ada tambahan karena target meleset sudah menjadi `triggers`. `stores.interviews.get` ikut membaca `duration_minutes`, `focus_kind`, `focus_label` (kolom B5).
 - **A11 Footer audit dan stepper.** `GET /sessions/:id` untuk orang yang diwawancarai menambah: `step`, `summaryState`, `answerCount`, `questionLimit` (batas atas; AI boleh selesai lebih awal, jadi web menulis "Pertanyaan n, paling banyak N"), `restartCount`, `restartsLeft`, `summaryAt`, `summaryConfirmedAt`, `aiLabel` (teks tetap `ELGOS-AI`; ID model Bedrock tidak dikirim ke karyawan), dan `sessionCode` (8 karakter pertama id, huruf besar). Peran lain hanya mendapat tambahan `step` dan `summaryState`. Respons disusun dari **daftar putih** per peran, bukan `...s`; `stores.interviews.get` tidak pernah memuat `summary_findings` atau `summary_note` (hanya `getSummary`/`summaryForAnalysis` yang memuatnya).
 - **A12 Ringkasan adalah data pribadi karyawan.** `GET /sessions/:id/summary` hanya untuk orang yang diwawancarai (peran lain 403 `SUMMARY_PRIVATE`); HR melihat temuan lewat antrean review setelah dikirim. `GET` tetap 200 sesudah konfirmasi: karyawan boleh membaca lagi apa yang ia kirim, dan salinan terenkripsi itu tetap di baris sesi sampai sesi dihapus (`[⏳ DITERIMA]` retensi mengikuti sesi; bila HR mengubah temuan, salinan ini adalah versi yang dilihat karyawan). Pembacaan (GET, dan POST yang mengembalikan isi) dicatat `audit.readIndividual` dengan resource `tna.interview_summary`. Ekspor data karyawan (PR #11) tidak diubah di B6: temuan terkonfirmasi muncul di ekspor setelah direview HR seperti temuan lain. `[⏳ DITERIMA]` ringkasan yang belum dikonfirmasi tidak ikut ekspor; dicatat di PR.
@@ -145,7 +146,7 @@ Di bawah `/api/tna/sessions` (router `interviewRouter`), semua butuh flag `tna.i
 
 ## 8. Test yang ditulis lebih dulu
 
-Unit (`tests/unit/interview-summary.test.js`): `stepOf` untuk empat langkah; `questionLimit` (15, 30, kosong, batas config lebih kecil); `publicSummary` tidak membocorkan `detail`, `competencyId`, `performanceRecordId`; prompt TNA memuat topik fokus dan tidak memuat nama orang.
+Unit (`tests/unit/interview-summary.test.js`): `stepOf` untuk empat langkah; `questionLimit` (15, 30, kosong, batas config lebih kecil); `publicSummary` memuat `detail` (A3 v2) tetapi tidak membocorkan `competencyId`, `performanceRecordId`; prompt TNA memuat topik fokus dan tidak memuat nama orang.
 
 Integrasi (`tests/integration/interview-summary.test.js`, Postgres, AI stub yang menghitung panggilan):
 - flag mati: `/summary`, `/confirm`, `/restart` → 403 `FEATURE_DISABLED`; `/complete` lama tetap 202;
@@ -188,19 +189,19 @@ Test lama (`ai-review`, `poc-dna-tna`, `privacy-audit`, `business-rules-live`) h
 
 ## 10. Daftar perubahan file
 
-- [ ] `apps/api/migrations/20261119000600-ringkasan-wawancara.js`
-- [ ] `apps/api/src/core/flags/index.js`
-- [ ] `apps/api/src/modules/interviews/summary.js`
-- [ ] `apps/api/src/modules/interviews/index.js`
-- [ ] `apps/api/src/modules/interviews/ai-calls.js`
-- [ ] `apps/api/src/modules/interviews/analysis.js`
-- [ ] `apps/api/src/ai/prompts.js`
-- [ ] `apps/api/src/ai/stub-provider.js`
-- [ ] `apps/api/src/db/lna-stores.js`
-- [ ] `apps/api/src/modules/tna/index.js`
-- [ ] `apps/api/tests/unit/interview-summary.test.js`
-- [ ] `apps/api/tests/integration/interview-summary.test.js`
-- [ ] `docs/ewi/ai-teks.md` (alur ringkasan)
+- [x] `apps/api/migrations/20261119000600-ringkasan-wawancara.js`
+- [x] `apps/api/src/core/flags/index.js`
+- [x] `apps/api/src/modules/interviews/summary.js`
+- [x] `apps/api/src/modules/interviews/index.js`
+- [x] `apps/api/src/modules/interviews/ai-calls.js`
+- [x] `apps/api/src/modules/interviews/analysis.js`
+- [x] `apps/api/src/ai/prompts.js`
+- [x] `apps/api/src/ai/stub-provider.js`
+- [x] `apps/api/src/db/lna-stores.js`
+- [x] `apps/api/src/modules/tna/index.js`
+- [x] `apps/api/tests/unit/interview-summary.test.js`
+- [x] `apps/api/tests/integration/interview-summary.test.js`
+- [x] `docs/ewi/ai-teks.md` (alur ringkasan)
 - [ ] Layar web (menyusul, di atas PR B0)
 
 ## 11. Review egm atas spek (19 Nov)

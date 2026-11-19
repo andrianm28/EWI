@@ -28,7 +28,16 @@ PD-1 belum dijawab (per 19 Nov); kode memakai opsi ★. PM-10 diputus A (17 Nov)
   juga bisa diulang. Bila analisis gagal, sesi tetap `in_progress` dan `complete` bisa diulang.
 - Kuota pertanyaan `AI_MAX_QUESTIONS` (bawaan 8) ditegakkan di kode, tidak hanya di prompt.
 
-## Prompt
+## Ringkasan temuan diperiksa karyawan (B6, flag `tna.interview_summary`)
+
+Spek: `docs/designs/b6-wawancara-akar-masalah.md`. Saat flag menyala, wawancara TNA punya langkah ringkasan:
+
+1. `POST /api/tna/sessions/:id/summary` memanggil `analyzeTna` sekali (penilaian pertama) dan menyimpan hasilnya terenkripsi di sesi. Percakapan terkunci.
+2. Karyawan memilih "Sesuai, kirim ke HR" (`POST .../summary/confirm`), "Kirim dengan catatan" (`{ accurate: false, note }`), atau "Ulangi wawancara" (`POST .../restart`, paling banyak 2 kali).
+3. Konfirmasi menutup sesi dan membuat job analisis dalam satu transaksi. Job memakai ringkasan sebagai penilaian pertama dan hanya memanggil model untuk penilaian kedua, jadi alur normal tetap dua panggilan `analyzeTna` per sesi.
+4. Sesi 15 menit paling banyak 5 pertanyaan. Sesi untuk gap kompetensi (B5) membawa nama kompetensi sebagai topik di prompt.
+
+
 
 `src/ai/prompts.js`, Bahasa Indonesia:
 
