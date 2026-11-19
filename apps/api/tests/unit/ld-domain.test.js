@@ -133,6 +133,13 @@ describe('normalizeEvent', () => {
     expect(normalizeEvent({ ...ok, type: 'assessment.result' }).error).toMatch(/score/);
     expect(normalizeEvent({ ...ok, type: 'assessment.result', score: 88, status: undefined }).event.score).toBe(88);
   });
+  it('id organisasi dan id pengguna EliteMentor harus bilangan bulat positif dalam rentang integer Postgres', () => {
+    for (const organizationId of ['', null, true, 0, -3, 2147483648, 1.5]) expect(normalizeEvent({ ...ok, organizationId }).error).toMatch(/organizationId/);
+    expect(normalizeEvent({ ...ok, organizationId: '42' }).event.organizationId).toBe(42);
+    for (const elitementorUserId of ['', true, 0, 2147483648]) expect(normalizeEvent({ ...ok, user: { elitementorUserId } }).error).toMatch(/user/);
+    expect(normalizeEvent({ ...ok, user: { email: 'a@b.c', elitementorUserId: 2147483648 } }).error).toMatch(/elitementorUserId/);
+    expect(normalizeEvent({ ...ok, user: { elitementorUserId: '77' } }).event.user.elitementorUserId).toBe(77);
+  });
 });
 
 describe('storage', () => {

@@ -251,7 +251,7 @@ function createLdStores(sequelize) {
            ON CONFLICT (tenant_id, source, event_id) DO NOTHING RETURNING id`, { tenantId, id: ev.id, type: ev.type }, t);
         if (!mark) return { duplicate: true };
         const result = await (ev.type === 'assessment.result' ? applyAssessment(tenantId, ev, t) : applyProgress(tenantId, ev, t));
-        await write('UPDATE ld_sync_events SET result = CAST(:result AS jsonb) WHERE id = :id', { id: mark.id, result: JSON.stringify(result) }, t);
+        await write('UPDATE ld_sync_events SET result = CAST(:result AS jsonb) WHERE tenant_id = :tenantId AND id = :id', { tenantId, id: mark.id, result: JSON.stringify(result) }, t);
         return result;
       });
     },

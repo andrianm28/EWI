@@ -173,18 +173,28 @@ const inRange = (v) => v === null || (Number.isFinite(v) && v >= 0 && v <= 100);
  * Rapikan event webhook EliteMentor ke bentuk internal. Satu-satunya tempat yang tahu bentuk payload
  * (kontrak belum disepakati, spek §3). Return { event } atau { error }.
  */
+const PG_INT_MAX = 2147483647;
+/** Id dari EliteMentor (angka atau string angka) ke bilangan bulat 1..int4 Postgres; selain itu null. */
+function intId(v) {
+  if (typeof v === 'number' ? !Number.isInteger(v) : !(typeof v === 'string' && /^\d+$/.test(v))) return null;
+  const n = Number(v);
+  return n >= 1 && n <= PG_INT_MAX ? n : null;
+}
+
 function normalizeEvent(raw, now = new Date()) {
   if (!raw || typeof raw !== 'object') return { error: 'payload bukan objek' };
   const id = str(raw.id, 128); const type = str(raw.type, 64);
-  const organizationId = Number(raw.organizationId);
+  const organizationId = intId(raw.organizationId);
   if (!id) return { error: 'id kosong' };
   if (!EVENT_TYPES.includes(type)) return { error: `type tidak dikenal: ${type || '-'}` };
-  if (!Number.isInteger(organizationId)) return { error: 'organizationId tidak valid' };
+  if (organizationId === null) return { error: 'organizationId tidak valid' };
   const course = raw.course || {}; const user = raw.user || {};
   const ref = str(course.ref, 128);
   if (!ref) return { error: 'course.ref kosong' };
   const email = str(user.email, 255).toLowerCase() || null;
-  const emUserId = Number.isInteger(Number(user.elitementorUserId)) && user.elitementorUserId !== null && user.elitementorUserId !== undefined ? Number(user.elitementorUserId) : null;
+  const hasEmUserId = user.elitementorUserId !== null && user.elitementorUserId !== undefined;
+  const emUserId = hasEmUserId ? intId(user.elitementorUserId) : null;
+  if (hasEmUserId && emUserId === null) return { error: 'user.elitementorUserId tidak valid' };
   if (!email && emUserId === null) return { error: 'user tanpa email dan elitementorUserId' };
   const occurredAt = ['string', 'number'].includes(typeof raw.occurredAt) ? new Date(raw.occurredAt) : new Date(NaN);
   // waktu jauh di depan akan membuat semua event berikutnya dianggap usang

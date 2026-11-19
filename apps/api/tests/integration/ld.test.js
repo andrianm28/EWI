@@ -268,6 +268,13 @@ run('Learning Delivery (Postgres)', () => {
     expect((await hook(progress({ id: 'ev-i' }))).status).toBe(202);
     await flag('module.ld', true);
     expect((await events()).map((e) => e.event_id)).not.toContain('ev-i');
+    // tenant tanpa entitlement full_suite: event diterima tetapi tidak diproses
+    await db.query("DELETE FROM entitlements WHERE tenant_id = :t AND product = 'full_suite'", { replacements: { t: tenant.id } });
+    expect((await hook(progress({ id: 'ev-j' }))).status).toBe(202);
+    await db.query(`INSERT INTO entitlements (tenant_id, product) VALUES (:t, 'full_suite')`, { replacements: { t: tenant.id } });
+    expect((await events()).map((e) => e.event_id)).not.toContain('ev-j');
+    // id organisasi di luar rentang integer: diabaikan (202), bukan galat DB yang membuat EliteMentor mengulang terus
+    expect((await hook(progress({ id: 'ev-k', organizationId: 99999999999 }))).status).toBe(202);
   });
 
   it('webhook: skor asesmen pelatihan offline dicocokkan lewat kode asesmen', async () => {
