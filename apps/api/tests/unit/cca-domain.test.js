@@ -170,6 +170,20 @@ describe('CCA: status dan laporan program', () => {
     expect(normalizeManualReport(CONFIG, null).error).toMatch(/wajib/);
   });
 
+  it('isian agregat: jumlah per status harus konsisten dengan lulus dan selesai', () => {
+    const input = {
+      registered: 10, completed: 6, passed: 4, avgValueScore: null, avgFinal: null,
+      statuses: { strong: 1, baseline: 3, not_passed: 2, in_progress: 4 },
+      values: [{ avgCompleted: null, avgAll: null }, { avgCompleted: null, avgAll: null }],
+      components: [{ done: 0, avg: null }, { done: 0, avg: null }],
+    };
+    expect(normalizeManualReport(CONFIG, input).error).toBeUndefined();
+    // band lulus 1 + 1 = 2, padahal lulus 4 (total status tetap 10)
+    expect(normalizeManualReport(CONFIG, { ...input, statuses: { strong: 1, baseline: 1, not_passed: 4, in_progress: 4 } }).error).toMatch(/band.*lulus/i);
+    // belum selesai harus terdaftar - selesai = 4
+    expect(normalizeManualReport(CONFIG, { ...input, statuses: { strong: 1, baseline: 3, not_passed: 3, in_progress: 3 } }).error).toMatch(/belum selesai|tidak lulus/i);
+  });
+
   it('laporan tanpa peserta tidak membagi dengan nol', () => {
     const rep = buildReport({ key: 'p', name: 'P', config: CONFIG }, []);
     expect(rep.kpis).toEqual({ registered: 0, completed: 0, completedPct: 0, passed: 0, passedPct: 0, avgValueScore: null });
