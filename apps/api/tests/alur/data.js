@@ -31,6 +31,10 @@ const TENANT_LAIN = {
 
 const PERIODE = '2026-11';
 
+/** Tanggal kalender WIB (YYYY-MM-DD) `geser` hari dari hari ini; sama dengan cara modul LD menghitung "hari ini". */
+const ZONA_WIB_MS = 7 * 3600e3;
+const tanggalWib = (geser = 0) => new Date(Date.now() + ZONA_WIB_MS + geser * 86400e3).toISOString().slice(0, 10);
+
 /** Semua string yang tidak boleh muncul di payload atau keluaran AI untuk karyawan yang diuji. */
 const TERLARANG = {
   kenari: [KARYAWAN_LAIN.kpi.name, TENANT_LAIN.kpi.name],
@@ -38,4 +42,4 @@ const TERLARANG = {
   email: [KARYAWAN_LAIN.email, TENANT_LAIN.karyawan.email],
 };
 
-module.exports = { JABATAN, KOMPETENSI, KARYAWAN_LAIN, TENANT_LAIN, PERIODE, TERLARANG };
+module.exports = { JABATAN, KOMPETENSI, KARYAWAN_LAIN, TENANT_LAIN, PERIODE, TERLARANG, tanggalWib };

@@ -28,6 +28,26 @@ async function siapkanTenant(db, { slug, nama = 'PT Contoh', flags = [FLAGS.MODU
   return { id: tenant.id, slug };
 }
 
+/**
+ * Menjalankan `fn` selama flag atau produk tenant dimatikan, lalu memulihkannya walau `fn` gagal.
+ * `{ flag }` mematikan satu feature flag; `{ produk }` mencabut satu entitlement (mis. 'full_suite').
+ */
+async function selamaMati(db, tenantId, { flag, produk }, fn) {
+  const t = tenantId;
+  const setel = (on) => (flag
+    ? db.query(`INSERT INTO feature_flags (tenant_id, key, enabled) VALUES (:t, :flag, :on)
+                ON CONFLICT (tenant_id, key) DO UPDATE SET enabled = EXCLUDED.enabled`, { replacements: { t, flag, on } })
+    : db.query(on ? 'INSERT INTO entitlements (tenant_id, product) VALUES (:t, :produk)' : 'DELETE FROM entitlements WHERE tenant_id = :t AND product = :produk', { replacements: { t, produk } }));
+  await setel(false);
+  try { return await fn(); } finally { await setel(true); }
+}
+
+/** Menyalakan flag tenant (mis. em.webhook_sync yang bawaannya mati). */
+async function nyalakanFlag(db, tenantId, flag) {
+  await db.query(`INSERT INTO feature_flags (tenant_id, key, enabled) VALUES (:t, :flag, true)
+                  ON CONFLICT (tenant_id, key) DO UPDATE SET enabled = true`, { replacements: { t: tenantId, flag } });
+}
+
 async function tambahPengguna(db, tenantId, { nama, email, employeeId, peran, atasanId = null }) {
   const [[row]] = await db.query(
     `INSERT INTO users (tenant_id, email, name, employee_id, role, status, supervisor_id)
@@ -60,6 +80,12 @@ function langkah(app, masuk) {
     return body === undefined ? r : r.send(body);
   };
   const setuju = (karyawan, sid) => kirim('post', `/api/tna/sessions/${sid}/consent`, karyawan, { consentVersion: currentConsentVersion('tna') });
+  /** Unggah lalu commit CSV lewat pengimpor bersama submodul (baris tanpa header). Mengembalikan hasil impor. */
+  const imporCsv = async (siapa, submodul, jenis, header, baris) => {
+    const up = await request(app).post(`/api/${submodul}/imports/${jenis}?filename=${jenis}.csv`).set(masuk(siapa))
+      .set('Content-Type', 'application/octet-stream').send(Buffer.from(`${[header, ...baris].join('\n')}\n`)).expect(201);
+    return (await kirim('post', `/api/${submodul}/imports/batches/${up.body.data.id}/commit`, siapa, {}).expect(200)).body.data.result;
+  };
   const jawab = (karyawan, sid, text) => kirim('post', `/api/tna/sessions/${sid}/turns`, karyawan, { text });
   return {
     /** Respons mentah untuk memeriksa status penolakan (403/404) tanpa langkah modul. */
@@ -134,11 +160,11 @@ function langkah(app, masuk) {
     },
     li: {
       /** B13: unggah lalu commit CSV library modul KSA (baris tanpa header). Mengembalikan ringkasan hasil impor. */
-      async imporModul(hr, baris) {
-        const header = 'Kode Modul,Nama Modul,Level,Rumpun,Tujuan,Jabatan,Kompetensi,Tipe Butir,Butir';
-        const up = await request(app).post('/api/li/imports/li_modules?filename=modul.csv').set(masuk(hr))
-          .set('Content-Type', 'application/octet-stream').send(Buffer.from(`${[header, ...baris].join('\n')}\n`)).expect(201);
-        return (await kirim('post', `/api/li/imports/batches/${up.body.data.id}/commit`, hr, {}).expect(200)).body.data.result;
+      imporModul: (hr, baris) => imporCsv(hr, 'li', 'li_modules', 'Kode Modul,Nama Modul,Level,Rumpun,Tujuan,Jabatan,Kompetensi,Tipe Butir,Butir', baris),
+      /** Katalog course Moodle (impor PK-18 lewat TNA), sumber `catalogItemId` saat modul dipasang. Baris: 'Kode,Judul'. */
+      async imporCourse(hr, baris) {
+        await imporCsv(hr, 'tna', 'catalog_courses', 'Kode Course,Judul Course', baris);
+        return (await kirim('get', '/api/li/catalog', hr).expect(200)).body.data;
       },
       /** Library modul (body lengkap: data, kpis, pareto). `query` contoh: 'priority=pareto'. */
       async pustaka(siapa, query = '') {
@@ -181,7 +207,7 @@ function langkah(app, masuk) {
       async dashboard(hr) {
         return (await kirim('get', '/api/ld/dashboard', hr).expect(200)).body.data;
       },
-      /** Respons mentah: 201 terkirim, 409 REMINDER_RECENT bila sudah dikirim dalam 24 jam. */
+      /** Respons mentah: 201 terkirim; 409 REMINDER_RECENT (dalam 24 jam) atau INVALID_STATE (selesai/batal); 400 tanpa penerima. */
       pengingat: (hr, id) => kirim('post', `/api/ld/trainings/${id}/reminders`, hr),
     },
   };
@@ -200,4 +226,4 @@ async function siapkanTenantKenari(db, a, slug) {
   return { id: t.id, projectId };
 }
 
-module.exports = { siapkanTenant, tambahPengguna, pembuatMasuk, hapusTenant, langkah, siapkanTenantKenari, kodeGalat };
+module.exports = { siapkanTenant, selamaMati, nyalakanFlag, tambahPengguna, pembuatMasuk, hapusTenant, langkah, siapkanTenantKenari, kodeGalat };

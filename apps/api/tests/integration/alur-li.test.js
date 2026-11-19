@@ -8,7 +8,8 @@ const { createStores } = require('../../src/db/stores');
 const { createApp } = require('../../src/app');
 const { createStubProvider } = require('../../src/ai/stub-provider');
 const { makeConfig } = require('../helpers');
-const { siapkanTenant, tambahPengguna, pembuatMasuk, hapusTenant, langkah, kodeGalat } = require('../alur/driver');
+const { FLAGS } = require('../../src/core/flags');
+const { siapkanTenant, selamaMati, tambahPengguna, pembuatMasuk, hapusTenant, langkah, kodeGalat } = require('../alur/driver');
 const { JABATAN, KOMPETENSI, PERIODE } = require('../alur/data');
 
 const run = process.env.DATABASE_URL ? describe : describe.skip;
@@ -29,7 +30,7 @@ run('Alur gap TNA ke intervensi (B5 → B13)', () => {
     db = createDb({ databaseUrl: process.env.DATABASE_URL, dbSchema: process.env.DB_SCHEMA || 'ewi' });
     const config = makeConfig();
     a = langkah(createApp({ config, stores: createStores(db), ai: createStubProvider() }), pembuatMasuk(config));
-    tenant = await siapkanTenant(db, { slug, flags: ['module.dna', 'module.tna', 'module.li'] });
+    tenant = await siapkanTenant(db, { slug, flags: [FLAGS.MODULE_DNA, FLAGS.MODULE_TNA, FLAGS.MODULE_LI] });
     tenantIds.push(tenant.id);
     orang.hr = await tambahPengguna(db, tenant.id, { nama: 'HR Contoh', email: `hr@${slug}.test`, employeeId: 'E-HR', peran: 'hr_admin' });
     orang.atasan = await tambahPengguna(db, tenant.id, { nama: 'Atasan Contoh', email: `atasan@${slug}.test`, employeeId: 'E-SPV', peran: 'supervisor' });
@@ -42,8 +43,8 @@ run('Alur gap TNA ke intervensi (B5 → B13)', () => {
     await a.tna.imporKinerja(orang.hr, {
       period: PERIODE, projectId, rows: [{ employeeId: orang.karyawan.employeeId, metricType: 'kpi', name: 'First Contact Resolution (%)', target: 80, actual: 62 }],
     });
-    // Katalog LMS diisi sinkronisasi EliteMentor/Moodle (di luar alur ini), jadi disiapkan lewat SQL.
-    [[course]] = await db.query(`INSERT INTO lna_catalog_items (tenant_id, source, external_ref, title) VALUES (:t, 'moodle', 'C-ESK', 'Eskalasi Tiket L1') RETURNING id`, { replacements: { t: tenant.id } });
+    // Katalog course Moodle lewat impor PK-18 (aktif secara bawaan).
+    course = (await a.li.imporCourse(orang.hr, ['C-ESK,Eskalasi Tiket L1'])).find((c) => c.externalRef === 'C-ESK');
   });
 
   afterAll(async () => {
@@ -76,7 +77,8 @@ run('Alur gap TNA ke intervensi (B5 → B13)', () => {
     const pareto = await a.li.pustaka(orang.hr, 'priority=pareto');
     expect(pareto.data.map((m) => m.code)).toEqual(['ESK-B1']);
     expect(pareto.data[0].priority).toMatchObject({ rank: 1, label: KOMPETENSI_GAP });
-    expect(JSON.stringify(pareto)).not.toMatch(/Kesulitan mencapai target/);
+    const isi = JSON.stringify(pareto);
+    for (const f of antrean) expect(isi).not.toContain(f.title);
   });
 
   it('HR meminta modul ke vendor; alur maju sampai terpasang dengan course aktif dan modul tersedia', async () => {
@@ -93,19 +95,16 @@ run('Alur gap TNA ke intervensi (B5 → B13)', () => {
 
   it('atasan dan karyawan ditolak 403', async () => {
     for (const siapa of [orang.atasan, orang.karyawan]) {
-      expect((await a.mentah('get', '/api/li/modules?priority=pareto', siapa)).status).toBe(403);
+      const r = await a.mentah('get', '/api/li/modules?priority=pareto', siapa);
+      expect([r.status, kodeGalat(r)]).toEqual([403, 'ROLE_FORBIDDEN']);
     }
   });
 
   it('module.li mati → FEATURE_DISABLED; tanpa full_suite → NOT_ENTITLED', async () => {
-    await db.query("UPDATE feature_flags SET enabled = false WHERE tenant_id = :t AND key = 'module.li'", { replacements: { t: tenant.id } });
-    const mati = await a.mentah('get', '/api/li/modules', orang.hr);
-    await db.query("UPDATE feature_flags SET enabled = true WHERE tenant_id = :t AND key = 'module.li'", { replacements: { t: tenant.id } });
+    const mati = await selamaMati(db, tenant.id, { flag: FLAGS.MODULE_LI }, () => a.mentah('get', '/api/li/modules', orang.hr));
     expect([mati.status, kodeGalat(mati)]).toEqual([403, 'FEATURE_DISABLED']);
-
-    await db.query("DELETE FROM entitlements WHERE tenant_id = :t AND product = 'full_suite'", { replacements: { t: tenant.id } });
-    const tanpa = await a.mentah('get', '/api/li/modules', orang.hr);
-    await db.query("INSERT INTO entitlements (tenant_id, product) VALUES (:t, 'full_suite')", { replacements: { t: tenant.id } });
+    const tanpa = await selamaMati(db, tenant.id, { produk: 'full_suite' }, () => a.mentah('get', '/api/li/modules', orang.hr));
     expect([tanpa.status, kodeGalat(tanpa)]).toEqual([403, 'NOT_ENTITLED']);
+    expect((await a.mentah('get', '/api/li/modules', orang.hr)).status).toBe(200); // dipulihkan
   });
 });
