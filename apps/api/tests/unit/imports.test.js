@@ -112,6 +112,11 @@ describe('B4 impor kamus: kode, rumpun, level program, job function', () => {
     expect(kind.validate({ ...base, programTier: 'Advance' }, makeCtx()).value.programTier).toBe('advanced');
     expect(kind.validate(base, makeCtx()).value).toMatchObject({ code: null, programTier: null, jobFunctionIds: null });
   });
+  it('file lama: kolom "Level" berisi nama jenjang (mis. Junior) dibaca sebagai Jenjang, bukan ditolak', () => {
+    expect(kind.validate({ ...base, programTier: 'junior' }, makeCtx()).value).toMatchObject({ careerLevelId: 'l1', programTier: null });
+    // kolom Jenjang sudah terisi: nilai bukan B/I/A tetap ditolak
+    expect(kind.validate({ ...base, careerLevel: 'Junior', programTier: 'junior' }, makeCtx()).error).toMatch(/Level Program/);
+  });
   it('alasan penolakan kolom baru', () => {
     expect(kind.validate({ ...base, programTier: 'expert' }, makeCtx()).error).toMatch(/Level Program/);
     expect(kind.validate({ ...base, jobFunctions: '2' }, makeCtx()).error).toMatch(/nomor 2 belum ada/);

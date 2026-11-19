@@ -46,6 +46,12 @@ module.exports = {
       if (!jr) return { error: `Job role "${v.text(row.jobRole)}" belum ada` };
       jobRoleId = jr.id;
     }
+    // R1 review egm: file lama memakai judul "Level" untuk jenjang karier. Nilai yang bukan B/I/A tetapi cocok
+    // dengan nama jenjang job role (dan kolom Jenjang kosong) dibaca sebagai Jenjang.
+    if (v.blank(row.careerLevel) && !v.blank(row.programTier) && !v.choice(row.programTier, TIER_CHOICES) && jr
+      && jr.levels.some((l) => l.name.trim().toLowerCase() === v.text(row.programTier).toLowerCase())) {
+      row = { ...row, careerLevel: row.programTier, programTier: null };
+    }
     if (!v.blank(row.careerLevel)) {
       if (!jr) return { error: 'Jenjang butuh Job Role' };
       const lvl = jr.levels.find((l) => l.name.trim().toLowerCase() === v.text(row.careerLevel).toLowerCase());

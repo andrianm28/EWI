@@ -6,17 +6,8 @@ const TIERS = ['basic', 'intermediate', 'advanced'];
 const STAGES = [...TIERS, 'done', 'not_assessed'];
 const TIER_LABEL = { basic: 'Basic', intermediate: 'Intermediate', advanced: 'Advanced' };
 
-const when = (a) => new Date(a.assessedAt || a.createdAt).getTime();
-
-/** Asesmen terbaru per kompetensi (A2), sama dengan computeGap. */
-function latestByCompetency(assessments) {
-  const latest = new Map();
-  for (const a of assessments) {
-    const prev = latest.get(a.competencyId);
-    if (!prev || when(a) >= when(prev)) latest.set(a.competencyId, a);
-  }
-  return latest;
-}
+// A2 (asesmen terbaru) dan A3 (default target) sama persis dengan gap individu, jadi dipakai ulang
+const { latestByCompetency, DEFAULT_TARGET } = require('./gap');
 
 function mastery(score, target) {
   if (score == null) return null;
@@ -42,7 +33,7 @@ function developmentPlan({ competencies, assessments }) {
   const untiered = competencies.filter((c) => !TIERS.includes(c.programTier)).length;
   const rows = competencies.filter((c) => TIERS.includes(c.programTier)).map((c) => {
     const a = latest.get(c.id);
-    const target = c.requiredScore ?? 3;
+    const target = c.requiredScore ?? DEFAULT_TARGET;
     const score = a ? a.score : null;
     return { competencyId: c.id, code: c.code || null, name: c.name, stream: c.stream || null, tier: c.programTier, score, target, below: score != null && score < target };
   });
