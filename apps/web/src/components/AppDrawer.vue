@@ -1,7 +1,8 @@
 <script setup lang="ts">
 // Navigation drawer accordion (Material 3). Isi menu dari src/shell/menu.ts sesuai tampilan aktif.
 import { computed, nextTick, ref, watch } from 'vue'
-import { useRoute, useRouter } from 'vue-router'
+import { useRoute } from 'vue-router'
+import { routeOpen } from '@/router'
 import { useSessionStore } from '@/stores/session'
 import { buildMenu, openGroups } from '@/shell/menu'
 import { UiIcon } from '@/ui'
@@ -11,11 +12,11 @@ const emit = defineEmits<{ close: [] }>()
 
 const session = useSessionStore()
 const route = useRoute()
-const router = useRouter()
 
 const menu = computed(() => buildMenu({
   view: session.activeView,
-  hasRoute: (name) => router.hasRoute(name),
+  routeOpen: (name) => routeOpen(name, session.activeView, session),
+  homeReady: session.homeReady(session.activeView),
   flags: session.access?.flags ?? {},
   canOpen: session.canOpen,
 }))

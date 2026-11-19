@@ -1,5 +1,5 @@
 import { createRouter, createWebHistory, type RouteLocationNormalized, type RouteRecordRaw } from 'vue-router'
-import { bindRoutes, useSessionStore } from '@/stores/session'
+import { bindRoutes, useSessionStore, type Gates } from '@/stores/session'
 import type { SubmoduleKey } from '@/modules'
 import { menuLabel } from '@/shell/menu'
 import { VIEW_HOME, type ViewKey } from '@/shell/views'
@@ -21,21 +21,30 @@ declare module 'vue-router' {
     flag?: string
     /** Submodul yang harus dimiliki dan menyala. */
     submodule?: SubmoduleKey
+    /** Modul 2–5: produk entitlement yang harus dimiliki tenant (mis. 'full_suite'), sama dengan pemeriksaan API-nya. */
+    entitlement?: string
     /** Butir menu yang menyala saat rute ini terbuka (untuk layar anak). */
     menuKey?: string
-    /** Hanya peran HR dan Admin ETA (layar tinjauan lama, PR #16). */
-    hrOnly?: boolean
+    /** Peran asli (dari API) yang boleh membuka rute ini, mis. ['hr_admin', 'eta_admin']. Tanpa ini: semua peran. */
+    roles?: string[]
+    /** Rute lama `/m/:key`: param `key` adalah submodul yang harus terbuka. Paket baru memakai `submodule`. */
+    submoduleParam?: boolean
   }
 }
 
 const screenModules = import.meta.glob<{ default: RouteRecordRaw[] }>('@/screens/*/routes.ts', { eager: true })
 
+// Build uji (VITE_UI_KIT=1): rute uji menggantikan rute asli bernama sama, supaya test shell tetap menguji
+// aturan menu dan tampilan tanpa bergantung pada layar paket (mis. `dash` asli dari B3).
+const tests = import.meta.env.VITE_UI_KIT === '1' ? testRoutes() : []
+const replaced = (r: RouteRecordRaw) => tests.some((t) => t.name === r.name || t.path === r.path)
+
 const routes: RouteRecordRaw[] = [
   { path: '/login', name: 'login', component: () => import('@/views/LoginView.vue'), meta: { public: true, title: 'Masuk' } },
   { path: '/masuk', name: 'email-link', component: () => import('@/views/EmailLinkView.vue'), meta: { public: true, title: 'Masuk' } },
   { path: '/', name: 'home', component: () => import('@/views/HomeView.vue'), meta: { title: 'Beranda' } },
-  ...Object.keys(screenModules).sort().flatMap((k) => screenModules[k]!.default),
-  ...(import.meta.env.VITE_UI_KIT === '1' ? testRoutes() : []),
+  ...Object.keys(screenModules).sort().flatMap((k) => screenModules[k]!.default).filter((r) => !replaced(r)),
+  ...tests,
 ]
 
 // vue-router menimpa nama rute ganda tanpa peringatan. Dengan banyak paket paralel, lebih baik gagal keras:
@@ -48,6 +57,8 @@ function assertUnique(list: RouteRecordRaw[]) {
     if (!name) throw new Error(`Rute ${r.path} tidak punya nama`)
     if (names.has(name)) throw new Error(`Nama rute ganda: ${name}`)
     if (paths.has(r.path)) throw new Error(`Path rute ganda: ${r.path}`)
+    // Kontrak 5.3: rute paket datar. Anak dan alias tidak ikut diperiksa, jadi ditolak supaya tidak lolos diam-diam.
+    if (r.children?.length || r.alias) throw new Error(`Rute ${name} memakai children/alias; daftarkan sebagai rute datar`)
     names.add(name)
     paths.add(r.path)
   }
@@ -56,15 +67,28 @@ assertUnique(routes)
 
 const router = createRouter({ history: createWebHistory(), routes })
 
-bindRoutes((name) => router.hasRoute(name))
-
-type Session = ReturnType<typeof useSessionStore>
+type Session = Gates
 
 function passesGates(meta: RouteLocationNormalized['meta'], params: RouteLocationNormalized['params'], session: Session): boolean {
   if (meta.flag && session.access?.flags[meta.flag] !== true) return false
-  const key = (meta.submodule ?? params.key) as SubmoduleKey | undefined
+  const key = (meta.submodule ?? (meta.submoduleParam ? params.key : undefined)) as SubmoduleKey | undefined
   if (key && !session.canOpen(key)) return false
+  if (meta.roles && !session.roles.some((r) => meta.roles!.includes(r))) return false
+  // Gagal-tertutup: API lama tanpa `products` berarti produk tidak diketahui, jadi modulnya disembunyikan
+  if (meta.entitlement && !session.access?.products?.includes(meta.entitlement)) return false
   return true
+}
+
+/**
+ * Rute terdaftar, boleh dibuka tampilan `view`, dan gerbangnya (flag, submodul, peran) lolos. Dipakai menu dan
+ * layar supaya tautan tidak memantul ke beranda saat diklik. Rute ber-param wajib tidak bisa diperiksa: false.
+ */
+export function routeOpen(name: string, view: ViewKey, session: Session = useSessionStore()): boolean {
+  if (!router.hasRoute(name)) return false
+  let target: ReturnType<typeof router.resolve>
+  try { target = router.resolve({ name }) } catch { return false }
+  if (target.meta.views && !target.meta.views.includes(view)) return false
+  return passesGates(target.meta, target.params, session)
 }
 
 /**
@@ -73,11 +97,12 @@ function passesGates(meta: RouteLocationNormalized['meta'], params: RouteLocatio
  */
 export function homeFor(view: ViewKey, session: Session = useSessionStore()): string {
   const name = VIEW_HOME[view]
-  if (!router.hasRoute(name)) return 'home'
-  const target = router.resolve({ name })
-  if (target.meta.views && !target.meta.views.includes(view)) return 'home'
-  return passesGates(target.meta, target.params, session) ? name : 'home'
+  return routeOpen(name, view, session) ? name : 'home'
 }
+
+// Satu sumber untuk "layar beranda tampilan ini sudah bisa dibuka": dipakai penjaga rute, daftar tampilan
+// di store, dan butir peralihan di menu. Rute bersifat statis (tidak ada addRoute saat runtime).
+bindRoutes((view, session) => homeFor(view, session) !== 'home')
 
 router.beforeEach(async (to) => {
   const session = useSessionStore()
@@ -92,14 +117,14 @@ router.beforeEach(async (to) => {
   if (allowed && !allowed.includes(session.activeView)) {
     const other = session.views.find((v) => allowed.includes(v))
     if (!other) return { name: homeFor(session.activeView, session) }
+    // Tampilan baru pindah hanya bila gerbang rutenya lolos; navigasi yang ditolak tidak mengubah tampilan
+    if (!passesGates(to.meta, to.params, session)) return { name: homeFor(session.activeView, session) }
     session.setView(other)
   }
 
   const home = homeFor(session.activeView, session)
   if (to.name === 'home') return home === 'home' ? true : { name: home }
   if (!passesGates(to.meta, to.params, session)) return { name: home }
-  // PR #16: layar tinjauan hasil AI hanya untuk HR dan Admin ETA (peran asli, bukan tampilan)
-  if (to.meta.hrOnly && !['hr_admin', 'eta_admin'].includes(session.role)) return { name: home }
   return true
 })
 

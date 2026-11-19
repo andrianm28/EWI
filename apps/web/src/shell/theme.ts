@@ -26,7 +26,8 @@ export function initTheme() {
   apply(stored() ?? system())
   // Ikuti perubahan tema sistem selama pengguna belum memilih sendiri
   if (typeof matchMedia === 'function') {
-    matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => { if (!stored()) apply(system()) })
+    // Opsional: Safari lama tidak punya addEventListener di MediaQueryList; tema awal tetap berlaku
+    matchMedia('(prefers-color-scheme: dark)').addEventListener?.('change', () => { if (!stored()) apply(system()) })
   }
 }
 

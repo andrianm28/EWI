@@ -16,8 +16,14 @@ function createEntitlementService(store, clock = () => new Date()) {
     if (products.has('full_suite')) return [...SUBMODULES, ...FULL_SUITE_ONLY];
     return SUBMODULES.filter((s) => products.has(s));
   }
+  /** Produk entitlement aktif (mis. ['full_suite'] atau ['dna', 'tna']), terurut. Modul 2–5 memeriksa produk ini. */
+  async function products(tenantId) {
+    const rows = (await store.getActiveEntitlements(tenantId, clock())) || [];
+    return [...new Set(rows.map((r) => r.product))].sort();
+  }
   return {
     submodules,
+    products,
     async has(tenantId, submodule) {
       return (await submodules(tenantId)).includes(submodule);
     },

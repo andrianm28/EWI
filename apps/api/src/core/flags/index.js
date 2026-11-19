@@ -32,6 +32,8 @@ const FLAGS = Object.freeze({
   TNA_INTERVIEW_ASSIGNMENT: 'tna.interview_assignment',
   // B6: karyawan memeriksa ringkasan temuan AI (sesuai / ulangi) sebelum dikirim ke HR
   TNA_INTERVIEW_SUMMARY: 'tna.interview_summary',
+  // B10: wawancara AI berjenjang visi-misi-nilai (pimpinan lalu karyawan); hasil program dan persyaratan tetap bisa dibuka tanpa ini
+  CCA_INTERVIEW: 'cca.interview',
 });
 
 const KNOWN = new Set(Object.values(FLAGS));
