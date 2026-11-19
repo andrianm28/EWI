@@ -47,7 +47,7 @@ async function loginAs(page: Page, o: Opts = {}) {
   await page.route('**/api/auth/tenants', (r) => r.fulfill({ json: { data: [] } }))
   await page.route('**/api/auth/login', (r) => r.fulfill({ json: { token: 't', user } }))
   await page.route('**/api/auth/me', (r) => r.fulfill({ json: { user } }))
-  await page.route('**/api/me/access', (r) => r.fulfill({ json: { submodules: SUBMODULES, flags: { ...BASE_FLAGS, ...o.flags } } }))
+  await page.route('**/api/me/access', (r) => r.fulfill({ json: { submodules: SUBMODULES, products: ['dna', 'tna'], flags: { ...BASE_FLAGS, ...o.flags } } }))
   await page.route(/\/api\/(dna|tna)\//, (r) => r.fulfill({ json: { data: [] } }))
   await page.route('**/api/dashboard', (r) => (o.status
     ? r.fulfill({ status: o.status, json: { error: { code: 'X', message: 'Layanan sedang gangguan' } } })
@@ -178,18 +178,29 @@ test('Pareto: baris prioritas ditandai teks, bukan warna saja; kosong punya pesa
 test('Pareto kosong dan TNA tertutup', async ({ page }) => {
   await loginAs(page, { dashboard: { ...HR_DATA, pareto: { rows: [], total: 0, hotCount: 0 } } })
   await expect(page.getByTestId('pareto')).toContainText('Belum ada temuan pelatihan yang disetujui HR.')
+  await page.unrouteAll({ behavior: 'ignoreErrors' })
+  await loginAs(page, { dashboard: { ...HR_DATA, pareto: null } })
+  await page.goto('/dashboard')
+  await expect(page.getByTestId('pareto')).toContainText('Modul Training Needs belum aktif.')
+})
+
+test('kunci modul yang belum dikenal layar dilewati, halaman tetap tampil', async ({ page }) => {
+  await loginAs(page, { dashboard: { ...HR_DATA, modules: [...HR_DATA.modules, { no: 6, key: 'baru', active: true }] } })
+  await expect(page.getByTestId('modul')).toHaveCount(5)
+  await expect(page.getByTestId('kpi')).toHaveCount(4)
 })
 
 test('Perlu tindakan: satu baris per butir, tombol hanya ke layar yang bisa dibuka', async ({ page }) => {
-  await loginAs(page, { dashboard: { ...HR_DATA, actions: [...HR_DATA.actions, { key: 'non_training_findings', count: 2 }] } })
+  await loginAs(page, { dashboard: { ...HR_DATA, actions: [...HR_DATA.actions.slice(0, 3), { key: 'non_training_findings', count: 2 }, HR_DATA.actions[3]] } })
   const card = page.getByTestId('tindakan')
   const rows = card.getByTestId('tindakan-baris')
   await expect(rows).toHaveCount(5)
-  await expect(rows.nth(0)).toContainText('4 temuan AI menunggu tinjauan HR')
+  // Urutan mengikuti API (satu sumber, spek 3.5); antrean tinjauan memuat semua draf, bukan hanya hasil AI
+  await expect(rows.nth(0)).toContainText('4 temuan menunggu tinjauan HR')
   await expect(rows.nth(1)).toContainText('2 wawancara akar masalah belum selesai')
   await expect(rows.nth(2)).toContainText('1 rencana belajar butuh modul baru')
-  await expect(rows.nth(3)).toContainText('3 kompetensi di kamus belum disetujui')
-  await expect(rows.nth(4)).toContainText('2 temuan di luar pelatihan (Improvement Needs)')
+  await expect(rows.nth(3)).toContainText('2 temuan Improvement Needs (di luar pelatihan)')
+  await expect(rows.nth(4)).toContainText('3 kompetensi di kamus belum disetujui')
   await rows.nth(0).getByRole('link', { name: 'Tinjau' }).click()
   await expect(page).toHaveURL(/\/m\/tna\/review$/)
 })
