@@ -234,7 +234,7 @@ const moduleChip = (m: PlanModule): { tone: 'success' | 'review' | 'neutral'; la
             <UiDataTable :columns="NEED_COLUMNS" :rows="employees" row-key="id" caption="Kebutuhan pengembangan per pegawai" caption-hidden empty-text="Belum ada pegawai pada jabatan ini.">
               <template #cell-name="{ row }"><span style="font-weight:500">{{ row.name ?? '(tanpa nama)' }}</span></template>
               <template #cell-stage="{ row }"><UiChip :tone="stageTone(row.stage)">{{ STAGE_LABEL[row.stage] }}</UiChip></template>
-              <template #cell-met="{ row }">{{ row.met }} / {{ row.assessed }}<span class="el-sr-only"> modul yang dinilai</span></template>
+              <template #cell-met="{ row }">{{ row.met }} / {{ row.assessed }}<span class="el-sr-only"> modul yang dinilai</span><span v-if="row.assessed < row.total" class="el-muted" style="display:block;font-size:12px">dinilai {{ row.assessed }} dari {{ row.total }}</span></template>
               <template #cell-focus="{ row }"><span class="dn-chips" style="margin:0"><UiChip v-for="f in row.focus" :key="f" tone="review">{{ f }}</UiChip></span></template>
               <template #cell-open="{ row }"><UiButton variant="text" size="sm" :aria-label="`Rencana ${row.name ?? ''}`" @click="openPlan(row.id)">Lihat</UiButton></template>
             </UiDataTable>

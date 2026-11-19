@@ -170,6 +170,11 @@ run('B4 Developmental Needs (Postgres)', () => {
     expect(byJf.body.data.jobFunctions).toHaveLength(2);
     expect((await get(`/job-roles/${role.id}/dictionary?tier=expert`, 'hr')).status).toBe(400);
     expect((await get(`/job-roles/${role.id}/dictionary?jobFunctionId=${role.id}`, 'hr')).status).toBe(400);
+    // UUID huruf besar diperlakukan sama (A12)
+    const upper = await get(`/job-roles/${role.id}/dictionary?jobFunctionId=${jf.insiden.id.toUpperCase()}&tier=basic`, 'hr');
+    expect(upper.status).toBe(200);
+    expect(upper.body.data.competencies.map((x) => x.code)).toEqual(['ST-B4']);
+    expect((await get(`/development/overview?jobRoleId=${role.id.toUpperCase()}`, 'hr')).body.data.selectedJobRoleId).toBe(role.id);
 
     const cur = await get(`/job-roles/${role.id}/curriculum`, 'hr');
     expect(cur.body.data.tiers.map((t) => [t.tier, t.count, t.modules.map((m) => m.code)])).toEqual([

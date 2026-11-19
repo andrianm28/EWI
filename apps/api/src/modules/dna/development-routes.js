@@ -10,6 +10,8 @@ const { TIERS, developmentPlan, stageDistribution, dictionaryStatus } = require(
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const isUuid = (v) => typeof v === 'string' && UUID.test(v);
+/** A12: id dari query/body dibandingkan dalam huruf kecil (Postgres mengembalikan UUID huruf kecil). */
+const lowerId = (v) => (typeof v === 'string' ? v.toLowerCase() : v);
 const EMPLOYEE_ROLES = ['learner', 'supervisor', 'role_leader', 'sme']; // A13, sama dengan GET /dna/employees
 
 /** Pelanggaran indeks unik yang lolos pengecekan awal (balapan) -> 409, bukan 500. */
@@ -45,6 +47,7 @@ function developmentRoutes(r, { stores, audit, flags }) {
   async function checkCompetencyIds(tenantId, jobRoleId, ids) {
     if (!Array.isArray(ids) || ids.some((id) => !isUuid(id))) throw badRequest('competencyIds harus daftar id kompetensi');
     if (!ids.length) return [];
+    ids = ids.map(lowerId);
     const valid = new Set((await stores.dna.listJobCompetencies(tenantId, jobRoleId)).map((c) => c.id));
     if (ids.some((id) => !valid.has(id))) throw badRequest('competencyIds harus kompetensi jabatan dari jabatan yang sama');
     return [...new Set(ids)];
@@ -62,12 +65,12 @@ function developmentRoutes(r, { stores, audit, flags }) {
   }
 
   /**
-   * A14. Jabatan terpilih: dari query (harus milik tenant, selain itu 400). Tanpa query: jabatan pertama menurut nama yang
+   * §6 Catatan (jabatan default). Jabatan terpilih: dari query (harus milik tenant, selain itu 400). Tanpa query: jabatan pertama menurut nama yang
    * kamusnya punya kurikulum (Level Program), lalu jabatan berkamus pertama. Kamus POC tanpa tingkat tidak dipilih lebih dulu,
    * karena semua pegawainya akan tampil "Belum dinilai".
    */
   async function pickJobRole(req, jobs) {
-    const q = req.query.jobRoleId;
+    const q = lowerId(req.query.jobRoleId);
     if (q === undefined || q === '') return jobs.find((j) => j.tieredCount > 0) || jobs.find((j) => j.dictionary === 'available') || null;
     const job = jobs.find((j) => j.id === q);
     if (!job) throw badRequest('jobRoleId bukan jabatan di organisasi ini');
@@ -120,7 +123,7 @@ function developmentRoutes(r, { stores, audit, flags }) {
   // --- Kamus kompetensi per job function ---
   r.get('/job-roles/:id/dictionary', on, viewer, wrap(async (req, res) => {
     const role = await roleFromPath(req);
-    const { jobFunctionId, tier } = req.query;
+    const { tier } = req.query; const jobFunctionId = lowerId(req.query.jobFunctionId);
     if (tier !== undefined && !TIERS.includes(tier)) throw badRequest('tier harus basic, intermediate, atau advanced');
     const [competencies, jobFunctions, assessedCompetencyCount] = await Promise.all([
       stores.dna.listJobCompetencies(req.tenantId, role.id), stores.dna.listJobFunctions(req.tenantId, role.id), stores.dna.assessedCompetencyCount(req.tenantId, role.id),

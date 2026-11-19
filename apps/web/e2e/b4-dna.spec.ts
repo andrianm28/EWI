@@ -101,6 +101,9 @@ test('HR: ringkasan, kamus dengan filter dan pengesahan, kurikulum, dan rencana 
   await expect(page.getByTestId('dn-kur')).toContainText('Automation')
 
   await page.getByRole('tab', { name: 'Kebutuhan pegawai' }).click()
+  // A4: cakupan tampil di tabel bila belum semua modul dinilai
+  await expect(page.getByRole('row', { name: /Ani/ })).toContainText('dinilai 1 dari 2')
+  await expect(page.getByRole('row', { name: /Budi/ })).not.toContainText('dinilai 2 dari')
   await expect(page.getByTestId('dn-plan')).toContainText('Rencana pengembangan: Ani')
   await expect(page.getByTestId('dn-plan')).toContainText('Perlu dikembangkan')
   await expect(page.getByTestId('dn-plan')).toContainText('Baru 1 dari 2 modul yang dinilai')
