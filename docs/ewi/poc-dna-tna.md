@@ -34,9 +34,11 @@ INA tidak ikut POC (RG-4): temuan non-training tetap direkam, disembunyikan sela
 | Gap & karier | `GET /api/dna/employees`, `GET /api/dna/employees/:id`, `GET /api/dna/promotion-candidates` | Gap = skor terbaru vs skor minimal (0–4). Kandidat promosi (sudah lulus program jenjang berikutnya) hanya bila flag `promotion.recommendation` aktif (G2-A). |
 | Wawancara AI (teks) | `/api/{dna,tna}/sessions` (+ `/:id/consent`, `/:id/turns`, `/:id/complete`) | Persetujuan wajib sebelum pertanyaan pertama. Analisis lewat port AI. Sesi DNA butuh flag `dna.ai_interview` (403 `FEATURE_DISABLED` bila mati). |
 | Data kinerja | `POST /api/tna/performance/import`, `GET /api/tna/performance` | OKR/KPI/SLA, arah target higher/lower, baris tak dikenal ditolak per baris. |
+| Aturan KPI (PK-20) | `GET/PUT /api/tna/kpi-rules` | Arah + toleransi per KPI (PM-1 ★ B). Kolom Toleransi di template kinerja; kosong = aturan tersimpan atau 0. Aturan berubah (lewat impor atau PUT) -> status semua periode KPI itu dihitung ulang dan diaudit (`tna.kpi_rule`). Sesi wawancara yang sudah terjadwal tidak dibatalkan otomatis. |
+| Katalog course (PK-18) | Impor `catalog_courses` dan `catalog_completions` (DNA dan TNA), `GET /api/tna/catalog` | Daftar course Moodle sebagai katalog statis + pemetaan ke kompetensi (nama di kamus). Rencana `needs_module` yang kompetensinya mendapat course langsung terisi (`proposed`). Course lulus -> rencana yang menunjuknya `completed`. |
 | Jadwal TNA | `POST /api/tna/projects/:id/interviews`, `GET /api/tna/job-roles` | Cakupan: `red_only` (default, dari `settings.tna.interviewScope`) atau `all_members` dengan `jobRoleId` wajib. Target merah jadi pemicu yang dibahas. Daftar job role tersedia tanpa modul DNA. |
 | Temuan & prioritas | `GET /api/tna/findings`, `GET /api/tna/pareto`, `GET /api/tna/dashboard` | Pareto untuk HR dan atasan, bukan learner. |
-| Training plan | `POST /api/tna/findings/:id/plan`, `POST /api/tna/training-requests`, `GET/PATCH /api/tna/plan-items` | Modul tak ada di katalog -> `needs_module`. Learner bisa request. |
+| Training plan | `POST /api/tna/findings/:id/plan`, `POST /api/tna/training-requests`, `GET/PATCH /api/tna/plan-items` | Course dicari di katalog (EliteMentor stub, lalu Moodle statis). Tidak ada course -> `needs_module`. Item membawa `catalogItemUrl` dan `courseStatus`. Learner bisa request. |
 
 Visibilitas (RG-3) berlaku di semua endpoint data karyawan: learner dirinya, atasan timnya, HR semua.
 
@@ -44,7 +46,7 @@ Visibilitas (RG-3) berlaku di semua endpoint data karyawan: learner dirinya, ata
 
 | Keputusan | Perilaku sekarang | Tempat mengganti |
 |---|---|---|
-| T3 komponen AI | Penyedia `stub` deterministik (tanpa LLM); skor ber-confidence 0,2 dan bertanda "perlu dinilai ulang ETA" | `src/ai/` (`AI_PROVIDER`) |
+| T3 komponen AI | PK-06: `AI_PROVIDER=bedrock` (Amazon Bedrock, Claude, hanya ap-southeast-1; PD-1/PD-2 ★A, belum dijawab) wajib di produksi; `stub` deterministik tetap bawaan untuk test dan di luar produksi. Pemakaian token per panggilan di `ai_usage_logs` (R3-6). Rincian: [ai-teks.md](ai-teks.md) | `src/ai/` (`AI_PROVIDER`, `BEDROCK_MODEL_ID`) |
 | RG-1a sumber kamus kompetensi | Semua sumber boleh masuk, dicatat di kolom `source` | `src/modules/dna` |
 | RG-1b sumber status lulus | Hanya input manual HR; Sync Back belum disambungkan | `lna_program_completions.source` |
 | RG-1c alur wawancara SME/DACUM | `POST /api/dna/dacum/sessions` -> 501 `DECISION_PENDING` | `src/modules/dna` |
@@ -52,7 +54,8 @@ Visibilitas (RG-3) berlaku di semua endpoint data karyawan: learner dirinya, ata
 | RG-1g kekhususan klien | Disimpan di `tenants.settings` | `src/core/settings` |
 | BT-30 rumus Pareto | Rumus ★ (meleset × orang × kepentingan), komponen bisa dimatikan | `settings.tna.pareto` |
 | BT-31 alur request training | HR dan atasan sama-sama bisa mengubah status | `PATCH /api/tna/plan-items/:id` |
-| K-1 jalur LMS | Adapter EliteMentor dan Moodle masih stub kosong | `src/integrations/catalog` |
+| K-1 jalur LMS | Adapter EliteMentor masih stub kosong; Moodle dilayani katalog statis hasil impor (PK-18). Sinkron API Moodle menyusul setelah pilot (PO-1 ★ B) | `src/integrations/catalog`, `settings.lms.targets` (default `elitementor`, `moodle`) |
+| PM-1 definisi target meleset | ★ B dipakai: arah + toleransi per KPI, kosong = 0 (setara A) | `src/modules/tna/performance.js`, `lna_kpi_rules` |
 | K-3 set status | Memakai status yang ada di skema (proposed … completed) | `lna_training_plan_items.status` |
 
 ## Keputusan yang sudah masuk kode (cadence 11 Nov)
@@ -77,6 +80,19 @@ Visibilitas (RG-3) berlaku di semua endpoint data karyawan: learner dirinya, ata
 Catatan R2-1: panel Admin ETA lintas tenant (memilih tenant lain dari satu login) belum dibuat karena aturan arsitektur 2
 (tenant hanya dari `req.tenantId`); Admin ETA masuk ke tenant yang mau diatur. Di produksi, role DB aplikasi
 sebaiknya juga tanpa hak UPDATE/DELETE/TRUNCATE pada `audit_logs`.
+
+## Review hasil AI oleh HR (PK-14, 17 Nov)
+
+Dibangun dengan opsi ★ karena PD-13, PD-14, PM-3, dan PM-5 belum dijawab.
+
+- **Analisis sebagai job (PD-13 ★A).** `POST /:submodule/sessions/:id/complete` hanya menutup sesi (update bersyarat, jadi dua permintaan bersamaan menghasilkan satu 202 dan satu 409) lalu membuat satu job di `lna_analysis_jobs` (unik per sesi) dan menjalankannya di latar. Job diklaim dengan update bersyarat dan lease 10 menit. Hasil disimpan dalam satu transaksi bersama penandaan job selesai, dan indeks unik `(analysis_job_id, finding_seq)` menjadi pengaman kedua, sehingga job yang diulang tidak menggandakan temuan. Gagal diulang otomatis sampai 3 kali (jeda 1, 2 menit); setelah itu HR mengulang lewat `POST /:submodule/sessions/:id/analysis/retry`. Status: `GET /:submodule/sessions/:id/analysis` (HR melihat jumlah hasil dan kode galat, peran lain hanya status). Server menyapu job tertinggal tiap menit; `node apps/api/scripts/run-analysis.js` untuk pemulihan manual.
+- **Dua kali penilaian.** Model dipanggil dua kali. Temuan yang muncul di kedua penilaian (kunci: kategori + kompetensi + target) mendapat rata-rata keyakinan dan `scoring_agreement = true`; yang hanya muncul sekali mendapat setengah keyakinan. Temuan yang hanya muncul di penilaian kedua tidak disimpan, hanya dihitung (`result.onlySecond`). Biaya AI analisis menjadi dua kali.
+- **Status review per temuan (PD-14 ★A).** `lna_findings.review_status`: `draft` → `approved` | `edited` | `rejected`, dengan `confidence`, `reviewed_by`, `reviewed_at`, `review_note`, dan versi asli AI (`original_title`, `original_detail`, `original_category`) bila diubah, sebagai bahan pemantauan akurasi (PM-2). Judul, rincian, catatan, dan versi asli terenkripsi per tenant. Penolakan wajib beralasan. Setiap putusan dicatat di audit (`update`, `tna.finding_review`).
+- **Draf tersembunyi (PM-5 ★A).** `tna.listFindings` hanya mengembalikan temuan `approved`/`edited`, jadi draf dan yang ditolak tidak muncul di daftar temuan, Pareto, dashboard, rencana training, maupun ekspor data karyawan (PR #11 memakai `listFindings`). Training plan dan permintaan training dari draf ditolak. Dashboard HR menampilkan `reviewPending`.
+- **Antrean HR (PM-3 ★A).** `GET /api/tna/review?status=draft|reviewed|all` dan `POST /api/tna/findings/:id/review` `{ decision: approve|edit|reject, title?, detail?, category?, note? }`, hanya HR (dan Admin ETA). Layar web `/m/tna/review`.
+- **Tidak di balik flag.** Review adalah pengaman wajib sebelum hasil AI dipakai, bukan fitur opsional, jadi tidak mengikuti aturan "fitur baru di balik flag".
+- **Migrasi.** `20261117000400-ai-review.js`. Temuan lama yang sudah ditindaklanjuti HR (status bukan `open`) dianggap disetujui; temuan lama lain menjadi draf.
+- **Belum:** skor AI DNA tidak punya status review (wawancara AI DNA di balik flag `dna.ai_interview`, mati di POC; job DNA tetap dua kali nilai). Transkrip tidak ditampilkan di layar review karena PO-6 ★A (transkrip hanya untuk karyawan sendiri).
 
 ## Belum termasuk
 SSO deep link (T1), token endpoint OAuth2 (T2), pengingat wawancara lewat email (T4), Sync Back webhook ke `lna_program_completions`.

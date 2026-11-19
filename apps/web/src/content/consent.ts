@@ -1,0 +1,4 @@
+// PM-9 A (17 Nov): kode versi teks persetujuan wawancara TNA. Harus sama dengan apps/api/src/core/consent.
+// Teks v1.0 masih draf (menunggu legal dan Pak Eji paling lambat 24 Nov); bila isinya berubah, versi dinaikkan
+// di sini dan di API sekaligus.
+export const TNA_CONSENT_VERSION = 'tna-consent-id-v1.0'

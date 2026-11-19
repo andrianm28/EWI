@@ -23,6 +23,8 @@ declare module 'vue-router' {
     submodule?: SubmoduleKey
     /** Butir menu yang menyala saat rute ini terbuka (untuk layar anak). */
     menuKey?: string
+    /** Hanya peran HR dan Admin ETA (layar tinjauan lama, PR #16). */
+    hrOnly?: boolean
   }
 }
 
@@ -96,6 +98,8 @@ router.beforeEach(async (to) => {
   const home = homeFor(session.activeView, session)
   if (to.name === 'home') return home === 'home' ? true : { name: home }
   if (!passesGates(to.meta, to.params, session)) return { name: home }
+  // PR #16: layar tinjauan hasil AI hanya untuk HR dan Admin ETA (peran asli, bukan tampilan)
+  if (to.meta.hrOnly && !['hr_admin', 'eta_admin'].includes(session.role)) return { name: home }
   return true
 })
 

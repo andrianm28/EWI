@@ -80,6 +80,7 @@ export const useSessionStore = defineStore('session', () => {
   }
 
   const role = computed(() => user.value?.role ?? '')
+  const hasFlag = (key: string) => access.value?.flags[key] === true
 
   // --- Tampilan (ganti peran di UI). Hanya mengatur menu dan rute; data tetap diotorisasi API. ---
   const pickedView = ref<string | null>(readView())
@@ -114,5 +115,5 @@ export const useSessionStore = defineStore('session', () => {
     try { sessionStorage.removeItem(STORAGE_KEY); sessionStorage.removeItem(VIEW_KEY) } catch { /* abaikan */ }
   }
 
-  return { token, user, role, roles, views, activeView, setView, access, isAuthenticated, canOpen, login, loginWithEmailLink, loadAccess, logout }
+  return { token, user, role, roles, views, activeView, setView, access, isAuthenticated, canOpen, hasFlag, login, loginWithEmailLink, loadAccess, logout }
 })
