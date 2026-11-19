@@ -9,37 +9,39 @@ const express = require('express');
 const { requireRole, ROLES } = require('../../core/rbac');
 const { scopeFor } = require('../../core/rbac/scope');
 const { FLAGS } = require('../../core/flags');
-const { computeGap } = require('../dna/gap');
 const { rankFindings } = require('../tna/pareto');
-const { markHot, median, agreement, latestUnmet, ANALYSIS_TARGET_DAYS, PARETO_LIMIT } = require('./summary');
+const { competencyGaps, okrGaps, isOpen } = require('../tna/gaps');
+const { markHot, median, agreement, ANALYSIS_TARGET_DAYS, PARETO_LIMIT } = require('./summary');
 
 const wrap = (fn) => (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
 const EMPLOYEE_ROLES = [ROLES.LEARNER, ROLES.SUPERVISOR, ROLES.ROLE_LEADER, ROLES.SME];
 const LNA_PARTS = ['cca', 'dna', 'tna', 'ina'];
-// Modul 2–5 hanya di balik flag. module.li/ld dibuat B13/B14; module.lim dibuat B15 (sebelum itu modul 4 tidak aktif).
-const MODULE_FLAGS = [
-  { no: 2, key: 'li', flag: FLAGS.MODULE_LI },
-  { no: 3, key: 'ld', flag: FLAGS.MODULE_LD },
-  { no: 4, key: 'lim', flag: 'module.lim' },
-  { no: 5, key: 'cp', flag: FLAGS.PROMOTION_RECOMMENDATION },
+// Modul 2–5: status "aktif" memakai gerbang yang sama dengan API modulnya, supaya dashboard tidak menyebut aktif
+// modul yang API-nya menolak. li/ld dipasang lewat requireSubmodule (entitlement full_suite + flag, B13/B14);
+// lim butuh full_suite + flag module.lim (B15 menambah flag-nya); cp ada di /dna/promotion-candidates (DNA terbuka + flag).
+const MODULE_GATES = [
+  { no: 2, key: 'li', active: (g) => g.open('li') },
+  { no: 3, key: 'ld', active: (g) => g.open('ld') },
+  { no: 4, key: 'lim', active: (g) => g.fullSuite && g.flags['module.lim'] === true },
+  { no: 5, key: 'cp', active: (g) => g.open('dna') && g.flags[FLAGS.PROMOTION_RECOMMENDATION] === true },
 ];
-const OPEN_SESSION = ['scheduled', 'in_progress'];
 const CLOSED_PLAN = ['completed', 'rejected'];
 const TEAM_MODULES = ['lna', 'lim', 'cp']; // modul yang ada di menu tampilan Atasan
 
-/** Kompetensi berbeda yang minimal satu karyawan dalam cakupan punya gap terhadap jabatannya. */
+/**
+ * Gap kompetensi dengan definisi papan gap B5 (`tna/gaps.js competencyGaps`): kompetensi yang sudah disahkan HR
+ * dengan rata-rata skor terbaru karyawan dalam cakupan di bawah skor minimal. Supaya angka dashboard dan papan
+ * Training Needs sama untuk tenant yang sama.
+ */
 async function competencyGapCount(stores, tenantId, people, assessments) {
   const cache = new Map();
-  const gapped = new Set();
+  const members = [];
   for (const p of people) {
-    if (!p.jobRoleId) continue;
-    const key = `${p.jobRoleId}|${p.careerLevelId}`;
-    if (!cache.has(key)) cache.set(key, await stores.dna.competenciesForPosition(tenantId, p));
-    const { items } = computeGap({ competencies: cache.get(key), assessments: assessments.filter((a) => a.userId === p.id) });
-    // Hanya gap yang terukur; kompetensi yang belum dinilai (not_assessed) bukan gap
-    for (const i of items) if (i.status === 'gap') gapped.add(i.competencyId);
+    const key = `${p.jobRoleId || ''}|${p.careerLevelId || ''}`;
+    if (!cache.has(key)) cache.set(key, await stores.dna.competenciesForPosition(tenantId, { jobRoleId: p.jobRoleId, careerLevelId: p.careerLevelId }));
+    members.push({ id: p.id, competencies: cache.get(key) });
   }
-  return gapped.size;
+  return competencyGaps({ members, assessments }).rows.filter((r) => r.gap > 0).length;
 }
 
 function dashboardRouter({ stores, flags, entitlements, settings, audit }) {
@@ -55,6 +57,7 @@ function dashboardRouter({ stores, flags, entitlements, settings, audit }) {
 
     const [allFlags, owned] = await Promise.all([flags.all(tenantId), entitlements.submodules(tenantId)]);
     const open = (key) => owned.includes(key) && allFlags[`module.${key}`] === true;
+    const fullSuite = (await entitlements.products(tenantId)).includes('full_suite');
     const dnaOn = open('dna');
     const tnaOn = open('tna');
 
@@ -67,6 +70,7 @@ function dashboardRouter({ stores, flags, entitlements, settings, audit }) {
     const actions = [];
     const add = (key, count) => { if (count > 0) actions.push({ key, count }); };
     let pareto = null;
+    let titleRowIds = []; // karyawan di balik baris Pareto yang labelnya judul temuan (isi individu, R2-2)
     let unapproved = 0;
     let planNeedsModule = 0; // hanya HR
 
@@ -81,21 +85,26 @@ function dashboardRouter({ stores, flags, entitlements, settings, audit }) {
       // K1 / PM-6: temuan non-pelatihan hanya untuk HR, atau atasan yang diberi akses HR (bila flagnya menyala)
       const nonTrainingAllowed = allFlags[FLAGS.TNA_NON_TRAINING_HR] === true
         && (isHr || (await stores.tna.hasNonTrainingGrant(tenantId, req.user.id)));
-      const [sessions, reviewed, perf, conf] = await Promise.all([
+      const [sessions, reviewed, perf, periods, conf] = await Promise.all([
         stores.interviews.list(tenantId, 'tna', scope),
         // listFindings hanya mengembalikan temuan yang sudah ditinjau HR (PK-14)
         stores.tna.listFindings(tenantId, scope, { categories: isHr || nonTrainingAllowed ? ['training', 'non_training'] : ['training'] }),
         stores.tna.listPerformance(tenantId, scope, {}),
+        stores.tna.performancePeriods(tenantId, { userIds: ids }),
         settings.get(tenantId),
       ]);
       // "Dianalisis" di sisi TNA = punya temuan (pelatihan atau non-pelatihan) yang sudah ditinjau. Sesi selesai
       // yang temuannya masih draf tidak dihitung (PM-5), jadi angka ini tidak membocorkan adanya draf.
       for (const f of reviewed) analyzed.add(f.userId);
       const findings = reviewed.filter((f) => f.category === 'training');
-      kpis.okrGaps = latestUnmet(perf.filter((p) => inScope.has(p.userId)));
+      // Gap OKR dengan definisi papan gap B5: satu baris per metrik yang meleset pada periode unggahan terbaru
+      const period = periods[0] || null;
+      kpis.okrGaps = period ? okrGaps(perf.filter((p) => p.period === period && inScope.has(p.userId))).length : 0;
 
       // total dan hotCount dihitung dari seluruh peringkat; rows dipotong ke PARETO_LIMIT teratas
       const marked = markHot(rankFindings(findings.filter((f) => inScope.has(f.userId)), conf.tna.pareto));
+      const sent = new Set(marked.slice(0, PARETO_LIMIT).filter((x) => !x.competencyId).map((x) => x.key));
+      titleRowIds = [...new Set(findings.filter((f) => inScope.has(f.userId) && !f.competencyId && sent.has(`t:${String(f.title).toLowerCase()}`)).map((f) => f.userId))];
       pareto = {
         rows: marked.slice(0, PARETO_LIMIT).map(({ key, label, people: n, score, share, cumulativeShare, hot }) => ({ key, label, people: n, score, share, cumulativeShare, hot })),
         total: marked.length,
@@ -118,7 +127,9 @@ function dashboardRouter({ stores, flags, entitlements, settings, audit }) {
         planNeedsModule = plan.filter((p) => inScope.has(p.userId) && p.needsModule && !CLOSED_PLAN.includes(p.status)).length;
       }
       // Urutan butir tetap (spek 3.5): review_pending, interviews_open, plan_needs_module
-      add('interviews_open', sessions.filter((s) => OPEN_SESSION.includes(s.status) && inScope.has(s.intervieweeId)).length);
+      // Terbuka = sedang berjalan atau undangan belum kedaluwarsa (isOpen, sama dengan B5)
+      const now = new Date();
+      add('interviews_open', sessions.filter((s) => isOpen(s, now) && inScope.has(s.intervieweeId)).length);
       add('plan_needs_module', planNeedsModule);
 
       // K1 / PM-6: temuan non-pelatihan untuk HR; atasan hanya bila HR memberinya akses. Tanpa akses butirnya
@@ -134,12 +145,16 @@ function dashboardRouter({ stores, flags, entitlements, settings, audit }) {
     const parts = LNA_PARTS.map((key) => ({ key, active: open(key) }));
     const modules = [
       { no: 1, key: 'lna', active: parts.some((p) => p.active), parts },
-      ...MODULE_FLAGS.map(({ no, key, flag }) => ({ no, key, active: allFlags[flag] === true })),
+      ...MODULE_GATES.map(({ no, key, active }) => ({ no, key, active: active({ open, fullSuite, flags: allFlags }) })),
     ].filter((m) => isHr || TEAM_MODULES.includes(m.key));
 
     // Audit (R2-2, gagal-tertutup). Agregat tim kecil bisa menunjuk orang, jadi untuk atasan dicatat sebagai baca
     // data individu dengan id bawahannya. Agregat seluruh tenant untuk HR dicatat ringkas tanpa daftar id.
-    if (isHr) await audit.record(req, 'read', 'dashboard.summary', { scope: 'all', people: people.length });
+    if (isHr) {
+      await audit.record(req, 'read', 'dashboard.summary', { scope: 'all', people: people.length });
+      // Baris Pareto tanpa kompetensi memuat judul temuan seseorang, jadi bukan lagi agregat
+      if (titleRowIds.length) await audit.readIndividual(req, 'dashboard.pareto', { employeeIds: titleRowIds });
+    }
     else await audit.readIndividual(req, 'dashboard.summary', { employeeIds: ids });
 
     res.json({ data: { scope: scope.all ? 'all' : 'team', people: people.length, kpis, modules, pareto, actions } });

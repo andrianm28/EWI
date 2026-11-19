@@ -16,9 +16,12 @@ function markHot(rows) {
   });
 }
 
-/** Median selisih (hari pecahan), lalu dibulatkan ke atas ke hari penuh; null bila kosong. */
+/**
+ * Median selisih (hari pecahan), lalu dibulatkan ke atas ke hari penuh; null bila kosong. Selisih negatif (temuan
+ * diputus sebelum sesi ditandai selesai, mis. setelah wawancara diulang) dihitung 0.
+ */
 function median(values) {
-  const v = values.filter((x) => Number.isFinite(x)).sort((a, b) => a - b);
+  const v = values.filter((x) => Number.isFinite(x)).map((x) => Math.max(0, x)).sort((a, b) => a - b);
   if (!v.length) return null;
   const mid = Math.floor(v.length / 2);
   const m = v.length % 2 ? v[mid] : (v[mid - 1] + v[mid]) / 2;
@@ -37,18 +40,4 @@ function agreement(counts) {
   return { percent: reviewed ? Math.round((approved / reviewed) * 100) : null, approved, reviewed, targetPercent: AGREEMENT_TARGET_PERCENT };
 }
 
-/**
- * Target kinerja yang belum tercapai pada periode terbaru tiap metrik per karyawan. Periode lama tidak dihitung,
- * supaya angka tidak terus bertambah. Periode dibandingkan sebagai teks (format impor: '2026-11', '2026-Q4').
- */
-function latestUnmet(records) {
-  const latest = new Map();
-  for (const r of records) {
-    const key = `${r.userId}|${r.metricType}|${String(r.name).trim().toLowerCase()}`;
-    const cur = latest.get(key);
-    if (!cur || String(r.period || '') > String(cur.period || '')) latest.set(key, r);
-  }
-  return [...latest.values()].filter((r) => r.isMet === false).length;
-}
-
-module.exports = { markHot, median, agreement, latestUnmet, AGREEMENT_TARGET_PERCENT, ANALYSIS_TARGET_DAYS, PARETO_LIMIT };
+module.exports = { markHot, median, agreement, AGREEMENT_TARGET_PERCENT, ANALYSIS_TARGET_DAYS, PARETO_LIMIT };
