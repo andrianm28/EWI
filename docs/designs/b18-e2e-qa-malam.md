@@ -147,8 +147,9 @@ Spec milik paket (`poc-dna-tna.spec.ts`, `gating.spec.ts`, `shell.spec.ts`, dan 
 
 ### 4.2 Antarmuka `support/`
 
-- `loginSebagai(page, peran, { flags, submodules, peranLain })`: me-mock verifikasi tautan email (setelah B1), `/api/me/access` (berisi `submodules` dan `flags`, keduanya dibutuhkan `canOpen` di `session.ts`), dan `/api/auth/me`, lalu membuka aplikasi. `peranLain` untuk pengguna yang bisa ganti tampilan (K2).
-- `mockApi(page, penangan)`: penangan berupa fungsi `(request) => respons`, sehingga parameter path, query, dan state antar-permintaan bisa ditangani. Peta statis tidak cukup.
+- `loginSebagai(page, peran, { flags, submodules, products, peranLain, nama, tenantName })`: `peran` adalah tampilan K2 (`hr`, `atasan`, `karyawan`, `admin`, `super`), dipetakan ke kunci peran API di `PERAN_API`. Me-mock verifikasi tautan email (`POST /api/auth/email-link/verify`, halaman `/masuk` yang sudah ada), `/api/me/access` (berisi `submodules`, `flags`, dan `products`; `products` wajib karena gerbang `meta.entitlement` B0 gagal-tertutup), dan `/api/auth/me`, lalu masuk sampai shell tampil. Bawaan: semua submodul, `module.<x>` menyala, `products: ['full_suite']`. `peranLain` untuk pengguna yang bisa ganti tampilan (K2).
+- `mockApi(page, penangan)`: penangan berupa fungsi `(request) => respons | undefined`, sehingga parameter path, query, dan state antar-permintaan bisa ditangani. Peta statis tidak cukup. `cocok(req, 'GET /tna/sessions/:id')` mengembalikan parameter path. Penangan test selalu menang atas mock sesi, apa pun urutan pemanggilannya. Permintaan yang tidak ditangani dijawab 404 `BELUM_DIMOCK` dan dicatat (`permintaanBelumDimock(page)`).
+- `fixture(nama)` membaca `support/data/<nama>.json`. Fixture ditangkap dari respons API sungguhan (README di folder itu).
 - Locator memakai role dan label teks dari mockup (`getByRole('link', { name: 'Training Needs' })`), bukan `data-testid`.
 - Antarmuka ini dirilis 20 Nov di atas tampilan sekarang. Isinya menyesuaikan saat B0, B1, dan B2 digabung, tetapi tanda tangan fungsinya tetap, supaya paket lain bisa memakainya sejak awal.
 
@@ -346,7 +347,7 @@ QA malam dan driver (mulai 20 Nov):
 - [x] `apps/api/tests/integration/alur-tna.test.js`, `alur-modul-mati.test.js`
 - [x] `.github/workflows/qa-malam.yml`
 - [x] `docs/ewi/qa-malam.md` (cara menjalankan, membaca laporan, menambah persona, kebutuhan IAM)
-- [ ] `apps/web/e2e/support/sesi.ts`, `api.ts`, `data/` (antarmuka 20 Nov)
+- [x] `apps/web/e2e/support/sesi.ts`, `api.ts`, `fixture.ts`, `data/` (antarmuka 20 Nov), diuji `apps/web/e2e/alur/dukungan.spec.ts`
 
 Setelah B0, B1, B2 digabung:
 
