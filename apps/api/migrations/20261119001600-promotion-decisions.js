@@ -28,6 +28,8 @@ module.exports = {
       );
       -- paling banyak satu siklus terbuka per karyawan dan jenjang tujuan
       CREATE UNIQUE INDEX lna_promotion_open_uq ON lna_promotion_decisions (tenant_id, user_id, to_level_id) WHERE hr_decision IS NULL;
+      -- paling banyak satu persetujuan per karyawan dan jenjang tujuan (penjaga terakhir terhadap balapan)
+      CREATE UNIQUE INDEX lna_promotion_approved_uq ON lna_promotion_decisions (tenant_id, user_id, to_level_id) WHERE hr_decision = 'approved';
       CREATE INDEX lna_promotion_user_idx ON lna_promotion_decisions (tenant_id, user_id, created_at DESC);
     `);
   },

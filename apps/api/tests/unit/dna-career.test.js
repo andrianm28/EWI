@@ -32,6 +32,11 @@ describe('B16 pencapaian OKR (C2)', () => {
     expect(okr([rec({ period: null, actual: 50 }), rec({ period: '2026-09', actual: 85 })]).achievement).toBe(85);
     expect(okr([rec({ period: null, actual: 50 })])).toMatchObject({ achievement: 50, period: null });
   });
+  it('impor ulang dengan waktu sama: id terbesar menang, tidak bergantung urutan masukan', () => {
+    const a = rec({ id: 'b', actual: 90, createdAt: '2026-11-05T00:00:00Z' }); const b = rec({ id: 'a', actual: 40, createdAt: '2026-11-05T00:00:00Z' });
+    expect(okr([a, b]).achievement).toBe(90);
+    expect(okr([b, a]).achievement).toBe(90);
+  });
   it('impor ulang: per nama metrik hanya baris terbaru', () => {
     const r = okr([rec({ actual: 40, createdAt: '2026-11-01T00:00:00Z' }), rec({ name: 'resolusi TIKET', actual: 90, createdAt: '2026-11-05T00:00:00Z' })]);
     expect(r).toMatchObject({ achievement: 90, count: 1 });
@@ -99,6 +104,8 @@ describe('B16 siklus dan tindakan (C6-C10)', () => {
     expect(view({ cycle: findCycle([row()], 'l1', 'l2') }).actions).toEqual(['recommend', 'hold']);
     expect(view({ cycle: findCycle([row({ hrDecision: 'hold' })], 'l1', 'l2') }).actions).toEqual(['recommend', 'hold']);
     expect(view({ eligible: false })).toEqual({ actions: [], blockedReason: 'not_eligible' });
+    // rekomendasi terbuka tetap bisa ditarik (tunda) walau karyawan tidak lagi memenuhi syarat
+    expect(view({ eligible: false, cycle: findCycle([row()], 'l1', 'l2') })).toEqual({ actions: ['hold'], blockedReason: null });
     expect(view({ cycle: findCycle([row({ hrDecision: 'approved' })], 'l1', 'l2') })).toEqual({ actions: [], blockedReason: 'approved' });
   });
   it('HR: menunggu atasan, setujui hanya bila direkomendasi dan masih memenuhi syarat, tunda selalu boleh', () => {

@@ -1050,9 +1050,10 @@ function createLnaStores(sequelize, { cipher } = {}) {
     /** Baris kinerja untuk hitung pencapaian OKR (C2), dari semua proyek. */
     async okrRecords(tenantId, userIds, metricTypes) {
       if (!userIds.length || !metricTypes.length) return [];
-      return select(`SELECT user_id AS "userId", metric_type AS "metricType", name, target::float AS target, actual::float AS actual,
+      return select(`SELECT id, user_id AS "userId", metric_type AS "metricType", name, target::float AS target, actual::float AS actual,
                             is_met AS "isMet", period, direction, value_type AS "valueType", created_at AS "createdAt"
-                       FROM lna_performance_records WHERE tenant_id = :tenantId AND user_id IN (:userIds) AND metric_type IN (:metricTypes)`,
+                       FROM lna_performance_records WHERE tenant_id = :tenantId AND user_id IN (:userIds) AND metric_type IN (:metricTypes)
+                      ORDER BY created_at, id`,
       { tenantId, userIds, metricTypes });
     },
     async decisionsFor(tenantId, userIds) {
@@ -1072,6 +1073,8 @@ function createLnaStores(sequelize, { cipher } = {}) {
       const note = d.note ? await enc(tenantId, d.note) : null;
       return sequelize.transaction(async (transaction) => {
         const rep = { tenantId, ...d, note, okr: d.okrAchievement ?? null };
+        // kunci baris karyawan: keputusan atasan dan HR untuk orang yang sama berjalan berurutan
+        await sequelize.query('SELECT id FROM users WHERE tenant_id = :tenantId AND id = :userId FOR UPDATE', { replacements: rep, transaction });
         const [done] = await sequelize.query(
           `SELECT 1 FROM lna_promotion_decisions WHERE tenant_id = :tenantId AND user_id = :userId AND to_level_id = :toLevelId AND hr_decision = 'approved' LIMIT 1`,
           { replacements: rep, transaction });
@@ -1094,6 +1097,13 @@ function createLnaStores(sequelize, { cipher } = {}) {
     async hrDecide(tenantId, d, audit) {
       const note = d.note ? await enc(tenantId, d.note) : null;
       return sequelize.transaction(async (transaction) => {
+        await sequelize.query(
+          `SELECT u.id FROM users u JOIN lna_promotion_decisions d ON d.user_id = u.id AND d.tenant_id = u.tenant_id
+            WHERE d.tenant_id = :tenantId AND d.id = :id FOR UPDATE OF u`, { replacements: { tenantId, id: d.id }, transaction });
+        const [done] = await sequelize.query(
+          `SELECT 1 FROM lna_promotion_decisions a JOIN lna_promotion_decisions d ON d.user_id = a.user_id AND d.to_level_id = a.to_level_id AND d.tenant_id = a.tenant_id
+            WHERE d.tenant_id = :tenantId AND d.id = :id AND a.hr_decision = 'approved' LIMIT 1`, { replacements: { tenantId, id: d.id }, transaction });
+        if (done.length) return false;
         const [rows] = await sequelize.query(
           `UPDATE lna_promotion_decisions SET hr_decision = :decision, hr_by = :by, hr_at = now(), hr_note = :note, updated_at = now()
             WHERE tenant_id = :tenantId AND id = :id AND hr_decision IS NULL${d.decision === 'approved' ? " AND supervisor_decision = 'recommend'" : ''}

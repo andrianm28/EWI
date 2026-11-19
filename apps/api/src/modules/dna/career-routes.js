@@ -8,7 +8,7 @@ const { FLAGS, requireFlag } = require('../../core/flags');
 const { HttpError, badRequest, notFound } = require('../../core/errors');
 const { wrap } = require('../interviews');
 const { TIERS } = require('./development');
-const { careerStatus, okrAchievement, careerState, findCycle, decisionState, decisionView } = require('./career');
+const { promotionSettings, careerStatus, okrAchievement, careerState, findCycle, decisionState, decisionView } = require('./career');
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const forbidden = (message) => new HttpError(403, 'ROLE_FORBIDDEN', message);
@@ -21,8 +21,8 @@ function careerRoutes({ stores, settings, flags, audit }) {
   r.use(requireRole(ROLES.HR_ADMIN, ROLES.SUPERVISOR));
   // C11: peran pemanggil harus diizinkan tenant (Super Admin selalu boleh melihat)
   r.use(wrap(async (req, res, next) => {
-    req.promotion = (await settings.get(req.tenantId)).dna;
-    if (req.user.role !== ROLES.ETA_ADMIN && !req.promotion.promotionVisibleTo.includes(req.user.role)) {
+    req.promotion = promotionSettings((await settings.get(req.tenantId)).dna);
+    if (req.user.role !== ROLES.ETA_ADMIN && !req.promotion.visibleTo.includes(req.user.role)) {
       throw forbidden('Modul Career & Promotion tidak dibuka untuk peran Anda');
     }
     next();
@@ -30,7 +30,7 @@ function careerRoutes({ stores, settings, flags, audit }) {
 
   /** Semua karyawan dalam scope pemanggil (tanpa dirinya) beserta status jenjang dan siklus keputusannya. */
   async function load(req) {
-    const { okrMin, metricTypes } = req.promotion.promotion;
+    const { okrMin, metricTypes } = req.promotion;
     const scope = await scopeFor(req, stores.people);
     const people = (await stores.promotion.people(req.tenantId, scope)).filter((p) => p.id !== req.user.id);
     const ids = people.map((p) => p.id);
@@ -62,7 +62,9 @@ function careerRoutes({ stores, settings, flags, audit }) {
 
   const stage = (decision, byName, at, note) => (decision ? { decision, byName: byName || null, at, note: note || null } : null);
   const decisionRow = (req, x, okrMin) => {
-    const d = x.cycle.latest;
+    const d0 = x.cycle.latest;
+    // C16: catatan hanya untuk HR dan atasan karyawan itu; Super Admin melihat keputusan tanpa catatan
+    const d = d0 && req.user.role === ROLES.ETA_ADMIN ? { ...d0, supervisorNote: null, hrNote: null } : d0;
     return {
       employee: { id: x.person.id, name: x.person.name, division: x.person.division || null, jobRoleName: x.person.jobRoleName || null },
       fromLevel: level(x.career.currentLevel), toLevel: level(x.next),
@@ -159,10 +161,14 @@ function careerRoutes({ stores, settings, flags, audit }) {
     const body = readBody(req, ['recommend', 'hold'], 'decision harus recommend atau hold');
     const { x } = await target(req);
     if (x.person.supervisorId !== req.user.id) throw notFound('Karyawan tidak ditemukan');
+    // C10: peran atasan dibaca dari basis data, bukan dari token (peran bisa sudah dicabut)
+    if (x.person.supervisorRole !== ROLES.SUPERVISOR) throw forbidden('Tahap ini hanya untuk atasan langsung karyawan');
     if (x.cycle.approved) throw conflict('ALREADY_DECIDED', 'Promosi ke jenjang ini sudah disetujui HR');
-    if (!x.eligible) throw conflict('NOT_ELIGIBLE', 'Karyawan belum memenuhi syarat program dan OKR untuk jenjang berikutnya');
+    // rekomendasi terbuka boleh ditarik (tunda) walau karyawan tidak lagi memenuhi syarat
+    const withdraw = body.decision === 'hold' && x.cycle.open;
+    if (!x.eligible && !withdraw) throw conflict('NOT_ELIGIBLE', 'Karyawan belum memenuhi syarat program dan OKR untuk jenjang berikutnya');
     const id = await stores.promotion.supervisorDecide(req.tenantId, {
-      userId: x.person.id, fromLevelId: x.person.careerLevelId, toLevelId: x.next.id, okrAchievement: x.okr.achievement, decision: body.decision, note: body.note, by: req.user.id,
+      userId: x.person.id, fromLevelId: x.person.careerLevelId, toLevelId: x.next.id, okrAchievement: x.okr ? x.okr.achievement : null, decision: body.decision, note: body.note, by: req.user.id,
     }, await auditMeta(req, x, 'supervisor_decision', body.decision));
     if (!id) throw conflict('ALREADY_DECIDED', 'Promosi ke jenjang ini sudah disetujui HR');
     const fresh = await target(req);
@@ -176,10 +182,10 @@ function careerRoutes({ stores, settings, flags, audit }) {
     const decision = body.decision === 'approve' ? 'approved' : 'hold';
     const { x } = await target(req);
     const { open } = x.cycle;
-    if (!open) {
-      if (x.cycle.approved) throw conflict('ALREADY_DECIDED', 'Promosi ke jenjang ini sudah diputuskan HR');
-      throw conflict('WAITING_SUPERVISOR', 'Atasan belum memberi keputusan untuk jenjang ini');
-    }
+    if (x.cycle.approved) throw conflict('ALREADY_DECIDED', 'Promosi ke jenjang ini sudah diputuskan HR');
+    if (!open) throw conflict('WAITING_SUPERVISOR', 'Atasan belum memberi keputusan untuk jenjang ini');
+    // pemisahan tugas: yang merekomendasi tidak memutuskan rekomendasinya sendiri
+    if (open.supervisorBy === req.user.id) throw forbidden('Anda yang memberi rekomendasi ini; keputusan HR harus oleh orang lain');
     if (decision === 'approved') {
       if (open.supervisorDecision !== 'recommend') throw conflict('SUPERVISOR_NOT_RECOMMEND', 'Atasan tidak merekomendasi; HR hanya bisa menunda');
       if (!x.eligible) throw conflict('NOT_ELIGIBLE', 'Karyawan tidak lagi memenuhi syarat program dan OKR');
@@ -189,7 +195,7 @@ function careerRoutes({ stores, settings, flags, audit }) {
     if (!ok) {
       // balapan: HR lain sudah memutuskan, atau atasan baru saja mengubah ke tunda
       const now = fresh.x.cycle;
-      if (now.open && now.open.id === open.id) throw conflict('SUPERVISOR_NOT_RECOMMEND', 'Atasan mengubah keputusannya; muat ulang lalu coba lagi');
+      if (!now.approved && now.open && now.open.id === open.id) throw conflict('SUPERVISOR_NOT_RECOMMEND', 'Atasan mengubah keputusannya; muat ulang lalu coba lagi');
       throw conflict('ALREADY_DECIDED', 'Promosi ke jenjang ini sudah diputuskan HR');
     }
     res.json({ data: decisionRow(req, fresh.x, fresh.okrMin) });

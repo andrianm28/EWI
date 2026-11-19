@@ -62,6 +62,8 @@ CREATE TABLE lna_promotion_decisions (
 );
 -- paling banyak satu siklus terbuka per karyawan dan jenjang tujuan
 CREATE UNIQUE INDEX lna_promotion_open_uq ON lna_promotion_decisions (tenant_id, user_id, to_level_id) WHERE hr_decision IS NULL;
+-- paling banyak satu persetujuan per karyawan dan jenjang tujuan
+CREATE UNIQUE INDEX lna_promotion_approved_uq ON lna_promotion_decisions (tenant_id, user_id, to_level_id) WHERE hr_decision = 'approved';
 CREATE INDEX lna_promotion_user_idx ON lna_promotion_decisions (tenant_id, user_id, created_at DESC);
 ```
 
@@ -198,3 +200,21 @@ Catatan:
 - [x] `apps/api/tests/integration/dna-career.test.js`
 - [x] `apps/api/tests/integration/poc-dna-tna.test.js`
 - [x] `docs/ewi/poc-dna-tna.md`
+
+## 10a. Triase review diff (ikan mas, 19 Nov)
+
+Review diff B16 oleh subagent baru: 11 temuan, tidak ada yang berat. Perbaikan dikerjakan test-first (skill `tdd`: test merah dulu di seam HTTP `/api/dna/career/*` dan fungsi murni `dna/career.js`, lalu implementasi).
+
+**Diperbaiki:**
+- Tahap atasan membaca peran atasan dari basis data (`supervisorRole`), bukan dari token: token atasan yang perannya sudah dicabut → 403 (1).
+- Balapan atasan vs HR `approve`: rute HR memeriksa `approved` lebih dulu; kedua transaksi mengunci baris karyawan (`FOR UPDATE`); indeks unik parsial `lna_promotion_approved_uq` sebagai penjaga terakhir (2).
+- Konfigurasi `dna.promotion` dan `promotionVisibleTo` yang rusak jatuh ke default (`promotionSettings`), bukan meloloskan semua atau 500 (3).
+- Deduplikasi impor ulang OKR deterministik: waktu sama → id terbesar; query berurutan `created_at, id` (5).
+- Atasan boleh menarik rekomendasi terbuka (`hold`) walau karyawan tidak lagi memenuhi syarat; `recommend` tetap 409 `NOT_ELIGIBLE` (6). Mengubah C6.
+- Super Admin melihat keputusan tanpa catatan (8). Memperjelas C16.
+- Pemisahan tugas: HR yang memberi rekomendasi itu sendiri (peran berubah) tidak boleh memutuskannya → 403 (9).
+- Test tambahan: karyawan `below_current` di data integrasi, `hr_note` terenkripsi, catatan terlihat atasan lewat GET, POST HR untuk karyawan tanpa atasan, HR melihat HR lain → 404, konfigurasi rusak (10, 11 sebagian).
+
+**Diputuskan (C9 vs C10):** siklus terbuka yang dibuat atasan sah tetap boleh diputuskan HR walau atasan itu kemudian berganti atau perannya dicabut; rekomendasinya sah saat dibuat (C9). `no_supervisor` hanya menghalangi siklus yang belum ada.
+
+**Ditunda (dicatat di PR):** urutan teks periode untuk format campuran (4; tetap `[⚠️ BELUM TERVERIFIKASI]` sampai format OKR Mas Abdan diketahui); siklus usang yang hidup lagi bila karyawan kembali ke jenjang semula (7; kasus langka, HR bisa menunda); test atomisitas audit, balapan nol baris, dan kill switch (10; butuh injeksi kegagalan di store, di luar pola test repo).

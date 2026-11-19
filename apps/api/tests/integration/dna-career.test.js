@@ -41,7 +41,7 @@ run('B16 Career & Promotion (Postgres)', () => {
       tok[key] = tokens.sign({ id: row.id, tenantId: t, role, email: `${key}@b16.test` });
     };
     for (const [k, r] of [['hr', 'hr_admin'], ['hr2', 'hr_admin'], ['eta', 'eta_admin'], ['spv', 'supervisor'], ['spv2', 'supervisor'], ['lead', 'role_leader'],
-      ['ani', 'learner'], ['budi', 'learner'], ['cici', 'learner'], ['dedi', 'learner'], ['eko', 'learner'], ['fani', 'learner'], ['gita', 'learner'], ['hadi', 'learner']]) await add(k, r);
+      ['ani', 'learner'], ['budi', 'learner'], ['cici', 'learner'], ['dedi', 'learner'], ['eko', 'learner'], ['fani', 'learner'], ['gita', 'learner'], ['hadi', 'learner'], ['ika', 'learner']]) await add(k, r);
     await add('luar', 'hr_admin', otherTenant.id);
     await q('UPDATE users SET supervisor_id = :spv WHERE id IN (:ids)', { spv: u.spv, ids: [u.ani, u.budi, u.cici, u.eko, u.gita, u.hadi] });
     await q('UPDATE users SET supervisor_id = :spv WHERE id = :id', { spv: u.spv2, id: u.dedi });
@@ -61,7 +61,7 @@ run('B16 Career & Promotion (Postgres)', () => {
     ] }).expect(201);
     // ani: memenuhi syarat; budi: program lulus, OKR rendah; cici: masih menuju; dedi: memenuhi (atasan spv2);
     // eko: Senior, jenjang berikutnya tanpa syarat program; fani: memenuhi tetapi atasannya bukan peran supervisor; gita: tanpa jabatan
-    for (const who of ['ani', 'budi', 'cici', 'dedi', 'fani', 'hadi', 'spv']) await place(who, L.junior);
+    for (const who of ['ani', 'budi', 'cici', 'dedi', 'fani', 'hadi', 'spv', 'ika']) await place(who, L.junior);
     await place('eko', L.senior);
     await pass('ani', 'basic', 'intermediate'); await pass('budi', 'basic', 'intermediate'); await pass('cici', 'basic');
     await pass('dedi', 'basic', 'intermediate'); await pass('eko', 'basic', 'intermediate'); await pass('fani', 'basic', 'intermediate');
@@ -96,7 +96,8 @@ run('B16 Career & Promotion (Postgres)', () => {
     expect(okrMin).toBe(80);
     expect(divisions).toEqual(['IT Service Delivery']);
     const by = Object.fromEntries(employees.map((e) => [e.name, e]));
-    expect(Object.keys(by).sort()).toEqual(['ani', 'budi', 'cici', 'dedi', 'eko', 'fani', 'gita', 'lead', 'spv', 'spv2']);
+    expect(Object.keys(by).sort()).toEqual(['ani', 'budi', 'cici', 'dedi', 'eko', 'fani', 'gita', 'ika', 'lead', 'spv', 'spv2']);
+    expect(by.ika.status).toBe('below_current');
     expect(by.ani).toMatchObject({ status: 'eligible', division: 'IT Service Delivery', jobRoleName: 'Engineer Service Delivery', level: { id: L.junior, name: 'Junior' },
       nextLevel: { id: L.senior, name: 'Senior', requiredProgramTier: 'intermediate' }, okr: { achievement: 95, period: '2026-11', count: 2 }, decisionState: 'none' });
     expect(by.ani.programs).toEqual([{ tier: 'basic', passed: true }, { tier: 'intermediate', passed: true }, { tier: 'advanced', passed: false }]);
@@ -104,10 +105,10 @@ run('B16 Career & Promotion (Postgres)', () => {
     expect(by.cici.status).toBe('on_track');
     expect(by.eko.status).toBe('next_no_requirement');
     expect(by.gita).toMatchObject({ status: 'no_path', level: null, nextLevel: null, programs: [], okr: null, division: null });
-    expect(kpi).toEqual({ employees: 10, divisions: 1, eligible: 4, awaitingDecision: 4, belowCurrent: 0 });
+    expect(kpi).toEqual({ employees: 11, divisions: 1, eligible: 4, awaitingDecision: 4, belowCurrent: 1 });
     const filtered = (await get('/map?division=IT%20Service%20Delivery', 'hr')).body.data;
     expect(filtered.employees.map((e) => e.name)).not.toContain('gita');
-    expect(filtered.kpi.employees).toBe(10);
+    expect(filtered.kpi.employees).toBe(11);
     expect((await get('/map?division=Tidak%20ada', 'hr')).body.data.employees).toEqual([]);
   });
 
@@ -122,7 +123,7 @@ run('B16 Career & Promotion (Postgres)', () => {
     expect((await get(`/employees/${u.dedi}/evidence`, 'spv')).status).toBe(404);
     expect((await get(`/employees/${u.spv}/evidence`, 'spv')).status).toBe(404);
     expect((await get(`/employees/${u.hadi}/evidence`, 'hr')).status).toBe(404);
-    expect((await get(`/employees/${u.hr}/evidence`, 'hr')).status).toBe(404);
+    expect((await get(`/employees/${u.hr2}/evidence`, 'hr')).status).toBe(404); // HR bukan subjek promosi
     expect((await get('/employees/bukan-uuid/evidence', 'hr')).status).toBe(404);
     expect((await get('/map', 'eta')).status).toBe(200);
   });
@@ -135,6 +136,19 @@ run('B16 Career & Promotion (Postgres)', () => {
     expect((await get('/map', 'hr')).status).toBe(200);
     await q(`UPDATE tenants SET settings = '{}'::jsonb WHERE id = :t`, { t: tenant.id });
     expect((await get('/map', 'spv')).status).toBe(200);
+  });
+
+  it('konfigurasi promosi yang rusak memakai default, bukan meloloskan semua atau 500', async () => {
+    await q(`UPDATE tenants SET settings = '{"dna":{"promotionVisibleTo":"hr_admin","promotion":{"okrMin":null,"metricTypes":null}}}'::jsonb WHERE id = :t`, { t: tenant.id });
+    const res = await get('/map', 'hr');
+    expect(res.status).toBe(200);
+    expect(res.body.data.okrMin).toBe(80);
+    expect(res.body.data.employees.find((e) => e.name === 'budi').status).toBe('program_passed_okr_low');
+    await q(`UPDATE tenants SET settings = '{"dna":{"promotion":{"okrMin":"abc"}}}'::jsonb WHERE id = :t`, { t: tenant.id });
+    expect((await get('/map', 'hr')).body.data.okrMin).toBe(80);
+    await q(`UPDATE tenants SET settings = '{"dna":{"promotion":{"okrMin":60}}}'::jsonb WHERE id = :t`, { t: tenant.id });
+    expect((await get('/map', 'hr')).body.data.employees.find((e) => e.name === 'budi').status).toBe('eligible');
+    await q(`UPDATE tenants SET settings = '{}'::jsonb WHERE id = :t`, { t: tenant.id });
   });
 
   it('bukti satu karyawan', async () => {
@@ -153,7 +167,7 @@ run('B16 Career & Promotion (Postgres)', () => {
     const res = await get('/paths', 'hr');
     expect(res.body.data.jobRole).toEqual({ id: role.id, name: 'Engineer Service Delivery' });
     expect(res.body.data.levels).toEqual([
-      { id: L.junior, order: 0, name: 'Junior', requiredProgramTier: 'basic', moduleCount: 1, employees: 6, readyForNext: 4 },
+      { id: L.junior, order: 0, name: 'Junior', requiredProgramTier: 'basic', moduleCount: 1, employees: 7, readyForNext: 4 },
       { id: L.senior, order: 1, name: 'Senior', requiredProgramTier: 'intermediate', moduleCount: 2, employees: 1, readyForNext: 0 },
       { id: L.lead, order: 2, name: 'Team Leader', requiredProgramTier: null, moduleCount: 0, employees: 0, readyForNext: 0 },
     ]);
@@ -200,6 +214,17 @@ run('B16 Career & Promotion (Postgres)', () => {
     expect(early.body.error.code).toBe('WAITING_SUPERVISOR');
   });
 
+  it('tanpa atasan sah: HR tidak bisa memutuskan; token atasan yang perannya sudah dicabut ditolak', async () => {
+    const res = await post(`/decisions/${u.fani}/hr`, 'hr', { decision: 'hold' });
+    expect(res.status).toBe(409);
+    expect(res.body.error.code).toBe('WAITING_SUPERVISOR');
+    await q(`UPDATE users SET role = 'role_leader' WHERE id = :id`, { id: u.spv2 });
+    const stale = await post(`/decisions/${u.dedi}/supervisor`, 'spv2', { decision: 'recommend' });
+    expect(stale.status).toBe(403);
+    expect(stale.body.error.code).toBe('ROLE_FORBIDDEN');
+    await q(`UPDATE users SET role = 'supervisor' WHERE id = :id`, { id: u.spv2 });
+  });
+
   it('atasan menunda lalu mengganti menjadi rekomendasi: satu baris, catatan terenkripsi, audit bermeta nama', async () => {
     const hold = await post(`/decisions/${u.ani}/supervisor`, 'spv', { decision: 'hold', note: 'Tunggu evaluasi kuartal' });
     expect(hold.status).toBe(200);
@@ -218,6 +243,8 @@ run('B16 Career & Promotion (Postgres)', () => {
     expect(rows[0].supervisor_note).not.toContain('Siap naik');
     const list = await get('/decisions', 'hr');
     expect(rowOf(list, 'ani')).toMatchObject({ supervisor: { decision: 'recommend', byName: 'spv', note: 'Siap naik' }, actions: ['approve', 'hold'], blockedReason: null });
+    expect(rowOf(await get('/decisions', 'spv'), 'ani').supervisor.note).toBe('Siap naik');
+    expect(rowOf(await get('/decisions', 'eta'), 'ani').supervisor).toMatchObject({ decision: 'recommend', note: null });
     expect((await get('/map', 'hr')).body.data.employees.find((e) => e.name === 'ani').decisionState).toBe('supervisor_recommend');
     expect((await get(`/employees/${u.ani}/evidence`, 'hr')).body.data.supervisorRecommendation).toMatchObject({ decision: 'recommend', byName: 'spv' });
     const audits = await q(`SELECT user_id, action, meta FROM audit_logs WHERE tenant_id = :t AND resource = 'dna.promotion_decision' ORDER BY id`, { t: tenant.id });
@@ -239,7 +266,16 @@ run('B16 Career & Promotion (Postgres)', () => {
     expect([a.status, b.status].sort()).toEqual([200, 409]);
     expect((a.status === 409 ? a : b).body.error.code).toBe('ALREADY_DECIDED');
     const row = rowOf(await get('/decisions', 'hr'), 'ani');
-    expect(row).toMatchObject({ hr: { decision: 'approved' }, actions: [], blockedReason: 'approved' });
+    expect(row).toMatchObject({ hr: { decision: 'approved', note: 'SK menyusul' }, actions: [], blockedReason: 'approved' });
+    const [{ hr_note: hrNote }] = await q(`SELECT hr_note FROM lna_promotion_decisions WHERE user_id = :u AND hr_decision = 'approved'`, { u: u.ani });
+    expect(hrNote).not.toContain('SK menyusul');
+    // balapan atasan setelah approved: siklus terbuka baru yang tersisip tetap tidak bisa diputuskan HR
+    await q(`INSERT INTO lna_promotion_decisions (tenant_id, user_id, from_level_id, to_level_id, supervisor_decision, supervisor_by, supervisor_at)
+             VALUES (:t, :u, :f, :to, 'recommend', :s, now())`, { t: tenant.id, u: u.ani, f: L.junior, to: L.senior, s: u.spv });
+    const second = await post(`/decisions/${u.ani}/hr`, 'hr', { decision: 'approve' });
+    expect(second.status).toBe(409);
+    expect(second.body.error.code).toBe('ALREADY_DECIDED');
+    await q(`DELETE FROM lna_promotion_decisions WHERE user_id = :u AND hr_decision IS NULL`, { u: u.ani });
     const [{ career_level_id: level }] = await q('SELECT career_level_id FROM users WHERE id = :u', { u: u.ani });
     expect(level).toBe(L.junior);
     const again = await post(`/decisions/${u.ani}/supervisor`, 'spv', { decision: 'hold' });
@@ -270,7 +306,18 @@ run('B16 Career & Promotion (Postgres)', () => {
     const res = await post(`/decisions/${u.dedi}/hr`, 'hr', { decision: 'approve' });
     expect(res.status).toBe(409);
     expect(res.body.error.code).toBe('NOT_ELIGIBLE');
+    // atasan tetap bisa menarik rekomendasinya (tunda), tetapi tidak bisa merekomendasi
+    expect((await post(`/decisions/${u.dedi}/supervisor`, 'spv2', { decision: 'recommend' })).body.error.code).toBe('NOT_ELIGIBLE');
+    expect((await post(`/decisions/${u.dedi}/supervisor`, 'spv2', { decision: 'hold' })).status).toBe(200);
     await q(`DELETE FROM lna_performance_records WHERE user_id = :u AND period = '2026-12'`, { u: u.dedi });
+    await post(`/decisions/${u.dedi}/supervisor`, 'spv2', { decision: 'recommend' }).expect(200);
+    // pemisahan tugas: yang merekomendasi tidak boleh menyetujui (mis. peran diubah menjadi HR)
+    await q(`UPDATE users SET role = 'hr_admin' WHERE id = :id`, { id: u.spv2 });
+    tok.spv2hr = tokens.sign({ id: u.spv2, tenantId: tenant.id, role: 'hr_admin', email: 'spv2@b16.test' });
+    const self = await post(`/decisions/${u.dedi}/hr`, 'spv2hr', { decision: 'approve' });
+    expect(self.status).toBe(403);
+    expect(self.body.error.code).toBe('ROLE_FORBIDDEN');
+    await q(`UPDATE users SET role = 'supervisor' WHERE id = :id`, { id: u.spv2 });
     await place('dedi', L.senior);
     const stale = await post(`/decisions/${u.dedi}/hr`, 'hr', { decision: 'hold' });
     expect(stale.status).toBe(409);

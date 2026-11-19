@@ -58,7 +58,9 @@ function okrAchievement(records, metricTypes = ['okr']) {
   for (const r of rows.filter((x) => (x.period || null) === period)) {
     const key = String(r.name || '').trim().toLowerCase();
     const prev = latest.get(key);
-    if (!prev || new Date(r.createdAt).getTime() >= new Date(prev.createdAt).getTime()) latest.set(key, r);
+    const t = new Date(r.createdAt).getTime(); const tp = prev ? new Date(prev.createdAt).getTime() : -Infinity;
+    // waktu sama (satu impor): id terbesar menang supaya hasil tidak bergantung urutan baris
+    if (!prev || t > tp || (t === tp && String(r.id ?? '') > String(prev.id ?? ''))) latest.set(key, r);
   }
   const scores = [...latest.values()].map(recordScore).filter((x) => x !== null);
   if (!scores.length) return null;
@@ -110,7 +112,9 @@ function decisionView({ viewer, employee, eligible, cycle }) {
   if (cycle.approved) return blocked('approved');
   const hasSupervisor = Boolean(employee.supervisorId) && employee.supervisorRole === 'supervisor';
   if (viewer.role === 'supervisor' && viewer.id === employee.supervisorId) {
-    return eligible ? { actions: ['recommend', 'hold'], blockedReason: null } : blocked('not_eligible');
+    if (eligible) return { actions: ['recommend', 'hold'], blockedReason: null };
+    // rekomendasi terbuka tetap bisa ditarik walau karyawan tidak lagi memenuhi syarat
+    return cycle.open ? { actions: ['hold'], blockedReason: null } : blocked('not_eligible');
   }
   if (viewer.role === 'hr_admin') {
     if (cycle.open) {
@@ -124,4 +128,13 @@ function decisionView({ viewer, employee, eligible, cycle }) {
   return blocked('view_only');
 }
 
-module.exports = { careerStatus, okrAchievement, careerState, findCycle, decisionState, decisionView };
+/** C2/C11: konfigurasi tenant yang rusak jatuh ke default, bukan meloloskan semua atau 500. */
+function promotionSettings(dna = {}) {
+  const p = dna.promotion || {};
+  const okrMin = typeof p.okrMin === 'number' && Number.isFinite(p.okrMin) && p.okrMin >= 0 && p.okrMin <= 100 ? p.okrMin : 80;
+  const metricTypes = Array.isArray(p.metricTypes) && p.metricTypes.length && p.metricTypes.every((x) => typeof x === 'string') ? p.metricTypes : ['okr'];
+  const visibleTo = Array.isArray(dna.promotionVisibleTo) ? dna.promotionVisibleTo.filter((x) => typeof x === 'string') : ['hr_admin'];
+  return { okrMin, metricTypes, visibleTo };
+}
+
+module.exports = { promotionSettings, careerStatus, okrAchievement, careerState, findCycle, decisionState, decisionView };
