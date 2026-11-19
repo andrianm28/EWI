@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Persiapan sekali di etavm2 untuk staging + prod ELGOS (jalankan dari checkout repo, user dengan sudo):
 #   RUNNER_TOKEN=<token registrasi> ACME_EMAIL=<email> deploy/vps/setup-etavm2.sh
+# Keduanya opsional: tanpa ACME_EMAIL Caddy belum dijalankan, tanpa RUNNER_TOKEN runner belum dipasang.
 # Token registrasi: GitHub repo > Settings > Actions > Runners > New self-hosted runner (berlaku 1 jam).
 #
 # Hasil:
@@ -137,7 +138,12 @@ fi
 # 7. Reverse proxy TLS.
 sudo install -d -m 755 /opt/elgos-proxy
 sudo install -m 644 "$SRC/proxy/Caddyfile" "$SRC/proxy/docker-compose.yml" /opt/elgos-proxy/
-(cd /opt/elgos-proxy && sudo ACME_EMAIL="${ACME_EMAIL:?ACME_EMAIL wajib}" docker compose up -d)
+# Dilewati bila ACME_EMAIL kosong (misalnya DNS belum diarahkan); jalankan ulang skrip setelah DNS siap.
+if [ -n "${ACME_EMAIL:-}" ]; then
+  (cd /opt/elgos-proxy && sudo ACME_EMAIL="$ACME_EMAIL" docker compose up -d)
+else
+  echo "Caddy dilewati: ACME_EMAIL kosong. Jalankan ulang dengan ACME_EMAIL=<email> setelah DNS elgos/stg-elgos mengarah ke server ini."
+fi
 
 # 8. Timer systemd. Skrip ops disalin ke /srv/elgos-<env>/ops oleh deploy.sh; sebelum deploy pertama
 #    timer gagal tanpa efek (dan pemantau melewati lingkungan yang belum pernah dideploy).
@@ -233,8 +239,10 @@ if [ "${SETUP_DEV:-1}" = 1 ]; then
 fi
 
 # 10. Runner GitHub Actions (koneksi keluar saja).
-if [ ! -f "$RUNNER_DIR/.runner" ]; then
-  TOKEN="${RUNNER_TOKEN:?RUNNER_TOKEN wajib (lihat komentar di atas)}"
+if [ ! -f "$RUNNER_DIR/.runner" ] && [ -z "${RUNNER_TOKEN:-}" ]; then
+  echo "Runner dilewati: RUNNER_TOKEN kosong. Jalankan ulang dengan RUNNER_TOKEN=<token> untuk memasangnya."
+elif [ ! -f "$RUNNER_DIR/.runner" ]; then
+  TOKEN="$RUNNER_TOKEN"
   RUNNER_VERSION="${RUNNER_VERSION:-$(curl -fsSL https://api.github.com/repos/actions/runner/releases/latest | jq -r .tag_name | sed 's/^v//')}"
   sudo install -d -o "$DEPLOY_USER" -g "$DEPLOY_USER" "$RUNNER_DIR"
   sudo -u "$DEPLOY_USER" bash -c "cd '$RUNNER_DIR' && curl -fsSL -o runner.tgz \
