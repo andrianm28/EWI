@@ -32,9 +32,10 @@ module.exports = {
     if (!jr) return { error: `Job role "${v.text(row.jobRole)}" belum ada` };
     const st = ctx.state.get(jr.id);
     let order = v.blank(row.order) ? null : v.integer(row.order);
-    if (order !== null && !(order >= 1 && order <= 32767)) return { error: 'No harus bilangan bulat mulai 1' };
+    if (order !== null && !(order >= 1 && order <= 999)) return { error: 'No harus bilangan bulat 1-999' };
     if (st.names.has(lower(name))) return { error: 'Job function ini sudah ada di jabatan tersebut' };
     if (order === null) { while (st.orders.has(st.next)) st.next += 1; order = st.next; }
+    if (order > 999) return { error: 'No job function maksimal 999' };
     if (st.orders.has(order)) return { error: `No ${order} sudah dipakai di jabatan tersebut` };
     st.orders.add(order); st.names.add(lower(name));
     return { value: { jobRoleId: jr.id, order, name } };

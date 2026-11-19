@@ -47,7 +47,7 @@ function developmentRoutes(r, { stores, audit }) {
     if (name !== undefined || nameRequired) {
       if (typeof name !== 'string' || !name.trim() || name.trim().length > 255) throw badRequest('name wajib diisi (maksimal 255 karakter)');
     }
-    if (order !== undefined && order !== null && !(Number.isInteger(order) && order >= 1 && order <= 32767)) throw badRequest('order harus bilangan bulat mulai 1');
+    if (order !== undefined && order !== null && !(Number.isInteger(order) && order >= 1 && order <= 999)) throw badRequest('order harus bilangan bulat 1-999');
   }
   async function assertJobFunctionFree(tenantId, jobRoleId, { name, order }, exceptId) {
     const others = (await stores.dna.listJobFunctions(tenantId, jobRoleId)).filter((f) => f.id !== exceptId);
@@ -88,7 +88,7 @@ function developmentRoutes(r, { stores, audit }) {
     const base = { jobs, selectedJobRoleId: job ? job.id : null };
     const totals = { jobsWithDictionary: jobs.filter((j) => j.dictionary === 'available').length, jobsTotal: jobs.length };
     if (!job) {
-      return res.json({ data: { ...base, kpi: { employees: 0, jobFunctions: 0, competencies: 0, ...totals }, stageDistribution: [], dictionary: { ...dictionaryStatus({ jobFunctions: [], competencies: [] }), assessedCompetencyCount: 0 } } });
+      return res.json({ data: { ...base, kpi: { employees: 0, jobFunctions: 0, competencies: 0, ...totals }, stageDistribution: stageDistribution([]), dictionary: { ...dictionaryStatus({ jobFunctions: [], competencies: [] }), assessedCompetencyCount: 0 } } });
     }
     const [competencies, jobFunctions, assessedCompetencyCount] = await Promise.all([
       stores.dna.listJobCompetencies(req.tenantId, job.id), stores.dna.listJobFunctions(req.tenantId, job.id), stores.dna.assessedCompetencyCount(req.tenantId, job.id),
@@ -149,6 +149,7 @@ function developmentRoutes(r, { stores, audit }) {
     await assertJobFunctionFree(req.tenantId, f.jobRoleId, { name, order }, f.id);
     const row = await orConflict(stores.dna.updateJobFunction(req.tenantId, f.id, { name: name === undefined ? undefined : name.trim(), order }),
       'Nama atau nomor job function sudah dipakai di jabatan ini');
+    if (!row) throw notFound('Job function tidak ditemukan'); // terhapus paralel
     res.json({ data: jobFunctionView(row) });
   }));
 
@@ -161,7 +162,14 @@ function developmentRoutes(r, { stores, audit }) {
   r.put('/job-functions/:id/competencies', hr, wrap(async (req, res) => {
     const f = await jobFunctionFromPath(req);
     const ids = await checkCompetencyIds(req.tenantId, f.jobRoleId, (req.body || {}).competencyIds);
-    res.json({ data: jobFunctionView(await stores.dna.setJobFunctionCompetencies(req.tenantId, f.id, ids)) });
+    let row;
+    try { row = await stores.dna.setJobFunctionCompetencies(req.tenantId, f.id, ids); } catch (e) {
+      // job function atau kompetensi terhapus paralel (FK 23503)
+      if (e && e.original && e.original.code === '23503') throw conflict('Job function atau kompetensi berubah, muat ulang lalu coba lagi');
+      throw e;
+    }
+    if (!row) throw notFound('Job function tidak ditemukan');
+    res.json({ data: jobFunctionView(row) });
   }));
 
   r.post('/job-roles/:id/dictionary/approve', hr, wrap(async (req, res) => {
@@ -194,7 +202,7 @@ function developmentRoutes(r, { stores, audit }) {
   }));
 
   r.get('/employees/:userId/development-plan', wrap(async (req, res) => {
-    const { userId } = req.params;
+    const userId = String(req.params.userId).toLowerCase();
     const scope = await scopeFor(req, stores.people);
     if (!isUuid(userId) || !inScope(scope, userId)) throw notFound('Karyawan tidak ditemukan');
     const person = await stores.people.get(req.tenantId, userId);

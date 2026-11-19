@@ -35,7 +35,7 @@ module.exports = {
     for (const r of roles) jobFunctions.set(r.id, new Map((await stores.dna.listJobFunctions(tenantId, r.id)).map((f) => [f.order, f.id])));
     const codeKey = (jobRoleId, code) => `${jobRoleId}|${code.trim().toLowerCase()}`;
     const codes = new Map(comps.filter((c) => c.code).map((c) => [codeKey(c.jobRoleId, c.code), c.id]));
-    return { roles, existing: new Map(comps.map((c) => [keyOf(c), c.id])), keyOf, seen: new Set(), jobFunctions, codeKey, codes };
+    return { roles, existing: new Map(comps.map((c) => [keyOf(c), { id: c.id, kind: c.kind }])), keyOf, seen: new Set(), jobFunctions, codeKey, codes };
   },
   validate(row, ctx) {
     const name = v.text(row.name);
@@ -74,12 +74,16 @@ module.exports = {
       if (!jobRoleId || kind !== 'job') return { error: 'Job Function hanya untuk kompetensi jabatan' };
       const known = ctx.jobFunctions.get(jobRoleId);
       const numbers = v.text(row.jobFunctions).split(/[;,]/).map((s) => s.trim().replace(/^jf\s*/i, '')).filter(Boolean).map((s) => v.integer(s));
+      if (!numbers.length) return { error: 'Job Function berisi nomor, pisahkan dengan titik koma' };
       const bad = numbers.find((n) => !known.has(n));
       if (bad !== undefined) return { error: Number.isNaN(bad) ? 'Job Function berisi nomor, pisahkan dengan titik koma' : `Job function nomor ${bad} belum ada di job role ${jr.name}` };
       jobFunctionIds = [...new Set(numbers.map((n) => known.get(n)))];
     }
     const key = ctx.keyOf({ jobRoleId, careerLevelId, name });
-    const existingId = ctx.existing.get(key);
+    const found = ctx.existing.get(key);
+    const existingId = found ? found.id : undefined;
+    // A12: kind kompetensi yang sudah ada menang atas kolom Jenis di file
+    if (found && jobFunctionIds && found.kind !== 'job') return { error: 'Job Function hanya untuk kompetensi jabatan' };
     const hasB4 = Boolean(code || stream || programTier || jobFunctionIds);
     if (existingId && !hasB4) return { error: 'Kompetensi ini sudah ada di kamus' };
     if (ctx.seen.has(key)) return { error: 'Kompetensi muncul lebih dari sekali di file' };

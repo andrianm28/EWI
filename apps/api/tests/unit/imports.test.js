@@ -95,7 +95,7 @@ describe('B4 impor kamus: kode, rumpun, level program, job function', () => {
   const makeCtx = () => {
     const keyOf = (c) => `${c.jobRoleId || ''}|${c.careerLevelId || ''}|${c.name.trim().toLowerCase()}`;
     return {
-      roles: [role], keyOf, seen: new Set(), existing: new Map([[keyOf({ jobRoleId: 'r1', name: 'Ticket life cycle' }), 'c-old']]),
+      roles: [role], keyOf, seen: new Set(), existing: new Map([[keyOf({ jobRoleId: 'r1', name: 'Ticket life cycle' }), { id: 'c-old', kind: 'job' }], [keyOf({ jobRoleId: 'r1', name: 'Integritas kerja' }), { id: 'c-core', kind: 'core' }]]),
       jobFunctions: new Map([['r1', new Map([[1, 'jf-1'], [3, 'jf-3']])]]),
       codeKey: (jobRoleId, code) => `${jobRoleId}|${code.trim().toLowerCase()}`, codes: new Map([['r1|st-b1', 'c-b1']]),
     };
@@ -127,6 +127,11 @@ describe('B4 impor kamus: kode, rumpun, level program, job function', () => {
     const res = kind.validate({ jobRole: role.name, name: 'ticket life cycle', code: 'ST-B4', programTier: 'basic', jobFunctions: '3' }, makeCtx());
     expect(res.value).toEqual({ id: 'c-old', patch: { code: 'ST-B4', programTier: 'basic' }, jobFunctionIds: ['jf-3'] });
   });
+  it('sel Job Function tanpa nomor ditolak (tidak menghapus pemetaan); kompetensi inti yang sudah ada tidak bisa dipetakan', () => {
+    expect(kind.validate({ jobRole: role.name, name: 'ticket life cycle', jobFunctions: ';' }, makeCtx()).error).toMatch(/berisi nomor/);
+    expect(kind.validate({ jobRole: role.name, name: 'ticket life cycle', jobFunctions: 'JF' }, makeCtx()).error).toMatch(/berisi nomor/);
+    expect(kind.validate({ jobRole: role.name, name: 'Integritas kerja', jobFunctions: '1' }, makeCtx()).error).toMatch(/hanya untuk kompetensi jabatan/);
+  });
 });
 
 describe('B4 impor job function', () => {
@@ -143,7 +148,7 @@ describe('B4 impor job function', () => {
     expect(kind.validate({ jobRole: 'Engineer Service Delivery', name: 'Keamanan', order: 1 }, ctx).error).toMatch(/No 1 sudah dipakai/);
     expect(kind.validate({ jobRole: 'Engineer Service Delivery', name: 'PENANGANAN insiden' }, ctx).error).toMatch(/sudah ada/);
     expect(kind.validate({ jobRole: 'Tidak ada', name: 'X' }, ctx).error).toMatch(/belum ada/);
-    expect(kind.validate({ jobRole: 'Engineer Service Delivery', name: 'X', order: 0 }, ctx).error).toMatch(/mulai 1/);
+    expect(kind.validate({ jobRole: 'Engineer Service Delivery', name: 'X', order: 0 }, ctx).error).toMatch(/1-999/);
   });
 });
 

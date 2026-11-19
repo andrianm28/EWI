@@ -16,7 +16,8 @@ const COMPETENCY_COLS = `c.id, c.job_role_id AS "jobRoleId", c.career_level_id A
   c.approved_at AS "approvedAt", c.code, c.stream, c.program_tier AS "programTier"`;
 const COMPETENCY_RETURNING = COMPETENCY_COLS.replace(/\bc\./g, '');
 const JOB_FUNCTION_COLS = `f.id, f.job_role_id AS "jobRoleId", f.fn_order AS "order", f.name,
-  COALESCE((SELECT array_agg(m.competency_id) FROM lna_job_function_competencies m WHERE m.job_function_id = f.id), '{}') AS "competencyIds"`;
+  COALESCE((SELECT array_agg(m.competency_id ORDER BY m.competency_id) FROM lna_job_function_competencies m
+            WHERE m.job_function_id = f.id AND m.tenant_id = f.tenant_id), '{}') AS "competencyIds"`;
 
 const PLAN_COLS = `p.id, p.user_id AS "userId", u.name AS "userName", p.finding_id AS "findingId", p.origin, p.status,
   p.program_tier AS "programTier", p.catalog_source AS "catalogSource", p.catalog_item_ref AS "catalogItemRef",
@@ -223,7 +224,7 @@ function createLnaStores(sequelize, { cipher } = {}) {
     /** B4: ubah sebagian kolom; pengesahan direset karena isi kamus berubah (A7). */
     async updateCompetency(tenantId, id, patch) {
       const cols = { name: 'name', definition: 'definition', code: 'code', stream: 'stream', programTier: 'program_tier', requiredScore: 'required_score', importance: 'importance' };
-      const keys = Object.keys(patch).filter((k) => cols[k]);
+      const keys = Object.keys(patch).filter((k) => Object.hasOwn(cols, k));
       if (!keys.length) return dna.getCompetency(tenantId, id);
       return insert(`UPDATE lna_competencies SET ${keys.map((k) => `${cols[k]} = :${k}`).join(', ')}, approved_at = NULL, approved_by = NULL
                       WHERE tenant_id = :tenantId AND id = :id RETURNING ${COMPETENCY_RETURNING}`, { tenantId, id, ...patch });

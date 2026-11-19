@@ -145,6 +145,8 @@ module.exports = {
       for (const k of ['name', 'definition', 'code', 'stream', 'programTier', 'requiredScore', 'importance']) if (b[k] !== undefined) patch[k] = b[k];
       if (!Object.keys(patch).length) throw badRequest('Tidak ada kolom yang diubah');
       if (patch.name !== undefined && (typeof patch.name !== 'string' || !patch.name.trim())) throw badRequest('name wajib diisi');
+      if (patch.name !== undefined && patch.name.trim().length > 255) throw badRequest('name maksimal 255 karakter');
+      if (patch.definition != null && typeof patch.definition !== 'string') throw badRequest('definition harus teks');
       if (patch.requiredScore != null && !(Number.isInteger(patch.requiredScore) && patch.requiredScore >= 0 && patch.requiredScore <= 4)) throw badRequest('requiredScore 0-4');
       if (patch.importance != null && !(Number.isInteger(patch.importance) && patch.importance >= 1 && patch.importance <= 5)) throw badRequest('importance 1-5');
       if (patch.requiredScore === null || patch.importance === null) throw badRequest('requiredScore dan importance tidak boleh dikosongkan');

@@ -129,6 +129,10 @@ run('B4 Developmental Needs (Postgres)', () => {
     expect(edited.body.data).toMatchObject({ code: 'NT-X', stream: 'Non-Technical', programTier: null, approvedAt: null });
     expect((await request(app).patch(`/api/dna/competencies/${c['Tanpa tingkat'].id}`).set(as('hr')).send({ code: 'ST-B1' })).status).toBe(409);
     expect((await request(app).patch(`/api/dna/competencies/${c['Tanpa tingkat'].id}`).set(as('hr')).send({})).status).toBe(400);
+    for (const bad of [{ definition: { a: 1 } }, { definition: ['x', 'y'] }, { name: 'n'.repeat(256) }]) {
+      expect((await request(app).patch(`/api/dna/competencies/${c['Tanpa tingkat'].id}`).set(as('hr')).send(bad)).status).toBe(400);
+    }
+    expect((await request(app).patch(`/api/dna/job-functions/${jf.change.id}`).set(as('hr')).send({ order: 1000 })).status).toBe(400);
     expect((await request(app).patch(`/api/dna/competencies/${c['Tanpa tingkat'].id}`).set(as('luar')).send({ code: 'Z' })).status).toBe(404);
 
     for (const who of ['ani', 'spv']) {
