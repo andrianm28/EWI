@@ -46,6 +46,20 @@ const combineAssessments = (a, b) => combineRuns(a, b, (r) => r.competencyId, (x
 function createAnalysisRunner({ stores, ai, aiConfig = {}, logger = console, maxAttempts = 3, leaseSeconds = 600 }) {
   const inflight = new Set();
 
+  /** Kompetensi/target yang sudah tidak ada di tenant ini dilepas dari temuan, supaya FK tidak menggagalkan job. */
+  async function dropMissingLinks(tenantId, items) {
+    const compIds = [...new Set(items.map((f) => f.competencyId).filter(Boolean))];
+    const recIds = [...new Set(items.map((f) => f.performanceRecordId).filter(Boolean))];
+    if (!compIds.length && !recIds.length) return items;
+    const comps = new Set(compIds.length && stores.dna.existingCompetencyIds ? await stores.dna.existingCompetencyIds(tenantId, compIds) : compIds);
+    const recs = new Set(recIds.length ? (await stores.tna.performanceByIds(tenantId, recIds)).map((r) => r.id) : []);
+    return items.map((f) => ({
+      ...f,
+      competencyId: f.competencyId && comps.has(f.competencyId) ? f.competencyId : null,
+      performanceRecordId: f.performanceRecordId && recs.has(f.performanceRecordId) ? f.performanceRecordId : null,
+    }));
+  }
+
   async function analyze(job, session) {
     const { tenantId } = job;
     const transcript = await stores.interviews.turns(tenantId, session.id);
@@ -59,10 +73,13 @@ function createAnalysisRunner({ stores, ai, aiConfig = {}, logger = console, max
       return stores.analysis.saveDna(tenantId, job, session, items, { onlySecond });
     }
     const call = (pass) => callAi(env, () => ai.analyzeTna({ transcript, triggers: safe.triggers, competencies: safe.competencies, pass }));
-    const r1 = await call(1);
+    // B6 (A8): ringkasan yang dikonfirmasi karyawan adalah penilaian pertama, jadi temuan yang sampai ke HR
+    // sama dengan yang dilihat karyawan. Model hanya dipanggil untuk penilaian kedua.
+    const confirmed = stores.interviews.summaryForAnalysis ? await stores.interviews.summaryForAnalysis(tenantId, session.id) : null;
+    const first = confirmed || (await call(1)).findings;
     const r2 = await call(2);
-    const { items, onlySecond } = combineTnaFindings(r1.findings, r2.findings);
-    return stores.analysis.saveTna(tenantId, job, session, items, { onlySecond });
+    const { items, onlySecond } = combineTnaFindings(first, r2.findings);
+    return stores.analysis.saveTna(tenantId, job, session, await dropMissingLinks(tenantId, items), { onlySecond });
   }
 
   /** Jalankan satu job bila bisa diklaim. Aman dipanggil berulang: job selesai atau sedang berjalan dilewati. */
