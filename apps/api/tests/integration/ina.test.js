@@ -396,4 +396,81 @@ run('Improvement Needs B9 (Postgres)', () => {
     await patch(`/actions/${id.aBudaya}`, { ownerUserId: id.spv });
     expect((await get('/actions', 'spv')).body.data.map((x) => x.id)).toContain(id.aBudaya);
   });
+
+  describe('triase review egm 19 Nov', () => {
+    it('CD-1/CD-12: pemilik yang dinonaktifkan tidak mengunci ubahan lain; UUID huruf besar yang sama bukan perubahan', async () => {
+      await addUser(A.id, 'keluar', 'learner');
+      const a = (await post('/actions', { title: 'Perbaiki alat ukur', category: 'alat', ownerUserId: id.keluar })).body.data;
+      await db.query("UPDATE users SET status = 'disabled' WHERE id = :u", { replacements: { u: id.keluar } });
+      // formulir web selalu mengirim ownerUserId apa adanya
+      const res = await patch(`/actions/${a.id}`, { title: 'Perbaiki alat ukur v2', ownerUserId: id.keluar });
+      expect(res.status).toBe(200);
+      expect(res.body.data.title).toBe('Perbaiki alat ukur v2');
+      // mengganti ke akun nonaktif tetap ditolak
+      expect((await patch(`/actions/${a.id}`, { ownerUserId: id.keluar.toUpperCase() })).status).toBe(200);
+      const before = (await audits('ina.action')).length;
+      await patch(`/actions/${a.id}`, { ownerUserId: id.keluar.toUpperCase() });
+      expect((await audits('ina.action')).length).toBe(before);
+      const b = (await post('/actions', { title: 'Tindakan lain', category: 'sop' })).body.data;
+      expect((await patch(`/actions/${b.id}`, { ownerUserId: id.keluar })).status).toBe(400);
+    });
+
+    it('IR-1: verifikasi tidak bisa dibuat di store bila tindakan sudah ditutup, pindah pemilik, atau menyangkut individu', async () => {
+      const a = (await post('/actions', { title: 'Revisi SOP shift', category: 'sop', ownerUserId: id.staf })).body.data;
+      const by = id.hr;
+      await patch(`/actions/${a.id}`, { ownerUserId: id.lain });
+      expect(await stores.ina.createVerification(A.id, { actionId: a.id, ownerUserId: id.staf, assignedBy: by })).toBeNull();
+      await patch(`/actions/${a.id}`, { involvesIndividual: true });
+      expect(await stores.ina.createVerification(A.id, { actionId: a.id, ownerUserId: id.lain, assignedBy: by })).toBeNull();
+      await patch(`/actions/${a.id}`, { involvesIndividual: false, status: 'rejected' });
+      expect(await stores.ina.createVerification(A.id, { actionId: a.id, ownerUserId: id.lain, assignedBy: by })).toBeNull();
+      const c = (await post('/actions', { title: 'Revisi SOP malam', category: 'sop', ownerUserId: id.staf })).body.data;
+      expect(await stores.ina.createVerification(A.id, { actionId: c.id, ownerUserId: id.staf, assignedBy: by })).toMatchObject({ status: 'assigned' });
+    });
+
+    it('CD-5: verifikasi yang batal otomatis tercatat sebagai event cancelled di audit ina.verification', async () => {
+      const a = (await post('/actions', { title: 'Ganti vendor alat', category: 'alat', ownerUserId: id.staf })).body.data;
+      const v = (await post(`/actions/${a.id}/verifications`, {})).body.data.id;
+      await patch(`/actions/${a.id}`, { ownerUserId: id.lain });
+      const last = (await audits('ina.verification')).pop();
+      expect(last.meta).toMatchObject({ event: 'cancelled', objectIds: [v], reason: 'owner_changed' });
+    });
+
+    it('IC-1: ubah status dan efek sampingnya atomik; gagal di tengah tidak menyisakan status setengah jadi', async () => {
+      const a = (await post('/actions', { title: 'Uji atomik', category: 'sop', ownerUserId: id.staf })).body.data;
+      const v = (await post(`/actions/${a.id}/verifications`, {})).body.data.id;
+      // findingStatus tidak sah memicu CHECK di lna_findings: seluruh perubahan dibatalkan
+      await expect(stores.ina.updateAction(A.id, a.id, { status: 'done' }, 'new', {
+        cancelVerifications: true, finding: { id: id.fNon, status: 'tidak-sah' },
+      })).rejects.toThrow();
+      expect((await get(`/actions/${a.id}`)).body.data.status).toBe('new');
+      expect((await sql('SELECT status FROM ina_verifications WHERE id = :v', { v }))[0].status).toBe('assigned');
+    });
+
+    it('ZO-4: perubahan status temuan dari INA tercatat di audit tna.finding', async () => {
+      await addFinding(A.id, 'fAudit', { userId: id.lain, projectId: (await sql('SELECT project_id FROM lna_findings WHERE id = :f', { f: id.fNon }))[0].project_id });
+      const a = (await post('/actions', { title: 'Dari temuan audit', category: 'sistem', findingId: id.fAudit, involvesIndividual: false })).body.data;
+      await patch(`/actions/${a.id}`, { status: 'in_progress' });
+      await patch(`/actions/${a.id}`, { status: 'done' });
+      const log = (await audits('tna.finding')).filter((x) => (x.meta.objectIds || []).includes(id.fAudit));
+      expect(log.map((x) => x.meta.status)).toEqual([{ from: 'open', to: 'planned' }, { from: 'planned', to: 'resolved' }]);
+      expect(log[0].meta.via).toBe('ina');
+    });
+
+    it('CD-7: asal gap tidak diisi otomatis dari baris kinerja per karyawan', async () => {
+      const [[rec]] = await db.query(
+        `INSERT INTO lna_performance_records (tenant_id, user_id, metric_type, name, period) VALUES (:t, :u, 'sla', 'SLA tiket Karyawan X', '2026-Q4') RETURNING id`,
+        { replacements: { t: A.id, u: id.staf } });
+      const a = (await post('/actions', { title: 'Perbaiki antrean tiket', category: 'sistem', performanceRecordId: rec.id })).body.data;
+      expect(a.sourceRef).toBeNull();
+    });
+
+    it('IZ-4: izin atasan dari panel INA dicatat dengan nama sumber daya yang sama dengan TNA', async () => {
+      await request(app).put(`${BASE}/access/${id.spv2}`).set(as('hr'));
+      const row = (await audits('tna.non_training_access')).pop();
+      expect(row).toMatchObject({ action: 'create' });
+      expect(row.meta.via).toBe('ina');
+      await request(app).delete(`${BASE}/access/${id.spv2}`).set(as('hr'));
+    });
+  });
 });
