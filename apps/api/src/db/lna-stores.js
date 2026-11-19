@@ -356,11 +356,19 @@ function createLnaStores(sequelize, { cipher } = {}) {
      */
     async saveSummary(tenantId, id, findings, { restartCount, turnCount }) {
       // turnCount: jumlah giliran saat transkrip dibaca. Jawaban yang masuk selama AI meringkas membatalkan ringkasan ini.
-      return insert(`UPDATE lna_interview_sessions s SET summary_findings = CAST(:findings AS jsonb), summary_at = now()
+      // Kunci baris lebih dulu (menunggu addTurn yang sedang menyimpan), lalu hitung giliran di pernyataan baru supaya
+      // jawaban yang baru commit ikut terhitung.
+      const replacements = { tenantId, id, restartCount, turnCount, findings: JSON.stringify(await cipher.encryptJson(tenantId, findings)) };
+      // Bergantung pada READ COMMITTED (bawaan): hitungan giliran di pernyataan kedua memakai snapshot baru.
+      return sequelize.transaction(async (transaction) => {
+        const q = (sql) => sequelize.query(sql, { replacements, transaction });
+        await q(`SELECT id FROM lna_interview_sessions WHERE tenant_id = :tenantId AND id = :id FOR UPDATE`);
+        const [[row]] = await q(`UPDATE lna_interview_sessions s SET summary_findings = CAST(:findings AS jsonb), summary_at = now()
                       WHERE s.tenant_id = :tenantId AND s.id = :id AND s.status = 'in_progress' AND s.summary_at IS NULL AND s.restart_count = :restartCount
                         AND (SELECT count(*) FROM lna_interview_turns t WHERE t.session_id = s.id) = :turnCount
-                      RETURNING s.id, s.summary_at AS "summaryAt"`,
-      { tenantId, id, restartCount, turnCount, findings: JSON.stringify(await cipher.encryptJson(tenantId, findings)) });
+                      RETURNING s.id, s.summary_at AS "summaryAt"`);
+        return row || null;
+      });
     },
     async getSummary(tenantId, id) {
       const row = await one(`SELECT status, summary_findings AS findings, summary_at AS "summaryAt", summary_confirmed_at AS "summaryConfirmedAt",
@@ -419,7 +427,7 @@ function createLnaStores(sequelize, { cipher } = {}) {
     async gapSessions(tenantId, scope) {
       const rep = { tenantId };
       const sql = `SELECT s.id, s.project_id AS "projectId", s.interviewee_id AS "intervieweeId", s.status,
-                          s.invite_expires_at AS "inviteExpiresAt", s.trigger_record_ids AS "triggerRecordIds",
+                          s.invite_expires_at AS "inviteExpiresAt", s.assigned_by AS "assignedBy", s.trigger_record_ids AS "triggerRecordIds",
                           s.focus_kind AS "focusKind", s.focus_competency_id AS "focusCompetencyId", s.focus_metric_type AS "focusMetricType",
                           s.focus_metric_key AS "focusMetricKey", s.focus_period AS "focusPeriod"
                      FROM lna_interview_sessions s
@@ -500,7 +508,8 @@ function createLnaStores(sequelize, { cipher } = {}) {
       const rep = { tenantId, sessionId, speaker, text: await enc(tenantId, text) };
       let guard = '';
       if (opts.guard) {
-        guard = ' AND s.summary_at IS NULL AND s.restart_count = :restartCount';
+        // FOR SHARE: bila ulangi/ringkasan sedang memegang kunci baris, tunggu lalu periksa ulang penjaga pada baris yang sudah commit
+        guard = ' AND s.summary_at IS NULL AND s.restart_count = :restartCount FOR SHARE OF s';
         rep.restartCount = opts.guard.restartCount ?? 0;
       }
       const row = await insert(`INSERT INTO lna_interview_turns (session_id, speaker, text)

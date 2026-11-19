@@ -203,9 +203,11 @@ test('learner: wawancara TNA lalu meminta training (flag BT-31 dinyalakan)', asy
   await loginAs(page, 'learner', 'u-1', { 'tna.training_request': true })
   await page.goto('/m/tna')
   await page.getByTestId('tna-my-sessions').getByRole('link', { name: 'Mulai wawancara' }).click()
-  // PM-9 A: tombol aktif setelah kotak dicentang; kode versi teks ikut terkirim
-  const start = page.getByRole('button', { name: 'Setuju dan mulai' })
-  await expect(start).toBeDisabled()
+  // PM-9 A: persetujuan wajib dicentang; kode versi teks ikut terkirim. B6: tombol mockup "Lanjut ke wawancara" selalu aktif dan
+  // menampilkan ringkasan galat bila belum dicentang (docs/designs/b6-wawancara-akar-masalah.md bagian 15)
+  const start = page.getByRole('button', { name: 'Lanjut ke wawancara' })
+  await start.click()
+  await expect(page.getByRole('alert')).toContainText('Centang persetujuan')
   await page.getByTestId('consent-check').check()
   await start.click()
   await expect(page.getByTestId('turn-ai')).toContainText('SLA respons')
@@ -213,7 +215,9 @@ test('learner: wawancara TNA lalu meminta training (flag BT-31 dinyalakan)', asy
   await page.getByLabel('Jawaban').fill('Saya sulit memahami kontrak proyek.')
   await page.getByRole('button', { name: 'Kirim' }).click()
   await page.getByRole('button', { name: 'Selesai dan kirim' }).click()
-  await expect(page).toHaveURL(/\/m\/tna$/)
+  // B6: setelah dikirim kembali ke daftar wawancara, lalu buka Training Needs
+  await expect(page).toHaveURL(/\/iv$/)
+  await page.goto('/m/tna')
   await expect(page.getByTestId('tna-pareto')).toHaveCount(0)
   await page.getByRole('button', { name: 'Minta training' }).click()
   await expect(page.getByRole('status')).toHaveText('Permintaan training terkirim.')

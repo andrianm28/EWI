@@ -117,6 +117,31 @@ function langkah(app, masuk) {
         return (await kirim('get', `/api/tna/findings?projectId=${projectId}`, siapa).expect(200)).body.data;
       },
       transkrip: (siapa, sid) => kirim('get', `/api/tna/sessions/${sid}/transcript`, siapa),
+      /** B6: membaca ringkasan (hanya orang yang diwawancarai) dan mengulang wawancara. Respons mentah. */
+      bacaRingkasan: (siapa, sid) => kirim('get', `/api/tna/sessions/${sid}/summary`, siapa),
+      ulangi: (karyawan, sid) => kirim('post', `/api/tna/sessions/${sid}/restart`, karyawan),
+      async sesiSaya(karyawan) {
+        return (await kirim('get', '/api/tna/sessions', karyawan).expect(200)).body.data;
+      },
+      async sesi(siapa, sid) {
+        return (await kirim('get', `/api/tna/sessions/${sid}`, siapa).expect(200)).body.data;
+      },
+    },
+    /** B5 (flag tna.gap_board, tna.interview_assignment): papan gap dan penugasan wawancara dari satu gap. */
+    gap: {
+      async okr(siapa, period) {
+        return (await kirim('get', `/api/tna/gaps/okr${period ? `?period=${period}` : ''}`, siapa).expect(200)).body.data.rows;
+      },
+      async ringkasan(siapa) {
+        return (await kirim('get', '/api/tna/gaps/summary', siapa).expect(200)).body.data;
+      },
+      async detail(siapa, ref) {
+        return (await kirim('get', `/api/tna/gaps/detail?${new URLSearchParams(ref)}`, siapa).expect(200)).body.data;
+      },
+      /** Referensi gap dari baris papan (sama dengan gapRefOf di layar). */
+      refDari: (row) => (row.kind === 'competency' ? { kind: 'competency', competencyId: row.competencyId } : { kind: 'okr', metricType: row.metricType, name: row.name, period: row.period }),
+      tugaskan: (siapa, body) => kirim('post', '/api/tna/assignments', siapa, body),
+      batalkan: (siapa, sid) => kirim('post', `/api/tna/assignments/${sid}/cancel`, siapa),
     },
   };
 }

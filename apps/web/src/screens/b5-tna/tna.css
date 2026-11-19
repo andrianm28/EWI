@@ -1,0 +1,20 @@
+.tna-bc { font-size: 13px; margin-bottom: 4px; }
+.tna-h1 { font-size: 28px; line-height: 36px; font-weight: 400; margin: 0 0 8px; }
+.tna-h2 { font-size: 16px; font-weight: 500; margin: 0 0 12px; }
+.tna-panel { margin-top: 16px; }
+.tna-gap { margin-top: 16px; }
+.tna-gap-b { margin-bottom: 12px; }
+.tna-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.tna-dist { margin-bottom: 10px; }
+.tna-small { font-size: 12px; }
+.tna-flow { margin: 0; padding-left: 20px; line-height: 28px; }
+.tna-link { color: var(--el-primary); font-weight: 500; }
+.tna-bar { flex: 1; min-width: 60px; }
+.tna-period { display: inline-flex; gap: 8px; align-items: center; margin-bottom: 12px; }
+.tna-period__select { width: auto; }
+.tna-head { align-items: flex-start; }
+.tna-list { margin: 0; padding-left: 20px; line-height: 24px; }
+.tna-cta { background: var(--el-primary-container); }
+.tna-form { display: grid; gap: 12px; max-width: 560px; margin-top: 12px; }
+.tna-fieldset { border: 0; padding: 0; margin: 0; display: grid; gap: 4px; }
+.tna-fieldset legend { font-weight: 500; margin-bottom: 4px; }
