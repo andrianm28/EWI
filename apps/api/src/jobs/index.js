@@ -6,6 +6,7 @@ const { runInterviewReminders } = require('./interview-reminders');
 const DEFAULT_IMPORT_BATCH_TTL_DAYS = 7;
 
 const JOBS = Object.freeze({
+  // PRJ-6/T4: pengingat H-3 dan H-1 sebelum undangan wawancara berakhir.
   'interview-reminders': runInterviewReminders,
   // PK-15 butir 2: batch impor yang tidak pernah di-commit dihapus setelah TTL; batch tersimpan tidak menyimpan baris.
   'import-batches-cleanup': async ({ stores, env = process.env, now }) => {

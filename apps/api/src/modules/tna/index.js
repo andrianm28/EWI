@@ -29,7 +29,6 @@ const REVIEW_DECISIONS = { approve: 'approved', edit: 'edited', reject: 'rejecte
 const REVIEWED = ['approved', 'edited'];
 const CATEGORIES = ['training', 'non_training'];
 
-
 module.exports = {
   key: 'tna',
   title: 'Training Needs Analysis',

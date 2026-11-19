@@ -69,7 +69,7 @@ run('Katalog course + toleransi KPI (Postgres)', () => {
     const f1 = await newFinding(u.dimas);
     let plan = await request(app).post(`/api/tna/findings/${f1.id}/plan`).set(as('hr')).send({});
     expect(plan.status).toBe(201);
-    expect(plan.body.data).toMatchObject({ status: 'new', needsModule: true });
+    expect(plan.body.data).toMatchObject({ status: 'new', needsModule: true }); // K-3: perlu modul = Baru tanpa course
 
     // 2. Impor katalog: satu course terpetakan, satu kompetensi tak dikenal ditolak
     const done = await importCsv('tna', 'catalog_courses', [

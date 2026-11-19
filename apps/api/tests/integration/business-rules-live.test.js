@@ -119,11 +119,9 @@ run('Aturan bisnis wajib live (Postgres)', () => {
     await request(app).post(`/api/tna/sessions/${sessionId}/consent`).set(as('dimas')).send({ consentVersion: 'tna-consent-id-v1.0' }).expect(200);
     await request(app).post(`/api/tna/sessions/${sessionId}/turns`).set(as('dimas')).send({ text: 'Saya belum paham kontrak; SOP juga belum diperbarui dan tools lambat.' }).expect(200);
     await request(app).post(`/api/tna/sessions/${sessionId}/complete`).set(as('dimas')).expect(202);
-    // PK-14: analisis berjalan di latar dan hasilnya draf sampai HR menyetujui
     await app.locals.analysis.drain();
-    for (const f of (await request(app).get('/api/tna/review').set(as('hr'))).body.data) {
-      await request(app).post(`/api/tna/findings/${f.id}/review`).set(as('hr')).send({ decision: 'approve' }).expect(200);
-    }
+    const queue = await request(app).get('/api/tna/review').set(as('hr'));
+    for (const f of queue.body.data) await request(app).post(`/api/tna/findings/${f.id}/review`).set(as('hr')).send({ decision: 'approve' }).expect(200);
     const nt = (who) => request(app).get('/api/tna/findings/non-training').set(as(who));
 
     expect((await nt('hr')).status).toBe(403); // flag mati = disembunyikan

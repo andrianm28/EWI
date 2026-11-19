@@ -270,8 +270,8 @@ function createLnaStores(sequelize, { cipher } = {}) {
       const rep = { tenantId, submodule };
       let sql = `SELECT s.id, s.project_id AS "projectId", s.interviewee_id AS "intervieweeId", u.name AS "intervieweeName",
                         s.status, s.mode, s.consent_at AS "consentAt", s.consent_version AS "consentVersion", s.started_at AS "startedAt", s.ended_at AS "endedAt",
-                        cardinality(s.trigger_record_ids) AS "triggerCount", s.invite_expires_at AS "inviteExpiresAt",
-                        s.invite_extended_count AS "inviteExtendedCount", j.status AS "analysisStatus"
+                        cardinality(s.trigger_record_ids) AS "triggerCount", j.status AS "analysisStatus", s.invite_expires_at AS "inviteExpiresAt",
+                        s.invite_extended_count AS "inviteExtendedCount"
                    FROM lna_interview_sessions s JOIN users u ON u.id = s.interviewee_id
                    LEFT JOIN lna_analysis_jobs j ON j.session_id = s.id
                   WHERE s.tenant_id = :tenantId AND s.submodule = :submodule`;
@@ -476,7 +476,7 @@ function createLnaStores(sequelize, { cipher } = {}) {
                    LEFT JOIN users u ON u.id = f.user_id
                    LEFT JOIN lna_performance_records pr ON pr.id = f.performance_record_id
                    LEFT JOIN lna_findings lf ON lf.id = f.linked_finding_id
-                  WHERE f.tenant_id = :tenantId AND f.category = 'non_training' AND f.review_status IN (:reviewed)`;
+                  WHERE f.tenant_id = :tenantId AND f.category = 'non_training' AND f.review_status IN ('approved', 'edited')`;
       if (userIds) sql += scopeSql('f.user_id', { userIds }, rep);
       if (projectId) { sql += ' AND f.project_id = :projectId'; rep.projectId = projectId; }
       return open(tenantId, await select(`${sql} ORDER BY f.created_at DESC`, rep), ['title', 'linkedTrainingTitle']);
@@ -665,8 +665,8 @@ function createLnaStores(sequelize, { cipher } = {}) {
       } catch (e) { await t.rollback(); throw e; }
     },
     /**
-     * Rencana training yang masih "perlu modul" (K-3: status 'new' tanpa course) dan kompetensi temuannya kini
-     * punya course aktif: isi course-nya, status tetap 'new'. Return jumlah rencana yang terisi.
+     * Rencana training yang masih perlu modul (status 'new' tanpa course, K-3) dan kompetensi temuannya kini
+     * punya course aktif: isi course-nya; status tetap 'new'. Return jumlah rencana yang terisi.
      */
     async rematchNeedsModule(tenantId, sources) {
       if (!sources.length) return 0;

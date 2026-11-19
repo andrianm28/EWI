@@ -99,12 +99,11 @@ run('PK-15 privasi dan audit (Postgres)', () => {
       const [a] = await auditRows(`resource = 'tna.interview_consent'`);
       expect(a).toMatchObject({ userId: u.ani, action: 'create', meta: { consentVersion: CONSENT, objectIds: [sessionId] } });
       await request(app).post(`/api/tna/sessions/${sessionId}/turns`).set(as('ani')).send({ text: 'Saya belum paham kontrak proyek.' }).expect(200);
+      // PK-14: penutupan 202, analisis berjalan sebagai job, temuan tampil setelah HR menyetujui
       await request(app).post(`/api/tna/sessions/${sessionId}/complete`).set(as('ani')).expect(202);
-      // PK-14: analisis berjalan di latar dan hasilnya draf sampai HR menyetujui
       await app.locals.analysis.drain();
-      for (const f of (await request(app).get('/api/tna/review').set(as('hr'))).body.data) {
-        await request(app).post(`/api/tna/findings/${f.id}/review`).set(as('hr')).send({ decision: 'approve' }).expect(200);
-      }
+      const q = await request(app).get('/api/tna/review').set(as('hr'));
+      for (const f of q.body.data) await request(app).post(`/api/tna/findings/${f.id}/review`).set(as('hr')).send({ decision: 'approve' }).expect(200);
     });
   });
 

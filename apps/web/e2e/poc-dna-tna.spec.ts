@@ -329,14 +329,6 @@ test('HR: kirim undangan masuk ke karyawan baru', async ({ page }) => {
   await expect(page.getByTestId('import-panel').getByRole('status')).toHaveText('Undangan masuk dikirim ke 12 karyawan.')
 })
 
-test('PO-6 A: HR membuka sesi wawancara tanpa melihat percakapan', async ({ page }) => {
-  await page.route('**/api/tna/sessions/s9', (r) => r.fulfill({ json: { data: { id: 's9', status: 'completed', transcriptVisible: false } } }))
-  await loginAs(page, 'hr_admin')
-  await page.goto('/m/tna/sessions/s9')
-  await expect(page.getByTestId('transcript-private')).toBeVisible()
-  await expect(page.getByTestId('turn-human')).toHaveCount(0)
-})
-
 // PK-14: review hasil AI oleh HR sebelum hasil tampil (PD-14 ★A, PM-5 ★A)
 test('HR: antrean review hasil AI, setujui, ubah, dan tolak dengan alasan', async ({ page }) => {
   const base = { projectId: 'p1', sessionId: 's1', userId: 'd', userName: 'Dimas', detail: null, competencyName: null, metricName: 'SLA respons', target: 85, actual: 70,
@@ -390,4 +382,12 @@ test('Karyawan tidak bisa membuka antrean review', async ({ page }) => {
   await loginAs(page, 'learner')
   await page.goto('/m/tna/review')
   await expect(page).toHaveURL(/\/$/)
+})
+
+test('PO-6 A: HR membuka sesi wawancara tanpa melihat percakapan', async ({ page }) => {
+  await page.route('**/api/tna/sessions/s9', (r) => r.fulfill({ json: { data: { id: 's9', status: 'completed', transcriptVisible: false } } }))
+  await loginAs(page, 'hr_admin')
+  await page.goto('/m/tna/sessions/s9')
+  await expect(page.getByTestId('transcript-private')).toBeVisible()
+  await expect(page.getByTestId('turn-human')).toHaveCount(0)
 })
