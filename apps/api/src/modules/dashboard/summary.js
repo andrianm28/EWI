@@ -16,16 +16,19 @@ function markHot(rows) {
   });
 }
 
-/** Median dalam hari penuh (dibulatkan ke atas); null bila kosong. */
+/** Median selisih (hari pecahan), lalu dibulatkan ke atas ke hari penuh; null bila kosong. */
 function median(values) {
   const v = values.filter((x) => Number.isFinite(x)).sort((a, b) => a - b);
   if (!v.length) return null;
   const mid = Math.floor(v.length / 2);
-  return Math.ceil(v.length % 2 ? v[mid] : (v[mid - 1] + v[mid]) / 2);
+  const m = v.length % 2 ? v[mid] : (v[mid - 1] + v[mid]) / 2;
+  // Dibulatkan ke 0,01 hari (±15 menit) dulu supaya selisih detik antar-cap waktu tidak menaikkan satu hari penuh
+  return Math.ceil(Math.round(m * 100) / 100);
 }
 
 /**
  * Kesepakatan AI–HR (PM-2 D, angka pemantauan): bagian temuan AI yang disetujui HR tanpa diubah.
+ * counts berasal dari stores.tna.aiReviewCounts: hanya temuan hasil job analisis yang diputus orang.
  * counts: { draft, approved, edited, rejected }
  */
 function agreement(counts) {
@@ -34,4 +37,18 @@ function agreement(counts) {
   return { percent: reviewed ? Math.round((approved / reviewed) * 100) : null, approved, reviewed, targetPercent: AGREEMENT_TARGET_PERCENT };
 }
 
-module.exports = { markHot, median, agreement, AGREEMENT_TARGET_PERCENT, ANALYSIS_TARGET_DAYS, PARETO_LIMIT };
+/**
+ * Target kinerja yang belum tercapai pada periode terbaru tiap metrik per karyawan. Periode lama tidak dihitung,
+ * supaya angka tidak terus bertambah. Periode dibandingkan sebagai teks (format impor: '2026-11', '2026-Q4').
+ */
+function latestUnmet(records) {
+  const latest = new Map();
+  for (const r of records) {
+    const key = `${r.userId}|${r.metricType}|${String(r.name).trim().toLowerCase()}`;
+    const cur = latest.get(key);
+    if (!cur || String(r.period || '') > String(cur.period || '')) latest.set(key, r);
+  }
+  return [...latest.values()].filter((r) => r.isMet === false).length;
+}
+
+module.exports = { markHot, median, agreement, latestUnmet, AGREEMENT_TARGET_PERCENT, ANALYSIS_TARGET_DAYS, PARETO_LIMIT };

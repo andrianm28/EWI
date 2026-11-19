@@ -3,7 +3,7 @@ const request = require('supertest');
 const { createApp } = require('../../src/app');
 const { createTokenService } = require('../../src/core/auth/tokens');
 const { memoryAuditStore } = require('../../src/core/audit');
-const { markHot, median, agreement } = require('../../src/modules/dashboard/summary');
+const { markHot, median, agreement, latestUnmet } = require('../../src/modules/dashboard/summary');
 const { makeConfig, makeStores } = require('../helpers');
 
 const T = 't-1';
@@ -55,6 +55,7 @@ function fakeStores({ flags = ALL_ON, entitlements = ['dna', 'tna'], grant = fal
             { id: 's1', intervieweeId: 'u-a', status: 'completed' },
             { id: 's2', intervieweeId: 'u-b', status: 'scheduled' },
             { id: 's3', intervieweeId: 'u-c', status: 'in_progress' },
+            { id: 's4', intervieweeId: 'u-gone', status: 'scheduled' },
           ], 'intervieweeId');
         },
       },
@@ -62,10 +63,28 @@ function fakeStores({ flags = ALL_ON, entitlements = ['dna', 'tna'], grant = fal
         listFindings: async (tenantId, scope, { categories }) => { note('tna.listFindings', tenantId, scope); return pick(scope, findings, 'userId').filter((f) => categories.includes(f.category)); },
         listPerformance: async (tenantId, scope) => {
           note('tna.listPerformance', tenantId, scope);
-          return pick(scope, [{ userId: 'u-a', isMet: false }, { userId: 'u-a', isMet: true }, { userId: 'u-c', isMet: false }, { userId: 'u-c', isMet: null }], 'userId');
+          return pick(scope, [
+            // u-a: SLA periode lama meleset, periode terbaru tercapai (tidak dihitung); KPI lain meleset
+            { userId: 'u-a', metricType: 'sla', name: 'Respons', period: '2026-10', isMet: false },
+            { userId: 'u-a', metricType: 'sla', name: 'Respons', period: '2026-11', isMet: true },
+            { userId: 'u-a', metricType: 'kpi', name: 'Tiket', period: '2026-11', isMet: false },
+            { userId: 'u-c', metricType: 'kpi', name: 'Tiket', period: '2026-11', isMet: false },
+            { userId: 'u-c', metricType: 'kpi', name: 'Lain', period: '2026-11', isMet: null },
+            // orang yang tidak aktif (tidak ada di people.list) tidak ikut dihitung
+            { userId: 'u-gone', metricType: 'kpi', name: 'Tiket', period: '2026-11', isMet: false },
+          ], 'userId');
         },
-        listPlanItems: async (tenantId, scope) => { note('tna.listPlanItems', tenantId, scope); return pick(scope, [{ userId: 'u-a', needsModule: true }, { userId: 'u-b', needsModule: false }], 'userId'); },
-        reviewCounts: async (tenantId) => { note('tna.reviewCounts', tenantId); return { draft: 4, approved: 22, edited: 2, rejected: 1 }; },
+        listPlanItems: async (tenantId, scope) => {
+          note('tna.listPlanItems', tenantId, scope);
+          return pick(scope, [
+            { userId: 'u-a', needsModule: true, status: 'new' },
+            { userId: 'u-c', needsModule: true, status: 'rejected' },
+            { userId: 'u-c', needsModule: true, status: 'completed' },
+            { userId: 'u-b', needsModule: false, status: 'new' },
+          ], 'userId');
+        },
+        reviewCounts: async (tenantId) => { note('tna.reviewCounts', tenantId); return { draft: 4, approved: 30, edited: 2, rejected: 1 }; },
+        aiReviewCounts: async (tenantId) => { note('tna.aiReviewCounts', tenantId); return { draft: 4, approved: 22, edited: 2, rejected: 1 }; },
         analysisDurations: async (tenantId, scope) => { note('tna.analysisDurations', tenantId, scope); return pick(scope, [{ userId: 'u-a', days: 10.2 }, { userId: 'u-c', days: 3 }], 'userId'); },
         hasNonTrainingGrant: async (tenantId, userId) => { note('tna.hasNonTrainingGrant', tenantId, { userIds: [userId] }); return grant; },
         listNonTrainingSummary: async (tenantId, { userIds } = {}) => {
@@ -103,6 +122,7 @@ describe('GET /api/dashboard', () => {
   });
 
   it('HR: seluruh bagian terisi dari data tenant', async () => {
+    // Catatan angka: dianalisis = punya penilaian DNA atau temuan TNA yang sudah ditinjau (u-a, u-b, u-c).
     const { get } = setup({ flags: { ...ALL_ON, 'tna.non_training_hr': true } });
     const res = await get('u-hr', 'hr_admin');
     expect(res.status).toBe(200);
@@ -110,9 +130,9 @@ describe('GET /api/dashboard', () => {
     expect(d.scope).toBe('all');
     expect(d.people).toBe(4);
     expect(d.kpis).toEqual({
-      employeesAnalyzed: 2, // u-a (penilaian DNA + sesi selesai), u-c (penilaian DNA)
+      employeesAnalyzed: 3, // u-a, u-c (penilaian DNA), u-b (temuan ditinjau)
       competencyGaps: 2, // c1 (u-a) dan c2 (u-c)
-      okrGaps: 2,
+      okrGaps: 2, // periode terbaru saja: u-a Tiket, u-c Tiket
       aiHrAgreement: { percent: 88, approved: 22, reviewed: 25, targetPercent: 85 },
       analysisDays: { median: 7, sessions: 2, targetDays: 14 },
     });
@@ -122,8 +142,8 @@ describe('GET /api/dashboard', () => {
     expect(d.pareto.hotCount).toBe(1);
     expect(d.actions).toEqual([
       { key: 'review_pending', count: 4 },
-      { key: 'interviews_open', count: 2 },
-      { key: 'plan_needs_module', count: 1 },
+      { key: 'interviews_open', count: 2 }, // u-gone tidak aktif, tidak dihitung
+      { key: 'plan_needs_module', count: 1 }, // butir rejected/completed tidak dihitung
       { key: 'non_training_findings', count: 2 },
       { key: 'competencies_unapproved', count: 1 },
     ]);
@@ -143,18 +163,18 @@ describe('GET /api/dashboard', () => {
     const d = res.body.data;
     expect(d.scope).toBe('team');
     expect(d.people).toBe(2);
-    expect(d.kpis).toEqual({
-      employeesAnalyzed: 1, competencyGaps: 1, okrGaps: 1, aiHrAgreement: null,
-      analysisDays: { median: 11, sessions: 1, targetDays: 14 },
-    });
+    // Tanpa angka yang bergantung pada draf: kesepakatan AI–HR dan lama analisis hanya untuk HR
+    expect(d.kpis).toEqual({ employeesAnalyzed: 2, competencyGaps: 1, okrGaps: 1, aiHrAgreement: null, analysisDays: null });
     expect(d.pareto.rows).toHaveLength(1);
     expect(d.pareto.rows[0]).toMatchObject({ label: 'Root Cause Analysis', people: 2 });
-    expect(d.actions).toEqual([{ key: 'interviews_open', count: 1 }, { key: 'plan_needs_module', count: 1 }].filter((a) => a.key === 'interviews_open'));
+    expect(d.actions).toEqual([{ key: 'interviews_open', count: 1 }]);
     // Setiap pembacaan data karyawan memakai cakupan tim: bukan dirinya, bukan orang di luar tim
     const scoped = calls.filter((c) => c.scope && c.name !== 'tna.hasNonTrainingGrant');
     expect(scoped.length).toBeGreaterThan(0);
     for (const c of scoped) expect([...c.scope.userIds].sort()).toEqual(['u-a', 'u-b']);
-    expect(calls.map((c) => c.name)).not.toContain('tna.reviewCounts');
+    for (const name of ['tna.reviewCounts', 'tna.aiReviewCounts', 'tna.analysisDurations', 'tna.listPlanItems']) {
+      expect(calls.map((c) => c.name)).not.toContain(name);
+    }
     expect(calls.map((c) => c.name)).not.toContain('dna.listCompetencies');
     expect(calls.map((c) => c.name)).not.toContain('tna.listNonTrainingSummary');
   });
@@ -176,7 +196,7 @@ describe('GET /api/dashboard', () => {
     const res = await setup().get('u-a', 'supervisor');
     expect(res.status).toBe(200);
     expect(res.body.data).toMatchObject({ scope: 'team', people: 0, actions: [], pareto: { rows: [], total: 0, hotCount: 0 } });
-    expect(res.body.data.kpis).toMatchObject({ employeesAnalyzed: 0, competencyGaps: 0, okrGaps: 0, analysisDays: null });
+    expect(res.body.data.kpis).toMatchObject({ employeesAnalyzed: 0, competencyGaps: 0, okrGaps: 0, analysisDays: null, aiHrAgreement: null });
   });
 
   it('bagian modul yang tertutup bernilai null dan datanya tidak dibaca', async () => {
@@ -190,7 +210,7 @@ describe('GET /api/dashboard', () => {
     // Flag menyala tetapi tenant tidak berlangganan DNA: tetap tertutup
     const dnaOff = setup({ entitlements: ['tna'] });
     d = (await dnaOff.get('u-hr', 'hr_admin')).body.data;
-    expect(d.kpis).toMatchObject({ competencyGaps: null, employeesAnalyzed: 1, okrGaps: 2 });
+    expect(d.kpis).toMatchObject({ competencyGaps: null, employeesAnalyzed: 3, okrGaps: 2 });
     expect(dnaOff.calls.filter((c) => c.name.startsWith('dna.'))).toEqual([]);
 
     const bothOff = setup({ flags: { 'dashboard.main': true }, entitlements: [] });
@@ -208,13 +228,31 @@ describe('GET /api/dashboard', () => {
     expect(spv.map((m) => m.key)).toEqual(['lna', 'lim', 'cp']);
   });
 
-  it('mencatat audit baca dengan id karyawan dalam cakupan', async () => {
+  it('audit atasan: baca data individu dengan id bawahannya', async () => {
     const { get, audit } = setup();
     await get('u-spv', 'supervisor');
     const row = audit.rows.find((r) => r.resource === 'dashboard.summary');
     expect(row).toBeTruthy();
     expect(row.action).toBe('read');
     expect([...row.meta.employeeIds].sort()).toEqual(['u-a', 'u-b']);
+  });
+
+  it('audit HR: dicatat ringkas tanpa daftar id karyawan', async () => {
+    const { get, audit } = setup();
+    await get('u-hr', 'hr_admin');
+    const row = audit.rows.find((r) => r.resource === 'dashboard.summary');
+    expect(row.meta).toMatchObject({ scope: 'all', people: 4 });
+    expect(row.meta.employeeIds).toBeUndefined();
+  });
+
+  it('audit gagal: dashboard gagal (gagal-tertutup)', async () => {
+    const fake = fakeStores();
+    const config = makeConfig();
+    const app = createApp({ config, stores: { ...fake.stores, audit: { async insert() { throw new Error('audit mati'); } } } });
+    const tokens = createTokenService(config.jwt);
+    const res = await request(app).get('/api/dashboard').set({ Authorization: `Bearer ${tokens.sign({ id: 'u-spv', tenantId: T, role: 'supervisor', email: 's@elgos.test' })}` });
+    expect(res.status).toBe(500);
+    expect(res.body.data).toBeUndefined();
   });
 
   it('semua pembacaan memakai tenant dari token', async () => {
@@ -244,6 +282,18 @@ describe('fungsi ringkasan dashboard', () => {
     expect(median([1, 9, 2])).toBe(2);
     expect(median([1, 2, 4, 9])).toBe(3);
     expect(median([0.1, 0.2])).toBe(1);
+    expect(median([3.000004])).toBe(3);
+  });
+
+  it('latestUnmet: hanya periode terbaru per karyawan dan metrik', () => {
+    expect(latestUnmet([])).toBe(0);
+    expect(latestUnmet([
+      { userId: 'a', metricType: 'kpi', name: 'X', period: '2026-10', isMet: false },
+      { userId: 'a', metricType: 'kpi', name: ' x ', period: '2026-11', isMet: true },
+      { userId: 'b', metricType: 'kpi', name: 'X', period: '2026-11', isMet: false },
+      { userId: 'b', metricType: 'sla', name: 'X', period: '2026-09', isMet: false },
+      { userId: 'c', metricType: 'kpi', name: 'X', period: '2026-11', isMet: null },
+    ])).toBe(2);
   });
 
   it('agreement: persen temuan yang disetujui tanpa diubah; null bila belum ada yang ditinjau', () => {

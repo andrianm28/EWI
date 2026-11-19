@@ -537,6 +537,36 @@ function createLnaStores(sequelize, { cipher } = {}) {
       return out;
     },
     /**
+     * B3: jumlah temuan hasil job analisis AI per status review. Yang sudah diputus hanya dihitung bila diputus
+     * orang (reviewed_by terisi), supaya temuan lama yang ditandai massal oleh migrasi 20261117000400 tidak ikut.
+     */
+    async aiReviewCounts(tenantId) {
+      const rows = await select(`SELECT review_status AS "reviewStatus", count(*)::int AS n FROM lna_findings
+                                  WHERE tenant_id = :tenantId AND analysis_job_id IS NOT NULL
+                                    AND (review_status = 'draft' OR reviewed_by IS NOT NULL)
+                                  GROUP BY review_status`, { tenantId });
+      const out = { draft: 0, approved: 0, edited: 0, rejected: 0 };
+      for (const r of rows) out[r.reviewStatus] = r.n;
+      return out;
+    },
+    /**
+     * B3: lama analisis per sesi TNA dalam hari (pecahan): dari wawancara selesai sampai temuan AI terakhirnya
+     * diputus HR. Hanya sesi yang seluruh temuan AI-nya sudah diputus orang. Sesi yang dihapus (session_id NULL
+     * pada temuan) tidak ikut.
+     */
+    async analysisDurations(tenantId, scope) {
+      const rep = { tenantId };
+      const sql = `SELECT s.id AS "sessionId", s.interviewee_id AS "userId",
+                          (EXTRACT(EPOCH FROM (max(f.reviewed_at) - s.ended_at)) / 86400.0)::float AS days
+                     FROM lna_interview_sessions s
+                     JOIN lna_findings f ON f.session_id = s.id AND f.tenant_id = s.tenant_id
+                    WHERE s.tenant_id = :tenantId AND s.submodule = 'tna' AND s.ended_at IS NOT NULL
+                      AND f.analysis_job_id IS NOT NULL${scopeSql('s.interviewee_id', scope, rep)}
+                    GROUP BY s.id, s.interviewee_id, s.ended_at
+                   HAVING bool_and(f.review_status <> 'draft' AND f.reviewed_by IS NOT NULL)`;
+      return select(sql, rep);
+    },
+    /**
      * Putusan review satu temuan (PD-14 ★A). Hanya temuan draf; dua pe-review bersamaan tidak saling timpa
      * (yang kedua mendapat null). 'edited' menyimpan versi asli AI untuk pemantauan akurasi (PM-2).
      */

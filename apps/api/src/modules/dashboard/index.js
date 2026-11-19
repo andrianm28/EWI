@@ -3,15 +3,15 @@
 // Bukan submodul: merangkum beberapa modul, jadi dipasang di balik flag dashboard.main dan tiap bagian hanya diisi
 // bila modul sumbernya terbuka untuk tenant (entitlement + flag, aturan yang sama dengan requireSubmodule).
 // Cakupan data: HR seluruh tenant, atasan bawahan langsungnya (visibleEmployeeScope, RG-3).
-// Yang hanya untuk HR: kesepakatan AI–HR dan antrean tinjauan (peran lain tidak boleh tahu ada draf, PM-5).
+// Yang hanya untuk HR: kesepakatan AI–HR, lama analisis, dan antrean tinjauan. Atasan tidak menerima angka apa pun
+// yang bergantung pada temuan draf, sehingga tidak bisa menyimpulkan ada draf (PM-5).
 const express = require('express');
 const { requireRole, ROLES } = require('../../core/rbac');
 const { scopeFor } = require('../../core/rbac/scope');
 const { FLAGS } = require('../../core/flags');
 const { computeGap } = require('../dna/gap');
-const { evaluate } = require('../tna/performance');
-const { rankTrainingNeeds } = require('../tna/pareto');
-const { markHot, median, agreement, ANALYSIS_TARGET_DAYS, PARETO_LIMIT } = require('./summary');
+const { rankFindings } = require('../tna/pareto');
+const { markHot, median, agreement, latestUnmet, ANALYSIS_TARGET_DAYS, PARETO_LIMIT } = require('./summary');
 
 const wrap = (fn) => (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
 const EMPLOYEE_ROLES = [ROLES.LEARNER, ROLES.SUPERVISOR, ROLES.ROLE_LEADER, ROLES.SME];
@@ -23,6 +23,8 @@ const MODULE_FLAGS = [
   { no: 4, key: 'lim', flag: 'module.lim' },
   { no: 5, key: 'cp', flag: FLAGS.PROMOTION_RECOMMENDATION },
 ];
+const OPEN_SESSION = ['scheduled', 'in_progress'];
+const CLOSED_PLAN = ['completed', 'rejected'];
 const TEAM_MODULES = ['lna', 'lim', 'cp']; // modul yang ada di menu tampilan Atasan
 
 /** Kompetensi berbeda yang minimal satu karyawan dalam cakupan punya gap terhadap jabatannya. */
@@ -34,6 +36,7 @@ async function competencyGapCount(stores, tenantId, people, assessments) {
     const key = `${p.jobRoleId}|${p.careerLevelId}`;
     if (!cache.has(key)) cache.set(key, await stores.dna.competenciesForPosition(tenantId, p));
     const { items } = computeGap({ competencies: cache.get(key), assessments: assessments.filter((a) => a.userId === p.id) });
+    // Hanya gap yang terukur; kompetensi yang belum dinilai (not_assessed) bukan gap
     for (const i of items) if (i.status === 'gap') gapped.add(i.competencyId);
   }
   return gapped.size;
@@ -55,8 +58,10 @@ function dashboardRouter({ stores, flags, entitlements, settings, audit }) {
     const dnaOn = open('dna');
     const tnaOn = open('tna');
 
-    const people = (await stores.people.list(tenantId, scope, { roles: EMPLOYEE_ROLES }));
+    // Penyebut semua angka: karyawan aktif dalam cakupan. Data orang di luar daftar ini tidak ikut dihitung.
+    const people = await stores.people.list(tenantId, scope, { roles: EMPLOYEE_ROLES });
     const ids = people.map((p) => p.id);
+    const inScope = new Set(ids);
     const analyzed = new Set();
     const kpis = { employeesAnalyzed: null, competencyGaps: null, okrGaps: null, aiHrAgreement: null, analysisDays: null };
     const actions = [];
@@ -72,24 +77,20 @@ function dashboardRouter({ stores, flags, entitlements, settings, audit }) {
     }
 
     if (tnaOn) {
-      const [sessions, findings, plan, perf, durations, conf] = await Promise.all([
+      const [sessions, findings, perf, conf] = await Promise.all([
         stores.interviews.list(tenantId, 'tna', scope),
+        // listFindings hanya mengembalikan temuan yang sudah ditinjau HR (PK-14)
         stores.tna.listFindings(tenantId, scope, { categories: ['training'] }),
-        stores.tna.listPlanItems(tenantId, scope),
         stores.tna.listPerformance(tenantId, scope, {}),
-        stores.tna.analysisDurations(tenantId, scope),
         settings.get(tenantId),
       ]);
-      for (const s of sessions) if (s.status === 'completed') analyzed.add(s.intervieweeId);
-      kpis.okrGaps = perf.filter((p) => p.isMet === false).length;
-      kpis.analysisDays = durations.length
-        ? { median: median(durations.map((d) => Number(d.days))), sessions: durations.length, targetDays: ANALYSIS_TARGET_DAYS }
-        : null;
+      // "Dianalisis" di sisi TNA = punya temuan yang sudah ditinjau. Sesi selesai yang temuannya masih draf
+      // tidak dihitung (PM-5), jadi angka ini tidak membocorkan adanya draf.
+      for (const f of findings) analyzed.add(f.userId);
+      kpis.okrGaps = latestUnmet(perf.filter((p) => inScope.has(p.userId)));
 
-      const ranked = rankTrainingNeeds(findings.map((f) => ({
-        ...f, missRatio: f.target != null ? evaluate({ target: f.target, actual: f.actual, direction: f.direction, tolerance: f.tolerance }).missRatio : null,
-      })), conf.tna.pareto);
-      const marked = markHot(ranked);
+      // total dan hotCount dihitung dari seluruh peringkat; rows dipotong ke PARETO_LIMIT teratas
+      const marked = markHot(rankFindings(findings.filter((f) => inScope.has(f.userId)), conf.tna.pareto));
       pareto = {
         rows: marked.slice(0, PARETO_LIMIT).map(({ key, label, people: n, score, share, cumulativeShare, hot }) => ({ key, label, people: n, score, share, cumulativeShare, hot })),
         total: marked.length,
@@ -97,18 +98,31 @@ function dashboardRouter({ stores, flags, entitlements, settings, audit }) {
       };
 
       if (isHr) {
-        const counts = await stores.tna.reviewCounts(tenantId, {});
-        kpis.aiHrAgreement = agreement(counts);
+        const [counts, aiCounts, durations, plan] = await Promise.all([
+          stores.tna.reviewCounts(tenantId, {}),
+          stores.tna.aiReviewCounts(tenantId),
+          stores.tna.analysisDurations(tenantId, scope),
+          stores.tna.listPlanItems(tenantId, scope),
+        ]);
+        kpis.aiHrAgreement = agreement(aiCounts);
+        kpis.analysisDays = durations.length
+          ? { median: median(durations.map((d) => Number(d.days))), sessions: durations.length, targetDays: ANALYSIS_TARGET_DAYS }
+          : null;
         add('review_pending', counts.draft);
+        add('interviews_open', sessions.filter((s) => OPEN_SESSION.includes(s.status) && inScope.has(s.intervieweeId)).length);
+        add('plan_needs_module', plan.filter((p) => p.needsModule && !CLOSED_PLAN.includes(p.status)).length);
+      } else {
+        add('interviews_open', sessions.filter((s) => OPEN_SESSION.includes(s.status) && inScope.has(s.intervieweeId)).length);
       }
-      add('interviews_open', sessions.filter((s) => ['scheduled', 'in_progress'].includes(s.status)).length);
-      if (isHr) add('plan_needs_module', plan.filter((p) => p.needsModule).length);
 
       // K1 / PM-6: temuan non-pelatihan untuk HR; atasan hanya bila HR memberinya akses. Tanpa akses butirnya
       // tidak dikirim sama sekali, sehingga atasan tidak bisa menyimpulkan ada temuan.
       if (allFlags[FLAGS.TNA_NON_TRAINING_HR] === true) {
         const allowed = isHr || (await stores.tna.hasNonTrainingGrant(tenantId, req.user.id));
-        if (allowed) add('non_training_findings', (await stores.tna.listNonTrainingSummary(tenantId, isHr ? {} : { userIds: scope.userIds })).length);
+        if (allowed) {
+          const rows = await stores.tna.listNonTrainingSummary(tenantId, isHr ? {} : { userIds: scope.userIds });
+          add('non_training_findings', rows.filter((f) => inScope.has(f.userId)).length);
+        }
       }
     }
     if (dnaOn && isHr) add('competencies_unapproved', unapproved);
@@ -120,8 +134,10 @@ function dashboardRouter({ stores, flags, entitlements, settings, audit }) {
       ...MODULE_FLAGS.map(({ no, key, flag }) => ({ no, key, active: allFlags[flag] === true })),
     ].filter((m) => isHr || TEAM_MODULES.includes(m.key));
 
-    // Agregat tim kecil bisa menunjuk orang, jadi dicatat sebagai baca data individu (R2-2, gagal-tertutup)
-    await audit.readIndividual(req, 'dashboard.summary', { employeeIds: ids });
+    // Audit (R2-2, gagal-tertutup). Agregat tim kecil bisa menunjuk orang, jadi untuk atasan dicatat sebagai baca
+    // data individu dengan id bawahannya. Agregat seluruh tenant untuk HR dicatat ringkas tanpa daftar id.
+    if (isHr) await audit.record(req, 'read', 'dashboard.summary', { scope: 'all', people: people.length });
+    else await audit.readIndividual(req, 'dashboard.summary', { employeeIds: ids });
 
     res.json({ data: { scope: scope.all ? 'all' : 'team', people: people.length, kpis, modules, pareto, actions } });
   }));
