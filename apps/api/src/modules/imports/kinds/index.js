@@ -11,6 +11,8 @@ const KINDS = [
   // PK-18: ditambahkan di akhir agar nomor template 1-6 yang sudah dibagikan ke HR tidak bergeser
   require('./catalog-courses'),
   require('./catalog-completions'),
+  // B13: library modul KSA (DACUM Tool 2), nomor template 9
+  require('./li-modules'),
 ];
 const byKey = new Map(KINDS.map((k) => [k.key, k]));
 module.exports = { KINDS, getKind: (key) => byKey.get(key) || null };
