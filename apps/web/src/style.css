@@ -124,6 +124,7 @@
   --color-on-primary-container: var(--el-on-primary-container);
   --color-secondary-container: var(--el-secondary-container);
   --color-on-secondary-container: var(--el-on-secondary-container);
+  --color-tertiary: var(--el-tertiary);
   --color-tertiary-container: var(--el-tertiary-container);
   --color-on-tertiary-container: var(--el-on-tertiary-container);
   --color-surface: var(--el-surface);

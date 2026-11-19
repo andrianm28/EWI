@@ -107,7 +107,7 @@ Mockup punya lima tampilan. Kuncinya dipakai di seluruh web app:
 - Aturan K2 (default brief): HR, Atasan, dan Admin Tenant juga karyawan; Admin Tenant juga HR. Jadi tampilan yang tersedia: `hr` → [hr, karyawan]; `atasan` → [atasan, karyawan]; `admin` → [admin, hr, karyawan]; `karyawan` → [karyawan]; `super` → [super]. Di pemilih tampilan, tampilan karyawan milik akun multi-peran berlabel "Karyawan (saya)" seperti di mockup.
 - `[⚠️ BELUM TERVERIFIKASI]` Kontrak dengan B2: bila `/auth/login` atau `/auth/me` mengembalikan `user.roles: string[]`, tampilan dihitung dari gabungan semua peran itu. Bila hanya `user.role`, dipakai satu peran. Peran yang tidak dikenal dipetakan ke `karyawan` (hak paling sempit).
 - **Ganti tampilan sebelum B2 dan B8 selesai.** Tampilan tambahan hanya ditawarkan bila rute berandanya sudah terdaftar (untuk `karyawan`: rute `my`, Hasil saya, B8). Alasannya: halaman lama menentukan isi dari `user.role` dan API memberi data sesuai peran asli, jadi "tampilan karyawan" di atas halaman lama akan tetap memperlihatkan data HR. Begitu B8 memasang `my`, tombol ganti tampilan muncul sendiri.
-- Tampilan aktif disimpan di store sesi (`activeView`) dan `sessionStorage` kunci `ewi.view`. Saat nilainya tidak termasuk tampilan yang tersedia, dipakai tampilan pertama (pilihan tersimpan tidak ditimpa).
+- Tampilan aktif disimpan di store sesi (`activeView`) dan `sessionStorage` kunci `elgos.view`. Saat nilainya tidak termasuk tampilan yang tersedia, dipakai tampilan pertama (pilihan tersimpan tidak ditimpa).
 - Bila profil belum termuat (`/auth/me` gagal setelah muat ulang), tampilan jatuh ke `karyawan` (menu paling sempit) dan pil identitas tidak tampil. Ini sama dengan perilaku halaman lama yang memperlakukan peran kosong sebagai bukan HR.
 - `eta_admin` dipetakan ke `super`. Di halaman lama ia setara HR, jadi sampai layar Tenant (B12) terpasang ia tetap mendapat butir peralihan Developmental Needs dan Training Needs.
 - Ganti tampilan **hanya mengubah menu dan rute yang boleh dibuka di UI**. Otorisasi data tetap di API (`visibleEmployeeScope()`, peran di JWT). Shell tidak pernah menjadi satu-satunya penjaga data.
@@ -148,13 +148,13 @@ Butir peralihan (tidak ada di mockup, hilang sendiri begitu penggantinya terpasa
 Aturan tampil satu butir, dievaluasi berurutan:
 
 1. tampilan aktif termasuk `views` butir;
-2. **rute bernama `key` sudah terdaftar di router dan gerbang `meta`-nya (`flag`, `submodule`, `roles`) lolos** (`routeOpen`). Layar yang belum dibangun tidak punya rute, jadi tidak muncul di menu; butir yang tampil tidak pernah memantul ke beranda saat diklik. Tidak ada halaman kosong "segera hadir" di produksi;
+2. **rute bernama `key` sudah terdaftar di router, `meta.views`-nya memuat tampilan aktif, dan gerbang `meta`-nya (`flag`, `submodule`, `roles`) lolos** (`routeOpen(name, view)`). Layar yang belum dibangun tidak punya rute, jadi tidak muncul di menu; butir yang tampil tidak pernah memantul ke beranda saat diklik. Tidak ada halaman kosong "segera hadir" di produksi;
 3. bila ada `flag`, `access.flags[flag] === true`; bila ada `submodule`, `session.canOpen(submodule)`;
 4. bila `transitional`, layar beranda tampilan aktif belum bisa dibuka, yaitu `homeFor(view) === 'home'`: rutenya belum terdaftar **atau** gerbangnya (misalnya flag default mati) belum lolos.
 
 Satu ukuran "beranda tampilan sudah bisa dibuka" (`session.homeReady(view)`, dari `homeFor`) dipakai di tiga tempat: penjaga rute, butir peralihan, dan daftar tampilan tambahan (5.1). Dengan itu paket beranda yang rutenya di balik flag mati tidak mengubah apa pun: pengguna tetap di Beranda, butir peralihan bertahan, dan tampilan tambahan tidak ditawarkan.
 
-Grup accordion (`lna`, `li`) tampil bila minimal satu anaknya tampil. Keadaan buka-tutup disimpan di state tingkat modul (`openGroups` di `menu.ts`, default terbuka) supaya bertahan saat pindah halaman; tidak di storage. Klik grup hanya membuka atau menutup. Di mockup, klik grup Learning Intervention juga pindah ke Library; itu **ditolak** karena tombol yang sekaligus membuka dan menavigasi membingungkan pembaca layar (`aria-expanded` pada tautan). Butir aktif: rute sekarang atau `meta.menuKey` rute sekarang (untuk layar anak seperti detail gap yang menyalakan butir `tna`).
+Grup accordion (`lna`, `li`) tampil bila minimal satu anaknya tampil. Keadaan buka-tutup disimpan di state tingkat modul (`openGroups` di `menu.ts`, default terbuka) supaya bertahan saat pindah halaman; tidak di storage. Klik grup hanya membuka atau menutup. Di mockup, klik grup Learning Intervention juga pindah ke Library; itu **ditolak** karena tombol yang sekaligus membuka dan menavigasi membingungkan pembaca layar (`aria-expanded` pada tautan). Butir aktif: rute sekarang atau `meta.menuKey` rute sekarang (untuk layar anak seperti detail gap yang menyalakan butir `tna`). Khusus rute lama `interview` (`/m/:key/sessions/:id`), butir yang menyala adalah submodul dari param `key`.
 
 Nama flag `module.li`, `module.ld`, `module.lim` belum ada di `src/core/flags`; dibuat oleh paket B13, B14, B15. Selama flag belum ada, `access.flags[...]` tidak `true` dan butirnya tidak tampil. Itu perilaku yang diinginkan.
 
@@ -296,7 +296,7 @@ Gerbang: `npm run lint`, `npm test` (API tidak berubah), `npm run build`, `npm r
 - [x] `apps/web/src/ui/index.ts`
 - [x] `apps/web/src/shell/views.ts` (tampilan dan pemetaan peran), `menu.ts` (daftar menu + aturan tampil), `theme.ts`
 - [x] `apps/web/src/components/AppShell.vue` (ditulis ulang), `AppDrawer.vue`, `AppTopBar.vue`
-- [x] `apps/web/src/stores/session.ts`: `roles`, `views`, `activeView`, `setView`, `bindRoutes`; `SessionUser.roles?`, `tenantName?`
+- [x] `apps/web/src/stores/session.ts`: `roles`, `views`, `activeView`, `setView`, `homeReady`, `bindRoutes`; `SessionUser.roles?`, `tenantName?`
 - [x] `apps/web/src/router/index.ts`: glob `screens/*/routes.ts`, penjaga `views`/`flag`/`submodule`, `homeFor`, `assertUnique`, judul tab
 - [x] `apps/web/src/screens/legacy-{dna,tna,interview,cca,ina}/routes.ts` (rute lama dipecah)
 - [x] `apps/web/src/screens/ui-kit/routes.ts`, `UiKitView.vue`, `test-routes.ts`, `TestScreen.vue` (hanya `VITE_UI_KIT=1`)
@@ -372,4 +372,25 @@ Tidak ada temuan berat; 5 sedang, 8 ringan, ditambah catatan e2e dan build uji. 
 | e2e | Celah: `roles`, tampilan tersimpan tak valid, `tna-review` | **Perbaiki**: test ditambah. Celah lain (`/auth/me` gagal, multi-peran admin, tema mengikuti sistem) **ditunda**, dicatat di PR |
 | drift | Props wajib dan tambahan komponen tidak ada di tabel bagian 4 | **Perbaiki**: catatan di bawah |
 
-Drift bagian 4 yang dikoreksi: `UiTabs` wajib `id` dan `label`; `UiStepper` wajib `label`; `UiDataTable` punya `captionHidden` dan `Column.sortValue`; `UiProgressBar` punya `tone`; `UiErrorSummary` mengekspos `focus()`. Sumber kebenaran props adalah halaman `/ui-kit` dan tipe di `src/ui/`.
+Drift bagian 4 yang dikoreksi: `UiTabs` wajib `id` dan `label`; `UiStepper` wajib `label`; `UiDataTable` punya `captionHidden` dan `Column.sortValue`; `UiProgressBar` punya `tone`; `UiStatus` punya `icon` opsional; `UiErrorSummary` mengekspos `focus()`. Sumber kebenaran props adalah halaman `/ui-kit` dan tipe di `src/ui/`.
+
+### Code review dua sumbu (`mattpocock-skills:code-review`, 19 Nov)
+
+Dijalankan setelah review diff, terhadap `2048e21...HEAD`, dengan dua subagent terpisah: Standar (CLAUDE.md, `docs/agents/domain.md`, baseline smell Fowler) dan Spek (dokumen ini). Tidak ada temuan berat.
+
+| Sumbu | Temuan | Keputusan |
+| --- | --- | --- |
+| Standar | CLAUDE.md aturan 7: reviewer Andrian untuk router, store sesi, shell | **Sudah**: reviewer dan penerima tugas Andrian di PR |
+| Standar | CLAUDE.md aturan 3: shell baru tanpa flag | **Tolak**: B0 fondasi untuk semua layar paket (brief bangun penuh), bukan fitur pengguna. Shell ganda di balik flag menggandakan perawatan dan test; perilaku halaman lama tidak berubah. Tercatat di PR untuk keputusan Andrian |
+| Standar | Kunci baru `ewi.view` tidak memakai nama ELGOS | **Perbaiki**: `elgos.view` (kunci lama `ewi.token` tetap) |
+| Standar | Label menu berbahasa Inggris | **Tolak**: istilah modul dari mockup final Pak Eji adalah istilah produk |
+| Standar | Smell: gerbang `isVisible` vs `routeOpen` dan `homeFor` mengulang bentuk yang sama | **Perbaiki sebagian**: `homeFor` kini memakai `routeOpen`. Syarat `flag`/`submodule` pada butir menu tetap: itu gerbang menu dari mockup, berlaku walau rute paket lupa memasang `meta` yang sama |
+| Standar | Smell: `bindRoutes` dengan `never` dan cast | **Perbaiki**: tipe `Gates` dan `HomeReadyCheck` diekspor, tanpa cast |
+| Standar | Smell: literal `'lna' \| 'li'`, peran sebagai `string`, RouterLink ganda di drawer | **Diterima** `[⏳ DITERIMA]`: kecil; peran mengikuti kontrak B2 |
+| Spek | Test `tna-review` tidak menguji jalur HR | **Perbaiki**: test HR ditambah |
+| Spek | `--color-tertiary` tidak dipetakan ke Tailwind | **Perbaiki** |
+| Spek | Menu tidak memeriksa `meta.views` rute | **Perbaiki**: `routeOpen(name, view)` + test |
+| Spek | Fokus ke tombol menu yang tersembunyi di layar lebar | **Perbaiki**: fokus dikembalikan hanya di layar sempit |
+| Spek | Aturan butir aktif rute `interview`, prop `UiStatus.icon`, `homeReady` di checklist | **Perbaiki**: dicatat di 5.2, bagian 4, dan bagian 9 |
+
+Catatan TDD (`mattpocock-skills:tdd`): skill ini baru diminta setelah implementasi awal B0 (commit `bc0577e` memuat test dan kode bersama). Perbaikan setelah review mengikuti siklus merah ke hijau per perilaku: test e2e ditulis dan dijalankan merah dulu (gerbang beranda di balik flag, `meta.roles`, scrim dan `inert`, `meta.views` pada menu), lalu kodenya. Seam yang diuji: layar lewat browser dengan API di-mock (`page.route`); tidak ada test terhadap fungsi internal router.

@@ -149,14 +149,28 @@ test('meta.roles: peran asli di luar daftar tidak mendapat butir menu dan tidak 
   await expect(page).toHaveURL(/\/$/)
 })
 
-test('tinjauan hasil AI lama: HR bisa membuka, atasan dikembalikan ke beranda', async ({ page }) => {
+test('tinjauan hasil AI lama: atasan dikembalikan ke beranda', async ({ page }) => {
   await loginAs(page, { role: 'supervisor' })
   await page.goto('/m/tna/review')
   await expect(page).toHaveURL(/\/$/)
 })
 
+test('tinjauan hasil AI lama: HR bisa membuka dan butir Training Needs menyala', async ({ page }) => {
+  await loginAs(page)
+  await page.goto('/m/tna/review')
+  await expect(page).toHaveURL(/\/m\/tna\/review$/)
+  await expect(page.getByTestId('judul-layar')).toHaveText('Tinjauan hasil AI')
+  await expect(nav(page).getByRole('link', { name: 'Training Needs' })).toHaveAttribute('aria-current', 'page')
+})
+
+test('butir menu tidak tampil untuk tampilan yang tidak diizinkan meta.views rutenya', async ({ page }) => {
+  // dash didaftarkan hanya untuk HR: atasan tidak mendapat butirnya walau menu mockup memuatnya
+  await loginAs(page, { role: 'supervisor', routes: [{ name: 'dash', views: ['hr'] }] })
+  await expect(nav(page).getByRole('link')).toHaveText(['Beranda', 'Developmental Needs', 'Training Needs'])
+})
+
 test('tampilan tersimpan yang tidak valid diabaikan', async ({ page }) => {
-  await page.addInitScript(() => sessionStorage.setItem('ewi.view', 'super'))
+  await page.addInitScript(() => sessionStorage.setItem('elgos.view', 'super'))
   await loginAs(page, { role: 'learner' })
   await expect(page.getByTestId('identitas')).toContainText('Karyawan')
 })
@@ -242,10 +256,10 @@ test.describe('layar sempit', () => {
 test('keluar kembali ke login dan menghapus tampilan tersimpan', async ({ page }) => {
   await loginAs(page, { roles: ['hr_admin'], routes: [{ name: 'my', views: ['karyawan'] }] })
   await page.getByRole('group', { name: 'Tampilan' }).getByRole('button', { name: 'Karyawan (saya)' }).click()
-  await expect.poll(() => page.evaluate(() => sessionStorage.getItem('ewi.view'))).toBe('karyawan')
+  await expect.poll(() => page.evaluate(() => sessionStorage.getItem('elgos.view'))).toBe('karyawan')
   await page.getByRole('button', { name: 'Keluar' }).click()
   await expect(page).toHaveURL(/\/login$/)
-  expect(await page.evaluate(() => [sessionStorage.getItem('ewi.view'), sessionStorage.getItem('ewi.token')])).toEqual([null, null])
+  expect(await page.evaluate(() => [sessionStorage.getItem('elgos.view'), sessionStorage.getItem('ewi.token')])).toEqual([null, null])
 })
 
 test('shell + Beranda: snapshot visual', async ({ page }) => {
