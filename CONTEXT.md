@@ -72,6 +72,10 @@ _Avoid_: pengaturan tenant (itu milik satu tenant)
 Persentase temuan AI yang disetujui HR tanpa diubah saat tinjauan; dipantau harian sebagai angka pendamping, bukan angka akurasi resmi (PM-2).
 _Avoid_: akurasi AI
 
-**Log platform**:
-Catatan kejadian yang tidak milik satu tenant, misalnya percobaan masuk ke organisasi yang tidak dikenal dan perubahan konfigurasi platform.
-_Avoid_: audit tenant (itu catatan per tenant)
+**Log audit platform**:
+Catatan tindakan Super Admin yang tidak milik satu tenant atau menyentuh tenant lain, misalnya membuat tenant, menyalakan modul tenant, dan mengubah konfigurasi platform.
+_Avoid_: log platform, audit tenant (itu catatan per tenant)
+
+**Hitungan percobaan**:
+Jumlah percobaan masuk per jam ke tenant atau akun yang tidak dikenal, tanpa identitas siapa pun.
+_Avoid_: log percobaan, log login
