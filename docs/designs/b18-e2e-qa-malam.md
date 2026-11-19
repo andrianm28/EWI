@@ -117,6 +117,7 @@ apps/api/tests/
 | Core Competencies berjenjang | HR menugaskan atasan tingkat lebih tinggi → ia menugaskan timnya → karyawan diwawancarai; atasan langsung hanya melihat status | B10 | thread B10 |
 | Rekomendasi promosi | Atasan merekomendasi → HR setuju; nama dan waktu tercatat | B16 | thread B16 |
 | Modul mati | Dengan `module.ina` mati: tindakan perbaikan dari tinjauan HR tidak bisa dibuat dan API Improvement Needs mengembalikan 404/403; modul lain tetap jalan. Diulang untuk modul yang ditahan Go/No-Go | B7, B9 | thread integrasi |
+| Login dan peran (B1, B2) | Karyawan minta link → tukar → sesi; akun dengan MFA: tukar link → challenge → kode benar → sesi `mfa`; kode salah 5× → challenge hangus. Akun HR + karyawan (`auth.multi_role` menyala): ganti ke Karyawan → menu dan cakupan karyawan, token lama 401 `ROLE_VIEW_CHANGED`; Admin Tenant mencabut peran HR → sesi HR langsung 401. Super Admin tidak bisa membaca transkrip (PO-6) dan tidak bisa menjawab wawancara | B1, B2 | thread T2 (ditulis dengan `driver.js` setelah rilis 20 Nov; sementara dicakup `tests/integration/login-mfa.test.js` dan `user-roles.test.js`) |
 | Entitlement vs flag | Flag menyala tetapi tenant tidak punya entitlement submodul: rute ditolak | sekarang ada | thread integrasi |
 
 Baris milik paket ditulis oleh thread paket itu di PR-nya, memakai `driver.js`. Thread integrasi memeriksanya saat menggabung (bagian dari review "Spec").
