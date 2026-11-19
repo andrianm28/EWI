@@ -161,9 +161,9 @@ Backend:
 - [x] test di bagian 6
 
 UI (menumpuk di atas B0):
-- [ ] `apps/web/src/screens/li/` (api, layar Library, Program, Permintaan, Draf modul; `routes.ts` dengan nama rute
-      `lib`, `prog`, `req`, sesuai kontrak B0)
-- [ ] `apps/web/e2e/li.spec.ts`
+- [x] `apps/web/src/screens/b13-li/` (api, layar Library, Program, Permintaan, Draf modul; `routes.ts` dengan nama rute
+      `lib`, `prog`, `req`, `req-draf`, sesuai kontrak B0)
+- [x] `apps/web/e2e/li.spec.ts`
 
 ## 8. Keputusan triase review egm
 

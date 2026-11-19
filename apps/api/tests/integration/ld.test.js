@@ -105,6 +105,12 @@ run('Learning Delivery (Postgres)', () => {
   });
 
   it('peserta: dari daftar dan jabatan; karyawan tenant lain dan akun nonaktif tidak ikut', async () => {
+    const opt = (await get('/options')).body.data;
+    expect(opt.jobRoles).toEqual([{ id: role.id, name: 'Engineer Service Delivery', people: 2 }]);
+    expect(opt.employees.map((e) => e.name)).toEqual(expect.arrayContaining(['dimas', 'rina', 'sari', 'hr']));
+    expect(opt.employees.map((e) => e.name)).not.toEqual(expect.arrayContaining(['nonaktif']));
+    expect(opt.employees.map((e) => e.name)).not.toContain('asing');
+    expect(opt).toMatchObject({ vendorName: 'Mahaka Institute', storageReady: true });
     const res = await send('put', `/trainings/${training.id}/participants`, { userIds: [u.sari, u.asing], jobRoleId: role.id });
     expect(res.status).toBe(200);
     expect(res.body.data.added).toBe(3);

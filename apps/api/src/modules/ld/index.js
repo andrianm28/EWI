@@ -73,6 +73,12 @@ module.exports = {
       res.json({ data: rows.filter((x) => (!state || x.group === state) && (!mode || x.mode === mode)) });
     }));
 
+    // Pilihan peserta (jabatan dan karyawan). HR melihat semua karyawan tenant (RG-3).
+    r.get('/options', wrap(async (req, res) => {
+      const conf = await settings.get(req.tenantId);
+      res.json({ data: { ...(await stores.ld.participantOptions(req.tenantId)), vendorName: conf.li.vendorName, storageReady: !!storage } });
+    }));
+
     // --- Pelatihan offline ---
     r.post('/trainings', wrap(async (req, res) => {
       const b = req.body || {};

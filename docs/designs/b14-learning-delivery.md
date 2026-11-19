@@ -158,6 +158,7 @@ menjawab 501 `STORAGE_NOT_CONFIGURED`; bagian lain tetap berjalan.
 | Metode | Path | Isi |
 | --- | --- | --- |
 | GET | `/api/ld/dashboard` | `{ kpis, insights, actions, generatedBy }` |
+| GET | `/api/ld/options` | `{ jobRoles, employees, vendorName, storageReady }` untuk form peserta |
 | GET | `/api/ld/trainings?state=running\|upcoming\|done\|cancelled&mode=online\|offline` | daftar dengan `participants`, `progressPct`, `health`, `readiness` ringkas |
 | POST | `/api/ld/trainings` | tambah pelatihan offline |
 | GET | `/api/ld/trainings/:id` | detail: `readiness`, `participants`, `assessment`, `documents` |
@@ -201,8 +202,9 @@ Backend:
 - [x] test di bagian 6
 
 UI (menumpuk di atas B0):
-- [ ] `apps/web/src/screens/ld/` (api, layar empat tab, `routes.ts` dengan nama rute `ld`, sesuai kontrak B0)
-- [ ] `apps/web/e2e/ld.spec.ts`
+- [x] `apps/web/src/screens/b14-ld/` (api, layar empat tab, panel offline, `routes.ts` dengan nama rute `ld`, sesuai kontrak B0)
+- [x] `GET /api/ld/options` (pilihan jabatan dan karyawan untuk form peserta)
+- [x] `apps/web/e2e/ld.spec.ts`
 
 ## 8. Keputusan triase review egm
 

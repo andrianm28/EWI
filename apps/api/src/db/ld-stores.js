@@ -119,6 +119,19 @@ function createLdStores(sequelize) {
       return rows.length ? ld.getTraining(tenantId, id) : null;
     },
 
+    /** Pilihan untuk form peserta: jabatan (dengan jumlah karyawan) dan karyawan tenant yang tidak dinonaktifkan. */
+    async participantOptions(tenantId) {
+      const [jobRoles, employees] = await Promise.all([
+        select(`SELECT jr.id, jr.name, count(u.id)::int AS people FROM lna_job_roles jr
+                  LEFT JOIN users u ON u.job_role_id = jr.id AND u.tenant_id = jr.tenant_id AND u.status <> 'disabled'
+                 WHERE jr.tenant_id = :tenantId GROUP BY jr.id, jr.name ORDER BY jr.name`, { tenantId }),
+        select(`SELECT u.id, u.name, u.email, jr.name AS "jobRoleName" FROM users u
+                  LEFT JOIN lna_job_roles jr ON jr.id = u.job_role_id AND jr.tenant_id = u.tenant_id
+                 WHERE u.tenant_id = :tenantId AND u.status <> 'disabled' AND u.role <> 'eta_admin' ORDER BY u.name NULLS LAST, u.email`, { tenantId }),
+      ]);
+      return { jobRoles, employees };
+    },
+
     // --- Peserta, kehadiran, skor ---
     async listParticipants(tenantId, trainingId) {
       return select(`SELECT lp.user_id AS "userId", u.name, u.email, u.employee_id AS "employeeId", jr.name AS "jobRoleName",
