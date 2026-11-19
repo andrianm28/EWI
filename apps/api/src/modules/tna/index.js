@@ -17,9 +17,9 @@ const { FLAGS, requireFlag } = require('../../core/flags');
 const { badRequest, notFound, forbidden, HttpError } = require('../../core/errors');
 const { interviewRouter, wrap } = require('../interviews');
 const { inviteExpiry } = require('../interviews/invitation');
-const { evaluate, metricKey, METRIC_TYPES } = require('./performance');
+const { metricKey, METRIC_TYPES } = require('./performance');
 const { selectInterviewees } = require('./targeting');
-const { rankTrainingNeeds } = require('./pareto');
+const { rankFindings } = require('./pareto');
 const { importRouter } = require('../imports');
 const { getKind } = require('../imports/kinds');
 const { validateRows, commitRows } = require('../imports/engine');
@@ -272,9 +272,7 @@ module.exports = {
       const scope = await scopeFor(req, stores.people);
       const conf = await settings.get(req.tenantId);
       const findings = await stores.tna.listFindings(req.tenantId, scope, { projectId: req.query.projectId, categories: ['training'] });
-      const rows = rankTrainingNeeds(findings.map((f) => ({
-        ...f, missRatio: f.target != null ? evaluate({ target: f.target, actual: f.actual, direction: f.direction, tolerance: f.tolerance }).missRatio : null,
-      })), conf.tna.pareto);
+      const rows = rankFindings(findings, conf.tna.pareto);
       res.json({ data: rows, formula: conf.tna.pareto });
     }));
 

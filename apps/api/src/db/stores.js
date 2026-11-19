@@ -3,6 +3,8 @@
 const { QueryTypes } = require('sequelize');
 const crypto = require('crypto');
 const { createLnaStores } = require('./lna-stores');
+const { createTenantAdminStores } = require('./tenant-admin-stores');
+const { createInaStores } = require('./ina-stores');
 const { createCcaStores } = require('./cca-stores');
 const { createFieldCipher, createProvider } = require('../core/crypto');
 
@@ -59,6 +61,8 @@ function createStores(sequelize, { encryption } = {}) {
       return row;
     },
     ...createLnaStores(sequelize, { cipher }),
+    ...createTenantAdminStores(sequelize),
+    ...createInaStores(sequelize, { cipher }),
     ...createCcaStores(sequelize, { cipher }),
     users: {
       async listActiveTenants() {

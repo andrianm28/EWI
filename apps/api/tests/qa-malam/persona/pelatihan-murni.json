@@ -1,0 +1,30 @@
+{
+  "id": "pelatihan-murni",
+  "versi": 1,
+  "operasi": "tna",
+  "deskripsi": "Target meleset karena karyawan belum pernah dilatih produk baru. Sebab murni pelatihan.",
+  "karyawan": {
+    "nama": "Rina Contoh",
+    "jabatan": "Agen Layanan L1"
+  },
+  "target": [
+    {
+      "kpi": "First Contact Resolution (%)",
+      "target": 80,
+      "aktual": 62
+    }
+  ],
+  "naskah": [
+    "Sejak paket layanan baru diluncurkan bulan lalu, saya belum pernah ikut sesi pengenalan produknya.",
+    "Kalau pelanggan bertanya soal fitur baru, saya harus bertanya dulu ke rekan senior, jadi tiket tidak selesai di kontak pertama.",
+    "Alat dan SOP-nya sebenarnya jelas, hanya saya belum paham isi produknya.",
+    "Saya ingin belajar fitur tagihan dan paket baru supaya bisa menjawab sendiri."
+  ],
+  "jawabanCadangan": "Saya rasa itu saja yang bisa saya ceritakan.",
+  "harapan": {
+    "kategori": [
+      "training"
+    ],
+    "minTemuan": 1
+  }
+}

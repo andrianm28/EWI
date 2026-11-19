@@ -1,7 +1,9 @@
 'use strict';
 // Audit log (append-only di DB, R2-2). Dipakai untuk:
 // - baca data individu (transkrip, hasil DNA/TNA, rencana training): siapa, kapan, tenant, karyawan, objek.
-//   Wajib sejak POC dan tidak di balik flag. Dashboard agregat tidak dicatat.
+//   Wajib sejak POC dan tidak di balik flag. Agregat per modul (mis. GET /tna/dashboard) tidak dicatat.
+//   Pengecualian (B3): dashboard utama. Untuk atasan agregat tim kecil bisa menunjuk orang, jadi dicatat sebagai
+//   baca data individu; untuk HR dicatat ringkas (jumlah karyawan, tanpa daftar id).
 // - perubahan feature flag dan kill switch (R2-1).
 // Pencatatan gagal = request gagal (fail closed): data individu tidak dikirim tanpa jejak audit.
 

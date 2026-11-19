@@ -30,6 +30,10 @@ describe('progres dan kelompok', () => {
     expect(groupOf(online({ completed: 6 }), TODAY)).toBe('done'); // online tuntas sendiri
     expect(groupOf(online({ participants: 0, completed: 0 }), TODAY)).toBe('running');
   });
+  it('online tuntas bila semua peserta selesai atau gagal; peserta gagal tidak membuat pelatihan menggantung', () => {
+    expect(groupOf(online({ participants: 6, completed: 4, failed: 2 }), TODAY)).toBe('done');
+    expect(groupOf(online({ participants: 6, completed: 4, failed: 1 }), TODAY)).toBe('running');
+  });
 });
 
 describe('health', () => {
@@ -94,6 +98,17 @@ describe('KPI dan insight', () => {
     expect(insights[0]).toMatchObject({ source: 'EliteMentor', detail: expect.stringMatching(/3 dari 6 peserta belum selesai. Batas 09\/12\/2026/) });
     expect(actions.map((a) => `${a.kind}:${a.trainingId}`)).toEqual(['remind:a', 'remind:b', 'open_training:c']);
   });
+  it('peserta yang gagal tidak dihitung "belum selesai" dan tidak diingatkan', () => {
+    const late = decorate(online({ id: 'e', startsOn: '2026-11-01', endsOn: '2026-12-09', completed: 4, failed: 1 }), TODAY);
+    const { insights, actions } = buildInsights([late], TODAY);
+    expect(insights[0].detail).toMatch(/^1 dari 6 peserta belum selesai/);
+    expect(actions[0].title).toBe('Kirim pengingat ke 1 peserta Ticket Life Cycle');
+  });
+  it('peserta tidak aktif hanya diperingatkan untuk pelatihan online yang sudah berjalan', () => {
+    const upcoming = decorate(online({ id: 'f', status: 'scheduled', startsOn: '2026-12-20', endsOn: '2027-01-20', inactive: 3 }), TODAY);
+    expect(upcoming.group).toBe('upcoming');
+    expect(buildInsights([upcoming], TODAY).insights).toEqual([]);
+  });
   it('tidak ada insight bila semua sesuai jadwal', () => {
     expect(buildInsights([decorate(online(), TODAY), decorate(offline(), TODAY)], TODAY)).toEqual({ insights: [], actions: [] });
   });
@@ -132,6 +147,13 @@ describe('normalizeEvent', () => {
     expect(normalizeEvent({ ...ok, occurredAt: 'kemarin' }).error).toMatch(/occurredAt/);
     expect(normalizeEvent({ ...ok, type: 'assessment.result' }).error).toMatch(/score/);
     expect(normalizeEvent({ ...ok, type: 'assessment.result', score: 88, status: undefined }).event.score).toBe(88);
+  });
+  it('id organisasi dan id pengguna EliteMentor harus bilangan bulat positif dalam rentang integer Postgres', () => {
+    for (const organizationId of ['', null, true, 0, -3, 2147483648, 1.5]) expect(normalizeEvent({ ...ok, organizationId }).error).toMatch(/organizationId/);
+    expect(normalizeEvent({ ...ok, organizationId: '42' }).event.organizationId).toBe(42);
+    for (const elitementorUserId of ['', true, 0, 2147483648]) expect(normalizeEvent({ ...ok, user: { elitementorUserId } }).error).toMatch(/user/);
+    expect(normalizeEvent({ ...ok, user: { email: 'a@b.c', elitementorUserId: 2147483648 } }).error).toMatch(/elitementorUserId/);
+    expect(normalizeEvent({ ...ok, user: { elitementorUserId: '77' } }).event.user.elitementorUserId).toBe(77);
   });
 });
 

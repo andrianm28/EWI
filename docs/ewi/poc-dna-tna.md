@@ -113,3 +113,15 @@ Spek: `docs/designs/b5-training-needs.md`. Dua flag baru, default mati, dinyalak
 - Penugasan: satu gap, mode peserta (`affected` atau `all_job_role`), tenggat (tanggal WIB, menjadi batas undangan), durasi 15 atau 30 menit. Satu sesi TNA terbuka per orang per proyek.
 - Label "Improvement Needs" hanya muncul bila `tna.non_training_hr` (atau `module.ina` + `ina.dashboard`) menyala; atasan butuh izin HR.
 - Migrasi `20261119000500` menambah kolom penugasan dan fokus di `lna_interview_sessions`. Tidak ada kebutuhan infra baru.
+
+## Dashboard utama dan dashboard tim (B3, 19 Nov)
+
+Spek: `docs/designs/b3-dashboard.md`. Satu flag baru, default mati, dinyalakan per tenant oleh Admin ETA saat Go/No-Go:
+
+| Flag | Membuka |
+| --- | --- |
+| `dashboard.main` | `GET /api/dashboard` dan layar `/dashboard` (HR "Dashboard utama", atasan "Dashboard tim"). Mati = HR dan atasan tetap mendarat di Beranda lama |
+
+- HR dan Admin ETA melihat seluruh tenant; atasan (`supervisor`) hanya bawahan langsung. Karyawan ditolak.
+- Tiap bagian hanya diisi bila modul sumbernya terbuka (entitlement + flag `module.<key>`).
+- Tidak ada migrasi atau kebutuhan infra baru.

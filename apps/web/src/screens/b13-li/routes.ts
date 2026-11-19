@@ -1,7 +1,7 @@
-// B13 Learning Intervention: Library, Program & Course, Permintaan & pengembangan (hanya HR, flag module.li).
+// B13 Learning Intervention: Library, Program & Course, Permintaan & pengembangan (hanya HR, flag module.li, produk full_suite seperti API).
 import type { RouteMeta, RouteRecordRaw } from 'vue-router'
 
-const meta: RouteMeta = { views: ['hr'], flag: 'module.li' }
+const meta: RouteMeta = { views: ['hr'], flag: 'module.li', entitlement: 'full_suite' }
 
 export default [
   { path: '/lib', name: 'lib', component: () => import('./LibraryView.vue'), meta: { ...meta, menuKey: 'lib', title: 'Library' } },

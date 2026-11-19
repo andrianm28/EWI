@@ -23,7 +23,7 @@ async function setup(page: Page, calls: { method: string; url: string; body: unk
   await page.route('**/api/auth/tenants', (r) => r.fulfill({ json: { data: [] } }))
   await page.route('**/api/auth/login', (r) => r.fulfill({ json: { token: 't', user } }))
   await page.route('**/api/auth/me', (r) => r.fulfill({ json: { user } }))
-  await page.route('**/api/me/access', (r) => r.fulfill({ json: { submodules: ['dna', 'tna'], flags: { 'module.dna': true, 'module.tna': true, 'module.li': true } } }))
+  await page.route('**/api/me/access', (r) => r.fulfill({ json: { submodules: ['dna', 'tna'], products: ['full_suite'], flags: { 'module.dna': true, 'module.tna': true, 'module.li': true } } }))
   await page.route(/\/api\/(dna|tna)\//, (r) => r.fulfill({ json: { data: [] } }))
   let draft = { ...DRAFT }
   await page.route(/\/api\/li\//, async (r: Route) => {
@@ -162,6 +162,15 @@ test('Learning Intervention tidak tampil dan tidak bisa dibuka saat flag mati', 
   await page.route('**/api/me/access', (r) => r.fulfill({ json: { submodules: ['dna', 'tna'], flags: { 'module.dna': true, 'module.tna': true } } }))
   await page.reload()
   await expect(nav(page).getByRole('button', { name: 'Learning Intervention' })).toHaveCount(0)
+  await page.goto('/lib')
+  await expect(page).toHaveURL(/\/$/)
+})
+
+test('Learning Intervention tidak tampil dan tidak bisa dibuka bila tenant tidak punya full_suite, walau flag menyala', async ({ page }) => {
+  await setup(page)
+  await page.route('**/api/me/access', (r) => r.fulfill({ json: { submodules: ['dna', 'tna'], products: ['dna', 'tna'], flags: { 'module.dna': true, 'module.tna': true, 'module.li': true } } }))
+  await page.reload()
+  await expect(page.getByRole('navigation', { name: 'Navigasi utama' }).getByRole('button', { name: 'Learning Intervention' })).toHaveCount(0)
   await page.goto('/lib')
   await expect(page).toHaveURL(/\/$/)
 })
