@@ -98,3 +98,18 @@ Dibangun dengan opsi ★ karena PD-13, PD-14, PM-3, dan PM-5 belum dijawab.
 SSO deep link (T1), token endpoint OAuth2 (T2), pengingat wawancara lewat email (T4), Sync Back webhook ke `lna_program_completions`.
 Diputuskan 13 Nov, menyusul: R3-1 wawancara TNA teks + suara
 (realtime speech-to-speech lewat voice gateway ELGOS, adapter penyedia bisa diganti).
+
+## Training Needs: papan gap dan penugasan wawancara (B5, 19 Nov)
+
+Spek: `docs/designs/b5-training-needs.md`. Dua flag baru, default mati, dinyalakan per tenant oleh Admin ETA:
+
+| Flag | Membuka |
+| --- | --- |
+| `tna.gap_board` | `GET /api/tna/gaps/summary`, `/gaps/competencies`, `/gaps/okr`, `/gaps/detail` |
+| `tna.interview_assignment` | `POST /api/tna/assignments`, `POST /api/tna/assignments/:sessionId/cancel` |
+
+- Untuk HR, Admin ETA, dan atasan (atasan hanya timnya). Karyawan ditolak.
+- Target kompetensi hanya dari kompetensi yang sudah disahkan HR.
+- Penugasan: satu gap, mode peserta (`affected` atau `all_job_role`), tenggat (tanggal WIB, menjadi batas undangan), durasi 15 atau 30 menit. Satu sesi TNA terbuka per orang per proyek.
+- Label "Improvement Needs" hanya muncul bila `tna.non_training_hr` (atau `module.ina` + `ina.dashboard`) menyala; atasan butuh izin HR.
+- Migrasi `20261119000500` menambah kolom penugasan dan fokus di `lna_interview_sessions`. Tidak ada kebutuhan infra baru.
