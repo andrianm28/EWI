@@ -18,7 +18,8 @@ function closeDrawer() {
   if (!drawerOpen.value) return
   drawerOpen.value = false
   // Tunggu render: tombol menu baru bisa difokus setelah `inert` dilepas
-  nextTick(() => document.getElementById('tombol-menu')?.focus())
+  // Tombol menu hanya terlihat di layar sempit; di layar lebar fokus dibiarkan (drawer tetap terlihat)
+  if (narrow.value) nextTick(() => document.getElementById('tombol-menu')?.focus())
 }
 
 // Esc didengar di document: fokus bisa berada di luar kerangka (mis. setelah klik scrim)

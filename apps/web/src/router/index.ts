@@ -1,5 +1,5 @@
 import { createRouter, createWebHistory, type RouteLocationNormalized, type RouteRecordRaw } from 'vue-router'
-import { bindRoutes, useSessionStore } from '@/stores/session'
+import { bindRoutes, useSessionStore, type Gates } from '@/stores/session'
 import type { SubmoduleKey } from '@/modules'
 import { menuLabel } from '@/shell/menu'
 import { VIEW_HOME, type ViewKey } from '@/shell/views'
@@ -65,7 +65,7 @@ assertUnique(routes)
 
 const router = createRouter({ history: createWebHistory(), routes })
 
-type Session = ReturnType<typeof useSessionStore>
+type Session = Gates
 
 function passesGates(meta: RouteLocationNormalized['meta'], params: RouteLocationNormalized['params'], session: Session): boolean {
   if (meta.flag && session.access?.flags[meta.flag] !== true) return false
@@ -75,10 +75,15 @@ function passesGates(meta: RouteLocationNormalized['meta'], params: RouteLocatio
   return true
 }
 
-/** Rute terdaftar dan gerbangnya (flag, submodul, peran) lolos. Dipakai menu supaya butir tidak memantul saat diklik. */
-export function routeOpen(name: string, session: Session = useSessionStore()): boolean {
+/**
+ * Rute terdaftar, boleh dibuka tampilan `view`, dan gerbangnya (flag, submodul, peran) lolos. Dipakai menu dan
+ * layar supaya tautan tidak memantul ke beranda saat diklik. Rute ber-param wajib tidak bisa diperiksa: false.
+ */
+export function routeOpen(name: string, view: ViewKey, session: Session = useSessionStore()): boolean {
   if (!router.hasRoute(name)) return false
-  const target = router.resolve({ name })
+  let target: ReturnType<typeof router.resolve>
+  try { target = router.resolve({ name }) } catch { return false }
+  if (target.meta.views && !target.meta.views.includes(view)) return false
   return passesGates(target.meta, target.params, session)
 }
 
@@ -88,10 +93,7 @@ export function routeOpen(name: string, session: Session = useSessionStore()): b
  */
 export function homeFor(view: ViewKey, session: Session = useSessionStore()): string {
   const name = VIEW_HOME[view]
-  if (!router.hasRoute(name)) return 'home'
-  const target = router.resolve({ name })
-  if (target.meta.views && !target.meta.views.includes(view)) return 'home'
-  return passesGates(target.meta, target.params, session) ? name : 'home'
+  return routeOpen(name, view, session) ? name : 'home'
 }
 
 // Satu sumber untuk "layar beranda tampilan ini sudah bisa dibuka": dipakai penjaga rute, daftar tampilan
