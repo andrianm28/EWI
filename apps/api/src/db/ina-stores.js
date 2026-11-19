@@ -47,6 +47,22 @@ function createInaStores(sequelize, { cipher } = {}) {
   const one = async (sql, replacements) => (await select(sql, replacements))[0] || null;
   const write = async (sql, replacements) => (await sequelize.query(sql, { replacements }))[0];
 
+  /** Batalkan verifikasi terbuka satu tindakan; return id yang dibatalkan. */
+  async function cancelOpen(tenantId, actionId, transaction) {
+    const [rows] = await sequelize.query(`UPDATE ina_verifications SET status = 'cancelled', ended_at = now()
+                               WHERE tenant_id = :tenantId AND action_id = :actionId AND status IN ('assigned','in_progress') RETURNING id`,
+    { replacements: { tenantId, actionId }, transaction });
+    return rows.map((r) => r.id);
+  }
+  /** Ubah status temuan asal (milik TNA); return { id, from, to } atau null bila tidak berubah. */
+  async function moveFinding(tenantId, findingId, status, transaction) {
+    const [rows] = await sequelize.query(`UPDATE lna_findings f SET status = :status FROM lna_findings old
+                               WHERE f.id = old.id AND f.tenant_id = :tenantId AND f.id = :findingId AND old.status <> :status
+                               RETURNING f.id, old.status AS "from", f.status AS "to"`,
+    { replacements: { tenantId, findingId, status }, transaction });
+    return rows[0] || null;
+  }
+
   const ina = {
     /**
      * scope: { all: true } | { userIds } terhadap pemilik tindakan. hidden: false = hanya yang bukan temuan
@@ -71,26 +87,43 @@ function createInaStores(sequelize, { cipher } = {}) {
       const row = await one('SELECT id FROM ina_actions WHERE tenant_id = :tenantId AND finding_id = :findingId', { tenantId, findingId });
       return row ? row.id : null;
     },
-    /** Return tindakan baru, atau null bila temuan itu sudah punya tindakan (balapan dua request). */
+    /**
+     * Return tindakan baru, atau null bila temuan itu sudah punya tindakan (balapan dua request). Bila tindakan berasal
+     * dari temuan, status temuan menjadi `planned` dalam transaksi yang sama (`action.effects.finding`).
+     */
     async createAction(tenantId, a, createdBy) {
+      const title = await enc(tenantId, a.title); const detail = await enc(tenantId, a.detail);
       try {
-        const rows = await write(
+        const done = await sequelize.transaction(async (transaction) => {
+          const [rows] = await sequelize.query(
           `INSERT INTO ina_actions (tenant_id, finding_id, title, detail, category, sub_label, owner_user_id, source_ref, competency_id,
                                     performance_record_id, due_date, involves_individual, created_by)
            VALUES (:tenantId, :findingId, :title, :detail, :category, :subLabel, :ownerUserId, :sourceRef, :competencyId,
                    :performanceRecordId, :dueDate, :involvesIndividual, :createdBy) RETURNING id`,
           {
-            tenantId, createdBy, findingId: a.findingId ?? null, title: await enc(tenantId, a.title), detail: await enc(tenantId, a.detail),
-            category: a.category, subLabel: a.subLabel ?? null, ownerUserId: a.ownerUserId ?? null, sourceRef: a.sourceRef ?? null,
-            competencyId: a.competencyId ?? null, performanceRecordId: a.performanceRecordId ?? null, dueDate: a.dueDate ?? null,
-            involvesIndividual: a.involvesIndividual === true,
+            replacements: {
+              tenantId, createdBy, findingId: a.findingId ?? null, title, detail,
+              category: a.category, subLabel: a.subLabel ?? null, ownerUserId: a.ownerUserId ?? null, sourceRef: a.sourceRef ?? null,
+              competencyId: a.competencyId ?? null, performanceRecordId: a.performanceRecordId ?? null, dueDate: a.dueDate ?? null,
+              involvesIndividual: a.involvesIndividual === true,
+            },
+            transaction,
           },
-        );
-        return ina.getAction(tenantId, rows[0].id);
+          );
+          const finding = a.findingId ? await moveFinding(tenantId, a.findingId, 'planned', transaction) : null;
+          return { id: rows[0].id, finding };
+        });
+        const action = await ina.getAction(tenantId, done.id);
+        return Object.assign(action, { effects: { cancelled: [], finding: done.finding } });
       } catch (e) { if (isUnique(e)) return null; throw e; }
     },
-    /** fromStatus: status yang dibaca pemanggil; bila sudah berubah (request lain), tidak ada yang disimpan dan return null. */
-    async updateAction(tenantId, id, patch, fromStatus) {
+    /**
+     * fromStatus: status yang dibaca pemanggil; bila sudah berubah (request lain), tidak ada yang disimpan dan return null.
+     * effects (opsional) dijalankan dalam transaksi yang sama, jadi tindakan dan efek sampingnya tersimpan bersama atau
+     * tidak sama sekali: `cancelVerifications` membatalkan verifikasi terbuka, `finding: { id, status }` mengubah status
+     * temuan asal. Hasil efek ada di `action.effects` ({ cancelled: [id], finding: { id, from, to } | null }).
+     */
+    async updateAction(tenantId, id, patch, fromStatus, effects = {}) {
       const sets = []; const rep = { tenantId, id, fromStatus };
       for (const [k, col] of Object.entries(ACTION_FIELDS)) {
         if (patch[k] === undefined) continue;
@@ -98,12 +131,20 @@ function createInaStores(sequelize, { cipher } = {}) {
         rep[k] = ACTION_ENC.includes(k) ? await enc(tenantId, patch[k]) : patch[k];
       }
       if (patch.status !== undefined) sets.push(`completed_at = ${patch.status === 'done' ? 'now()' : 'NULL'}`);
-      if (sets.length) {
-        const rows = await write(`UPDATE ina_actions SET ${sets.join(', ')}, updated_at = now()
-                                   WHERE tenant_id = :tenantId AND id = :id AND status = :fromStatus RETURNING id`, rep);
-        if (!rows.length) return null;
-      }
-      return ina.getAction(tenantId, id);
+      const done = await sequelize.transaction(async (transaction) => {
+        if (sets.length) {
+          const [rows] = await sequelize.query(`UPDATE ina_actions SET ${sets.join(', ')}, updated_at = now()
+                                   WHERE tenant_id = :tenantId AND id = :id AND status = :fromStatus RETURNING id`, { replacements: rep, transaction });
+          if (!rows.length) return null;
+        }
+        const out = { cancelled: [], finding: null };
+        if (effects.cancelVerifications) out.cancelled = await cancelOpen(tenantId, id, transaction);
+        if (effects.finding) out.finding = await moveFinding(tenantId, effects.finding.id, effects.finding.status, transaction);
+        return out;
+      });
+      if (!done) return null;
+      const action = await ina.getAction(tenantId, id);
+      return Object.assign(action, { effects: done });
     },
 
     // ----- rujukan dalam tenant -----
@@ -112,9 +153,6 @@ function createInaStores(sequelize, { cipher } = {}) {
       return one(`SELECT f.id, f.category, f.user_id AS "userId", f.competency_id AS "competencyId",
                          f.performance_record_id AS "performanceRecordId", f.review_status AS "reviewStatus", f.status
                     FROM lna_findings f WHERE f.tenant_id = :tenantId AND f.id = :id`, { tenantId, id });
-    },
-    async setFindingStatus(tenantId, id, status) {
-      await write('UPDATE lna_findings SET status = :status WHERE tenant_id = :tenantId AND id = :id', { tenantId, id, status });
     },
     async competencyName(tenantId, id) {
       const row = await one('SELECT name FROM lna_competencies WHERE tenant_id = :tenantId AND id = :id', { tenantId, id });
@@ -135,13 +173,18 @@ function createInaStores(sequelize, { cipher } = {}) {
     },
 
     // ----- verifikasi AI -----
-    /** Return verifikasi baru, atau null bila tindakan itu masih punya verifikasi terbuka. */
+    /** Return verifikasi baru, atau null bila tindakan itu masih punya verifikasi terbuka atau sudah berubah (tutup, pindah pemilik, individu). */
     async createVerification(tenantId, { actionId, ownerUserId, dueDate, assignedBy }) {
       try {
         const rows = await write(
           `INSERT INTO ina_verifications (tenant_id, action_id, owner_user_id, due_date, assigned_by)
-           VALUES (:tenantId, :actionId, :ownerUserId, :dueDate, :assignedBy) RETURNING id`,
+           SELECT a.tenant_id, a.id, a.owner_user_id, :dueDate, :assignedBy FROM ina_actions a
+            WHERE a.tenant_id = :tenantId AND a.id = :actionId AND a.owner_user_id = :ownerUserId
+              AND a.status IN ('new','in_progress') AND NOT a.involves_individual
+           RETURNING id`,
           { tenantId, actionId, ownerUserId, dueDate: dueDate ?? null, assignedBy });
+        // tindakan berubah di antara baca dan simpan (pemilik, status, atau individu): tidak ada yang dibuat
+        if (!rows.length) return null;
         return ina.getVerification(tenantId, rows[0].id);
       } catch (e) { if (isUnique(e)) return null; throw e; }
     },
@@ -169,9 +212,7 @@ function createInaStores(sequelize, { cipher } = {}) {
     },
     /** Batalkan verifikasi terbuka sebuah tindakan (pemilik diganti, tindakan ditutup atau disembunyikan). Return id-nya. */
     async cancelOpenVerifications(tenantId, actionId) {
-      const rows = await write(`UPDATE ina_verifications SET status = 'cancelled', ended_at = now()
-                                 WHERE tenant_id = :tenantId AND action_id = :actionId AND status IN ('assigned','in_progress') RETURNING id`, { tenantId, actionId });
-      return rows.map((r) => r.id);
+      return cancelOpen(tenantId, actionId);
     },
     /**
      * Tambah giliran hanya selama verifikasi masih `in_progress` dan jawaban pemilik belum mencapai `maxHuman`.

@@ -220,7 +220,7 @@ run('Improvement Needs B9 (Postgres)', () => {
     const del = await request(app).delete(`${BASE}/access/${id.spv}`).set(as('hr'));
     expect(del.body.data).toEqual({ supervisorId: id.spv, granted: false, changed: true });
     expect((await get('/actions', 'spv')).body.error.code).toBe('NO_INA_ACCESS');
-    expect((await audits('ina.supervisor_access')).map((x) => x.action)).toEqual(['create', 'delete']);
+    expect((await audits('tna.non_training_access')).filter((x) => x.meta.via === 'ina').map((x) => x.action)).toEqual(['create', 'delete']);
     await request(app).put(`${BASE}/access/${id.spv}`).set(as('hr'));
   });
 

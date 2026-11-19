@@ -47,8 +47,10 @@ function isDate(v) {
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const isUuid = (v) => typeof v === 'string' && UUID.test(v);
+/** id dari klien dibandingkan dan disimpan dalam huruf kecil (UUID dari Postgres selalu huruf kecil). */
+const normId = (v) => (typeof v === 'string' ? v.trim().toLowerCase() : v);
 
 module.exports = {
   CATEGORIES, CATEGORY_LABEL, PROCESS_CATEGORIES, STATUSES, STATUS_LABEL, OPEN_STATUSES, TRANSITIONS,
-  canTransition, isOpen, isOverdue, kpis, isDate, isUuid,
+  canTransition, isOpen, isOverdue, kpis, isDate, isUuid, normId,
 };

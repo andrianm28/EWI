@@ -7,7 +7,7 @@ const { ROLES } = require('../../core/rbac');
 const { FLAGS, requireFlag } = require('../../core/flags');
 const { badRequest, notFound, forbidden, HttpError } = require('../../core/errors');
 const { LEVELS, inaAccess, requireLevel } = require('./access');
-const { CATEGORIES, STATUSES, canTransition, isOpen, isOverdue, kpis, isDate, isUuid } = require('./domain');
+const { CATEGORIES, STATUSES, canTransition, isOpen, isOverdue, kpis, isDate, isUuid, normId } = require('./domain');
 const { createVerificationAi } = require('./verification-ai');
 
 const wrap = (fn) => (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
@@ -128,7 +128,7 @@ module.exports = {
     }));
 
     /** Validasi field tindakan yang ada di body; rujukan dicari ulang dalam tenant. */
-    async function readFields(req, body, { creating }) {
+    async function readFields(req, body, { creating, current = null }) {
       const out = {};
       if (creating || has(body, 'title')) out.title = text(body, 'title', 'Judul tindakan', 255, { required: true, min: 3 });
       if (has(body, 'detail')) out.detail = text(body, 'detail', 'Detail', 4000);
@@ -146,22 +146,33 @@ module.exports = {
         if (typeof body.involvesIndividual !== 'boolean') throw badRequest('involvesIndividual harus true atau false');
         out.involvesIndividual = body.involvesIndividual;
       }
+      // rujukan hanya diperiksa bila nilainya berubah: pemilik yang sudah nonaktif tidak mengunci ubahan field lain
+      const sameRef = (key, value) => current && value === current[key];
       if (has(body, 'ownerUserId')) {
-        if (body.ownerUserId !== null && !(isUuid(body.ownerUserId) && (await db.activeUser(req.tenantId, body.ownerUserId)))) {
+        const owner = normId(body.ownerUserId);
+        if (owner !== null && !sameRef('ownerUserId', owner) && !(isUuid(owner) && (await db.activeUser(req.tenantId, owner)))) {
           throw badRequest('Pemilik tidak ditemukan di organisasi ini');
         }
-        out.ownerUserId = body.ownerUserId;
+        out.ownerUserId = owner;
       }
       for (const [key, label, lookup] of [['competencyId', 'Kompetensi', db.competencyName], ['performanceRecordId', 'Data kinerja', db.metricName]]) {
         if (!has(body, key)) continue;
-        if (body[key] !== null && !(isUuid(body[key]) && (await lookup(req.tenantId, body[key])))) throw badRequest(`${label} tidak ditemukan di organisasi ini`);
-        out[key] = body[key];
+        const ref = normId(body[key]);
+        if (ref !== null && !sameRef(key, ref) && !(isUuid(ref) && (await lookup(req.tenantId, ref)))) throw badRequest(`${label} tidak ditemukan di organisasi ini`);
+        out[key] = ref;
       }
       return out;
     }
     const auditAction = (req, verb, a, extra = {}) => audit.record(req, verb, 'ina.action', {
       objectIds: [a.id], ...(a.ownerUserId ? { employeeIds: [a.ownerUserId] } : {}), ...extra,
     });
+    // status temuan milik TNA yang diubah dari INA dicatat dengan sumber daya TNA (PK-15), `via` = layar asal
+    const auditFinding = async (req, change, employeeId) => {
+      if (!change) return;
+      await audit.record(req, 'update', 'tna.finding', {
+        objectIds: [change.id], status: { from: change.from, to: change.to }, via: 'ina', ...(employeeId ? { employeeIds: [employeeId] } : {}),
+      });
+    };
 
     r.post('/actions', dashboard, wrap(async (req, res) => {
       await requireLevel(req, stores, MANAGE);
@@ -169,8 +180,9 @@ module.exports = {
       const fields = await readFields(req, body, { creating: true });
       if (fields.subLabel && fields.category !== 'lainnya') throw badRequest('Sub-label hanya untuk kategori lainnya');
 
+      let finding = null;
       if (has(body, 'findingId') && body.findingId !== null) {
-        const finding = isUuid(body.findingId) ? await db.finding(req.tenantId, body.findingId) : null;
+        finding = isUuid(body.findingId) ? await db.finding(req.tenantId, body.findingId) : null;
         if (!finding) throw badRequest('Temuan tidak ditemukan di organisasi ini');
         if (finding.category !== 'non_training') throw badRequest('Hanya temuan di luar pelatihan yang bisa dijadikan tindakan perbaikan');
         if (!['approved', 'edited'].includes(finding.reviewStatus)) throw badRequest('Temuan ini belum ditinjau HR');
@@ -183,13 +195,14 @@ module.exports = {
         if (fields.performanceRecordId === undefined) fields.performanceRecordId = finding.performanceRecordId;
       }
       if (!fields.sourceRef) {
-        fields.sourceRef = (fields.competencyId && (await db.competencyName(req.tenantId, fields.competencyId)))
-          || (fields.performanceRecordId && (await db.metricName(req.tenantId, fields.performanceRecordId))) || null;
+        // hanya dari kamus kompetensi; nama metrik kinerja adalah baris milik satu karyawan, jadi tidak dibawa ke kolom
+        // yang terlihat atasan (review egm CD-7)
+        fields.sourceRef = (fields.competencyId && (await db.competencyName(req.tenantId, fields.competencyId))) || null;
       }
       const created = await db.createAction(req.tenantId, fields, req.user.id);
       if (!created) throw conflict('DUPLICATE', 'Temuan ini sudah punya tindakan perbaikan');
-      if (created.findingId) await db.setFindingStatus(req.tenantId, created.findingId, 'planned');
       await auditAction(req, 'create', created, { category: created.category, fromFinding: Boolean(created.findingId) });
+      await auditFinding(req, created.effects.finding, finding && finding.userId);
       res.status(201).json({ data: publicAction(created, LEVELS.MANAGE, { detail: true }) });
     }));
 
@@ -197,7 +210,7 @@ module.exports = {
       const { action: current } = await loadAction(req, MANAGE);
       const body = req.body || {};
       if (has(body, 'findingId')) throw badRequest('Temuan asal tidak bisa diganti');
-      const patch = await readFields(req, body, { creating: false });
+      const patch = await readFields(req, body, { creating: false, current });
       if (has(body, 'status')) {
         if (!STATUSES.includes(body.status)) throw badRequest('status tidak dikenal');
         patch.status = body.status;
@@ -215,24 +228,36 @@ module.exports = {
       if (changed.includes('status') && !canTransition(current.status, patch.status)) {
         throw conflict('INVALID_TRANSITION', `Status tidak bisa berubah dari ${current.status} ke ${patch.status}`);
       }
-      const saved = await db.updateAction(req.tenantId, current.id, Object.fromEntries(changed.map((k) => [k, patch[k]])), current.status);
+      // verifikasi terbuka tidak lagi relevan bila pemilik berganti, tindakan ditutup, atau tindakan disembunyikan;
+      // status temuan asal ikut berubah. Semuanya dalam satu transaksi bersama perubahan tindakan (review egm IC-1).
+      const nextStatus = changed.includes('status') ? patch.status : current.status;
+      const nextIndividual = changed.includes('involvesIndividual') ? patch.involvesIndividual : current.involvesIndividual;
+      let reason = null;
+      if (changed.includes('ownerUserId')) reason = 'owner_changed';
+      else if (!isOpen(nextStatus)) reason = 'action_closed';
+      else if (nextIndividual) reason = 'involves_individual';
+      let findingStatus = null;
+      if (current.findingId && changed.includes('status')) {
+        if (nextStatus === 'done') findingStatus = 'resolved';
+        else if (current.status === 'done') findingStatus = 'planned';
+      }
+      const saved = await db.updateAction(req.tenantId, current.id, Object.fromEntries(changed.map((k) => [k, patch[k]])), current.status, {
+        cancelVerifications: Boolean(reason), finding: findingStatus ? { id: current.findingId, status: findingStatus } : null,
+      });
       if (!saved) throw conflict('INVALID_TRANSITION', 'Status tindakan ini baru saja diubah orang lain. Muat ulang lalu coba lagi.');
-
-      // verifikasi terbuka tidak lagi relevan bila pemilik berganti, tindakan ditutup, atau tindakan disembunyikan
-      let cancelled = [];
-      if (changed.includes('ownerUserId') || !isOpen(saved.status) || saved.involvesIndividual) {
-        cancelled = await db.cancelOpenVerifications(req.tenantId, current.id);
-      }
-      if (saved.findingId && changed.includes('status')) {
-        if (saved.status === 'done') await db.setFindingStatus(req.tenantId, saved.findingId, 'resolved');
-        else if (current.status === 'done') await db.setFindingStatus(req.tenantId, saved.findingId, 'planned');
-      }
+      const cancelled = saved.effects.cancelled;
       // isi judul/detail tidak ikut ke audit; cukup nama kolom
       const meta = { fields: changed };
       if (changed.includes('status')) meta.status = { from: current.status, to: saved.status };
       if (changed.includes('ownerUserId')) { meta.owner = { from: current.ownerUserId, to: saved.ownerUserId }; meta.employeeIds = [current.ownerUserId, saved.ownerUserId].filter(Boolean); }
       if (cancelled.length) meta.cancelledVerifications = cancelled;
       await auditAction(req, 'update', saved, meta);
+      for (const vid of cancelled) {
+        await audit.record(req, 'update', 'ina.verification', {
+          objectIds: [vid], actionId: current.id, employeeIds: [current.ownerUserId].filter(Boolean), event: 'cancelled', reason,
+        });
+      }
+      await auditFinding(req, saved.effects.finding);
       const fresh = cancelled.length ? await db.getAction(req.tenantId, saved.id) : saved;
       return res.json({ data: publicAction(fresh, LEVELS.MANAGE, { detail: true }) });
     }));
@@ -262,13 +287,14 @@ module.exports = {
     r.put('/access/:supervisorId', dashboard, wrap(async (req, res) => {
       const sup = await loadSupervisor(req);
       const changed = await stores.tna.grantNonTraining(req.tenantId, sup.id, req.user.id);
-      if (changed) await audit.record(req, 'create', 'ina.supervisor_access', { supervisorId: sup.id, employeeIds: [sup.id] });
+      // satu izin, satu nama sumber daya audit (sama dengan TNA); `via` membedakan layar asalnya
+      if (changed) await audit.record(req, 'create', 'tna.non_training_access', { supervisorId: sup.id, employeeIds: [sup.id], via: 'ina' });
       res.json({ data: { supervisorId: sup.id, granted: true, changed } });
     }));
     r.delete('/access/:supervisorId', dashboard, wrap(async (req, res) => {
       const sup = await loadSupervisor(req);
       const changed = await stores.tna.revokeNonTraining(req.tenantId, sup.id, req.user.id);
-      if (changed) await audit.record(req, 'delete', 'ina.supervisor_access', { supervisorId: sup.id, employeeIds: [sup.id] });
+      if (changed) await audit.record(req, 'delete', 'tna.non_training_access', { supervisorId: sup.id, employeeIds: [sup.id], via: 'ina' });
       res.json({ data: { supervisorId: sup.id, granted: false, changed } });
     }));
 
@@ -287,7 +313,14 @@ module.exports = {
       if (!isOpen(action.status)) throw conflict('INVALID_STATE', 'Hanya tindakan berstatus Baru atau Berjalan yang bisa diverifikasi');
       if (!(await db.activeUser(req.tenantId, action.ownerUserId))) throw new HttpError(400, 'NO_OWNER', 'Akun pemilik tindakan sudah tidak aktif');
       const created = await db.createVerification(req.tenantId, { actionId: action.id, ownerUserId: action.ownerUserId, dueDate: body.dueDate || null, assignedBy: req.user.id });
-      if (!created) throw conflict('DUPLICATE', 'Tindakan ini masih punya verifikasi yang belum selesai');
+      if (!created) {
+        // null: masih ada verifikasi terbuka, atau tindakan baru saja berubah (ditutup, pindah pemilik, ditandai individu)
+        const now = await db.getAction(req.tenantId, action.id);
+        if (!now || now.ownerUserId !== action.ownerUserId || now.involvesIndividual || !isOpen(now.status)) {
+          throw conflict('INVALID_STATE', 'Tindakan ini baru saja diubah. Muat ulang lalu coba lagi.');
+        }
+        throw conflict('DUPLICATE', 'Tindakan ini masih punya verifikasi yang belum selesai');
+      }
       await auditVerification(req, 'create', created);
       res.status(201).json({ data: publicVerification(created) });
     }));
