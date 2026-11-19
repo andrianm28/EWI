@@ -142,6 +142,11 @@ memasangnya hanya-baca di `/run/secrets/gcp-voice.json`. Aktif bila `.env` beris
 hanya dengan `GCP_KEY_PROD=1` sampai ada project GCP produksi. Dev per worktree tidak mendapat kunci
 ini (elgos-dev tidak bisa membaca `/etc/elgos`).
 
+Uji asap staging 24 Nov: `.env` staging `VOICE_PROVIDER=gemini-vertex` (bawaan `fake`), `VOICE_MODEL`,
+`VOICE_LOCATION=asia-southeast1`. WebSocket `/api/voice/sessions/:id/stream` diteruskan Caddy apa
+adanya dan nginx web (`location /api/voice/`, timeout 1 jam). Keluar ke
+`asia-southeast1-aiplatform.googleapis.com:443` diizinkan (ufw hanya membatasi masuk).
+
 ## QA malam dengan AI sungguhan (B18)
 
 Keputusan user 19 Nov: akun Bedrock siap 24 Nov, QA malam 24–26 Nov untuk Go/No-Go 27 Nov.
