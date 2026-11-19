@@ -20,6 +20,8 @@
 #     terpisah dari daemon staging/prod, dibatasi slice systemd (SETUP_DEV=0 untuk melewati)
 # Idempoten: aman dijalankan ulang. Daftar pemegang akses: docs/infra/akses-etavm2.md.
 set -euo pipefail
+# umask admin etavm2 0027 membuat /usr/local/aws-cli 750 (installer meniru izin hasil ekstrak).
+umask 022
 
 REPO="${REPO:-andrianm28/EWI}"
 DEPLOY_USER="${DEPLOY_USER:-elgos-deploy}"
@@ -41,9 +43,13 @@ if ! command -v docker >/dev/null; then
   curl -fsSL https://get.docker.com | sudo sh
 fi
 if ! command -v aws >/dev/null; then
-  tmp="$(mktemp -d)"
+  # /tmp di etavm2 di-mount noexec, jadi installer diekstrak di $HOME. Gagal = skrip berhenti.
+  tmp="$(mktemp -d -p "$HOME")"
   curl -fsSL -o "$tmp/awscliv2.zip" "https://awscli.amazonaws.com/awscli-exe-linux-$(uname -m).zip"
-  unzip -q "$tmp/awscliv2.zip" -d "$tmp" && sudo "$tmp/aws/install" && rm -rf "$tmp"
+  unzip -q "$tmp/awscliv2.zip" -d "$tmp"
+  sudo "$tmp/aws/install"
+  rm -rf "$tmp"
+  aws --version
 fi
 
 # 2. Rotasi log Docker untuk semua container (compose ELGOS juga mengaturnya per service).
@@ -208,6 +214,11 @@ sudo systemctl enable --now elgos-backup@prod-hourly.timer elgos-backup@prod-nig
 for ENV in staging prod; do
   sudo "$SRC/ops/install-job.sh" "$ENV" interview-reminders '*-*-* 01:00:00 UTC' >/dev/null
   sudo "$SRC/ops/install-job.sh" "$ENV" import-batches-cleanup '*-*-* 20:30:00 UTC' >/dev/null
+  # Kunci GCP suara (B19) bila sudah dipasang thread suara. Prod hanya bila GCP_KEY_PROD=1
+  # (project elgos-dev belum dipisah untuk produksi).
+  if sudo test -s /etc/elgos/gcp-voice.json && { [ "$ENV" = staging ] || [ "${GCP_KEY_PROD:-0}" = 1 ]; }; then
+    sudo "$SRC/ops/pasang-kunci-gcp.sh" "$ENV"
+  fi
 done
 
 # 9. Dev per worktree. Daemon Docker rootless milik elgos-dev: container dev tidak bisa melihat atau
@@ -227,13 +238,20 @@ if [ "${SETUP_DEV:-1}" = 1 ]; then
   sudo systemctl daemon-reload
   sudo loginctl enable-linger "$DEV_USER"
   for _ in $(seq 1 20); do sudo test -S "/run/user/$DEV_UID/bus" && break; sleep 1; done
-  sudo -iu "$DEV_USER" env XDG_RUNTIME_DIR="/run/user/$DEV_UID" bash -c '
-    set -e
-    mkdir -p ~/.config/docker
-    [ -f ~/.config/docker/daemon.json ] || echo "{\"log-driver\":\"json-file\",\"log-opts\":{\"max-size\":\"20m\",\"max-file\":\"3\"}}" > ~/.config/docker/daemon.json
-    systemctl --user is-active -q docker 2>/dev/null || dockerd-rootless-setuptool.sh install >/dev/null
-    systemctl --user enable -q docker
-    grep -q DOCKER_HOST ~/.bashrc || echo "export DOCKER_HOST=unix://\$XDG_RUNTIME_DIR/docker.sock" >> ~/.bashrc'
+  # Skrip lewat stdin: `sudo -i ... bash -c '<multi-baris>'` meng-escape newline sehingga blok tidak jalan.
+  sudo -u "$DEV_USER" -H env XDG_RUNTIME_DIR="/run/user/$DEV_UID" \
+    DBUS_SESSION_BUS_ADDRESS="unix:path=/run/user/$DEV_UID/bus" PATH="/usr/bin:/bin:/usr/sbin:/sbin" \
+    bash -s <<'DEVEOF'
+set -euo pipefail
+cd "$HOME"
+mkdir -p ~/.config/docker
+[ -f ~/.config/docker/daemon.json ] || echo '{"log-driver":"json-file","log-opts":{"max-size":"20m","max-file":"3"}}' > ~/.config/docker/daemon.json
+systemctl --user is-active -q docker 2>/dev/null || dockerd-rootless-setuptool.sh install >/dev/null
+systemctl --user enable -q docker
+grep -q DOCKER_HOST ~/.profile || echo 'export DOCKER_HOST=unix://$XDG_RUNTIME_DIR/docker.sock' >> ~/.profile
+grep -q DOCKER_HOST ~/.bashrc || sed -i '1i export DOCKER_HOST=unix://$XDG_RUNTIME_DIR/docker.sock' ~/.bashrc
+DOCKER_HOST="unix://$XDG_RUNTIME_DIR/docker.sock" docker info --format 'Docker rootless elgos-dev: {{.ServerVersion}}, rootless={{range .SecurityOptions}}{{.}} {{end}}'
+DEVEOF
   sudo install -d -o "$DEV_USER" -g "$DEV_USER" -m 700 "/home/$DEV_USER/.ssh"
   echo "Dev: user $DEV_USER (Docker rootless). Tambahkan kunci SSH pengembang ke /home/$DEV_USER/.ssh/authorized_keys."
 fi

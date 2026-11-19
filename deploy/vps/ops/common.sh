@@ -37,7 +37,7 @@ env_compose() {
   [ -n "${ELGOS_DIR:-}" ] && dir="$ELGOS_DIR"
   # shellcheck disable=SC1091
   [ -f "$dir/current.env" ] && . "$dir/current.env"
-  ELGOS_ENV="$env" ELGOS_ENV_FILE="$dir/.env" ELGOS_DB_ENV_FILE="$dir/db.env" \
+  ELGOS_ENV="$env" ELGOS_ENV_FILE="$dir/.env" ELGOS_DB_ENV_FILE="$dir/db.env" ELGOS_SECRETS_DIR="$dir/secrets" \
   ELGOS_API_IMAGE="${ELGOS_API_IMAGE:-none}" ELGOS_WEB_IMAGE="${ELGOS_WEB_IMAGE:-none}" \
     docker compose -f "$dir/docker-compose.yml" --env-file "$dir/.env" "${@:2}"
 }
