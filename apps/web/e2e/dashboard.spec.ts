@@ -164,3 +164,52 @@ test('Pareto kosong dan TNA tertutup', async ({ page }) => {
   await loginAs(page, { dashboard: { ...HR_DATA, pareto: { rows: [], total: 0, hotCount: 0 } } })
   await expect(page.getByTestId('pareto')).toContainText('Belum ada temuan pelatihan yang disetujui HR.')
 })
+
+test('Perlu tindakan: satu baris per butir, tombol hanya ke layar yang bisa dibuka', async ({ page }) => {
+  await loginAs(page, { dashboard: { ...HR_DATA, actions: [...HR_DATA.actions, { key: 'non_training_findings', count: 2 }] } })
+  const card = page.getByTestId('tindakan')
+  const rows = card.getByTestId('tindakan-baris')
+  await expect(rows).toHaveCount(5)
+  await expect(rows.nth(0)).toContainText('4 temuan AI menunggu tinjauan HR')
+  await expect(rows.nth(1)).toContainText('2 wawancara akar masalah belum selesai')
+  await expect(rows.nth(2)).toContainText('1 rencana belajar butuh modul baru')
+  await expect(rows.nth(3)).toContainText('3 kompetensi di kamus belum disetujui')
+  await expect(rows.nth(4)).toContainText('2 temuan di luar pelatihan (Improvement Needs)')
+  await rows.nth(0).getByRole('link', { name: 'Tinjau' }).click()
+  await expect(page).toHaveURL(/\/m\/tna\/review$/)
+})
+
+test('Perlu tindakan kosong', async ({ page }) => {
+  await loginAs(page, { dashboard: { ...HR_DATA, actions: [] } })
+  await expect(page.getByTestId('tindakan')).toContainText('Tidak ada yang menunggu tindakan.')
+})
+
+test('galat API tampil di halaman dengan pesannya', async ({ page }) => {
+  await loginAs(page, { status: 503 })
+  await expect(page.getByTestId('dash-galat')).toContainText('Dashboard tidak bisa dimuat. Layanan sedang gangguan')
+  await expect(page.getByTestId('kpi')).toHaveCount(0)
+})
+
+test('flag dashboard.main mati: tetap Beranda lama dan /dashboard tidak bisa dibuka', async ({ page }) => {
+  await loginAs(page, { flags: { 'dashboard.main': false } })
+  await expect(page).toHaveURL(/\/$/)
+  await expect(page.getByTestId('card-dna')).toBeVisible()
+  await expect(nav(page).getByRole('link').first()).toHaveText('Beranda')
+  await page.goto('/dashboard')
+  await expect(page).toHaveURL(/\/$/)
+})
+
+test('pimpinan (tampilan Atasan, ditolak API) tetap di Beranda', async ({ page }) => {
+  await loginAs(page, { role: 'pimpinan' })
+  await expect(page).toHaveURL(/\/$/)
+  await expect(nav(page).getByRole('link').first()).toHaveText('Beranda')
+})
+
+test('snapshot visual: Dashboard utama terang dan gelap', async ({ page }) => {
+  await loginAs(page)
+  await expect(page.getByTestId('tindakan-baris')).toHaveCount(4)
+  await page.evaluate('document.fonts.ready.then(() => true)')
+  await expect(page).toHaveScreenshot('dashboard-hr-terang.png', { fullPage: true })
+  await page.getByRole('button', { name: 'Mode gelap' }).click()
+  await expect(page).toHaveScreenshot('dashboard-hr-gelap.png', { fullPage: true })
+})
