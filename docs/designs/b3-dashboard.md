@@ -83,11 +83,11 @@ Nama, deskripsi, dan teks tindakan **tidak** dikirim API; web yang memetakannya 
 | Angka | Definisi | Sumber |
 | --- | --- | --- |
 | `people` | Karyawan aktif (`status <> 'disabled'`) dalam cakupan dengan peran `learner`, `supervisor`, `role_leader`, `sme`. **Penyebut semua angka**: baris data orang di luar daftar ini tidak dihitung di mana pun | `stores.people.list` |
-| `employeesAnalyzed` | Karyawan dalam `people` yang punya minimal satu penilaian DNA (bila DNA terbuka) **atau** minimal satu temuan TNA yang sudah ditinjau HR (bila TNA terbuka). Sesi selesai yang temuannya masih draf **tidak** dihitung (PM-5), supaya atasan tidak bisa menyimpulkan ada draf | `stores.dna.assessmentsFor`, `stores.tna.listFindings` (hanya `approved`/`edited`) |
+| `employeesAnalyzed` | Karyawan dalam `people` yang punya minimal satu penilaian DNA (bila DNA terbuka) **atau** minimal satu temuan TNA yang sudah ditinjau HR, pelatihan maupun non-pelatihan (bila TNA terbuka). Temuan non-pelatihan hanya dihitung untuk HR, atau atasan yang diberi akses HR saat flag `tna.non_training_hr` menyala (K1). Sesi selesai yang temuannya masih draf **tidak** dihitung (PM-5), supaya atasan tidak bisa menyimpulkan ada draf | `stores.dna.assessmentsFor`, `stores.tna.listFindings` (hanya `approved`/`edited`) |
 | `competencyGaps` | Jumlah kompetensi berbeda yang minimal satu karyawan dalam `people` berstatus `gap` terhadap kompetensi jabatannya. `not_assessed` bukan gap. Dihitung langsung dengan `stores.dna.competenciesForPosition` + `computeGap().items` (`dna/gap.js`), satu kueri kompetensi per kombinasi jabatan dan jenjang | |
 | `okrGaps` | Jumlah target kinerja (KPI/OKR/SLA) yang belum tercapai pada **periode terbaru** tiap metrik per karyawan (kunci: karyawan + jenis + nama dinormalkan; periode dibandingkan sebagai teks, format impor `2026-11`/`2026-Q4`). Periode lama tidak dihitung. Toleransi per KPI (PM-1) sudah masuk di `isMet` | `stores.tna.listPerformance`, fungsi `latestUnmet` |
 | `aiHrAgreement.percent` | **Hanya HR.** `approved / (approved + edited + rejected)` × 100, dibulatkan; `null` bila belum ada yang ditinjau. Seluruh tenant, hanya temuan hasil job analisis AI (`analysis_job_id` terisi) yang diputus orang (`reviewed_by` terisi), supaya temuan lama yang ditandai massal oleh migrasi `20261117000400` tidak menaikkan angka | store baru `stores.tna.aiReviewCounts` |
-| `analysisDays.median` | **Hanya HR** (LIN-B1 adalah metrik waktu HR; untuk atasan selisih jumlah sesi bisa membocorkan draf). Per sesi TNA dalam cakupan: hari pecahan dari wawancara selesai (`ended_at`) sampai temuan AI terakhirnya diputus. Hanya sesi yang seluruh temuan AI-nya sudah diputus orang. Median selisih itu dibulatkan ke 0,01 hari lalu ke atas ke hari penuh. `null` bila belum ada sesi | store baru `stores.tna.analysisDurations` (SQL di `lna-stores.js`) |
+| `analysisDays.median` | **Hanya HR** (LIN-B1 adalah metrik waktu HR; untuk atasan selisih jumlah sesi bisa membocorkan draf). Per sesi TNA milik karyawan dalam `people`: hari pecahan dari wawancara selesai (`ended_at`) sampai temuan AI terakhirnya diputus. Hanya sesi yang seluruh temuan AI-nya sudah diputus orang. Median selisih itu dibulatkan ke 0,01 hari lalu ke atas ke hari penuh. `null` bila belum ada sesi | store baru `stores.tna.analysisDurations` (SQL di `lna-stores.js`) |
 | `pareto.rows` | Helper bersama `rankFindings()` (`tna/pareto.js`, juga dipakai `GET /tna/pareto`: hitung `missRatio` lewat `evaluate()` lalu `rankTrainingNeeds()`) atas temuan pelatihan yang sudah ditinjau dalam `people`, dengan `settings.tna.pareto`; 7 teratas | sama dengan `GET /tna/pareto` |
 | `pareto.rows[].hot` | Baris teratas sampai `cumulativeShare` pertama kali ≥ 0,8 (baris yang melewati 0,8 ikut) | dihitung di modul dashboard |
 
@@ -116,9 +116,9 @@ Hanya butir dengan `count > 0` yang dikirim, urutan tetap:
 
 | `key` | Untuk | Hitungan | Syarat |
 | --- | --- | --- | --- |
-| `review_pending` | HR | temuan AI berstatus draf, seluruh tenant | TNA terbuka |
+| `review_pending` | HR | temuan berstatus draf seluruh tenant, yaitu isi antrean tinjauan HR (`reviewQueue`, semua kategori, hasil AI maupun bukan) yang dituju tombol "Tinjau" | TNA terbuka |
 | `interviews_open` | HR, atasan | sesi TNA `scheduled` atau `in_progress` milik karyawan dalam `people` | TNA terbuka |
-| `plan_needs_module` | HR | butir rencana pelatihan tanpa modul (`needsModule`) yang belum `completed`/`rejected` | TNA terbuka |
+| `plan_needs_module` | HR | butir rencana pelatihan milik karyawan dalam `people` tanpa modul (`needsModule`) yang belum `completed`/`rejected` | TNA terbuka |
 | `non_training_findings` | HR; atasan **hanya bila** `hasNonTrainingGrant` | temuan non-pelatihan yang sudah ditinjau, dalam cakupan | TNA terbuka + flag `tna.non_training_hr` |
 | `competencies_unapproved` | HR | kompetensi dengan `approvedAt` kosong | DNA terbuka |
 
@@ -141,6 +141,8 @@ Hanya butir dengan `count > 0` yang dikirim, urutan tetap:
   - Pareto: judul "Pareto 20/80: gap yang perlu diprioritaskan"; catatan "n dari m kebutuhan menyumbang sekitar 80% total. Mulai dari yang ditandai Prioritas." Tiap baris: label, chip "Prioritas" untuk `hot` (bukan warna saja), "n orang · kum. x%", batang kumulatif (kritis untuk `hot`). Kosong: "Belum ada temuan pelatihan yang disetujui HR." TNA tertutup: "Modul Training Needs belum aktif."
   - Perlu tindakan, urutan tetap di web: `review_pending` ("n temuan AI menunggu tinjauan HR", tombol "Tinjau" ke `review` atau `tna-review`), `interviews_open` ("n wawancara akar masalah belum selesai", ke `tna`), `plan_needs_module` ("n rencana belajar butuh modul baru", ke `tna`), `competencies_unapproved` ("n kompetensi di kamus belum disetujui", ke `dna`), `non_training_findings` ("n temuan di luar pelatihan (Improvement Needs)", ke `ina`). Tombol hanya bila rutenya bisa dibuka. Kosong: "Tidak ada yang menunggu tindakan."
   - Subjudul: HR "Ringkasan seluruh modul ELGOS, dari analisis kebutuhan sampai dampak."; atasan "Ringkasan tim Anda. Hanya bawahan langsung yang dihitung."
+- Judul, subjudul, dan jumlah kartu KPI mengikuti `scope` dari respons API (`team` → "Dashboard tim"), bukan tampilan aktif. API menghitung dengan peran utama, jadi akun `hr_admin` + `supervisor` yang beralih ke tampilan Atasan tetap menerima data seluruh tenant dan layar tidak boleh menyebutnya "tim" (B0 5.1).
+- Teks tambahan di luar mockup: catatan kartu gap saat TNA tertutup ("kompetensi di bawah standar jabatan"), keterangan satu baris tiap butir Perlu tindakan (`desc`), dan tombol "Lihat" untuk butir selain tinjauan. Keterangan modul 2 menulis "permintaan modul baru" sebagai ganti nama vendor (K4: nama vendor dari konfigurasi tenant).
 - Keadaan muat ("Memuat…") dan galat: `UiNote` kritis "Dashboard tidak bisa dimuat. <pesan API>". `UiErrorSummary` khusus galat formulir (B0), jadi tidak dipakai untuk galat muat halaman; tidak ada `role="alert"` global.
 
 ## 5. Data dan migrasi
@@ -153,9 +155,9 @@ Seam yang diuji (skill `tdd`): HTTP `GET /api/dashboard` (supertest), store Post
 
 Unit (`apps/api/tests/unit/dashboard.test.js`, store tiruan yang mencatat cakupan tiap panggilan + supertest): flag mati → 403; peran lain → 403 tanpa membaca data; HR semua bagian; `eta_admin` seperti HR; atasan hanya bawahan langsung dan tanpa angka yang bergantung pada draf; K1 dengan dan tanpa akses; flag `tna.non_training_hr` mati; atasan tanpa bawahan; modul tertutup → `null` dan datanya tidak dibaca (termasuk flag menyala tanpa entitlement); status modul; audit atasan (id bawahan), audit HR (ringkas), audit gagal → 500; semua pembacaan memakai tenant dari token; `markHot`, `median`, `latestUnmet`, `agreement`.
 
-Integrasi Postgres (`apps/api/tests/integration/dashboard.test.js`): `aiReviewCounts` (temuan lama tanpa reviewer tidak dihitung), `analysisDurations` (sesi dengan draf dikecualikan, cakupan), HR ujung ke ujung tanpa data tenant lain, atasan ujung ke ujung dengan audit id bawahan, karyawan ditolak.
+Integrasi Postgres (`apps/api/tests/integration/dashboard.test.js`): karyawan nonaktif dan temuan non-pelatihan (penyebut `people`, "dianalisis"), `aiReviewCounts` (temuan lama tanpa reviewer tidak dihitung), `analysisDurations` (sesi dengan draf dikecualikan, cakupan), HR ujung ke ujung tanpa data tenant lain, atasan ujung ke ujung dengan audit id bawahan, karyawan ditolak.
 
-E2E (`apps/web/e2e/dashboard.spec.ts`, 13 test): HR mendarat dengan empat KPI; atasan dua KPI; angka kosong dengan alasan; status modul dan tombol Buka; atasan tiga modul; Pareto dengan chip Prioritas dan kosong; Perlu tindakan dan kosong; galat API; flag mati → Beranda lama; `pimpinan` tetap di Beranda; snapshot terang dan gelap.
+E2E (`apps/web/e2e/dashboard.spec.ts`, 14 test): multi-peran di tampilan Atasan memakai label dari `scope`; HR mendarat dengan empat KPI; atasan dua KPI; angka kosong dengan alasan; status modul dan tombol Buka; atasan tiga modul; Pareto dengan chip Prioritas dan kosong; Perlu tindakan dan kosong; galat API; flag mati → Beranda lama; `pimpinan` tetap di Beranda; snapshot terang dan gelap.
 
 Gerbang: `npm run lint`, `npm test`, `npm run build`, `npm run e2e`.
 
@@ -173,7 +175,7 @@ Gerbang: `npm run lint`, `npm test`, `npm run build`, `npm run e2e`.
 - [x] `apps/web/src/screens/b3-dashboard/routes.ts`, `DashboardView.vue`
 - [x] ~~`apps/web/src/shell/menu.ts`, `components/AppDrawer.vue`, `docs/designs/b0-fondasi-ui.md`~~: koreksi aturan peralihan pindah ke PR B0 (#18)
 - [x] `apps/web/e2e/dashboard.spec.ts`, snapshot `dashboard-hr-terang.png`, `dashboard-hr-gelap.png`
-- [ ] `docs/ewi/poc-dna-tna.md` atau README: daftar flag bertambah `dashboard.main`
+- [x] `docs/ewi/poc-dna-tna.md`: daftar flag bertambah `dashboard.main`
 
 ## 8. Asumsi dan risiko yang tersisa
 
@@ -212,3 +214,22 @@ Gerbang: `npm run lint`, `npm test`, `npm run build`, `npm run e2e`.
 | 19 | `profiles()` tidak bisa dipakai | **Perbaiki**: `competenciesForPosition` + `computeGap().items`; `not_assessed` bukan gap |
 | 20 | `missRatio` Pareto tidak disebut | **Perbaiki**: helper bersama `rankFindings` dipakai dua endpoint |
 | 21 | Rute tombol Buka, tindakan, bentuk modul atasan | **Perbaiki**: bagian 4 |
+
+### Code review dua sumbu (`mattpocock-skills:code-review`, 19 Nov) dan triasenya
+
+Dijalankan terhadap titik tetap scbrmb dengan dua subagent (Standar = `CLAUDE.md`, Spek = dokumen ini). Ditriase oleh thread penerus setelah plugin egm termuat.
+
+| Sumbu | Temuan | Keputusan |
+| --- | --- | --- |
+| Spek | `employeesAnalyzed` hanya memakai temuan pelatihan | **Perbaiki**: temuan non-pelatihan yang sudah ditinjau ikut (HR, atau atasan dengan akses K1). Test integrasi merah lalu hijau |
+| Spek | `analysisDurations` dan `plan_needs_module` tidak disaring ke `people` | **Perbaiki**: disaring di modul dashboard; test karyawan nonaktif |
+| Spek | `review_pending` memakai semua draf, spek menulis "temuan AI" | **Tolak**: tombol "Tinjau" menuju antrean tinjauan HR yang memuat semua draf (`reviewQueue`), jadi angkanya harus sama dengan antrean. Spek 3.5 dikoreksi |
+| Spek | Keterangan modul tidak sama dengan mockup | **Perbaiki**: teks mockup, tanpa nama vendor (K4). E2E merah lalu hijau, snapshot diperbarui |
+| Spek | Teks tambahan di luar mockup | **Perbaiki**: dicatat di bagian 4 |
+| Spek | Daftar flag `dashboard.main` belum ditulis | **Perbaiki**: `docs/ewi/poc-dna-tna.md` |
+| Standar | Reviewer Andrian (audit, flags, `app.js`) | **Sudah**: assignee dan reviewer PR |
+| Standar | `MODULE_FLAGS` memakai string `module.li/ld/lim` | **Perbaiki**: `FLAGS.MODULE_LI`/`MODULE_LD` dari B13/B14; `module.lim` tetap string sampai B15 menambahkannya |
+| Standar | Smell: `interviews_open` ganda, `aiReviewCounts` menyalin `reviewCounts`, handler panjang | **Perbaiki sebagian**: satu pemanggilan `interviews_open`, helper `byReviewStatus`. Pemisahan handler **diterima** `[⏳ DITERIMA]`: urutan butir dan cakupan bersama lebih mudah dibaca di satu fungsi |
+| Standar | **Bug**: label tim dari `activeView`, API memakai peran utama | **Perbaiki**: label dari `scope` respons. E2E multi-peran merah lalu hijau |
+| Standar | `meta.roles` memakai peran mana pun, API peran utama | **Diterima** `[⏳ DITERIMA]` sampai B2 (#20, `switch-role`) masuk |
+| Standar | `aiReviewCounts` tidak menyaring `submodule`/karyawan aktif | **Tolak**: hanya `saveTna` yang menulis `lna_findings.analysis_job_id` (`lna-stores.js`), jadi job DNA tidak menghasilkan temuan. Kesepakatan dihitung seluruh tenant sesuai 3.3 (putusan HR atas karyawan yang kemudian nonaktif tetap putusan sah) |
