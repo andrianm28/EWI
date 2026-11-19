@@ -103,7 +103,7 @@ const stageTone = (s: Stage) => (s === 'done' ? 'success' : s === 'not_assessed'
 const moduleChip = (m: PlanModule): { tone: 'success' | 'review' | 'neutral'; label: string } => {
   if (m.status === 'met') return { tone: 'success', label: 'Tercapai' }
   if (m.status === 'develop') return { tone: 'review', label: 'Perlu dikembangkan' }
-  if (m.status === 'locked') return { tone: 'neutral', label: 'Terkunci' }
+  if (m.status === 'locked') return { tone: 'neutral', label: 'Belum dibuka' }
   return { tone: 'neutral', label: 'Belum dinilai' }
 }
 </script>
@@ -125,7 +125,7 @@ const moduleChip = (m: PlanModule): { tone: 'success' | 'review' | 'neutral'; la
           :disabled="j.dictionary === 'none'" :aria-pressed="j.id === jobId" @click="pickJob(j.id)"
         >
           {{ j.name }}
-          <UiChip :tone="j.dictionary === 'available' ? 'success' : 'neutral'">{{ j.dictionary === 'available' ? 'Kamus tersedia' : 'Belum ada kamus' }}</UiChip>
+          <UiChip :tone="j.dictionary === 'available' ? 'success' : 'neutral'">{{ j.dictionary === 'available' ? 'Kamus tersedia' : 'Belum tersedia' }}</UiChip>
         </button>
       </div>
 

@@ -32,8 +32,12 @@ async function guard<T>(fn: () => Promise<T>): Promise<T | null> {
 
 const okrMin = computed(() => map.value?.okrMin ?? paths.value?.okrMin ?? 80)
 const scopeText = computed(() => (role.value === 'supervisor' ? 'Anda melihat bawahan langsung Anda.' : 'HR melihat seluruh karyawan.'))
-const divisionOptions = computed(() => [{ key: 'all', label: 'Semua' }, ...(map.value?.divisions ?? []).map((d) => ({ key: d, label: d }))])
-const people = computed(() => (map.value?.employees ?? []).filter((p) => division.value === 'all' || p.division === division.value))
+const NO_DIVISION = '__none__'
+const divisionOptions = computed(() => [
+  { key: 'all', label: 'Semua' }, ...(map.value?.divisions ?? []).map((d) => ({ key: d, label: d })),
+  ...((map.value?.employees ?? []).some((p) => !p.division) ? [{ key: NO_DIVISION, label: 'Tanpa divisi' }] : []),
+])
+const people = computed(() => (map.value?.employees ?? []).filter((p) => division.value === 'all' || (division.value === NO_DIVISION ? !p.division : p.division === division.value)))
 
 function statusText(s: CareerStatus, next: { name: string } | null): string {
   switch (s) {
@@ -49,6 +53,7 @@ function statusText(s: CareerStatus, next: { name: string } | null): string {
 }
 const statusTone = (s: CareerStatus): Tone => (s === 'eligible' ? 'success' : s === 'below_current' ? 'critical' : s.startsWith('program_passed') ? 'review' : 'neutral')
 const decisionText: Record<string, string> = { recommend: 'Direkomendasi', hold: 'Ditunda', approved: 'Disetujui' }
+const SUPERVISOR_TEXT: Record<string, string> = { recommend: 'Merekomendasikan', hold: 'Menunda' }
 const decisionTone = (d?: string): Tone => (d === 'approved' || d === 'recommend' ? 'success' : d === 'hold' ? 'review' : 'neutral')
 const BLOCKED: Record<string, string> = {
   not_eligible: 'Belum memenuhi syarat', no_supervisor: 'Data atasan belum ada', waiting_supervisor: 'Menunggu atasan',
@@ -102,16 +107,25 @@ const DEC_COLUMNS: UiColumn[] = [
 ]
 const decisionRows = computed(() => (decisions.value ?? []).map((d) => ({ ...d, id: d.employee.id })))
 const fmtTime = (iso: string) => new Date(iso).toLocaleString('id-ID', { dateStyle: 'medium', timeStyle: 'short' })
-const fmtPct = (n: number) => `${Math.round(n)}%`
+// C2: pembulatan tampilan tidak boleh menyeberangi ambang (79,5 tampil 79%, bukan 80%)
+const fmtPct = (n: number) => { const r = Math.round(n); return `${r >= okrMin.value && n < okrMin.value ? Math.floor(n) : r}%` }
 const decNote = computed(() => (role.value === 'supervisor'
   ? 'Anda memberi rekomendasi untuk bawahan langsung yang memenuhi syarat. HR mengambil keputusan akhir.'
   : 'HR memutuskan setelah atasan langsung memberi rekomendasi. Menyetujui tidak mengubah jenjang secara otomatis; ubah jenjang setelah surat keputusan terbit.'))
-const FLOW = [
-  { who: 'Sistem', tone: 'neutral' as Tone, t: 'Menandai karyawan yang lulus program jenjang berikutnya dan OKR-nya memenuhi ambang.' },
-  { who: 'Atasan', tone: 'training' as Tone, t: 'Merekomendasikan atau menunda, dengan catatan bila perlu.' },
-  { who: 'HR', tone: 'improvement' as Tone, t: 'Menyetujui atau menunda. Setiap keputusan dicatat dengan nama dan waktunya.' },
-  { who: 'HR', tone: 'improvement' as Tone, t: 'Mengubah jenjang karyawan setelah surat keputusan terbit.' },
-]
+const FLOW = computed(() => [
+  { who: 'Sistem', tone: 'training' as Tone, t: `Menandai karyawan yang memenuhi dua syarat: lulus program tingkat berikutnya dan OKR ≥ ${okrMin.value}%.` },
+  { who: 'Atasan', tone: 'review' as Tone, t: 'Menilai kesiapan di pekerjaan dan memberi rekomendasi: setuju atau tunda.' },
+  { who: 'HR', tone: 'review' as Tone, t: 'Meninjau rekomendasi, bukti, dan formasi, lalu memutuskan.' },
+  { who: 'Hasil', tone: 'success' as Tone, t: 'Keputusan dicatat. Kenaikan jabatan berlaku setelah ada surat keputusan.' },
+])
+/** Kalimat aturan per jenjang (mockup): syarat naik ke jenjang berikutnya. */
+function ruleFor(i: number): string {
+  const levels = paths.value?.levels ?? []
+  const next = levels[i + 1]
+  if (!next) return 'Jenjang tertinggi pada jalur ini.'
+  if (!next.requiredProgramTier) return `Naik ke ${next.name}: syarat program belum ditetapkan.`
+  return `Naik ke ${next.name}: lulus program ${TIER_LABEL[next.requiredProgramTier]} dan OKR ≥ ${okrMin.value}%, lalu disetujui atasan dan HR.`
+}
 </script>
 
 <template>
@@ -144,7 +158,8 @@ const FLOW = [
             <template #cell-division="{ value }">{{ value ?? 'Tanpa divisi' }}</template>
             <template #cell-level="{ row }"><UiChip v-if="row.level" tone="training">{{ row.level.name }}</UiChip><span v-else class="el-muted">–</span></template>
             <template #cell-programs="{ row }">
-              <span class="cp-row"><UiChip v-for="p in row.programs" :key="p.tier" :tone="p.passed ? 'success' : 'neutral'" :icon="p.passed ? 'check_circle' : undefined">{{ TIER_LABEL[p.tier] }}<span class="el-sr-only">{{ p.passed ? ' lulus' : ' belum lulus' }}</span></UiChip></span>
+              <UiChip v-if="!row.programs.length">Belum ada kamus</UiChip>
+              <span v-else class="cp-row"><UiChip v-for="p in row.programs" :key="p.tier" :tone="p.passed ? 'success' : 'neutral'" :icon="p.passed ? 'check_circle' : undefined">{{ TIER_LABEL[p.tier] }}<span class="el-sr-only">{{ p.passed ? ' lulus' : ' belum lulus' }}</span></UiChip></span>
             </template>
             <template #cell-status="{ row }">
               <UiChip :tone="statusTone(row.status)">{{ statusText(row.status, row.nextLevel) }}</UiChip>
@@ -163,7 +178,7 @@ const FLOW = [
             </div>
             <div class="el-grid el-grid-4" style="margin-top:12px">
               <div class="cp-mod"><span class="el-muted" style="font-size:12px">Program lulus</span><b>{{ evidence.programsPassed.length ? evidence.programsPassed.map((t) => TIER_LABEL[t]).join(', ') : 'Belum ada' }}</b></div>
-              <div class="cp-mod"><span class="el-muted" style="font-size:12px">Pencapaian OKR</span><b>{{ evidence.okr ? `${fmtPct(evidence.okr.achievement)} (ambang ${evidence.okr.min}%)` : 'Belum ada data' }}</b><span v-if="evidence.okr?.period" class="el-muted" style="font-size:12px">Periode {{ evidence.okr.period }}</span></div>
+              <div class="cp-mod"><span class="el-muted" style="font-size:12px">Pencapaian OKR</span><b>{{ evidence.okr ? `${fmtPct(evidence.okr.achievement)} (ambang ${evidence.okr.min}%) · ${evidence.okr.met ? 'terpenuhi' : 'belum terpenuhi'}` : 'Belum ada data' }}</b><span v-if="evidence.okr?.period" class="el-muted" style="font-size:12px">Periode {{ evidence.okr.period }}</span></div>
               <div class="cp-mod"><span class="el-muted" style="font-size:12px">Wawancara ulang AI</span><b>Belum tersedia</b></div>
               <div class="cp-mod"><span class="el-muted" style="font-size:12px">Review atasan</span><b>{{ evidence.supervisorRecommendation ? `${decisionText[evidence.supervisorRecommendation.decision]} oleh ${evidence.supervisorRecommendation.byName ?? 'atasan'}` : 'Belum ada' }}</b></div>
             </div>
@@ -186,6 +201,7 @@ const FLOW = [
                   <span class="cp-between"><span>Karyawan pada jenjang ini</span><b class="el-mono">{{ l.employees }}</b></span>
                   <span class="cp-between"><span>Sudah memenuhi syarat jenjang berikutnya</span><b class="el-mono">{{ l.readyForNext }}</b></span>
                 </div>
+                <p class="el-muted" style="font-size:13px;margin-top:12px">{{ ruleFor(i) }}</p>
               </UiCard>
             </div>
             <UiCard style="margin-top:16px">
@@ -207,12 +223,12 @@ const FLOW = [
               <UiChip :tone="row.eligible ? 'success' : 'review'">{{ row.requirement.okr ? `Program lulus · OKR ${fmtPct(row.requirement.okr.achievement)}` : 'Program lulus · OKR belum ada' }}</UiChip>
             </template>
             <template #cell-supervisor="{ row }">
-              <UiChip :tone="decisionTone(row.supervisor?.decision)">{{ row.supervisor ? decisionText[row.supervisor.decision] : 'Belum' }}</UiChip>
+              <UiChip :tone="decisionTone(row.supervisor?.decision)">{{ row.supervisor ? SUPERVISOR_TEXT[row.supervisor.decision] : 'Belum' }}</UiChip>
               <UiAuditLine v-if="row.supervisor" :items="[row.supervisor.byName ?? 'atasan', fmtTime(row.supervisor.at)]" />
               <div v-if="row.supervisor?.note" class="el-muted" style="font-size:12px">{{ row.supervisor.note }}</div>
             </template>
             <template #cell-hr="{ row }">
-              <UiChip :tone="decisionTone(row.hr?.decision)">{{ row.hr ? decisionText[row.hr.decision] : 'Belum' }}</UiChip>
+              <UiChip :tone="decisionTone(row.hr?.decision)">{{ row.hr ? decisionText[row.hr.decision] : 'Menunggu' }}</UiChip>
               <UiAuditLine v-if="row.hr" :items="[row.hr.byName ?? 'HR', fmtTime(row.hr.at)]" />
               <div v-if="row.hr?.note" class="el-muted" style="font-size:12px">{{ row.hr.note }}</div>
             </template>

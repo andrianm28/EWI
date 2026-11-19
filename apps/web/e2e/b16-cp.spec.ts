@@ -20,7 +20,7 @@ const MAP = {
   employees: [
     { id: 'e1', name: 'Ani', division: 'IT', jobRoleId: 'jr1', jobRoleName: 'Engineer', level: { id: 'l1', name: 'Junior' }, programs: progs(2), okr: { achievement: 92.5, period: '2026-11', count: 2 }, status: 'eligible', nextLevel: { id: 'l2', name: 'Senior', requiredProgramTier: 'intermediate' }, decisionState: 'none' },
     { id: 'e2', name: 'Budi', division: 'IT', jobRoleId: 'jr1', jobRoleName: 'Engineer', level: { id: 'l1', name: 'Junior' }, programs: progs(0), okr: null, status: 'below_current', nextLevel: { id: 'l2', name: 'Senior', requiredProgramTier: 'intermediate' }, decisionState: 'none' },
-    { id: 'e3', name: 'Cici', division: 'Sales', jobRoleId: 'jr2', jobRoleName: 'Account', level: { id: 'l9', name: 'Staf' }, programs: progs(2), okr: { achievement: 70, period: '2026-11', count: 1 }, status: 'program_passed_okr_low', nextLevel: { id: 'l10', name: 'Senior' }, decisionState: 'none' },
+    { id: 'e3', name: 'Cici', division: 'Sales', jobRoleId: 'jr2', jobRoleName: 'Account', level: { id: 'l9', name: 'Staf' }, programs: progs(2), okr: { achievement: 79.5, period: '2026-11', count: 1 }, status: 'program_passed_okr_low', nextLevel: { id: 'l10', name: 'Senior' }, decisionState: 'none' },
   ],
 }
 const decision = (o: Record<string, unknown> = {}) => ({
@@ -60,8 +60,9 @@ test('HR: peta per divisi, bukti, jalur jenjang, dan keputusan menunggu atasan',
   await expect(map).toContainText('Memenuhi syarat Senior')
   await expect(map).toContainText('Belum memenuhi kompetensi jabatan')
   await expect(map).toContainText('Program lulus, OKR belum 80%')
+  await expect(map).toContainText('OKR 79%') // pembulatan tidak menyeberangi ambang
   await expect(page.getByTestId('cp-evidence')).toContainText('Bukti untuk Ani')
-  await expect(page.getByTestId('cp-evidence')).toContainText('93% (ambang 80%)')
+  await expect(page.getByTestId('cp-evidence')).toContainText('93% (ambang 80%) · terpenuhi')
   await page.getByRole('group', { name: 'Divisi' }).getByRole('button', { name: 'Sales' }).click()
   await expect(map.getByRole('table')).not.toContainText('Ani')
   await page.getByRole('button', { name: 'Bukti Cici' }).click()
@@ -69,6 +70,8 @@ test('HR: peta per divisi, bukti, jalur jenjang, dan keputusan menunggu atasan',
 
   await page.getByRole('tab', { name: 'Jalur jenjang' }).click()
   await expect(page.getByTestId('cp-path')).toContainText('lulus program Basic (4 modul)')
+  await expect(page.getByTestId('cp-path')).toContainText('Naik ke Senior: lulus program Intermediate dan OKR ≥ 80%')
+  await expect(page.getByTestId('cp-path')).toContainText('Jenjang tertinggi pada jalur ini.')
   await page.getByRole('tab', { name: 'Keputusan promosi' }).click()
   await expect(page.getByTestId('cp-dec')).toContainText('Junior → Senior')
   await expect(page.getByTestId('cp-dec')).toContainText('Menunggu atasan')
@@ -87,6 +90,7 @@ test('Atasan merekomendasikan dengan catatan; keputusan tercatat dengan nama', a
   expect(posts[0]!.url).toMatch(/\/decisions\/e1\/supervisor$/)
   expect(posts[0]!.body).toEqual({ decision: 'recommend', note: 'Siap' })
   await expect(page.getByTestId('cp-dec')).toContainText('Sari')
+  await expect(page.getByTestId('cp-dec')).toContainText('Merekomendasikan')
   await expect(page.getByTestId('cp-dec')).toContainText('Menunggu HR')
 })
 

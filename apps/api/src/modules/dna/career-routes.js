@@ -5,14 +5,15 @@ const express = require('express');
 const { requireRole, ROLES } = require('../../core/rbac');
 const { scopeFor } = require('../../core/rbac/scope');
 const { FLAGS, requireFlag } = require('../../core/flags');
-const { HttpError, badRequest, notFound } = require('../../core/errors');
+const { HttpError, badRequest, notFound, forbidden: forbiddenWith } = require('../../core/errors');
 const { wrap } = require('../interviews');
 const { TIERS } = require('./development');
+const { isUuid } = require('./development-routes');
 const { promotionSettings, careerStatus, okrAchievement, careerState, findCycle, decisionState, decisionView } = require('./career');
 
-const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-const forbidden = (message) => new HttpError(403, 'ROLE_FORBIDDEN', message);
-const conflict = (code, message) => new HttpError(409, code, message);
+const forbidden = (message) => forbiddenWith('ROLE_FORBIDDEN', message);
+// 409 dengan kode spesifik (C6, C7); core/errors.conflict() selalu memakai kode CONFLICT
+const conflictCode = (code, message) => new HttpError(409, code, message);
 const level = (l) => (l ? { id: l.id, name: l.name } : null);
 
 function careerRoutes({ stores, settings, flags, audit }) {
@@ -80,7 +81,7 @@ function careerRoutes({ stores, settings, flags, audit }) {
   async function target(req) {
     const userId = String(req.params.userId).toLowerCase();
     const data = await load(req);
-    const x = UUID.test(userId) ? data.rows.find((row) => row.person.id === userId) : null;
+    const x = isUuid(userId) ? data.rows.find((row) => row.person.id === userId) : null;
     if (!x) throw notFound('Karyawan tidak ditemukan');
     return { ...data, x };
   }
@@ -132,7 +133,7 @@ function careerRoutes({ stores, settings, flags, audit }) {
     const { jobRoleId } = req.query;
     let role;
     if (jobRoleId !== undefined) {
-      role = UUID.test(String(jobRoleId)) ? roles.find((j) => j.id === String(jobRoleId).toLowerCase()) : null;
+      role = isUuid(String(jobRoleId)) ? roles.find((j) => j.id === String(jobRoleId).toLowerCase()) : null;
       if (!role) throw badRequest('jobRoleId tidak dikenal');
     } else role = roles.find((j) => j.levels.length) || null;
     if (!role) return res.json({ data: { jobRole: null, okrMin, levels: [] } });
@@ -163,14 +164,14 @@ function careerRoutes({ stores, settings, flags, audit }) {
     if (x.person.supervisorId !== req.user.id) throw notFound('Karyawan tidak ditemukan');
     // C10: peran atasan dibaca dari basis data, bukan dari token (peran bisa sudah dicabut)
     if (x.person.supervisorRole !== ROLES.SUPERVISOR) throw forbidden('Tahap ini hanya untuk atasan langsung karyawan');
-    if (x.cycle.approved) throw conflict('ALREADY_DECIDED', 'Promosi ke jenjang ini sudah disetujui HR');
+    if (x.cycle.approved) throw conflictCode('ALREADY_DECIDED', 'Promosi ke jenjang ini sudah disetujui HR');
     // rekomendasi terbuka boleh ditarik (tunda) walau karyawan tidak lagi memenuhi syarat
     const withdraw = body.decision === 'hold' && x.cycle.open;
-    if (!x.eligible && !withdraw) throw conflict('NOT_ELIGIBLE', 'Karyawan belum memenuhi syarat program dan OKR untuk jenjang berikutnya');
+    if (!x.eligible && !withdraw) throw conflictCode('NOT_ELIGIBLE', 'Karyawan belum memenuhi syarat program dan OKR untuk jenjang berikutnya');
     const id = await stores.promotion.supervisorDecide(req.tenantId, {
       userId: x.person.id, fromLevelId: x.person.careerLevelId, toLevelId: x.next.id, okrAchievement: x.okr ? x.okr.achievement : null, decision: body.decision, note: body.note, by: req.user.id,
     }, await auditMeta(req, x, 'supervisor_decision', body.decision));
-    if (!id) throw conflict('ALREADY_DECIDED', 'Promosi ke jenjang ini sudah disetujui HR');
+    if (!id) throw conflictCode('ALREADY_DECIDED', 'Promosi ke jenjang ini sudah disetujui HR');
     const fresh = await target(req);
     res.json({ data: decisionRow(req, fresh.x, fresh.okrMin) });
   }));
@@ -182,21 +183,21 @@ function careerRoutes({ stores, settings, flags, audit }) {
     const decision = body.decision === 'approve' ? 'approved' : 'hold';
     const { x } = await target(req);
     const { open } = x.cycle;
-    if (x.cycle.approved) throw conflict('ALREADY_DECIDED', 'Promosi ke jenjang ini sudah diputuskan HR');
-    if (!open) throw conflict('WAITING_SUPERVISOR', 'Atasan belum memberi keputusan untuk jenjang ini');
+    if (x.cycle.approved) throw conflictCode('ALREADY_DECIDED', 'Promosi ke jenjang ini sudah diputuskan HR');
+    if (!open) throw conflictCode('WAITING_SUPERVISOR', 'Atasan belum memberi keputusan untuk jenjang ini');
     // pemisahan tugas: yang merekomendasi tidak memutuskan rekomendasinya sendiri
     if (open.supervisorBy === req.user.id) throw forbidden('Anda yang memberi rekomendasi ini; keputusan HR harus oleh orang lain');
     if (decision === 'approved') {
-      if (open.supervisorDecision !== 'recommend') throw conflict('SUPERVISOR_NOT_RECOMMEND', 'Atasan tidak merekomendasi; HR hanya bisa menunda');
-      if (!x.eligible) throw conflict('NOT_ELIGIBLE', 'Karyawan tidak lagi memenuhi syarat program dan OKR');
+      if (open.supervisorDecision !== 'recommend') throw conflictCode('SUPERVISOR_NOT_RECOMMEND', 'Atasan tidak merekomendasi; HR hanya bisa menunda');
+      if (!x.eligible) throw conflictCode('NOT_ELIGIBLE', 'Karyawan tidak lagi memenuhi syarat program dan OKR');
     }
     const ok = await stores.promotion.hrDecide(req.tenantId, { id: open.id, decision, note: body.note, by: req.user.id }, await auditMeta(req, x, 'hr_decision', decision));
     const fresh = await target(req);
     if (!ok) {
       // balapan: HR lain sudah memutuskan, atau atasan baru saja mengubah ke tunda
       const now = fresh.x.cycle;
-      if (!now.approved && now.open && now.open.id === open.id) throw conflict('SUPERVISOR_NOT_RECOMMEND', 'Atasan mengubah keputusannya; muat ulang lalu coba lagi');
-      throw conflict('ALREADY_DECIDED', 'Promosi ke jenjang ini sudah diputuskan HR');
+      if (!now.approved && now.open && now.open.id === open.id) throw conflictCode('SUPERVISOR_NOT_RECOMMEND', 'Atasan mengubah keputusannya; muat ulang lalu coba lagi');
+      throw conflictCode('ALREADY_DECIDED', 'Promosi ke jenjang ini sudah diputuskan HR');
     }
     res.json({ data: decisionRow(req, fresh.x, fresh.okrMin) });
   }));
