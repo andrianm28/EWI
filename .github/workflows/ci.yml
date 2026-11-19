@@ -37,7 +37,7 @@ jobs:
       - name: Migrasi naik, turun, naik lagi
         run: |
           npm run migrate -w apps/api
-          (cd apps/api && npx sequelize-cli db:migrate:undo:all)
+          npm run migrate:undo:all -w apps/api
           npm run migrate -w apps/api
       - run: npm test -w apps/api
 
@@ -80,9 +80,9 @@ jobs:
           done
       - name: Cek skrip + compose deploy VPS
         run: |
-          for f in deploy/vps/*.sh; do bash -n "$f"; done
-          shellcheck deploy/vps/*.sh
-          ELGOS_ENV=staging ELGOS_ENV_FILE="$PWD/deploy/vps/.env.example" ELGOS_API_IMAGE=a ELGOS_WEB_IMAGE=w \
+          for f in deploy/vps/*.sh deploy/vps/ops/*.sh deploy/dev-worktree/*.sh; do bash -n "$f"; done
+          shellcheck -x deploy/vps/*.sh deploy/vps/ops/*.sh deploy/dev-worktree/*.sh
+          ELGOS_ENV=staging ELGOS_ENV_FILE="$PWD/deploy/vps/.env.example" ELGOS_DB_ENV_FILE="$PWD/deploy/vps/db.env.example" ELGOS_API_IMAGE=a ELGOS_WEB_IMAGE=w \
             PUBLIC_URL=https://contoh WEB_PORT=8181 docker compose -f deploy/vps/docker-compose.yml config -q
           ACME_EMAIL=ci@example.com docker compose -f deploy/vps/proxy/docker-compose.yml config -q
       - name: Build image API
