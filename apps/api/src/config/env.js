@@ -43,6 +43,7 @@ function loadConfig(env = process.env) {
       else errors.push('EWI_LOCAL_MASTER_KEY wajib diisi untuk ENCRYPTION_PROVIDER=local (buat: openssl rand -hex 32)');
     }
   }
+  const ai = loadAiConfig(env, errors);
   if (errors.length) {
     const err = new Error(`Konfigurasi tidak valid:\n- ${errors.join('\n- ')}`);
     err.code = 'CONFIG_INVALID';
@@ -55,8 +56,9 @@ function loadConfig(env = process.env) {
     dbSchema: env.DB_SCHEMA || 'ewi',
     // Daftar organisasi di halaman login. Hanya untuk dev/staging: di produksi daftar klien tidak boleh terbuka publik.
     loginTenantPicker: env.LOGIN_TENANT_PICKER === 'true',
-    // T3 belum diputuskan: hanya 'stub' yang tersedia
-    aiProvider: env.AI_PROVIDER || 'stub',
+    // PK-06: penyedia AI teks. stub = tiruan deterministik (test/dev), bedrock = Amazon Bedrock (PD-1 A, PD-2 A)
+    aiProvider: ai.provider,
+    ai,
     corsOrigin: (env.CORS_ORIGIN || '').split(',').filter(Boolean),
     elitementor: Object.freeze({
       baseUrl: env.ELITEMENTOR_API_URL || '',
@@ -93,4 +95,56 @@ function loadConfig(env = process.env) {
   });
 }
 
-module.exports = { loadConfig, STAGING_DEFAULT_MAIL_DOMAINS };
+// PD-2b (user, 19 Nov 20.28 WIB): lokasi pemrosesan AI dipilih yang latensinya paling rendah ke Indonesia dan memenuhi
+// spek. Urutan untuk teks: Jakarta (ap-southeast-3) bila model tersedia in-region, lalu Singapura (ap-southeast-1),
+// lalu profil inferensi lintas region APAC (apac.). Profil di luar APAC (global., us., eu., ...) ditolak kecuali
+// AI_ALLOW_CROSS_REGION=true diputuskan kemudian.
+const JAKARTA = 'ap-southeast-3';
+const SINGAPORE = 'ap-southeast-1';
+const DEFAULT_AI_REGIONS = [JAKARTA, SINGAPORE];
+const PROFILE_PREFIX = /(?:^|inference-profile\/)(global|apac|us|us-gov|eu|au|in|jp|ca)\./i;
+
+function numberOr(raw, fallback, { min = 0 } = {}) {
+  if (raw === undefined || raw === '') return fallback;
+  const n = Number(raw);
+  return Number.isFinite(n) && n >= min ? n : NaN;
+}
+
+function loadAiConfig(env, errors) {
+  const production = env.NODE_ENV === 'production';
+  // Tiruan menjadi bawaan di luar produksi; produksi wajib model sungguhan.
+  const provider = env.AI_PROVIDER || (production ? 'bedrock' : 'stub');
+  if (!['stub', 'bedrock'].includes(provider)) errors.push('AI_PROVIDER harus stub atau bedrock');
+  if (production && provider === 'stub') errors.push('AI_PROVIDER=stub tidak boleh di produksi (pakai bedrock)');
+  const allowCrossRegion = env.AI_ALLOW_CROSS_REGION === 'true';
+  const allowedRegions = (env.AI_ALLOWED_REGIONS || DEFAULT_AI_REGIONS.join(',')).split(',').map((r) => r.trim()).filter(Boolean);
+  const region = env.BEDROCK_REGION || JAKARTA;
+  const modelId = (env.BEDROCK_MODEL_ID || '').trim();
+  let extraFields = null;
+  if (provider === 'bedrock') {
+    if (!modelId) errors.push('BEDROCK_MODEL_ID wajib diisi untuk AI_PROVIDER=bedrock (ID model Claude, lihat docs/ewi/ai-teks.md)');
+    if (!allowCrossRegion && !allowedRegions.includes(region)) {
+      errors.push(`BEDROCK_REGION harus salah satu dari ${allowedRegions.join(', ')} (PD-2b)`);
+    }
+    const profile = (modelId.match(PROFILE_PREFIX) || [])[1];
+    if (!allowCrossRegion && profile && profile.toLowerCase() !== 'apac') {
+      errors.push(`BEDROCK_MODEL_ID memakai profil lintas region "${profile}."; PD-2b hanya mengizinkan model in-region Jakarta/Singapura atau profil apac.`);
+    }
+    if (env.BEDROCK_EXTRA_FIELDS) {
+      try { extraFields = JSON.parse(env.BEDROCK_EXTRA_FIELDS); } catch { errors.push('BEDROCK_EXTRA_FIELDS harus JSON yang valid'); }
+    }
+  }
+  const nums = {
+    maxQuestions: numberOr(env.AI_MAX_QUESTIONS, 8, { min: 1 }),
+    timeoutMs: numberOr(env.AI_TIMEOUT_MS, 30000, { min: 1000 }),
+    priceInputPerMTok: numberOr(env.AI_PRICE_INPUT_PER_MTOK, null),
+    priceOutputPerMTok: numberOr(env.AI_PRICE_OUTPUT_PER_MTOK, null),
+  };
+  for (const [k, v] of Object.entries(nums)) if (Number.isNaN(v)) errors.push(`Nilai ${k} untuk AI tidak valid`);
+  // Lokasi pemrosesan untuk log dan DPIA: in-region atau profil lintas region (mis. apac)
+  const profile = (modelId.match(PROFILE_PREFIX) || [])[1];
+  const processing = profile ? `cross-region:${profile.toLowerCase()}` : `in-region:${region}`;
+  return Object.freeze({ provider, region, modelId, extraFields, allowCrossRegion, allowedRegions, processing, ...nums });
+}
+
+module.exports = { loadConfig, loadAiConfig, JAKARTA, SINGAPORE, STAGING_DEFAULT_MAIL_DOMAINS };

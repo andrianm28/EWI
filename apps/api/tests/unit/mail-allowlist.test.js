@@ -1,7 +1,7 @@
 const { loadConfig, STAGING_DEFAULT_MAIL_DOMAINS } = require('../../src/config/env');
 const { memoryMailer, withDomainAllowlist, recipientDomain, createMailer } = require('../../src/integrations/mailer');
 
-const base = { NODE_ENV: 'production', EWI_JWT_SECRET: 'x'.repeat(40), DATABASE_URL: 'postgres://x', MAIL_PROVIDER: 'ses', MAIL_FROM: 'a@b.c', ENCRYPTION_PROVIDER: 'kms' };
+const base = { NODE_ENV: 'production', EWI_JWT_SECRET: 'x'.repeat(40), DATABASE_URL: 'postgres://x', MAIL_PROVIDER: 'ses', MAIL_FROM: 'a@b.c', ENCRYPTION_PROVIDER: 'kms', BEDROCK_MODEL_ID: 'anthropic.claude-test-v1:0' };
 
 describe('PK-07 / I-5 email staging hanya ke domain yang diizinkan', () => {
   it('MAIL_ALLOWED_DOMAINS dibaca, dinormalisasi, dan dipakai', () => {

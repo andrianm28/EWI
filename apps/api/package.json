@@ -15,6 +15,7 @@
     "db:grant-app": "node scripts/grant-app-role.js"
   },
   "dependencies": {
+    "@aws-sdk/client-bedrock-runtime": "^3.1170.0",
     "@aws-sdk/client-kms": "^3.1168.0",
     "@aws-sdk/client-sesv2": "^3.1168.0",
     "bcryptjs": "^2.4.3",
