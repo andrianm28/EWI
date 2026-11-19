@@ -2,7 +2,7 @@
 // B14 Learning Delivery: aturan murni (tanpa DB). Spek: docs/designs/b14-learning-delivery.md §4.
 // Baris pelatihan (row) = kolom ld_trainings + hitungan peserta dari store:
 //   { mode, source, status, startsOn, endsOn, venue, sessionCount, sessionsDone, materialsReady, assessmentMode,
-//     participants, completed, avgProgress, attendanceRecorded, present, scored, scoredPresent, inactive, photoDocs, materialDocs }
+//     participants, completed, failed, avgProgress, attendanceRecorded, present, scored, scoredPresent, inactive, photoDocs, materialDocs }
 
 const WATCH_LAG = 15;          // poin progres tertinggal dari jadwal linear
 const READY_WINDOW_DAYS = 7;   // offline yang mulai dalam sekian hari harus sudah siap
@@ -29,8 +29,8 @@ function progressOf(row) {
 function groupOf(row, today) {
   if (row.status === 'cancelled') return 'cancelled';
   if (row.status === 'done') return 'done';
-  // online selesai sendiri saat semua peserta tuntas; offline ditutup HR
-  if (row.mode === 'online' && n(row.participants) > 0 && n(row.completed) >= n(row.participants)) return 'done';
+  // online selesai sendiri saat semua peserta tuntas (selesai atau gagal); offline ditutup HR
+  if (row.mode === 'online' && n(row.participants) > 0 && n(row.completed) + n(row.failed) >= n(row.participants)) return 'done';
   const start = day(row.startsOn);
   if (row.status === 'scheduled' && start && start > today) return 'upcoming';
   return 'running';

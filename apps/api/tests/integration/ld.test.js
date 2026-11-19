@@ -230,11 +230,16 @@ run('Learning Delivery (Postgres)', () => {
     const list = (await get('/trainings?mode=online')).body.data;
     expect(list.length).toBe(1);
     const lms = list[0];
-    expect(lms).toMatchObject({ title: 'ITIL Foundation', source: 'lms', mode: 'online', group: 'running', participants: 2, completed: 1, progressPct: 50, programTier: 'basic' });
+    expect(lms).toMatchObject({ title: 'ITIL Foundation', source: 'lms', mode: 'online', group: 'running', participants: 2, completed: 1, progressPct: 50, programTier: 'basic', inactive: 0 });
+    // peserta yang belum pernah aktif dihitung tidak aktif setelah 14 hari terdaftar
+    await db.query(`UPDATE ld_participants SET created_at = now() - interval '20 days' WHERE tenant_id = :t AND user_id = :rina AND training_id = :id`, { replacements: { t: tenant.id, rina: u.rina, id: lms.id } });
+    expect((await get(`/trainings/${lms.id}`)).body.data.inactive).toBe(1);
     // membaca ulang tidak menggandakan; perubahan status di LMS terbawa
     await db.query(`UPDATE lna_catalog_completions SET status = 'failed' WHERE tenant_id = :t AND user_id = :rina`, { replacements: { t: tenant.id, rina: u.rina } });
+    expect((await get('/trainings?mode=online')).body.data.length).toBe(1); // daftar menyinkronkan ulang dari katalog
     const detail = (await get(`/trainings/${lms.id}`)).body.data;
-    expect((await get('/trainings?mode=online')).body.data.length).toBe(1);
+    // satu lulus, satu gagal: semua peserta tuntas, pelatihan selesai (tidak menggantung "terlambat")
+    expect(detail).toMatchObject({ group: 'done', completed: 1, failed: 1, inactive: 0 });
     expect((await get(`/trainings/${lms.id}`)).body.data.participantList.find((p) => p.userId === u.rina).status).toBe('failed');
     expect(detail.participantList.find((p) => p.userId === u.dimas)).toMatchObject({ status: 'completed', score: 88, scoreSource: 'lms' });
     for (const res of [
@@ -244,6 +249,8 @@ run('Learning Delivery (Postgres)', () => {
       await send('patch', `/trainings/${lms.id}`, { title: 'Ganti' }),
       await upload(lms.id, PNG),
     ]) { expect(res.status).toBe(409); expect(res.body.error.code).toBe('READ_ONLY_SOURCE'); }
+    await db.query(`UPDATE lna_catalog_completions SET status = 'in_progress' WHERE tenant_id = :t AND user_id = :rina`, { replacements: { t: tenant.id, rina: u.rina } });
+    await get('/trainings'); // sinkron ulang dari katalog
     expect((await send('patch', `/trainings/${lms.id}`, { startsOn: day(-20), endsOn: day(-1) })).body.data.health).toBe('late');
     expect((await get('/trainings', 'luar')).body.data).toEqual([]);
   });

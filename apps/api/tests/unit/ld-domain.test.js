@@ -30,6 +30,10 @@ describe('progres dan kelompok', () => {
     expect(groupOf(online({ completed: 6 }), TODAY)).toBe('done'); // online tuntas sendiri
     expect(groupOf(online({ participants: 0, completed: 0 }), TODAY)).toBe('running');
   });
+  it('online tuntas bila semua peserta selesai atau gagal; peserta gagal tidak membuat pelatihan menggantung', () => {
+    expect(groupOf(online({ participants: 6, completed: 4, failed: 2 }), TODAY)).toBe('done');
+    expect(groupOf(online({ participants: 6, completed: 4, failed: 1 }), TODAY)).toBe('running');
+  });
 });
 
 describe('health', () => {

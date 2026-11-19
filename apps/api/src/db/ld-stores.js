@@ -63,7 +63,7 @@ function createLdStores(sequelize) {
     async listTrainings(tenantId, { id, inactiveBefore } = {}) {
       const rep = { tenantId, inactiveBefore: inactiveBefore || new Date(0) };
       let sql = `SELECT ${TRAINING_COLS}, m.code AS "moduleCode", m.name AS "moduleName",
-          COALESCE(p.participants, 0)::int AS participants, COALESCE(p.completed, 0)::int AS completed,
+          COALESCE(p.participants, 0)::int AS participants, COALESCE(p.completed, 0)::int AS completed, COALESCE(p.failed, 0)::int AS failed,
           COALESCE(p.avg_progress, 0)::float AS "avgProgress", COALESCE(p.attendance_recorded, 0)::int AS "attendanceRecorded",
           COALESCE(p.present, 0)::int AS present, COALESCE(p.scored, 0)::int AS scored, COALESCE(p.scored_present, 0)::int AS "scoredPresent", COALESCE(p.inactive, 0)::int AS inactive,
           (SELECT count(*)::int FROM ld_documents d WHERE d.training_id = t.id AND d.tenant_id = t.tenant_id AND d.kind IN ('photo','video')) AS "photoDocs",
@@ -73,12 +73,13 @@ function createLdStores(sequelize) {
         LEFT JOIN LATERAL (
           SELECT count(*) AS participants,
                  count(*) FILTER (WHERE lp.status = 'completed') AS completed,
-                 avg(COALESCE(lp.progress_pct, CASE WHEN lp.status = 'completed' THEN 100 ELSE 0 END)) AS avg_progress,
+                 count(*) FILTER (WHERE lp.status = 'failed') AS failed,
+                 avg(CASE WHEN lp.status IN ('completed','failed') THEN 100 ELSE COALESCE(lp.progress_pct, 0) END) AS avg_progress,
                  count(*) FILTER (WHERE lp.attendance IS NOT NULL) AS attendance_recorded,
                  count(*) FILTER (WHERE lp.attendance) AS present,
                  count(*) FILTER (WHERE lp.score IS NOT NULL AND (lp.attendance IS NOT FALSE)) AS scored,
                  count(*) FILTER (WHERE lp.score IS NOT NULL AND lp.attendance) AS scored_present,
-                 count(*) FILTER (WHERE lp.status IN ('enrolled','in_progress') AND lp.last_activity_at IS NOT NULL AND lp.last_activity_at < :inactiveBefore) AS inactive
+                 count(*) FILTER (WHERE lp.status IN ('enrolled','in_progress') AND COALESCE(lp.last_activity_at, lp.created_at) < :inactiveBefore) AS inactive
             FROM ld_participants lp WHERE lp.training_id = t.id AND lp.tenant_id = t.tenant_id
         ) p ON true
         WHERE t.tenant_id = :tenantId`;
