@@ -12,6 +12,8 @@ export interface SessionUser {
   role: string
   /** B2: akun multi-peran. Bila tidak dikirim API, dipakai `role` saja. */
   roles?: string[]
+  /** Peran utama akun (users.role); tetap walau peran aktif berganti lewat B2. */
+  primaryRole?: string
   /** Nama tenant untuk top bar (dikirim API setelah B2; opsional). */
   tenantName?: string
 }

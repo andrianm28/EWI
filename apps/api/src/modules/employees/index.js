@@ -64,6 +64,10 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const REQUEST_TYPES = ['withdraw_consent', 'delete_data'];
 const REQUEST_STATUSES = ['open', 'done', 'cancelled'];
 const isAdmin = (role) => [ROLES.HR_ADMIN, ROLES.ETA_ADMIN].includes(role);
+// Peran utama akun (users.role), bukan peran aktif: dengan B2 HR yang berganti ke tampilan karyawan memakai peran aktif
+// `learner`, padahal DELETE /:userId menolak akun ber-peran utama HR/Admin ETA, jadi permintaannya tidak akan pernah bisa
+// dipenuhi. Sama persis dengan pemeriksaan `person.role` di DELETE /:userId.
+const isAdminAccount = (user) => isAdmin(user.primaryRole || user.role);
 
 function employeeRouter({ stores, flags, audit }) {
   const r = express.Router();
@@ -79,7 +83,7 @@ function employeeRouter({ stores, flags, audit }) {
       if (reason.length > 1000) throw badRequest('reason maksimal 1000 karakter');
       const me = req.user.id;
       if (type === 'delete_data') {
-        if (isAdmin(req.user.role)) throw new HttpError(409, 'ADMIN_ACCOUNT', 'Akun HR atau Admin ETA tidak dihapus lewat sini. Hubungi Admin ETA.');
+        if (isAdminAccount(req.user)) throw new HttpError(409, 'ADMIN_ACCOUNT', 'Akun HR atau Admin ETA tidak dihapus lewat sini. Hubungi Admin ETA.');
         const row = await stores.dataRequests.createDelete(req.tenantId, me, reason || null);
         if (!row) throw new HttpError(409, 'REQUEST_EXISTS', 'Permintaan hapus data Anda sudah tercatat dan sedang diproses HR');
         await audit.record(req, 'create', 'my.data_request', { employeeIds: [me], type, requestId: row.id });

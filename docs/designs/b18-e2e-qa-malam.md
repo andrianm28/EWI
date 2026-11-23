@@ -370,7 +370,7 @@ Setelah B0, B1, B2 digabung:
 
 - [x] `apps/web/e2e/alur/menu-peran.spec.ts` (baris Karyawan `test.fixme` sampai layar B8 `my`/`li` ada) dan `batas-akses.spec.ts` (23 Nov); `SEMUA_MODUL`, `semuaModulDengan`, dan `navigasi` ditambah ke `support/sesi.ts`
 - [x] `apps/web/e2e/alur/jalur-utama.spec.ts` jalur 2 dan 3 (23 Nov); penangan bersama `support/dashboard.ts`, `tna-gap.ts`, `wawancara.ts`, `responsData` dan tipe `Terkirim` di `support/api.ts`
-- [ ] Setelah layar B8 `my`/`li` ada (PR layar B8): jalur 1, langkah awal jalur 3 dari "Hasil saya", dan baris Karyawan di `menu-peran.spec.ts` diaktifkan
+- [x] Setelah layar B8 `my`/`li` ada (PR layar B8, 23 Nov): jalur 1, langkah awal jalur 3 dari "Hasil saya", dan baris Karyawan di `menu-peran.spec.ts` diaktifkan; `SEMUA_MODUL` menyalakan `learner.home`, beranda karyawan di `batas-akses.spec.ts` menjadi `/my`, data Hasil saya bersama di `support/hasil-saya.ts`
 
 Per paket yang digabung: baris alurnya di bagian 3.3 (oleh thread paket) dan persona operasi AI-nya di bagian 5.1 (oleh thread integrasi).
 

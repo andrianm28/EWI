@@ -1,6 +1,6 @@
 // B6 Wawancara akar masalah: langkah ringkasan (docs/designs/b6-wawancara-akar-masalah.md).
 const {
-  MAX_RESTARTS, stepOf, summaryStateOf, questionLimit, publicSummary, sessionView, parseConfirmation,
+  MAX_RESTARTS, stepOf, summaryStateOf, questionLimit, publicSummary, sessionView, listView, parseConfirmation,
 } = require('../../src/modules/interviews/summary');
 const { aiContext } = require('../../src/modules/interviews/ai-calls');
 const P = require('../../src/ai/prompts');
@@ -61,6 +61,20 @@ describe('langkah dan status ringkasan', () => {
       expect(view).not.toHaveProperty('summaryFindings');
       expect(view).not.toHaveProperty('voiceBlob');
     }
+  });
+
+  it('sessionView: consentWithdrawnAt hanya untuk yang diwawancarai dan HR, tidak untuk atasan atau Super Admin (UU PDP: persetujuan bebas)', () => {
+    const s = { id: 'abcdef12-0000-4000-8000-000000000000', status: 'abandoned', consentWithdrawnAt: past };
+    expect(sessionView(s, { now })).not.toHaveProperty('consentWithdrawnAt');
+    expect(sessionView(s, { interviewee: true, now })).toMatchObject({ consentWithdrawnAt: past });
+    expect(sessionView(s, { withdrawal: true, now })).toMatchObject({ consentWithdrawnAt: past });
+  });
+
+  it('listView menyembunyikan consentWithdrawnAt kecuali untuk HR dan yang diwawancarai', () => {
+    const rows = [{ id: 'a', intervieweeId: 'u1', consentWithdrawnAt: past }, { id: 'b', intervieweeId: 'u2', consentWithdrawnAt: null }];
+    expect(listView(rows, { userId: 'spv', hr: false }).map((r) => 'consentWithdrawnAt' in r)).toEqual([false, false]);
+    expect(listView(rows, { userId: 'u1', hr: false })[0]).toMatchObject({ consentWithdrawnAt: past });
+    expect(listView(rows, { userId: 'hr', hr: true })[0]).toMatchObject({ consentWithdrawnAt: past });
   });
 
   it('konfirmasi: tidak sesuai wajib bercatatan 10-1000 karakter', () => {

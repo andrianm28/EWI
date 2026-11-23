@@ -1,6 +1,7 @@
 import { test, expect } from '@playwright/test'
 import { loginSebagai, navigasi, semuaModulDengan, SEMUA_MODUL, type Peran } from '../support/sesi'
-import { mockApi, permintaanBelumDimock } from '../support/api'
+import { mockApi, mockApiDasar, permintaanBelumDimock } from '../support/api'
+import { penanganHasilSaya, SESI_UNDANGAN } from '../support/hasil-saya'
 import { penanganDashboardHr } from '../support/dashboard'
 import { papanGapTna, ID_KOMPETENSI, ID_DIMAS, ID_PROYEK } from '../support/tna-gap'
 import { sesiWawancara } from '../support/wawancara'
@@ -12,24 +13,28 @@ import { sesiWawancara } from '../support/wawancara'
 // Layar tidak boleh bergantung pada endpoint yang tidak di-mock (jaring pengaman support/api.ts)
 test.afterEach(({ page }) => { expect(permintaanBelumDimock(page)).toEqual([]) })
 
-// Jalur 1, satu test per peran. Butuh layar "Hasil saya" (rute `my`) dari spek B8: store sesi baru menawarkan
-// "Karyawan (saya)" setelah layar beranda karyawan ada. PR layar B8 mengaktifkan test ini bersama baris karyawan di
-// menu-peran.spec.ts. Menu lengkap tiap peran diuji di menu-peran.spec.ts; di sini cukup butir pertamanya.
+// Jalur 1, satu test per peran. Store sesi menawarkan "Karyawan (saya)" karena layar beranda karyawan B8 ("Hasil saya",
+// rute `my`, flag learner.home di SEMUA_MODUL) terbuka. Menu lengkap tiap peran diuji di menu-peran.spec.ts; di sini cukup butir pertamanya.
 const TAMPILAN_UTAMA: { peran: Peran; label: string; butirPertama: string }[] = [
   { peran: 'hr', label: 'HR / L&D', butirPertama: 'Dashboard utama' },
   { peran: 'atasan', label: 'Atasan', butirPertama: 'Dashboard tim' },
   { peran: 'admin', label: 'Admin Tenant', butirPertama: 'Pengguna & peran' },
 ]
 for (const t of TAMPILAN_UTAMA) {
-  test.fixme(`jalur 1 (${t.peran}): masuk lewat tautan email, menu sesuai peran, ganti ke Karyawan (saya) dan kembali`, async ({ page }) => {
+  test(`jalur 1 (${t.peran}): masuk lewat tautan email, menu sesuai peran, ganti ke Karyawan (saya) dan kembali`, async ({ page }) => {
     const tampilan = page.getByRole('group', { name: 'Tampilan' })
     await test.step('masuk lewat tautan email: menu tampilan utama', async () => {
+      await mockApiDasar(page, penanganHasilSaya(`u-${t.peran}`))
+      await mockApiDasar(page, penanganDashboardHr)
+      // Beranda Admin Tenant (Pengguna & peran): isi kosong cukup, layarnya diuji di admin-tenant.spec.ts
+      await mockApiDasar(page, (req) => (req.method === 'GET' && req.path.startsWith('/tenant-admin/') ? { json: { data: [] } } : undefined))
       await loginSebagai(page, t.peran, { ...SEMUA_MODUL, peranLain: ['karyawan'] })
       await expect(navigasi(page).getByRole('link').first()).toHaveText(t.butirPertama)
       await expect(tampilan.getByRole('button', { name: t.label })).toHaveAttribute('aria-pressed', 'true')
     })
     await test.step('ganti ke Karyawan (saya): menu karyawan', async () => {
       await tampilan.getByRole('button', { name: 'Karyawan (saya)' }).click()
+      await expect(page.getByRole('heading', { level: 1, name: 'Hasil saya' })).toBeVisible()
       await expect(navigasi(page).getByRole('link')).toHaveText(['Hasil saya', 'Wawancara visi & nilai', 'Wawancara akar masalah', 'Rencana belajar'])
     })
     await test.step('kembali ke tampilan utama', async () => {
@@ -74,18 +79,19 @@ test('jalur 2: HR dari Dashboard utama ke Training Needs, membuka detail gap, la
   })
 })
 
-// Spek 4.5 memulai jalur 3 dari "Hasil saya". Layar itu belum ada (B8), jadi jalur ini mulai dari butir menu
-// Wawancara akar masalah; PR layar B8 menambahkan langkah awal dari "Hasil saya".
+// Spek 4.5: jalur 3 mulai dari "Hasil saya" (B8), beranda karyawan, lewat catatan undangan wawancara.
 test('jalur 3: karyawan membuka penugasan wawancara akar masalah, menyetujui, menjawab, dan mengirim ringkasan ke HR', async ({ page }) => {
-  const pengguna = await test.step('masuk lewat tautan email', () =>
-    loginSebagai(page, 'karyawan', semuaModulDengan({ 'tna.interview_summary': true })))
-  const { penangan, terkirim } = sesiWawancara({ pemilik: pengguna.id })
+  const { penangan, terkirim } = sesiWawancara({ pemilik: 'u-karyawan' })
   await mockApi(page, penangan)
-
-  await test.step('menu Wawancara akar masalah: wawancara yang ditugaskan dibuka', async () => {
-    await navigasi(page).getByRole('link', { name: 'Wawancara akar masalah' }).click()
-    await expect(page.getByRole('heading', { level: 1, name: 'Wawancara akar masalah' })).toBeVisible()
-    await page.getByRole('link', { name: 'Analisis insiden' }).click()
+  await mockApiDasar(page, penanganHasilSaya('u-karyawan'))
+  await test.step('masuk lewat tautan email: mendarat di Hasil saya', async () => {
+    await loginSebagai(page, 'karyawan', semuaModulDengan({ 'tna.interview_summary': true }))
+    await expect(page).toHaveURL((u) => u.pathname === '/my')
+    await expect(page.getByRole('heading', { level: 1, name: 'Hasil saya' })).toBeVisible()
+  })
+  await test.step('Hasil saya: undangan wawancara dibuka lewat Mulai wawancara', async () => {
+    await page.getByTestId('my-invitations').getByRole('link', { name: 'Mulai wawancara' }).click()
+    await expect(page).toHaveURL((u) => u.pathname === `/iv/${SESI_UNDANGAN}`)
     await expect(page.getByText('Topik: Analisis insiden')).toBeVisible()
   })
   await test.step('persetujuan: galat bila kotak belum dicentang, lalu dicentang', async () => {

@@ -132,3 +132,32 @@ test('alamat lama /m/tna/sessions/:id dialihkan ke /iv/:id', async ({ page }) =>
   await page.goto('/m/tna/sessions/s1')
   await expect(page).toHaveURL(/\/iv\/s1$/)
 })
+
+// B8: transkrip hanya untuk yang diwawancarai (PO-6 A) kini bisa dibaca setelah sesi selesai atau dibatalkan
+const TRANSKRIP = [
+  { speaker: 'ai' as const, text: 'Ceritakan analisis insiden terakhir yang Anda kerjakan.', at: '' },
+  { speaker: 'human' as const, text: 'Saya belum pernah dilatih eskalasi.', at: '' },
+]
+
+test('sesi selesai menampilkan transkrip read-only untuk yang diwawancarai', async ({ page }) => {
+  await setup(page, { state: { status: 'completed', turns: TRANSKRIP } })
+  await page.goto('/iv/s1')
+  const transkrip = page.getByRole('region', { name: 'Transkrip' })
+  await expect(transkrip).toContainText('Saya belum pernah dilatih eskalasi.')
+  await expect(transkrip.getByRole('textbox')).toHaveCount(0)
+})
+
+test('sesi yang persetujuannya ditarik menyebut penarikan, bukan sekadar dibatalkan', async ({ page }) => {
+  await setup(page, { state: { status: 'abandoned', turns: TRANSKRIP }, withdrawnAt: '2026-11-20T03:00:00.000Z' })
+  await page.goto('/iv/s1')
+  await expect(page.getByText('Persetujuan Anda untuk wawancara ini sudah ditarik.')).toBeVisible()
+  await expect(page.getByText('Sesi ini dibatalkan.')).toHaveCount(0)
+  await expect(page.getByRole('region', { name: 'Transkrip' })).toContainText('Saya belum pernah dilatih eskalasi.')
+})
+
+test('sesi selesai yang persetujuannya kemudian ditarik juga menyebut penarikan', async ({ page }) => {
+  await setup(page, { state: { status: 'completed', summaryConfirmedAt: '2026-11-19T03:00:00.000Z', turns: TRANSKRIP }, withdrawnAt: '2026-11-20T03:00:00.000Z' })
+  await page.goto('/iv/s1')
+  await expect(page.getByText('Persetujuan Anda untuk wawancara ini sudah ditarik.')).toBeVisible()
+  await expect(page.getByText('Ringkasan sudah dikirim ke HR untuk ditinjau.')).toHaveCount(0)
+})

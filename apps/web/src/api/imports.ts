@@ -37,6 +37,19 @@ export async function raw(path: string, init: RequestInit = {}) {
   return res
 }
 
+/** Mengunduh `path` (dengan token) sebagai berkas `filename`. */
+export async function downloadFile(path: string, filename: string) {
+  const res = await raw(path)
+  const url = URL.createObjectURL(await res.blob())
+  const a = document.createElement('a')
+  a.href = url
+  a.download = filename
+  document.body.appendChild(a)
+  a.click()
+  a.remove()
+  setTimeout(() => URL.revokeObjectURL(url), 1000)
+}
+
 export const imports = {
   templates: (sm: Submodule) => call<{ data: ImportKind[] }>(`/${sm}/imports/templates`),
   history: (sm: Submodule) => call<{ data: ImportBatch[] }>(`/${sm}/imports/batches`),
@@ -54,14 +67,6 @@ export const imports = {
   invitePending: () => post<{ data: { sent: number } }>('/invitations', {}),
   /** Unduh template lewat fetch (butuh token), lalu simpan sebagai file. */
   async downloadTemplate(sm: Submodule, kind: string, format: 'xlsx' | 'csv') {
-    const res = await raw(`/${sm}/imports/templates/${kind}.${format}`)
-    const url = URL.createObjectURL(await res.blob())
-    const a = document.createElement('a')
-    a.href = url
-    a.download = `template-elgos-${kind}.${format}`
-    document.body.appendChild(a)
-    a.click()
-    a.remove()
-    setTimeout(() => URL.revokeObjectURL(url), 1000)
+    await downloadFile(`/${sm}/imports/templates/${kind}.${format}`, `template-elgos-${kind}.${format}`)
   },
 }

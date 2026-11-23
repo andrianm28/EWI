@@ -17,6 +17,8 @@ export interface OpsiSesiWawancara {
   interviewee?: boolean
   /** Ganti respons GET ringkasan, mis. untuk galat. */
   summary?: ResponsApi
+  /** B8: waktu persetujuan ditarik (consentWithdrawnAt di detail sesi). */
+  withdrawnAt?: string
 }
 
 const TEMUAN_RINGKASAN = [
@@ -51,7 +53,7 @@ export function sesiWawancara(o: OpsiSesiWawancara): { penangan: Penangan; terki
       return data({
         ...base, transcriptVisible: true, turns: s.turns, consentVersionRequired: 'tna-consent-id-v1.0',
         answerCount: s.turns.filter((t) => t.speaker === 'human').length, questionLimit: 5, restartCount: s.restartCount, restartsLeft: 2 - s.restartCount,
-        summaryAt: s.summaryAt, summaryConfirmedAt: s.summaryConfirmedAt, aiLabel: 'ELGOS-AI', sessionCode: 'S1ABCDEF',
+        summaryAt: s.summaryAt, summaryConfirmedAt: s.summaryConfirmedAt, aiLabel: 'ELGOS-AI', sessionCode: 'S1ABCDEF', consentWithdrawnAt: o.withdrawnAt ?? null,
       })
     }
     if (cocok(req, 'POST /tna/sessions/s1/consent')) {

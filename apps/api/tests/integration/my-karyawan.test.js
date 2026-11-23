@@ -371,6 +371,23 @@ run('B8 karyawan (Postgres)', () => {
   });
 
   describe('minta hapus data', () => {
+    it('akun HR yang berganti ke tampilan karyawan (B2, peran aktif learner) tetap ditolak ADMIN_ACCOUNT', async () => {
+      const a = app();
+      await setFlag('auth.multi_role', true);
+      try {
+        const sw = await request(a).post('/api/auth/switch-role').set(as('hr')).send({ role: 'learner' });
+        expect(sw.status).toBe(200);
+        expect(sw.body.user.role).toBe('learner');
+        const res = await request(a).post('/api/employees/me/data-requests').set('Authorization', `Bearer ${sw.body.token}`).send({ type: 'delete_data' });
+        expect(res.status).toBe(409);
+        expect(res.body.error.code).toBe('ADMIN_ACCOUNT');
+      } finally {
+        await setFlag('auth.multi_role', false);
+        // switch-role mencabut token lama; test berikutnya butuh sesi HR baru
+        tok.hr = await tokens.sign({ id: u.hr, tenantId: tenant.id, role: 'hr_admin', email: 'hr@b8.test' });
+      }
+    });
+
     it('tercatat dengan tenggat 3 hari, tidak ganda, bisa dibatalkan pemiliknya saja', async () => {
       const a = app();
       expect((await dataReq(a, 'hr', { type: 'delete_data' })).body.error.code).toBe('ADMIN_ACCOUNT');
