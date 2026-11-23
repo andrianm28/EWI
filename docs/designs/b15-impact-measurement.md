@@ -103,7 +103,7 @@ baru `lim.reinterview`.
 | `POST /plans/:id/indicators` | HR | tambah indikator |
 | `PATCH /indicators/:id`, `DELETE /indicators/:id` | HR | ubah, hapus |
 | `GET /plans/:id/measurements` | HR | baris per karyawan per kompetensi (nama, kompetensi, pre, post, sumber post, wawancara ulang, kinerja); dicatat `audit.readIndividual` |
-| `PUT /plans/:id/measurements` | HR, atasan | `{ entries: [{ userId, competencyId, preScore?, postScore?, performanceScore?, performanceNote? }] }`, maks 500; `null` mengosongkan, tidak dikirim = tetap. `userId` harus peserta rencana dan `competencyId` kompetensi rencana, selain itu baris `rejected` ("Karyawan bukan peserta rencana ini", "Kompetensi bukan bagian rencana ini", "Skor harus bilangan bulat 0–100"). Atasan hanya untuk bawahan langsungnya ("Karyawan bukan anggota tim Anda", diperiksa sebelum cek peserta supaya atasan tidak bisa menebak peserta di luar timnya) dan hanya `performanceScore`/`performanceNote` (field lain → `rejected` "Atasan hanya mengisi skor kinerja") [⏳ DITERIMA: default kartu keputusan tingkat 4] |
+| `PUT /plans/:id/measurements` | HR, atasan | `{ entries: [{ userId, competencyId, preScore?, postScore?, performanceScore?, performanceNote? }] }`, maks 500; `null` mengosongkan, tidak dikirim = tetap. `userId` harus peserta rencana dan `competencyId` kompetensi rencana, selain itu baris `rejected` ("Karyawan bukan peserta rencana ini", "Kompetensi bukan bagian rencana ini", "Skor harus bilangan bulat 0–100"). Atasan hanya untuk bawahan langsungnya ("Karyawan bukan anggota tim Anda", diperiksa sebelum cek peserta supaya atasan tidak bisa menebak peserta di luar timnya) dan hanya `performanceScore`/`performanceNote` (field lain → `rejected` "Atasan hanya mengisi skor kinerja") (keputusan user 23 Nov, kartu tingkat 4: "Atasan untuk timnya, HR untuk semua") |
 | `POST /plans/:id/pre-from-dna` | HR | isi pre kosong dari asesmen DNA; `{ filled }` |
 | `GET /plans/:id/queue` | HR | antrean wawancara ulang (aturan 6.4); dicatat `audit.readIndividual` |
 | `POST /plans/:id/queue/schedule` | HR | `{ userIds: [...], date }`, maks 200; `date` `YYYY-MM-DD` dari hari ini sampai +180 hari, atau `null` untuk membatalkan jadwal |
@@ -315,7 +315,7 @@ laporan lengkap: `/mnt/project-files/elgos-eksekusi/egm-b10-b15/b15-goldfish_rev
 | 4 | Pelatihan `cancelled` ikut | Perbaiki: dikecualikan | 4, 4.1 |
 | 5 | Satuan karyawan vs pasangan | Perbaiki: tingkat 1 per keikutsertaan, tingkat 3/4 per karyawan | 6.2 |
 | 6 | Antrean meledak per kompetensi | Diajukan ke user → satu per karyawan (19 Nov) | 6.4 |
-| 7 | Atasan tanpa jalur isi tingkat 4 | Diajukan ke user (default: atasan isi skor kinerja timnya); layar atasan ditulis | 5, 6.5 |
+| 7 | Atasan tanpa jalur isi tingkat 4 | Diputuskan user 23 Nov: atasan mengisi skor kinerja timnya, HR untuk semua (sama dengan default yang sudah dibangun) | 5, 6.5 |
 | 8 | Tanpa ambang privasi; atasan masuk rata-rata | Tolak ambang (RG-3); perbaiki: atasan dibuang dari cakupan | 6.5 |
 | 9 | Peran `pimpinan` kontradiktif | Perbaiki: sama dengan B10 (`LEADER_ROLES`) | 6.5 |
 | 10 | Pre dari DNA belum rinci | Perbaiki: tanggal, sumber, tidak menimpa, label | 4 |
