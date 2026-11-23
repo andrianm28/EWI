@@ -48,7 +48,7 @@ Acuan domain: [b14-learning-delivery.md](../b14-learning-delivery.md), [b16-care
 
 | Gap | Perbaikan |
 | --- | --- |
-| CV-2 | Bar skor per nilai `success` bila ≥ 92 (ambang = target program), `critical` bila di bawah |
+| CV-2 | Bar skor per nilai `success` bila ≥ ambang, `critical` bila di bawah; ambang = band tertinggi program atau nilai lulus, mana yang lebih besar (K-P7-4) |
 | CV-4 | Tabel komponen dan divisi: h3 di kartu, `UiDataTable caption-hidden`, bingkai tabel dalam kartu dihapus (`.cc-flat`) |
 | CV-5 | Butir rekomendasi kotak `.mod` (`cc-mod`); tombol "Wawancarai karyawan yang belum selesai" (ke rute `cc-wawancara`, hanya bila flag `cca.interview`/rute terbuka) |
 
@@ -80,8 +80,8 @@ Acuan domain: [b14-learning-delivery.md](../b14-learning-delivery.md), [b16-care
 | ADM-4 | Email mono 12px |
 | ADM-5 | Nama `white-space: nowrap` |
 | JOB-2 | Jumlah "—" bila kamus belum tersedia; rata kiri |
-| JOB-3 | Sumber kosong "Belum ada lokakarya DACUM", muted |
-| CFG-2 | "EliteMentor: tersambung (…)" huruf kecil |
+| JOB-3 (sebagian) | Sumber kosong "Belum ada lokakarya DACUM", muted; sumber terisi tetap "DACUM · berkas" |
+| CFG-2 (sebagian) | "EliteMentor: tersambung (…)" huruf kecil; "deep link" tidak disebut karena API tidak mengirim statusnya |
 | TEN-1 | Subjudul mockup + kalimat transkrip |
 | TEN-2 | Catatan KPI "dari {n} tenant terdaftar", "seluruh tenant", "dapat diaktifkan per tenant" |
 | TEN-5 | Modul aktif "{aktif} / {tersedia}" |
@@ -114,6 +114,7 @@ Acuan domain: [b14-learning-delivery.md](../b14-learning-delivery.md), [b16-care
 
 - K-P7-1: Chip mode offline memakai tone `improvement` (teal tersier) sebagai padanan `c-no` mockup, sama di LD dan Rencana belajar.
 - K-P7-2: Fitur kelola LD (tanggal online, selesai/batal, tambah/hapus peserta) dipertahankan di `<details>` sekunder; tidak ada fungsi yang dibuang.
+- K-P7-4: Mockup memakai ambang 92 tetap untuk bar skor nilai; API tidak punya "target skor nilai". Ambang diambil dari konfigurasi program: `max(passScore, min band)` (band tertinggi, mis. Strong Culture Alignment).
 - K-P7-3: Baris CP dipilih lewat tombol nama (bukan `<tr>` klik) agar tetap bisa dijangkau keyboard; sorotan baris memakai `:has()` pada tombol `aria-pressed`.
 
 ## Test (e2e, API mock)
@@ -136,7 +137,7 @@ Acuan domain: [b14-learning-delivery.md](../b14-learning-delivery.md), [b16-care
 - `apps/web/src/screens/b6-iv/{IvSessionView,PercakapanWawancara,PersetujuanTna}.vue`, `iv.css`
 - `apps/web/src/screens/b11-admin/{UsersView,JobsView,ConfigView}.vue`, `AdminNav.vue` (hapus)
 - `apps/web/src/screens/b12-super-admin/{TenantsView,PlatformView}.vue`
-- `apps/web/src/screens/b3-dashboard/DashboardView.vue`
+- `apps/web/src/screens/b3-dashboard/DashboardView.vue` (+ snapshot `dashboard-hr-terang/gelap.png`)
 - `apps/web/e2e/*.spec.ts` terkait
 - `docs/designs/paritas-mockup/gaps-{modul,peran,lna,shell}.md` (tanda Ditutup/Sebagian)
 

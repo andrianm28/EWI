@@ -118,20 +118,20 @@ const readinessRows = computed<ReadinessRow[]>(() => {
   const n = t.participantList.length
   const recorded = t.participantList.filter((p) => p.attendance !== null).length
   const present = t.participantList.filter((p) => p.attendance === true).length
-  const media = t.documents.filter((x) => x.kind !== 'material').length
   const info: Record<CheckKey, Omit<ReadinessRow, 'key' | 'chip'>> = {
     schedule: { detail: `${tanggal(t.startsOn)} · ${t.venue ?? 'tempat belum diisi'}`, action: 'Ubah', disabled: closed.value, run: openEdit },
     materials: { detail: t.materialsReady ? 'Materi siap' : 'Materi belum ditandai siap', action: 'Tandai siap', disabled: closed.value || t.materialsReady || busy.value, run: () => patch({ materialsReady: true }, 'Materi ditandai siap.') },
     participants: { detail: `${n} peserta`, action: 'Tambah', disabled: closed.value, run: openPeople },
     attendance: { detail: `${recorded} dari ${n} sudah dicatat, hadir ${present}`, action: 'Tandai semua hadir', disabled: closed.value || !n || busy.value, run: allPresent },
     assessment: { detail: ASSESSMENT[t.assessmentStatus].label, action: 'Atur di bawah', disabled: false, run: toAssessment },
-    documentation: { detail: `${media} foto atau video`, action: 'Unggah', disabled: !t.storageReady || busy.value, run: () => fileInput.value?.click() },
+    documentation: { detail: `${mediaCount.value} foto atau video`, action: 'Unggah', disabled: !t.storageReady || busy.value, run: () => fileInput.value?.click() },
   }
   return t.readiness.map((c) => ({
     key: c.key, chip: STATE_CHIP[c.state === 'missing' && c.optional ? 'optional' : c.state], ...info[c.key],
   }))
 })
 
+const mediaCount = computed(() => (d.value?.documents ?? []).filter((x) => x.kind !== 'material').length)
 const assessmentTone = computed<Tone>(() => {
   const s = d.value?.assessmentStatus
   return s === 'synced' || s === 'manual' ? 'success' : s === 'none' ? 'review' : 'training'
@@ -273,7 +273,7 @@ const asP = (r: Record<string, unknown>) => r as unknown as Participant
       <h3 class="el-h3 ld-gap">Dokumentasi</h3>
       <UiNote v-if="!d.storageReady" tone="warning">Penyimpanan berkas belum dikonfigurasi di server ini, jadi unggah belum bisa dipakai.</UiNote>
       <div class="ld-head ld-wrap">
-        <span class="el-muted">{{ d.documents.length }} berkas foto atau video terunggah</span>
+        <span class="el-muted">{{ mediaCount }} berkas foto atau video terunggah</span>
         <UiButton variant="tonal" size="sm" :disabled="busy || !d.storageReady" @click="fileInput?.click()">Unggah foto atau video</UiButton>
       </div>
       <label class="el-sr-only" for="ld-berkas">Pilih berkas foto atau video</label>
