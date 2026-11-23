@@ -43,6 +43,10 @@ function createPlatformStore(db) {
       return (await q(`SELECT 1 FROM users u JOIN user_roles ur ON ur.user_id = u.id AND ur.tenant_id = u.tenant_id
          WHERE u.tenant_id = :tenantId AND ur.role IN (:roles) AND u.status = 'active' LIMIT 1`, { tenantId, roles: MANAGER_ROLES })).length > 0;
     },
+    /** Jumlah tenant dengan flag menyala (baris konfigurasi Autentikasi). */
+    async tenantsWithFlag(key) {
+      return (await q('SELECT count(*)::int AS n FROM feature_flags WHERE key = :key AND enabled', { key }))[0].n;
+    },
     async tenantExists(tenantId) {
       return (await q('SELECT 1 FROM tenants WHERE id = :tenantId', { tenantId })).length > 0;
     },

@@ -15,7 +15,7 @@ function slugify(name) {
 
 const wrap = (fn) => (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
 
-function platformRouter({ service, limits = {} }) {
+function platformRouter({ service, settings, limits = {} }) {
   const r = express.Router();
 
   r.param('tenantId', (_req, _res, next, value) => {
@@ -46,6 +46,12 @@ function platformRouter({ service, limits = {} }) {
   r.put('/tenants/:tenantId/modules/:moduleKey', wrap(async (req, res) => {
     const row = await service.setModule(actorOf(req), req.params.tenantId, req.params.moduleKey, (req.body || {}).enabled);
     res.json({ data: row });
+  }));
+
+  r.get('/settings', wrap(async (_req, res) => res.json({ data: await settings.view() })));
+  r.put('/settings', wrap(async (req, res) => {
+    await settings.update(actorOf(req), req.body);
+    res.json({ data: await settings.view() });
   }));
 
   // Path platform yang tidak dikenal berhenti di sini, tidak jatuh ke router /api (auth dua kali)

@@ -164,6 +164,7 @@ function userRoleStore(sequelize) {
  */
 const { createPlatformStore } = require('../modules/platform/store');
 const { createPlatformLogStore } = require('../core/platform-log/store');
+const { createPlatformSettingsStore } = require('../core/platform-settings/store');
 
 function createStores(sequelize, { encryption } = {}) {
   const q = (sql, replacements, type = QueryTypes.SELECT) => sequelize.query(sql, { replacements, type });
@@ -179,6 +180,7 @@ function createStores(sequelize, { encryption } = {}) {
     // B12: query agregat konsol Super Admin dan handle transaksi untuk tulisan platform
     platform: createPlatformStore(sequelize),
     platformLog: createPlatformLogStore(sequelize),
+    platformSettings: createPlatformSettingsStore(sequelize),
     db: sequelize,
     /** PK-07: kesiapan database (kueri sungguhan, bukan sekadar koneksi terbuka). */
     async ping() { await sequelize.query('SELECT 1', { type: QueryTypes.SELECT }); },

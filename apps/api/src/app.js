@@ -41,6 +41,8 @@ const { createLdSync } = require('./modules/ld/sync');
 const { createPlatformService } = require('./modules/platform/service');
 const { createProvider } = require('./core/crypto');
 const { withOnboardingClient } = require('./core/tenant/client');
+const { createPlatformSettings } = require('./core/platform-settings');
+const { createSettingsView } = require('./modules/platform/settings-view');
 const { platformRouter } = require('./modules/platform/routes');
 const { createPlatformLog } = require('./core/platform-log');
 const { requireRole } = require('./core/rbac');
@@ -126,13 +128,15 @@ function createApp({ config, stores, ai, catalog, mailer, rateLimits, readiness,
   // B12: konsol Super Admin, dipasang sebelum /api supaya auth tidak berjalan dua kali (ADR 0002)
   if (stores.platform) {
     const platformLog = createPlatformLog({ store: stores.platformLog });
+    const platformSettings = createPlatformSettings({ store: stores.platformSettings, platformLog });
+    const settingsView = createSettingsView({ platformSettings, store: stores.platform, encryption: config.encryption.provider, ai: config.ai });
     const platform = createPlatformService({
       db: stores.db, store: stores.platform, flags, entitlements, audit, platformLog, links,
       provider: createProvider(config.encryption), production: config.nodeEnv === 'production',
       onboardingClient: (fn) => withOnboardingClient(config, fn),
     });
     app.use('/api/platform', auth, tenantContext(), requireRole(),
-      requireFlag(flags, FLAGS.PLATFORM_CONSOLE, 'Konsol platform belum diaktifkan'), platformRouter({ service: platform, limits }));
+      requireFlag(flags, FLAGS.PLATFORM_CONSOLE, 'Konsol platform belum diaktifkan'), platformRouter({ service: platform, settings: settingsView, limits }));
   }
 
   const api = express.Router();

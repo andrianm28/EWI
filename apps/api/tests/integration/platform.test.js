@@ -280,4 +280,22 @@ run('B12 Super Admin (Postgres)', () => {
       expect((await invite('batas')).status).toBe(429);
     });
   });
+  describe('konfigurasi', () => {
+    it('GET memberi isian, tampilan, dan penyedia enkripsi; PUT memvalidasi dan menyimpan', async () => {
+      const res = await get('/settings');
+      expect(res.status).toBe(200);
+      expect(res.body.data).toMatchObject({
+        editable: { sessionIdleMinutes: expect.any(Number), aiHrAgreementTarget: expect.any(Number) },
+        display: { encryption: 'local', aiModel: { provider: 'stub' }, ssoTenants: expect.any(Number), idleEnforcement: 'not_yet' },
+        encryptionProvider: 'local',
+      });
+      const original = res.body.data.editable;
+      try {
+        const upd = await put('/settings', { aiHrAgreementTarget: 90 });
+        expect([upd.status, upd.body.data.editable.aiHrAgreementTarget]).toEqual([200, 90]);
+        expect((await put('/settings', { aiHrAgreementTarget: 20 })).status).toBe(400);
+        expect((await put('/settings', { warna: 'biru' })).status).toBe(400);
+      } finally { await put('/settings', original); }
+    });
+  });
 });
