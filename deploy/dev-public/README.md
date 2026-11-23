@@ -1,7 +1,7 @@
 # Dev ELGOS publik (di luar AWS) — DIHENTIKAN
 
 > **23 Nov 2026:** etavm1 tidak boleh dipakai lagi (aturan project: dev, staging, prod hanya di VPS etavm2).
-> Job deploy di `deploy-dev.yml` dan `setup-etavm1.sh` dihapus (spek `docs/designs/audit-23nov-etavm1.md`).
+> Job deploy di `deploy-dev.yml`, `deploy.sh`, dan `setup-etavm1.sh` dihapus (spek `docs/designs/audit-23nov-etavm1.md`).
 > Jangan jalankan langkah di bawah. `nginx.conf` masih dipakai `apps/web/Dockerfile`; sisa berkas ini
 > hanya catatan sejarah sampai thread infra memindahkan dev publik ke etavm2.
 

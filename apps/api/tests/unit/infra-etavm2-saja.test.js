@@ -17,12 +17,12 @@ function filesUnder(dir) {
 }
 
 describe('infra hanya etavm2', () => {
-  it('tidak ada workflow yang memakai runner berlabel etavm1', () => {
+  it('tidak ada workflow yang menyebut etavm1 di luar komentar (runs-on satu baris, daftar, atau labels)', () => {
     const pelanggar = fs.readdirSync(workflowDir)
       .filter((f) => /\.ya?ml$/.test(f))
       .filter((f) => fs.readFileSync(path.join(workflowDir, f), 'utf8')
         .split('\n')
-        .some((line) => /runs-on:.*etavm1/.test(line)));
+        .some((line) => /etavm1/i.test(line.replace(/#.*$/, ''))));
     expect(pelanggar).toEqual([]);
   });
 
@@ -33,8 +33,11 @@ describe('infra hanya etavm2', () => {
   });
 
   it('tidak ada skrip setup atau deploy untuk etavm1 di deploy/ dan infra/', () => {
-    const skrip = [...filesUnder(path.join(root, 'deploy')), ...filesUnder(path.join(root, 'infra'))]
-      .filter((p) => /etavm1/i.test(path.basename(p)));
-    expect(skrip.map((p) => path.relative(root, p))).toEqual([]);
+    const semua = [...filesUnder(path.join(root, 'deploy')), ...filesUnder(path.join(root, 'infra'))];
+    const namaEtavm1 = semua.filter((p) => /etavm1/i.test(path.basename(p)));
+    // skrip shell di deploy/ adalah target deploy; tidak boleh ada yang masih menyasar etavm1
+    const skripDeploy = semua.filter((p) => p.includes(`${path.sep}deploy${path.sep}`) && /\.sh$/.test(p))
+      .filter((p) => /etavm1/i.test(fs.readFileSync(p, 'utf8')));
+    expect([...namaEtavm1, ...skripDeploy].map((p) => path.relative(root, p))).toEqual([]);
   });
 });
