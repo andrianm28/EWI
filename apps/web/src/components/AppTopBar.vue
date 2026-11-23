@@ -69,7 +69,9 @@ function logout() {
   min-height: 64px; background: var(--el-surface-card); border-bottom: 1px solid var(--el-outline-variant);
   display: flex; align-items: center; gap: 12px 16px; padding: 8px 24px; flex-wrap: wrap;
 }
-.el-top__title { flex: 1 1 200px; font-weight: 500; min-width: 0; }
+/* Basis 160px (mockup 200px): mockup sendiri hanya menyisakan ±1px di 1280 untuk akun dua tampilan, sehingga
+   perbedaan render font di CI membuat bar membungkus. Saat satu baris, judul tetap melebar mengisi ruang. */
+.el-top__title { flex: 1 1 160px; font-weight: 500; min-width: 0; }
 .el-top__tenant { font-size: 12px; font-weight: 400; color: var(--el-on-surface-variant); }
 .el-top__views { display: flex; align-items: center; gap: 6px; }
 .el-top__menu {

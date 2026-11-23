@@ -7,7 +7,7 @@ Bagian dari [rencana paritas](README.md). Lingkup: tiga bug tampilan yang membua
 | Gap | Layar | Sebab | Perbaikan |
 | --- | --- | --- | --- |
 | modul X-1, LI-26 | `/prog`, `/req`, `/req/draf/:id` dibuka langsung | Kelas `li-*` hanya ada di `<style>` `LibraryView.vue`; chunk CSS Library tidak termuat bila Library belum dibuka | Pindah ke `screens/b13-li/li.css`, diimpor keempat view |
-| shell S2 | Top bar akun multi-peran di lebar 1280 | Tombol tema (bukan bagian mockup) menambah 56px sehingga bar membungkus ke baris kedua | Tombol tema pindah ke kaki drawer sebagai butir "Mode gelap" (`aria-pressed` tetap). Top bar = urutan mockup: judul · pil audit · Tampilan · identitas · Keluar |
+| shell S2 | Top bar akun multi-peran di lebar 1280 | Tombol tema (bukan bagian mockup) menambah 56px sehingga bar membungkus ke baris kedua | Tombol tema pindah ke kaki drawer sebagai butir "Mode gelap" (`aria-pressed` tetap). Basis lebar judul 160px (mockup 200px) karena tanpa itu sisa ruang hanya ±1px dan CI membungkus; saat satu baris judul tetap melebar, jadi tampilannya sama. Top bar = urutan mockup: judul · pil audit · Tampilan · identitas · Keluar |
 | peran (Hasil saya) | Undangan wawancara di `/my` | `.b8-list { margin: 0 }` didefinisikan setelah `.b8-sub`, jadi jarak 20px hilang | `.b8-sub` dipindah ke bawah `.b8-list` |
 
 ## Keputusan
