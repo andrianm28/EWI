@@ -75,11 +75,11 @@ locals {
     Effect   = "Allow"
     Action   = ["bedrock:InvokeModel", "bedrock:InvokeModelWithResponseStream"]
     Resource = ["${local.arn_prefix}:bedrock:*::foundation-model/anthropic.*"]
-    Condition = {
+    Condition = merge(local.dari_etavm2, {
       StringLike = {
         "bedrock:InferenceProfileArn" = "${local.arn_prefix}:bedrock:${data.aws_region.this.region}:${data.aws_caller_identity.this.account_id}:inference-profile/*"
       }
-    }
+    })
   }] : []
 }
 
