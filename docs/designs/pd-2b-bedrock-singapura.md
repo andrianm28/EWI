@@ -126,7 +126,6 @@ Sumbu Spec:
 | Penyerahan infra belum menyebut petunjuk `apac.` di wizard | Diterima | Ditambah di bagian 3; dikerjakan thread infra di PR #3 `9e5dfb5` |
 | Gerbang penuh belum terbukti | Info | Dijalankan pada hasil gabungan sebelum push |
 | `qa-malam-cli.test.js` memakai Jakarta sebagai data uji dengan penyedia palsu | Info | Tidak diubah, tanpa dampak |
-</content>
 
 ## 7. Revisi 23 Nov siang: Sonnet 5.5 lewat profil global dari Singapura
 
@@ -142,7 +141,7 @@ model terpilih kecuali `AI_ALLOW_CROSS_REGION=true`.
 
 | Berkas | Sebelum | Sesudah |
 |---|---|---|
-| `apps/api/src/config/env.js` | profil selain `apac.` ditolak tanpa `AI_ALLOW_CROSS_REGION` | `apac.` dan `global.` diterima (`ALLOWED_PROFILES`); `us.`, `eu.`, dst. tetap ditolak; pesan galat menyebut `apac./global.` |
+| `apps/api/src/config/env.js` | profil selain `apac.` ditolak tanpa `AI_ALLOW_CROSS_REGION` | `apac.` dan `global.` diterima (`DEFAULT_ALLOWED_PROFILES`); `us.`, `eu.`, dst. tetap ditolak; pesan galat menyebut `apac./global.` |
 | `apps/api/tests/unit/config.test.js` | test produksi `anthropic.claude-sonnet-5`, `global.` di daftar yang ditolak | test produksi `global.anthropic.claude-sonnet-5-5` (`cross-region:global`, `allowCrossRegion: false`); bentuk ARN profil `global.` diterima; `global.` dengan `us-east-1` tetap ditolak |
 | `.env.example` | `BEDROCK_MODEL_ID=anthropic.claude-sonnet-5` | `BEDROCK_MODEL_ID=global.anthropic.claude-sonnet-5-5`, komentar implikasi lintas region |
 | `docs/ewi/ai-teks.md` | Sonnet 5 in-region | Sonnet 5.5 lewat profil global, izin IAM profil, implikasi UU PDP di "Batas yang diketahui" |
