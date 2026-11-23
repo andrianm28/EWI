@@ -18,12 +18,12 @@ export const QUEUE_STATUS: Record<QueueRow['status'], { text: string; tone: Tone
 // Tahap 3: temuan benchmark (mockup Pak Eji, fungsi limFind) dan tingkat keyakinan
 export const RETENTION: Record<Retention, { title: string; text: string; tone: Tone }> = {
   retention_drop: { title: 'Hasil belajar tidak bertahan', text: 'Perlu penguatan', tone: 'critical' },
-  confirmed: { title: 'Hasil belajar terkonfirmasi', text: 'Bertahan', tone: 'success' },
+  confirmed: { title: 'Hasil belajar terkonfirmasi', text: 'Terkonfirmasi', tone: 'success' },
   missing: { title: 'Skor post atau wawancara ulang belum ada', text: 'Data belum lengkap', tone: 'neutral' },
 }
 export const APPLICATION: Record<Application, { title: string; text: string; tone: Tone }> = {
-  application_gap: { title: 'Belum diterapkan penuh di pekerjaan', text: 'Cek hambatan', tone: 'warning' },
-  applied: { title: 'Kemampuan terlihat di kinerja', text: 'Selaras', tone: 'success' },
+  application_gap: { title: 'Belum diterapkan penuh di pekerjaan', text: 'Cek Improvement Needs', tone: 'warning' },
+  applied: { title: 'Kemampuan terlihat di kinerja', text: 'Terapan baik', tone: 'success' },
   missing: { title: 'Skor kinerja belum diisi atasan', text: 'Data belum lengkap', tone: 'neutral' },
 }
 export const CONFIDENCE: Record<Confidence, string> = { low: 'Rendah', medium: 'Sedang', high: 'Tinggi' }

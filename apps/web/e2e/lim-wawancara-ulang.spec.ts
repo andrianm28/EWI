@@ -81,9 +81,17 @@ test('karyawan: menu Wawancara ulang, persetujuan, tiga pertanyaan dengan piliha
     .toEqual(['Mengikuti langkah pelatihan', 'Saya cek matriks eskalasi dan konfirmasi ke on-call.', 'Bertanya ke rekan'])
 })
 
-test('karyawan: menu Wawancara ulang tidak tampil bila flag lim.reinterview mati', async ({ page }) => {
+test('karyawan: menu Wawancara ulang tidak tampil bila flag lim.reinterview atau module.lim mati', async ({ page }) => {
   await employeeApi(page, [])
   await login(page, 'learner', {})
+  await expect(page.getByRole('navigation', { name: 'Navigasi utama' }).getByRole('link', { name: 'Wawancara ulang' })).toHaveCount(0)
+  await page.goto('/wawancara-ulang')
+  await expect(page.getByRole('heading', { level: 1, name: 'Wawancara ulang' })).toHaveCount(0)
+})
+
+test('karyawan: flag fitur menyala tetapi module.lim mati, menu tetap tersembunyi (review kode)', async ({ page }) => {
+  await employeeApi(page, [])
+  await login(page, 'learner', { 'lim.reinterview': true, 'module.lim': false })
   await expect(page.getByRole('navigation', { name: 'Navigasi utama' }).getByRole('link', { name: 'Wawancara ulang' })).toHaveCount(0)
 })
 

@@ -62,4 +62,18 @@ describe('benchmark, keyakinan, dan rekomendasi per karyawan', () => {
     ]);
     expect(out.recommendations.join(' ')).not.toMatch(/Career/);
   });
+
+  it('"lanjutkan" tidak direkomendasikan bila datanya belum lengkap (review spek)', () => {
+    const out = rules.employeeResult({ competencies: [c({ performance: null })], indicators: [] });
+    expect(out.recommendations).toEqual([]);
+  });
+
+  it('rantai per karyawan: tingkat 2-4 menyebut skor orang itu, bukan hitungan peserta (mockup "Wawancara ulang AI: 72")', () => {
+    const chain = [1, 2, 3, 4, 5, 6].map((level) => ({ level, key: `l${level}`, label: 'x', source: 's', finding: 'Belum ada data', coverage: 'missing' }));
+    const out = rules.personalChain(chain, [c({ post: 84, reinterview: 70, performance: null }), c({ competencyId: 'k2', post: 90, reinterview: 75, performance: null })]);
+    expect(out.map((x) => [x.finding, x.coverage])).toEqual([
+      ['Belum ada data', 'missing'], ['Post-test rata-rata 87', 'measured'], ['Wawancara ulang AI: 73', 'measured'],
+      ['Belum ada data', 'missing'], ['Belum ada data', 'missing'], ['Belum ada data', 'missing'],
+    ]);
+  });
 });

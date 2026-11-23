@@ -57,10 +57,27 @@ function employeeResult({ competencies, indicators }) {
   for (const b of benchmark) {
     if (b.retention === 'retention_drop') add(RECS.retention(b.name));
     if (b.application === 'application_gap') add(RECS.application);
-    if (b.retention !== 'retention_drop' && b.application !== 'application_gap') add(RECS.next);
+    // "lanjutkan" hanya bila kedua temuan terukur dan bersih; data kosong bukan alasan melanjutkan
+    if (b.retention === 'confirmed' && b.application === 'applied') add(RECS.next);
   }
   for (const i of indicators) if (i.level === 'business' && !(present(i.baseline) && present(i.current))) add(RECS.indicator(i.name));
   return { benchmark, confidence, recommendations: recs };
 }
 
-module.exports = { MAX_COMPETENCIES, MAX_TURNS, GAP_THRESHOLD, snapshot, questionPlan, questionCount, employeeResult };
+const avg = (list) => Math.round(list.reduce((a, v) => a + v, 0) / list.length);
+/**
+ * Rantai bukti satu karyawan: tingkat 2-4 dari rantai rencana (hitungan peserta) diganti skor orang itu sendiri
+ * (mockup ringkasan: "Wawancara ulang AI: 72"). Tingkat 1, 5, 6 dibiarkan.
+ */
+function personalChain(chain, competencies) {
+  const level = { 2: ['post', (v) => `Post-test rata-rata ${v}`], 3: ['reinterview', (v) => `Wawancara ulang AI: ${v}`], 4: ['performance', (v) => `Skor kinerja rata-rata ${v}`] };
+  return chain.map((c) => {
+    const spec = level[c.level];
+    if (!spec) return c;
+    const vals = competencies.map((x) => x[spec[0]]).filter(present);
+    if (!vals.length) return { ...c, finding: 'Belum ada data', coverage: 'missing' };
+    return { ...c, finding: spec[1](avg(vals)), coverage: vals.length === competencies.length ? 'measured' : 'partial' };
+  });
+}
+
+module.exports = { MAX_COMPETENCIES, MAX_TURNS, GAP_THRESHOLD, snapshot, questionPlan, questionCount, employeeResult, personalChain };

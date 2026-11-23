@@ -329,9 +329,11 @@ module.exports = {
     }
     r.get('/plans/:id/queue', hr, idParam, wrap(async (req, res) => {
       const plan = await loadPlan(req);
-      const [{ queue }, index] = await Promise.all([queueOf(req, plan), stores.lim.reinterviewIndex(req.tenantId, plan.id)]);
+      const { queue } = await queueOf(req, plan);
       await audit.readIndividual(req, 'lim.measurement', { employeeIds: queue.map((x) => x.userId), objectType: 'lim_plan_queue', objectIds: [plan.id] });
+      if (!(await flags.isEnabled(req.tenantId, FLAGS.LIM_REINTERVIEW))) return res.json({ data: queue });
       // tahap 3: hasil bisa dibuka bila ada minimal satu wawancara selesai (triase 12.7 #5)
+      const index = await stores.lim.reinterviewIndex(req.tenantId, plan.id);
       res.json({ data: queue.map((x) => ({ ...x, reinterviewId: index.latestCompleted.get(x.userId) || null, canView: index.latestCompleted.has(x.userId) })) });
     }));
     r.post('/plans/:id/queue/schedule', hr, idParam, wrap(async (req, res) => {

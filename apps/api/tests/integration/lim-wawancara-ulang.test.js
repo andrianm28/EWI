@@ -89,8 +89,10 @@ run('B15 tahap 3 wawancara ulang AI (Postgres)', () => {
     await db.close();
   });
 
-  it('flag lim.reinterview mati: rute karyawan dan hasil HR 403 FEATURE_DISABLED (sama dengan flag lain)', async () => {
+  it('flag lim.reinterview mati: rute karyawan dan hasil HR 403 FEATURE_DISABLED (sama dengan flag lain); antrean tanpa field tahap 3', async () => {
     await flag('lim.reinterview', false);
+    const queue = (await get(`/plans/${plan.id}/queue`, 'hr')).body.data;
+    expect(queue[0]).not.toHaveProperty('canView');
     expect((await get('/me/reinterviews', 'a')).body.error.code).toBe('FEATURE_DISABLED');
     expect((await get(`/plans/${plan.id}/reinterviews/${u.a}`, 'hr')).status).toBe(403);
     await flag('lim.reinterview', true);
@@ -171,6 +173,14 @@ run('B15 tahap 3 wawancara ulang AI (Postgres)', () => {
     expect((await get('/me/reinterviews', 'b')).body.data[0].status).toBe('in_progress');
   });
 
+  it('HR membatalkan jadwal tepat saat persetujuan (balapan): skor tetap tercatat di pasangan potret (review diff)', async () => {
+    await q("UPDATE lim_measurements SET reinterview_status = 'none', reinterview_on = NULL WHERE user_id = :u RETURNING id", { u: u.b });
+    const last = await answerAll('b');
+    expect(last.body.data.done).toBe(true);
+    const rows = await q('SELECT reinterview_status AS s FROM lim_measurements WHERE user_id = :u', { u: u.b });
+    expect(rows.map((x) => x.s)).toEqual(['done', 'done']);
+  });
+
   it('AI gagal: pertanyaan dan penilaian menjadi 502; step scoring; coba lagi tanpa text menutup sesi', async () => {
     fail.question = true;
     const r1 = await send('post', me('d', '/consent'), { consentVersion: CONSENT }, 'd');
@@ -190,6 +200,13 @@ run('B15 tahap 3 wawancara ulang AI (Postgres)', () => {
     await q('UPDATE users SET job_role_id = :r WHERE id = :u RETURNING id', { r: role2.id, u: u.e });
     expect((await send('post', me('e', '/consent'), { consentVersion: CONSENT }, 'e')).status).toBe(404);
     await q('UPDATE users SET job_role_id = :r WHERE id = :u RETURNING id', { r: role.id, u: u.e });
+  });
+
+  it('hapus karyawan menghapus wawancara ulang dan gilirannya (CASCADE)', async () => {
+    const [ri] = await q('SELECT id FROM lim_reinterviews WHERE user_id = :u', { u: u.d });
+    expect((await request(app).delete(`/api/employees/${u.d}`).set(as('hr'))).status).toBeLessThan(300);
+    expect(await q('SELECT 1 FROM lim_reinterviews WHERE id = :id', { id: ri.id })).toEqual([]);
+    expect(await q('SELECT 1 FROM lim_reinterview_turns WHERE reinterview_id = :id', { id: ri.id })).toEqual([]);
   });
 
   it('ekspor: karyawan menerima skor, alasan, dan transkrip; HR menerima skor tanpa alasan dan transkrip', async () => {

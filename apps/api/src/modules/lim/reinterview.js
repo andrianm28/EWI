@@ -4,8 +4,7 @@
 // Transkrip hanya untuk karyawan itu (T-6); HR membaca skor dan alasan. Pola sesi mengikuti B10 (modules/cca/interview.js).
 const { badRequest, notFound, HttpError } = require('../../core/errors');
 const { currentConsentVersion, isAcceptedConsentVersion } = require('../../core/consent');
-const { AiError } = require('../../ai/errors');
-const { callAi } = require('../interviews/ai-calls');
+const { callAiOr502 } = require('../interviews/ai-calls');
 const rules = require('./reinterview-rules');
 
 const MAX_ANSWER = 2000;
@@ -18,16 +17,7 @@ const forPrompt = (c) => ({ id: c.id, name: c.name, definition: c.definition, in
 
 /** Rute karyawan (/me/...). Dipasang sebelum pembatas peran HR/atasan: semua peran boleh, data pemanggil sendiri saja. */
 function mountMine(r, { stores, ai, aiConfig = {}, audit, gate }) {
-  async function askAi(req, fn) {
-    const env = { stores, aiConfig, tenantId: req.tenantId, session: { projectId: null, id: null, intervieweeId: req.user.id, submodule: 'lim' } };
-    try {
-      return await callAi(env, fn);
-    } catch (e) {
-      if (!(e instanceof AiError)) throw e;
-      console.error('AI wawancara ulang LIM gagal:', e.code, e.message);
-      throw new HttpError(502, 'AI_UNAVAILABLE', 'Asisten AI sedang tidak bisa dihubungi. Coba lagi beberapa saat lagi.');
-    }
-  }
+  const askAi = (req, fn) => callAiOr502({ stores, aiConfig, tenantId: req.tenantId, session: { projectId: null, id: null, intervieweeId: req.user.id, submodule: 'lim' } }, fn, 'wawancara ulang LIM');
 
   /** Rencana + keadaan wawancara milik pemanggil, atau 404 bila pemanggil tidak punya jadwal maupun wawancara di sana. */
   async function mine(req) {
@@ -188,7 +178,7 @@ function mountHrResult(r, { stores, audit, gate, hr, idParam, loadPlan, planData
       return {
         id: ri.id, completedAt: ri.completedAt, competencies,
         benchmark: result.benchmark.map(({ competencyId, name, post, reinterview, performance, retention, application }) => ({ competencyId, name, post, reinterview, performance, retention, application })),
-        chain: buildChain({ participants: [userId], activity, rows: chainRows, indicators }),
+        chain: rules.personalChain(buildChain({ participants: [userId], activity, rows: chainRows, indicators }), competencies),
         confidence: result.confidence, recommendations: result.recommendations, generatedBy: 'rules',
       };
     });

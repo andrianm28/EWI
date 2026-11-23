@@ -16,7 +16,7 @@ const step = ref('chat')
 const data = ref<ReinterviewResults | null>(null)
 const error = ref('')
 const latest = computed(() => data.value?.reinterviews[0] ?? null)
-const tanggal = (iso: string) => new Date(iso).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'Asia/Jakarta' })
+const tanggalWaktu = (iso: string) => new Date(iso).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'Asia/Jakarta' })
 
 onMounted(async () => {
   try { data.value = (await lim.result(props.planId, props.userId)).data } catch (e) { error.value = e instanceof ApiError ? e.message : 'Hasil wawancara ulang tidak bisa dimuat' }
@@ -33,7 +33,7 @@ const bars = (b: { post: number | null; reinterview: number | null; performance:
   <section class="lim-flow" aria-label="Hasil wawancara ulang" data-testid="wu-hasil">
     <UiStepper :steps="STEPS" :current="step" label="Langkah hasil wawancara ulang" />
     <div class="lim-stack">
-      <p class="el-muted lim-small">{{ name }}<template v-if="latest"> · selesai {{ tanggal(latest.completedAt) }}</template></p>
+      <p class="el-muted lim-small">{{ name }}<template v-if="latest"> · selesai {{ tanggalWaktu(latest.completedAt) }}</template></p>
       <UiNote v-if="error" tone="critical">{{ error }}</UiNote>
       <template v-if="latest">
         <template v-if="step === 'chat'">

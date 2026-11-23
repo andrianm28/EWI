@@ -45,6 +45,9 @@ function createLimStores(sequelize, { cipher } = {}) {
        AND (p.period_from IS NULL OR COALESCE(t.starts_on, t.created_at::date) >= p.period_from)
        AND (p.period_until IS NULL OR COALESCE(t.starts_on, t.created_at::date) <= p.period_until)`;
   /** Karyawan aktif yang lolos saringan jabatan rencana. */
+  /** Tidak ada wawancara ulang berjalan untuk (rencana, karyawan) ini: jadwalnya dikunci sampai selesai (triase 12.7 #2). */
+  const NO_OPEN_REINTERVIEW = `NOT EXISTS (SELECT 1 FROM lim_reinterviews r WHERE r.tenant_id = :tenantId AND r.plan_id = :planId
+    AND r.user_id = :userId AND r.status = 'in_progress')`;
   const ROLE_OK = '(p.job_role_id IS NULL OR u.job_role_id = p.job_role_id)';
 
   const lim = {
@@ -179,7 +182,7 @@ function createLimStores(sequelize, { cipher } = {}) {
       // pasangan milik wawancara ulang yang sedang berjalan tidak diubah (triase 12.7 #2); router melewatinya lebih dulu
       if (date === null) {
         await write(`UPDATE lim_measurements SET reinterview_status = 'none', reinterview_on = NULL, updated_by = :by, updated_at = now()
-          WHERE tenant_id = :tenantId AND plan_id = :planId AND user_id = :userId AND reinterview_status = 'scheduled'`, { tenantId, planId, userId, by });
+          WHERE tenant_id = :tenantId AND plan_id = :planId AND user_id = :userId AND reinterview_status = 'scheduled' AND ${NO_OPEN_REINTERVIEW}`, { tenantId, planId, userId, by });
         return;
       }
       // satu karyawan = satu wawancara: semua kompetensinya terjadwal bersama atau tidak sama sekali
@@ -188,7 +191,7 @@ function createLimStores(sequelize, { cipher } = {}) {
           await write(`INSERT INTO lim_measurements (tenant_id, plan_id, user_id, competency_id, reinterview_status, reinterview_on, updated_by)
               VALUES (:tenantId, :planId, :userId, :competencyId, 'scheduled', :date, :by)
             ON CONFLICT (plan_id, user_id, competency_id) DO UPDATE SET reinterview_status = 'scheduled', reinterview_on = :date, updated_by = :by, updated_at = now()
-            WHERE lim_measurements.reinterview_status <> 'done'`, { tenantId, planId, userId, competencyId, date, by }, t);
+            WHERE lim_measurements.reinterview_status <> 'done' AND ${NO_OPEN_REINTERVIEW}`, { tenantId, planId, userId, competencyId, date, by }, t);
         }
       });
     },
@@ -278,7 +281,8 @@ function createLimStores(sequelize, { cipher } = {}) {
     },
     /**
      * Tutup wawancara (T-5) dalam satu transaksi: kunci baris, syarat masih in_progress, tulis skor ke pasangan potret yang
-     * masih scheduled, simpan ringkasan terenkripsi. Return true bila menutup, false bila sudah ditutup kiriman lain.
+     * belum done (termasuk yang jadwalnya dibatalkan HR bersamaan dengan persetujuan; wawancaranya tetap terjadi), simpan
+     * ringkasan terenkripsi. Return true bila menutup, false bila sudah ditutup kiriman lain.
      */
     async completeReinterview(tenantId, id, { scores, summary }) {
       const enc = await cipher.encrypt(tenantId, JSON.stringify(summary));
@@ -288,7 +292,7 @@ function createLimStores(sequelize, { cipher } = {}) {
         if (!r) return false;
         for (const s of scores) {
           await write(`UPDATE lim_measurements SET reinterview_status = 'done', reinterview_score = :score, reinterview_session_id = :id, updated_at = now()
-            WHERE tenant_id = :tenantId AND plan_id = :planId AND user_id = :userId AND competency_id = :competencyId AND reinterview_status = 'scheduled'`,
+            WHERE tenant_id = :tenantId AND plan_id = :planId AND user_id = :userId AND competency_id = :competencyId AND reinterview_status <> 'done'`,
           { tenantId, id, planId: r.planId, userId: r.userId, competencyId: s.competencyId, score: s.score }, t);
         }
         await write(`UPDATE lim_reinterviews SET status = 'completed', summary = :enc, completed_at = now(), updated_at = now()

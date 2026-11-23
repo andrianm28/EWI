@@ -400,7 +400,7 @@ mengerjakannya sendiri di layar karyawan ELGOS. Pola sesi, giliran terenkripsi, 
   Skor ditulis lewat store baru `completeReinterview(tenantId, id, { scores, summary })`: satu transaksi mengunci baris
   wawancara `FOR UPDATE`, mensyaratkan `status = 'in_progress'` (dua jawaban terakhir paralel tidak bisa menutup dua
   kali), menulis `lim_measurements.reinterview_score`/status `done`/`reinterview_session_id` = id wawancara untuk
-  pasangan potret yang masih `scheduled`, lalu menutup sesi. Tidak ada langkah konfirmasi ringkasan oleh karyawan: ini pengukuran, bukan pemetaan pendapat.
+  pasangan potret yang belum `done` (lihat 12.8 #1), lalu menutup sesi. Tidak ada langkah konfirmasi ringkasan oleh karyawan: ini pengukuran, bukan pemetaan pendapat.
   Karyawan melihat "Terima kasih, jawaban Anda sudah tersimpan" tanpa skor.
 - **T-6 Transkrip.** Giliran disimpan terenkripsi per tenant dan hanya untuk karyawan itu (sama dengan PO-6: layar
   review HR tanpa transkrip). Ringkasan (skor + alasan per kompetensi) disimpan terenkripsi di
@@ -410,7 +410,7 @@ mengerjakannya sendiri di layar karyawan ELGOS. Pola sesi, giliran terenkripsi, 
     `post − wawancara ulang > 10` → "Hasil belajar tidak bertahan" (`retention_drop`), selain itu "Hasil belajar
     terkonfirmasi"; `wawancara ulang − kinerja > 10` → "Belum diterapkan penuh di pekerjaan" (`application_gap`), selain
     itu "Kemampuan terlihat di kinerja". Nilai yang kosong → temuan `missing` ("Data belum lengkap").
-    Konstanta `GAP_THRESHOLD = 10` di `domain.js`. [⚠️ BELUM TERVERIFIKASI: ambang 10 dari mockup.]
+    Konstanta `GAP_THRESHOLD = 10` di `reinterview-rules.js`. [⚠️ BELUM TERVERIFIKASI: ambang 10 dari mockup.]
   - Hasil bisnis: indikator tim rencana dan faktor lain (sama dengan tab Dampak bisnis), dengan catatan mockup
     "Indikator tingkat tim, bukan per orang".
   - Ringkasan rantai bukti per karyawan, enam tingkat: Aktivitas (keikutsertaan LD karyawan itu), Pembelajaran (post),
@@ -420,7 +420,7 @@ mengerjakannya sendiri di layar karyawan ELGOS. Pola sesi, giliran terenkripsi, 
   - Rekomendasi aturan, satu per kompetensi per kondisi (tanpa duplikat teks; rekomendasi indikator satu per
     indikator tanpa data): `retention_drop` → "Jadwalkan penguatan <kompetensi> dan ulangi wawancara dalam
     4 pekan."; `application_gap` → "Buka tindakan perbaikan di Improvement Needs untuk hambatan non-pelatihan.";
-    tanpa keduanya → "Lanjutkan ke kompetensi berikutnya dalam jalur belajar." (teks mockup; rekomendasi Career &
+    kedua temuan terukur dan bersih → "Lanjutkan ke kompetensi berikutnya dalam jalur belajar." (teks mockup; rekomendasi Career &
     Promotion tidak dipakai karena bertentangan dengan tujuan persetujuan dan bagian 1); indikator bisnis tanpa data → "Lengkapi
     data <indikator> agar tingkat hasil bisnis lengkap." [⏳ DITERIMA: mockup menulis "Rekomendasi AI" dan "tingkat
     keyakinan AI"; sama dengan keputusan 6.2 dan B14, layar menulis "Rekomendasi" dan "Tingkat keyakinan" dengan
@@ -493,7 +493,7 @@ Review goldfish (implementation-readiness) atas bagian 12. Semua temuan diterima
 | # | Temuan | Keputusan |
 | --- | --- | --- |
 | 1 | `position` 1..9 terlalu kecil (4 kompetensi = 18 giliran) | Diperbaiki di 12.2: 1..18; jawaban mewarisi `kind`/`competency_id` |
-| 2 | HR membatalkan jadwal atau mengarsipkan rencana saat wawancara berjalan | Jadwal/batal (6.4) melewati pasangan milik wawancara `in_progress` (alasan lewat `in_progress`); `completeReinterview` hanya menulis pasangan yang masih `scheduled`; rencana `archived` → rute sesi 409 `PLAN_ARCHIVED`, baris tetap `in_progress` |
+| 2 | HR membatalkan jadwal atau mengarsipkan rencana saat wawancara berjalan | Jadwal/batal (6.4) melewati pasangan milik wawancara `in_progress` (alasan lewat `in_progress`); `completeReinterview` menulis pasangan potret yang belum `done` (12.8 #1); rencana `archived` → rute sesi 409 `PLAN_ARCHIVED`, baris tetap `in_progress` |
 | 3 | `recordReinterview` tidak bisa ikut transaksi | Store baru `completeReinterview` (T-5) |
 | 4 | Coba lagi penilaian tidak punya endpoint | `POST /turns` tanpa `text` saat semua jawaban ada = nilai ulang; `step: 'scoring'` (T-5) |
 | 5 | Lebih dari 4 kompetensi membuat `canView` palsu; banyak wawancara `completed` | `canView` = ada minimal satu wawancara `completed`; `GET /plans/:id/reinterviews/:userId` menjawab daftar wawancara `completed` terbaru dulu, layar menampilkan yang terbaru |
@@ -502,5 +502,24 @@ Review goldfish (implementation-readiness) atas bagian 12. Semua temuan diterima
 | 8 | Keyakinan dan rekomendasi untuk banyak kompetensi tidak terdefinisi | Rendah > Sedang > Tinggi; satu rekomendasi per kompetensi per kondisi (T-7) |
 | 9 | Celah mockup | "Lanjutkan ke kompetensi berikutnya…" ditambah; tombol mockup "Simpan hasil" tidak dibuat karena hasil tersimpan otomatis di T-5 |
 | 10 | Kelayakan tidak dicek ulang | Saat persetujuan: pemanggil harus masih peserta rencana (periode + jabatan, 4.1), selain itu 404 |
-| 11 | Kasus belum disebut | `audit.record` `lim.reinterview_consent` dan `lim.reinterview_completed`; flag mati → 404 (`requireFlag`); giliran publik = semua giliran sesi (maks 18: `position`, `role`, `kind`, `text`, `options`). [⏳ DITERIMA: tidak ada batas waktu untuk wawancara `in_progress` yang ditinggal; karyawan bisa melanjutkan kapan saja selama rencana `active`.] |
+| 11 | Kasus belum disebut | `audit.record` `lim.reinterview_consent` dan `lim.reinterview_completed`; flag mati → 403 `FEATURE_DISABLED` (`requireFlag`, sama dengan flag lain; koreksi review kode); giliran publik = semua giliran sesi (maks 18: `position`, `role`, `kind`, `text`, `options`). [⏳ DITERIMA: tidak ada batas waktu untuk wawancara `in_progress` yang ditinggal; karyawan bisa melanjutkan kapan saja selama rencana `active`.] |
 | 12 | T-7 hampir fitur kedua | Diterima sebagai urutan kerja: T-1..T-6 (backend + layar karyawan) di komit pertama, T-7 (hasil HR) di komit berikut dengan test sendiri, flag yang sama |
+
+### 12.8 Triase review diff dan code review dua sumbu (23 Nov)
+
+Review goldfish atas diff (codebase-details) dan mattpocock-skills:code-review (Standards, Spec).
+
+| # | Temuan | Keputusan |
+| --- | --- | --- |
+| 1 | Balapan: HR membatalkan jadwal bersamaan dengan persetujuan, skor hilang diam-diam | `schedule` mensyaratkan tidak ada wawancara `in_progress` (SQL `NOT EXISTS`); `completeReinterview` menulis pasangan potret yang belum `done`, karena wawancaranya tetap terjadi. Test integrasi balapan |
+| 2 | Menu dan rute `/wawancara-ulang` hanya memeriksa `lim.reinterview`, padahal API butuh `module.lim` | Meta rute baru `flags: ['module.lim', 'lim.reinterview']` (gerbang router bersama, kode bersama web); e2e |
+| 3 | Antrean memuat field tahap 3 walau flag mati | `reinterviewId`/`canView` hanya saat `lim.reinterview` menyala; test |
+| 4 | "Lanjutkan" direkomendasikan saat data kosong | Hanya bila kedua temuan terukur dan bersih; test |
+| 5 | Rantai per karyawan memakai kalimat tingkat rencana ("1 dari 1 karyawan") | `personalChain`: tingkat 2–4 menyebut skor orang itu ("Wawancara ulang AI: 72", mockup); test |
+| 6 | `askAi` disalin dari CCA | Helper bersama `callAiOr502` di `modules/interviews/ai-calls.js`, dipakai CCA dan LIM |
+| 7 | Spek: 404 vs 403 saat flag mati; letak `GAP_THRESHOLD` | Spek dikoreksi (403, `reinterview-rules.js`) |
+| 8 | Teks chip berbeda dari mockup | Disamakan: "Terkonfirmasi", "Cek Improvement Needs", "Terapan baik" |
+| 9 | Test hapus karyawan belum ada | Ditambah (CASCADE wawancara dan giliran) |
+| 10 | Nama `tanggal` lokal menutupi helper labels | Diganti `tanggalWaktu` |
+| — | "Kembali ke antrean" di semua langkah; hasil dibuka dari langkah 1 | [⏳ DITERIMA: memudahkan HR keluar; spek mengizinkan] |
+| — | T-7 sudah ikut di komit API pertama (12.7 #12) | [⏳ DITERIMA: dua komit API lalu layar; T-7 punya test sendiri] |

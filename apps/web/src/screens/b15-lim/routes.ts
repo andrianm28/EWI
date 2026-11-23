@@ -9,6 +9,6 @@ export default [
   // Tahap 3: karyawan (dan atasan untuk dirinya sendiri) menjalankan wawancara ulang AI setelah dijadwalkan HR
   {
     path: '/wawancara-ulang', name: 'wu', component: () => import('./ReinterviewView.vue'),
-    meta: { views: ['karyawan', 'atasan'], flag: 'lim.reinterview', entitlement: 'full_suite', title: 'Wawancara ulang' },
+    meta: { views: ['karyawan', 'atasan'], flags: ['module.lim', 'lim.reinterview'], entitlement: 'full_suite', title: 'Wawancara ulang' },
   },
 ] satisfies RouteRecordRaw[]
