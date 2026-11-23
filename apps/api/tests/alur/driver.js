@@ -81,6 +81,7 @@ async function hapusTenant(db, ids) {
 
 const kodeGalat = (res) => (res.body && res.body.error && res.body.error.code) || `HTTP_${res.status}`;
 
+/** Langkah alur lewat API saja (tanpa menulis store langsung). */
 function langkah(app, masuk) {
   // Header masuk didapat secara async (sesi), jadi permintaan dibangun saat ditunggu; `.expect()` tetap bisa dirantai.
   const kirim = (method, path, siapa, body) => {
@@ -279,6 +280,61 @@ function langkah(app, masuk) {
       },
       /** Respons mentah: 201 terkirim; 409 REMINDER_RECENT (dalam 24 jam) atau INVALID_STATE (selesai/batal); 400 tanpa penerima. */
       pengingat: (hr, id) => kirim('post', `/api/ld/trainings/${id}/reminders`, hr),
+    },
+    cca: {
+      /** B10 (flag cca.interview): HR menugaskan tier pimpinan; pimpinan menugaskan bawahan langsungnya. */
+      async tugaskan(siapa, assigneeIds, dueDate) {
+        return (await kirim('post', '/api/cca/assignments', siapa, { assigneeIds, dueDate }).expect(201)).body.data;
+      },
+      /** Tampilan penugasan sesuai peran: { role: hr|leader|employee, mine, ... }. */
+      async penugasan(siapa) {
+        return (await kirim('get', '/api/cca/assignments', siapa).expect(200)).body.data;
+      },
+      /** Ringkasan wawancara yang boleh dibaca (peserta sendiri, atau HR untuk tier pimpinan). */
+      async ringkasan(siapa, assignmentId) {
+        return (await kirim('get', `/api/cca/assignments/${assignmentId}/summary`, siapa).expect(200)).body.data;
+      },
+      /**
+       * B10 tahap 2: peserta menyetujui teks persetujuan berlaku, menjawab empat pertanyaan, membuat ringkasan, lalu
+       * mengirimnya. `jawaban` = satu teks (dipakai untuk keempat pertanyaan) atau daftar empat teks. Mengembalikan tema ringkasan.
+       */
+      async selesaikanWawancara(pengguna, assignmentId, jawaban) {
+        const base = `/api/cca/assignments/${assignmentId}`;
+        const daftar = Array.isArray(jawaban) ? jawaban : Array(4).fill(jawaban);
+        await kirim('post', `${base}/consent`, pengguna, { consentVersion: currentConsentVersion('cca') }).expect(200);
+        for (const text of daftar) await kirim('post', `${base}/turns`, pengguna, { text }).expect(200);
+        const ringkasan = (await kirim('post', `${base}/summary`, pengguna).expect(201)).body.data;
+        await kirim('post', `${base}/summary/confirm`, pengguna).expect(200);
+        return ringkasan.themes;
+      },
+    },
+    lim: {
+      /** B15: rencana pengukuran (HR). */
+      async buatRencana(hr, rencana) {
+        return (await kirim('post', '/api/lim/plans', hr, rencana).expect(201)).body.data;
+      },
+      /** Rencana yang terlihat sesuai cakupan (atasan: hanya rencana berisi anggota timnya). */
+      async daftarRencana(siapa) {
+        return (await kirim('get', '/api/lim/plans', siapa).expect(200)).body.data;
+      },
+      /** Isian skor (HR: pre/post/kinerja; atasan: kinerja bawahan langsung). Mengembalikan { saved, rejected }. */
+      async isiSkor(siapa, planId, entries) {
+        return (await kirim('put', `/api/lim/plans/${planId}/measurements`, siapa, { entries }).expect(200)).body.data;
+      },
+      /** Skor per karyawan per kompetensi (HR). */
+      async skor(hr, planId) {
+        return (await kirim('get', `/api/lim/plans/${planId}/measurements`, hr).expect(200)).body.data;
+      },
+      async ringkasan(siapa, planId) {
+        return (await kirim('get', `/api/lim/plans/${planId}/overview`, siapa).expect(200)).body.data;
+      },
+      async antrean(hr, planId) {
+        return (await kirim('get', `/api/lim/plans/${planId}/queue`, hr).expect(200)).body.data;
+      },
+      /** Jadwal wawancara ulang per karyawan; date null membatalkan. */
+      async jadwalkan(hr, planId, userIds, date) {
+        return (await kirim('post', `/api/lim/plans/${planId}/queue/schedule`, hr, { userIds, date }).expect(200)).body.data;
+      },
     },
     /** B9 Improvement Needs. Langkah tulis memastikan sukses; baca mengembalikan respons mentah untuk cek penolakan. */
     ina: {

@@ -85,6 +85,29 @@ export type Assignments =
   | { role: 'employee'; mine: Mine }
 export interface AssignResult { tier: string; assigned: (Assignment & { assigneeId: string })[]; skipped: string[]; rejected: string[] }
 
+// --- B10 tahap 2: sesi wawancara peserta dan sintesis HR (spek bagian 11.4) ---
+export type InterviewStep = 'consent' | 'chat' | 'summary' | 'done' | 'cancelled'
+export type ThemeKey = 'vision' | 'mission' | 'values' | 'behavior' | 'support'
+export interface InterviewTurn { role: 'ai' | 'participant'; theme: ThemeKey; text: string; options: string[] | null }
+export interface InterviewQuestion { position: number; theme: ThemeKey; text: string; options: string[] }
+export interface SummaryTheme { theme: ThemeKey | null; question: string | null; answer: string | null }
+export interface InterviewSession {
+  assignment: { id: string; tier: 'leader' | 'employee'; status: AssignmentStatus; dueDate: string; durationMinutes: number; restartsLeft: number }
+  step: InterviewStep
+  consentVersionRequired: string | null
+  turns: InterviewTurn[]
+  answerCount: number
+  questionCount: number
+  summary: { themes: SummaryTheme[]; createdAt: string } | null
+}
+export type SynthesisRow = {
+  requirementId: string; name: string; sourceKind: SourceKind; sourceTitle: string
+  leaderAgree: number | null; leaderRespondents: number; employeeAligned: number | null; employeeRespondents: string
+  gap: number | null; hot: boolean; actualScore: number | null; actualSource: 'manual' | 'synthesis' | null
+}
+export interface Synthesis { themes: SynthesisRow[]; minRespondents: number; kpis: { themes: number; leadersCompleted: number; employeesCompleted: string } }
+export interface ApplyResult { applied: { requirementId: string; previous: { actualScore: number | null; actualSource: string | null } }[]; skipped: { requirementId: string; reason: string }[] }
+
 const call = <T>(path: string, init: RequestInit = {}) => api<{ data: T }>(`/cca${path}`, init, useSessionStore().token).then((r) => r.data)
 const send = <T>(method: string, path: string, body: unknown) => call<T>(path, { method, body: JSON.stringify(body) })
 
@@ -106,6 +129,24 @@ export const cca = {
   assignments: () => call<Assignments>('/assignments'),
   assign: (assigneeIds: string[], dueDate: string, durationMinutes = 10) => send<AssignResult>('POST', '/assignments', { assigneeIds, dueDate, durationMinutes }),
   cancelAssignment: (id: string) => send<Assignment>('PATCH', `/assignments/${id}`, { status: 'cancelled' }),
+  session: (id: string) => call<InterviewSession>(`/assignments/${id}/session`),
+  consent: (id: string, consentVersion: string) => send<{ question: InterviewQuestion | null }>('POST', `/assignments/${id}/consent`, { consentVersion }),
+  /** Tanpa text: minta (ulang) pertanyaan berikutnya. */
+  turn: (id: string, text?: string) => send<{ question: InterviewQuestion | null; done: boolean }>('POST', `/assignments/${id}/turns`, text === undefined ? {} : { text }),
+  summarize: (id: string) => send<{ themes: SummaryTheme[]; createdAt: string }>('POST', `/assignments/${id}/summary`, {}),
+  confirm: (id: string) => send<{ status: 'completed' }>('POST', `/assignments/${id}/summary/confirm`, {}),
+  restart: (id: string) => send<{ restartsLeft: number }>('POST', `/assignments/${id}/restart`, {}),
+  synthesis: () => call<Synthesis>('/synthesis'),
+  applySynthesis: (requirementIds: string[]) => send<ApplyResult>('POST', '/synthesis/apply', { requirementIds }),
+  preview: (tier: 'leader' | 'employee') => call<{ tier: string; questions: InterviewQuestion[] }>(`/interview/preview?tier=${tier}`),
+}
+
+export const THEME_LABEL: Record<ThemeKey, string> = {
+  vision: 'Visi',
+  mission: 'Misi',
+  values: 'Nilai',
+  behavior: 'Perilaku kunci',
+  support: 'Dukungan',
 }
 
 export const CLASS_LABEL: Record<Classification, string> = {

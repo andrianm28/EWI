@@ -1,11 +1,12 @@
 <script setup lang="ts">
 // Tab Wawancara AI untuk HR: menugaskan pimpinan dan atasan, memantau status dan hitungan tim.
-// HR tidak menerima daftar karyawan per orang; percakapan dan sintesis menyusul di tahap 2.
+// HR tidak menerima daftar karyawan per orang; sintesis pimpinan vs karyawan di SynthesisCard (tahap 2).
 import { computed, onMounted, ref } from 'vue'
 import { cca, fmtDate, STATUS_LABEL, type Assignments, type AssignmentStatus, type LeaderRow } from '@/api/cca'
-import { UiButton, UiCard, UiChip, UiDataTable, UiErrorSummary, UiField, UiKpiCard, UiNote, type UiColumn } from '@/ui'
+import { UiButton, UiCard, UiChip, UiDataTable, UiErrorSummary, UiField, UiKpiCard, type UiColumn } from '@/ui'
 import { defaultDue, todayIso } from './due'
 import InterviewFlow from './InterviewFlow.vue'
+import SynthesisCard from './SynthesisCard.vue'
 
 type HrData = Extract<Assignments, { role: 'hr' }>
 const data = ref<HrData | null>(null)
@@ -88,7 +89,7 @@ const cancel = (row: LeaderRow) => run(async () => { await cca.cancelAssignment(
           </template>
         </UiDataTable>
       </UiCard>
-      <UiNote>Percakapan wawancara AI dan sintesis pimpinan dibanding karyawan belum tersedia di versi ini. Halaman ini baru mencatat penugasan dan statusnya.</UiNote>
+      <SynthesisCard />
     </template>
   </div>
 </template>

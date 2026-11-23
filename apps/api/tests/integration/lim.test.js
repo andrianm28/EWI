@@ -345,4 +345,11 @@ run('B15 Learning Impact Measurement (Postgres)', () => {
     expect((await get(`/plans/${res.body.data.id}/overview`, 'spv')).status).toBe(404);
     await send('patch', `/plans/${res.body.data.id}`, { status: 'archived' });
   });
+
+  it('rencana minimal (hanya judul dan modul, seperti formulir web tanpa label) tersimpan dengan isian kosong null', async () => {
+    const res = await send('post', '/plans', { title: 'Rencana minimal', moduleIds: [m1] });
+    expect(res.status).toBe(201);
+    expect(res.body.data).toMatchObject({ jobRoleId: null, periodFrom: null, periodUntil: null, baselineLabel: null, afterLabel: null, businessProblem: '' });
+    await send('patch', `/plans/${res.body.data.id}`, { status: 'archived' });
+  });
 });
