@@ -106,7 +106,7 @@ run('B12 Super Admin (Postgres)', () => {
       expect(row('draf')).toMatchObject({ status: 'draft', adminEmail: null, users: 0, activeModules: 0 });
       expect(row('mati')).toMatchObject({ status: 'draft', users: 0 });
       expect(row('beku')).toMatchObject({ status: 'suspended' });
-      expect(res.body.data.kpis).toMatchObject({ modulesAvailable: 8 });
+      expect(res.body.data.kpis).toMatchObject({ modulesAvailable: 8, users: expect.any(Number) });
       expect(res.body.data.kpis.tenants).toBeGreaterThanOrEqual(6);
       expect(JSON.stringify(res.body)).not.toMatch(FORBIDDEN_KEYS);
     });
@@ -131,8 +131,8 @@ run('B12 Super Admin (Postgres)', () => {
       expect(res.body.data).toMatchObject({ key: 'tna', entitled: true, flagOn: true, effective: true });
       expect(await q("SELECT product, source FROM entitlements WHERE tenant_id = :t", { t: T.draf })).toEqual([{ product: 'tna', source: 'platform' }]);
       const audits = await q('SELECT user_id AS "userId", action, resource, meta FROM audit_logs WHERE tenant_id = :t ORDER BY id', { t: T.draf });
-      expect(audits.at(-1)).toMatchObject({ userId: null, action: 'update', resource: 'tenant.module',
-        meta: { actor: 'Super Admin ELGOS', actorUserId: id.super, via: 'api/platform', module: 'tna', enabled: true } });
+      expect(audits.at(-1)).toMatchObject({ userId: null, action: 'update', resource: 'feature_flag',
+        meta: { actor: 'Super Admin ELGOS', actorUserId: id.super, via: 'api/platform', key: 'module.tna', to: true, module: 'tna' } });
       expect(await platformLogs(T.draf, 'tenant.module')).toEqual([
         expect.objectContaining({ action: 'update', actorUserId: id.super, meta: expect.objectContaining({ module: 'tna', enabled: true }) })]);
       // mematikan: flag mati, entitlement tetap
@@ -140,14 +140,10 @@ run('B12 Super Admin (Postgres)', () => {
       expect(off.body.data).toMatchObject({ flagOn: false, effective: false, entitled: true });
     });
 
-    it('full_suite tidak digandakan; kill switch tampil; li tanpa full_suite tidak berentitlement', async () => {
+    it('full_suite tidak digandakan; li tanpa full_suite tidak berentitlement', async () => {
       await put(`/tenants/${T.aktif}/modules/dna`, { enabled: true }).expect(200);
       expect(await q("SELECT product FROM entitlements WHERE tenant_id = :t", { t: T.aktif })).toEqual([{ product: 'full_suite' }]);
-      await db.query("INSERT INTO feature_kill_switches (key, active, reason) VALUES ('module.dna', true, 'uji B12') ON CONFLICT (key) DO UPDATE SET active = true");
-      try {
-        const row = (await get(`/tenants/${T.aktif}/modules`)).body.data.find((m) => m.key === 'dna');
-        expect(row).toMatchObject({ flagOn: true, killSwitch: true, effective: false });
-      } finally { await db.query("UPDATE feature_kill_switches SET active = false WHERE key = 'module.dna'"); }
+      // Tampilan kill switch diuji di tests/unit/platform-modules.test.js: kill switch global akan mengganggu suite paralel
       const li = await put(`/tenants/${T.tunggu}/modules/li`, { enabled: true });
       expect(li.body.data).toMatchObject({ flagOn: true, entitled: false, effective: false });
     });
@@ -158,7 +154,8 @@ run('B12 Super Admin (Postgres)', () => {
     });
 
     it('audit gagal: flag dan entitlement tidak berubah (satu transaksi)', async () => {
-      await db.query(`ALTER TABLE audit_logs ADD CONSTRAINT b12_tolak_uji CHECK (resource <> 'tenant.module') NOT VALID`);
+      // Hanya tenant uji ini yang ditolak, agar suite lain yang menulis audit feature_flag tidak ikut gagal
+      await db.query(`ALTER TABLE audit_logs ADD CONSTRAINT b12_tolak_uji CHECK (tenant_id <> '${T.mati}' OR resource <> 'feature_flag') NOT VALID`);
       try {
         expect((await put(`/tenants/${T.mati}/modules/ina`, { enabled: true })).status).toBe(500);
       } finally { await db.query('ALTER TABLE audit_logs DROP CONSTRAINT b12_tolak_uji'); }

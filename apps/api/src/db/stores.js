@@ -278,7 +278,6 @@ function createStores(sequelize, { encryption } = {}) {
     },
     // PK-16: sesi login yang bisa dicabut
     authSessions: authSessionStore(q),
-    // B1: verifikasi dua langkah
     // B2: peran per akun
     userRoles: userRoleStore(sequelize),
     flags: {

@@ -76,6 +76,8 @@ async function save(confirmed = false) {
   } finally { busy.value = false }
 }
 
+const openDaily = ref<string | null>(null)
+const bar = (n: number | null) => `${Math.max(0, Math.min(100, n ?? 0))}%`
 const fmtPct = (n: number | null) => (n === null ? '–' : `${n.toLocaleString('id-ID')}%`)
 const fmtNum = (n: number) => n.toLocaleString('id-ID')
 const fmtUsd = (n: number) => `US$${n.toLocaleString('id-ID', { minimumFractionDigits: 2, maximumFractionDigits: 4 })}`
@@ -170,8 +172,13 @@ async function downloadCsv() {
           <caption class="el-sr-only">Kesepakatan AI–HR per tenant</caption>
           <thead><tr><th scope="col">Tenant</th><th scope="col">Ditinjau</th><th scope="col">Disetujui</th><th scope="col">Kesepakatan</th><th scope="col">Status</th></tr></thead>
           <tbody>
-            <tr v-for="q in quality" :key="q.tenantId">
-              <th scope="row">{{ q.name }}</th>
+            <template v-for="q in quality" :key="q.tenantId">
+            <tr>
+              <th scope="row">
+                {{ q.name }}
+                <UiButton v-if="q.daily.length" variant="text" size="sm" :aria-expanded="openDaily === q.tenantId"
+                  @click="openDaily = openDaily === q.tenantId ? null : q.tenantId">Per hari</UiButton>
+              </th>
               <td>{{ fmtNum(q.reviewed) }}</td>
               <td>{{ fmtNum(q.approved) }}</td>
               <td>{{ fmtPct(q.agreement) }}</td>
@@ -181,6 +188,25 @@ async function downloadCsv() {
                 <UiStatus v-else tone="warning">Di bawah target</UiStatus>
               </td>
             </tr>
+            <tr v-if="openDaily === q.tenantId">
+              <td colspan="5">
+                <table class="pf__table pf__daily">
+                  <caption class="el-sr-only">Kesepakatan per hari {{ q.name }}</caption>
+                  <thead><tr><th scope="col">Tanggal</th><th scope="col">Ditinjau</th><th scope="col">Kesepakatan</th></tr></thead>
+                  <tbody>
+                    <tr v-for="d in q.daily" :key="d.day">
+                      <td>{{ d.day }}</td>
+                      <td>{{ fmtNum(d.reviewed) }}</td>
+                      <td>
+                        <span class="pf__bar" aria-hidden="true"><span :style="{ width: bar(d.agreement) }" /></span>
+                        {{ d.enoughData ? fmtPct(d.agreement) : `${fmtPct(d.agreement)} · data belum cukup (n < 10)` }}
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
+              </td>
+            </tr>
+            </template>
             <tr v-if="!quality.length"><td colspan="5" class="el-muted">Belum ada temuan AI yang ditinjau HR.</td></tr>
           </tbody>
         </table>
@@ -259,5 +285,8 @@ async function downloadCsv() {
 .pf__table { width: 100%; border-collapse: collapse; margin-top: 8px; }
 .pf__table th, .pf__table td { text-align: left; padding: 8px; border-bottom: 1px solid var(--el-outline-variant, #ddd); font-weight: normal; }
 .pf__table thead th { font-weight: 600; }
+.pf__daily { margin: 0; }
+.pf__bar { display: inline-block; width: 80px; height: 8px; background: var(--el-surface-variant, #eee); border-radius: 4px; vertical-align: middle; margin-right: 8px; overflow: hidden; }
+.pf__bar > span { display: block; height: 100%; background: var(--el-primary, #0b5cad); }
 .pf__small { font-size: 0.875rem; margin: 8px 0 0; }
 </style>

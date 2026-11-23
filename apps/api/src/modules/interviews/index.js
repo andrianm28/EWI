@@ -161,7 +161,8 @@ function interviewRouter({ submodule, stores, ai, aiConfig = {}, audit, analysis
 
   r.post('/:id/complete', noSuperAdmin, wrap(async (req, res) => {
     const s = await loadVisible(req);
-    if (s.intervieweeId !== req.user.id && ![ROLES.HR_ADMIN, ROLES.ETA_ADMIN].includes(req.user.role)) {
+    // Super Admin sudah ditolak noSuperAdmin; selain karyawan sendiri hanya HR yang boleh menutup
+    if (s.intervieweeId !== req.user.id && req.user.role !== ROLES.HR_ADMIN) {
       throw forbidden('ROLE_FORBIDDEN', 'Peran Anda tidak bisa menutup sesi ini');
     }
     if (s.status !== 'in_progress') throw new HttpError(409, 'INVALID_STATE', 'Sesi belum dimulai atau sudah selesai');

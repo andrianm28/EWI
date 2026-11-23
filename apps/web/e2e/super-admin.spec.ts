@@ -32,7 +32,7 @@ async function konsol(page: Page) {
     if (!req.path.startsWith('/platform/')) return undefined
     if (req.method !== 'GET') sent.push({ method: req.method, path: req.path, body: req.body })
     if (req.method === 'GET' && req.path === '/platform/tenants') {
-      return { json: { data: { kpis: { tenants: tenants.length, activeTenants: 1, modulesAvailable: 8 }, tenants } } }
+      return { json: { data: { kpis: { tenants: tenants.length, activeTenants: 1, users: 43, modulesAvailable: 8 }, tenants } } }
     }
     if (req.method === 'POST' && req.path === '/platform/tenants') {
       const body = req.body as { name: string; adminEmail: string }
@@ -63,7 +63,7 @@ async function konsol(page: Page) {
     }
     if (req.path === '/platform/ai-quality') {
       return { json: { data: [
-        { tenantId: 't-1', name: 'PT Elitery', reviewed: 40, approved: 36, agreement: 90, meetsTarget: true, enoughData: true, daily: [] },
+        { tenantId: 't-1', name: 'PT Elitery', reviewed: 40, approved: 36, agreement: 90, meetsTarget: true, enoughData: true, daily: [{ day: '2026-11-20', reviewed: 12, approved: 11, agreement: 91.7, enoughData: true }, { day: '2026-11-21', reviewed: 3, approved: 2, agreement: 66.7, enoughData: false }] },
         { tenantId: 't-2', name: 'PT Tunggu', reviewed: 4, approved: 3, agreement: 75, meetsTarget: null, enoughData: false, daily: [] },
       ] } }
     }
@@ -85,6 +85,7 @@ test('1. Super Admin mendarat di Tenant; KPI dan status tenant tampil sebagai te
   await expect(page).toHaveURL(/\/tenants$/)
   await expect(page.getByRole('heading', { level: 1, name: 'Tenant' })).toBeVisible()
   await expect(page.getByTestId('kpi-tenant')).toContainText('3')
+  await expect(page.getByText('43', { exact: true })).toBeVisible()
   const rows = page.getByRole('table', { name: 'Daftar tenant' }).getByRole('row')
   await expect(rows.filter({ hasText: 'PT Elitery' })).toContainText('Aktif')
   await expect(rows.filter({ hasText: 'PT Tunggu' })).toContainText('Menunggu admin')
@@ -158,6 +159,9 @@ test('5. Kartu AI: data belum cukup untuk n < 10; unduh CSV biaya; log dan perco
   const quality = page.getByRole('table', { name: 'Kesepakatan AI–HR per tenant' })
   await expect(quality.getByRole('row').filter({ hasText: 'PT Elitery' })).toContainText('Memenuhi target')
   await expect(quality.getByRole('row').filter({ hasText: 'PT Tunggu' })).toContainText('Data belum cukup (n < 10)')
+  await quality.getByRole('row').filter({ hasText: 'PT Elitery' }).getByRole('button', { name: 'Per hari' }).click()
+  const daily = page.getByRole('table', { name: 'Kesepakatan per hari PT Elitery' })
+  await expect(daily.getByRole('row').filter({ hasText: '2026-11-21' })).toContainText('data belum cukup (n < 10)')
   await expect(page.getByRole('table', { name: 'Biaya token mingguan' })).toContainText('biaya belum tercatat')
   const download = page.waitForEvent('download')
   await page.getByRole('button', { name: 'Unduh CSV' }).click()

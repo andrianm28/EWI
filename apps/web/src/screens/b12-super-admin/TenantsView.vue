@@ -40,7 +40,6 @@ const COLUMNS: UiColumn[] = [
 ]
 const rows = computed(() => (list.value?.tenants ?? []) as unknown as Record<string, unknown>[])
 const asTenant = (row: Record<string, unknown>) => row as unknown as PlatformTenant
-const totalUsers = computed(() => (list.value?.tenants ?? []).reduce((n, t) => n + t.users, 0))
 
 async function act(fn: () => Promise<string>) {
   errors.value = []
@@ -138,7 +137,7 @@ const accessLabel = (m: TenantModule) => (m.entitled === null ? 'Tidak perlu lan
     <template v-else-if="list">
       <div class="el-grid el-grid-3">
         <UiKpiCard data-testid="kpi-tenant" label="Tenant aktif" :value="list.kpis.activeTenants" :note="`dari ${list.kpis.tenants} tenant`" />
-        <UiKpiCard label="Total pengguna" :value="totalUsers" />
+        <UiKpiCard label="Total pengguna" :value="list.kpis.users" />
         <UiKpiCard label="Modul tersedia" :value="list.kpis.modulesAvailable" note="dari 8 modul" />
       </div>
 

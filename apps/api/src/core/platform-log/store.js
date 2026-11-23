@@ -13,8 +13,8 @@ function insertSql(entry) {
 function createPlatformLogStore(db) {
   return {
     async insert(entry, { transaction } = {}) {
-      await db.query(`INSERT INTO platform_audit_logs ${COLUMNS} VALUES ($1, $2, $3, $4, $5, $6::jsonb)`,
-        { bind: values(entry), type: QueryTypes.INSERT, transaction });
+      const { text, values: bind } = insertSql(entry);
+      await db.query(text, { bind, type: QueryTypes.INSERT, transaction });
     },
     async recent(limit) {
       return db.query(

@@ -54,7 +54,9 @@ function createPlatformService({ db, store, flags, entitlements, audit, platform
         const prev = await flags.setTenantFlag(tenantId, m.flag, enabled, actor.userId, { transaction });
         const who = targetAudit(actor, tenantId);
         const meta = { module: m.key, flag: m.flag, enabled, from: prev, entitlementAdded };
-        await audit.record({ tenantId, user: { role: who.user.role } }, 'update', 'tenant.module', { ...who.meta, ...meta }, { transaction });
+        // CUJ 3: Admin Tenant melihat baris "update feature_flag <flag>", sama dengan saklar flag biasa
+        await audit.record({ tenantId, user: who.user }, 'update', 'feature_flag',
+          { ...who.meta, key: m.flag, from: prev, to: enabled, module: m.key, entitlementAdded }, { transaction });
         await platformLog.record({ actor, action: 'update', resource: 'tenant.module', targetTenantId: tenantId, meta }, { transaction });
       });
       return (await listModules(tenantId)).find((row) => row.key === m.key);
@@ -125,7 +127,8 @@ function createPlatformService({ db, store, flags, entitlements, audit, platform
       return [...byTenant.values()].map((t) => {
         const agreement = pct(t.approved, t.reviewed);
         const enoughData = t.reviewed >= MIN_REVIEWED;
-        return { ...t, agreement, enoughData, meetsTarget: enoughData ? agreement >= target : null };
+        // dibandingkan dengan rasio mentah, bukan persen yang dibulatkan (84,96% tidak memenuhi 85%)
+        return { ...t, agreement, enoughData, meetsTarget: enoughData ? (t.approved / t.reviewed) * 100 >= target : null };
       });
     },
     /** Laporan biaya token mingguan (PO-10). */
@@ -143,6 +146,7 @@ function createPlatformService({ db, store, flags, entitlements, audit, platform
         kpis: {
           tenants: tenants.length,
           activeTenants: tenants.filter((t) => t.status === 'active').length,
+          users: tenants.reduce((n, t) => n + t.users, 0),
           modulesAvailable: MODULES.filter((m) => flags.isKnown(m.flag)).length,
         },
         tenants,

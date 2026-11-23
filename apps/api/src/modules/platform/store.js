@@ -2,8 +2,9 @@
 // B12: query agregat lintas tenant untuk konsol Super Admin (ADR 0002). Hanya metadata dan angka; tidak ada isi
 // wawancara atau data karyawan per orang.
 const { QueryTypes } = require('sequelize');
+const { ROLES } = require('../../core/rbac/roles');
 
-const MANAGER_ROLES = ['tenant_admin', 'hr_admin'];
+const MANAGER_ROLES = [ROLES.TENANT_ADMIN, ROLES.HR_ADMIN];
 
 function createPlatformStore(db) {
   const q = (sql, replacements = {}, opts = {}) => db.query(sql, { replacements, type: QueryTypes.SELECT, ...opts });

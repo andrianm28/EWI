@@ -10,7 +10,7 @@ export interface PlatformTenant {
   id: string; slug: string; name: string; status: TenantStatus
   adminEmail: string | null; users: number; activeModules: number; createdAt: string
 }
-export interface TenantList { kpis: { tenants: number; activeTenants: number; modulesAvailable: number }; tenants: PlatformTenant[] }
+export interface TenantList { kpis: { tenants: number; activeTenants: number; users: number; modulesAvailable: number }; tenants: PlatformTenant[] }
 export interface CreateTenantInput { name: string; adminEmail: string; adminName?: string; id?: string }
 export interface CreateTenantResult { tenant: { id: string; slug: string; name: string; status: TenantStatus }; slug: string; invitation: 'sent' | 'failed' }
 export interface CheckTenantResult { slug: string; exists: boolean; report: { step: string; status: string; detail: string }[] }

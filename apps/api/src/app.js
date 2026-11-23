@@ -45,7 +45,7 @@ const { createPlatformSettings } = require('./core/platform-settings');
 const { createSettingsView } = require('./modules/platform/settings-view');
 const { platformRouter } = require('./modules/platform/routes');
 const { createPlatformLog } = require('./core/platform-log');
-const { requireRole } = require('./core/rbac');
+const { requireRole, ROLES } = require('./core/rbac');
 const SUBMODULE_MODULES = ['cca', 'dna', 'tna', 'ina', 'li', 'ld', 'lim'].map((k) => require(`./modules/${k}`));
 
 /**
@@ -141,7 +141,8 @@ function createApp({ config, stores, ai, catalog, mailer, rateLimits, readiness,
       provider: createProvider(config.encryption), production: config.nodeEnv === 'production',
       onboardingClient: (fn) => withOnboardingClient(config, fn),
     });
-    app.use('/api/platform', auth, tenantContext(), requireRole(),
+    // requireRole(ETA_ADMIN): hanya peran aktif eta_admin (ADR 0002); peran lain 403 ROLE_FORBIDDEN
+    app.use('/api/platform', auth, tenantContext(), requireRole(ROLES.ETA_ADMIN),
       requireFlag(flags, FLAGS.PLATFORM_CONSOLE, 'Konsol platform belum diaktifkan'), platformRouter({ service: platform, settings: settingsView, platformLog, limits }));
   }
 

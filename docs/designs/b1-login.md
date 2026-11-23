@@ -2,13 +2,15 @@
 
 Status: spek untuk dibangun, sudah direview (lihat "Review spek" di akhir). Paket B1 dari `brief-bangun-penuh-19nov.md` (thread T2). Reviewer wajib: Andrian (auth, kode bersama, migrasi; aturan 7 CLAUDE.md). Backend dibangun dulu; layar dibangun setelah PR B0 (fondasi UI) terbuka.
 
+> **Amandemen 19 Nov 22.08 WIB (keputusan user, kartu keputusan): tanpa verifikasi dua langkah.** Masuk cukup dengan link email (PD-10 B). Semua bagian tentang MFA/TOTP di spek ini (tujuan 3, langkah 2 layar, cabang `mfaRequired`, tabel `user_mfa` dan `auth_mfa_challenges`, flag `auth.mfa`, endpoint `/api/auth/mfa/*` dan reset admin, limiter `mfaIp`/`mfaAccount`, test `totp`/`login-mfa`, `MfaSetupView.vue`) **tidak berlaku** dan sudah dihapus dari kode (commit 35c6cad). Migrasi `20261119000100-auth-sso.js` hanya menambah metode sesi `'sso'`. Baris "Verifikasi dua langkah" di konfigurasi platform (B12) menampilkan "Tidak dipakai (login lewat link email, PD-10)". Bagian di bawah dibiarkan sebagai riwayat review.
+
 ## Tujuan
 
 Karyawan, HR, atasan, admin tenant, dan super admin masuk ke ELGOS dengan cara yang aman dan tercatat:
 
 1. Cara masuk utama adalah **link sekali pakai lewat email** (keputusan user 19 Nov 20.22 WIB: "login pake otp link"). Ini memakai mesin link email yang sudah ada (R3-2, PK-16).
 2. SSO perusahaan tersedia sebagai kerangka di balik flag `auth.sso` (IdP belum ada). `auth.sso` adalah SSO ke IdP perusahaan klien untuk masuk ELGOS; berbeda dari `em.sso` yang sudah ada (lompat dari ELGOS ke EliteMentor).
-3. Verifikasi dua langkah dengan kode autentikator (TOTP) tersedia di balik flag `auth.mfa`.
+3. ~~Verifikasi dua langkah dengan kode autentikator (TOTP) tersedia di balik flag `auth.mfa`.~~ Dibatalkan (amandemen 19 Nov).
 4. Percobaan masuk dicatat di log audit tenant.
 
 `[⚠️ BELUM TERVERIFIKASI]` "otp link" dibaca sebagai link sekali pakai di email (magic link), bukan kode 6 digit yang diketik. Bila user bermaksud kode, yang berubah hanya isi email dan satu kolom isian di layar.
@@ -135,18 +137,18 @@ R3-2, PK-16/PD-10 ★B, K3, aturan CLAUDE.md 2, 3, 5, 6, 7.
 
 ## Daftar perubahan
 
-- [x] `apps/api/migrations/20261119000100-auth-mfa.js`
-- [x] `apps/api/src/core/flags/index.js` (flag `auth.sso`, `auth.mfa`)
-- [x] `apps/api/src/core/auth/totp.js`
-- [x] `apps/api/src/core/auth/mfa.js` (layanan, rute, store memori)
+- [x] `apps/api/migrations/20261119000100-auth-sso.js` (dulu `-auth-mfa.js`; setelah amandemen hanya metode sesi `'sso'`)
+- [x] `apps/api/src/core/flags/index.js` (flag `auth.sso`; `auth.mfa` dihapus)
+- ~~`apps/api/src/core/auth/totp.js`~~ dihapus (amandemen 19 Nov)
+- ~~`apps/api/src/core/auth/mfa.js`~~ dihapus (amandemen 19 Nov)
 - [x] `apps/api/src/core/auth/attempts.js` (audit percobaan)
 - [x] `apps/api/src/core/auth/routes.js`, `email-link.js`, `session-routes.js`
-- [x] `apps/api/src/core/auth/sessions.js` (kolom `mfa`)
+- [x] `apps/api/src/core/auth/sessions.js` (kolom `mfa` dibatalkan)
 - [x] `apps/api/src/db/stores.js` (`mfa`, `findTenantBySlug`, `findById`)
 - [x] `apps/api/src/app.js` (rangkai, limiter)
 - [x] test di atas
-- [x] (setelah B0) `apps/web` layar login + langkah MFA di login dan `/masuk` + e2e (`e2e/login.spec.ts`)
-- [ ] (setelah B0) `MfaSetupView.vue` (pendaftaran autentikator di menu akun) + e2e
+- [x] (setelah B0) `apps/web` layar login dan `/masuk` + e2e (`e2e/login.spec.ts`); langkah MFA dihapus
+- ~~`MfaSetupView.vue`~~ dibatalkan (amandemen 19 Nov)
 
 ## Review spek (egm, 19 Nov)
 
