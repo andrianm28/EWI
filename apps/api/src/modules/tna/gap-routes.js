@@ -7,11 +7,10 @@ const { requireRole, ROLES } = require('../../core/rbac');
 const { scopeFor, inScope } = require('../../core/rbac/scope');
 const { FLAGS, requireFlag } = require('../../core/flags');
 const { badRequest, notFound, forbidden, HttpError } = require('../../core/errors');
-const { METRIC_TYPES } = require('./performance');
 const {
   HYPOTHESES, latestScores, competencyGaps, okrGaps, gapKeyOf, linkSessions, findingsByGap, visibility, decorate, summarize, evidenceFor,
 } = require('./gaps');
-const { validateAssignment, eligibleEmployees, isUuid } = require('./assignment');
+const { validateAssignment, eligibleEmployees, isUuid, parseGapQuery } = require('./assignment');
 
 const wrap = (fn) => (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
 
@@ -109,20 +108,6 @@ function gapRouter({ stores, flags, audit }) {
     const b = await board(req, await parseFilters(req));
     res.json({ data: { rows: b.okrRows, period: b.period, periods: b.periods } });
   }));
-
-  function parseGapQuery(q) {
-    if (q.kind === 'competency') {
-      if (!isUuid(q.competencyId)) throw badRequest('Kompetensi tidak valid');
-      return { kind: 'competency', competencyId: q.competencyId };
-    }
-    if (q.kind === 'okr') {
-      if (!METRIC_TYPES.includes(q.metricType) || typeof q.name !== 'string' || !q.name.trim() || typeof q.period !== 'string' || !q.period || q.period.length > 32) {
-        throw badRequest('Jenis metrik, nama target, dan periode wajib diisi untuk gap OKR');
-      }
-      return { kind: 'okr', metricType: q.metricType, name: q.name, period: q.period };
-    }
-    throw badRequest('Jenis gap tidak dikenal; pilih gap kompetensi atau gap OKR');
-  }
 
   // R9: memuat data per orang, jadi setiap pembacaan dicatat
   r.get('/gaps/detail', staff, boardFlag, wrap(async (req, res) => {

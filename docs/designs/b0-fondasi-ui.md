@@ -72,7 +72,7 @@ Semua komponen: Vue 3 `<script setup lang="ts">`, tanpa pustaka komponen pihak k
 | `UiChip` | M3 chip | `tone` = `training`\|`improvement`\|`review`\|`success`\|`critical`\|`neutral`, `icon?` | teks selalu ada |
 | `UiStatus` | Carbon label status | `tone` = `success`\|`warning`\|`critical`\|`info`\|`neutral`, slot teks | ikon + teks, bukan warna saja; ikon default per tone |
 | `UiTabs` | M3 tab | `tabs: {key,label}[]`, `v-model` | `role="tablist"`, panah kiri/kanan, Home/End; panel milik pemakai dengan `role="tabpanel"` |
-| `UiSegmented` | M3 segmented | `options: {key,label}[]`, `v-model`, `label` | `role="group"` + `aria-pressed` |
+| `UiSegmented` | M3 segmented | `options: {key,label,disabled?}[]`, `v-model` (`''` = belum ada pilihan), `label`, `variant` = `joined` (bawaan)\|`chips` (tombol terpisah `.rad` mockup, paritas B7) | `role="group"` + `aria-pressed`; opsi `disabled` memakai atribut `disabled` asli |
 | `UiDataTable` | Carbon data table + `.row.lk` | `columns: {key,label,sortable?,align?,mono?}[]`, `rows`, `rowKey`, `caption`, `emptyText`, `v-model:sort`, `rowTo?: (row) => RouteLocationRaw \| null`, `rowLinkKey?` (bawaan kolom pertama); slot `toolbar`, slot sel `#cell-<key>` | `<table>` asli dengan `<caption>`; header sortable berupa tombol dengan `aria-sort`; pembungkus bisa digulir horizontal. Dengan `rowTo`, isi sel `rowLinkKey` menjadi tautan (satu titik fokus per baris) dan klik di mana pun pada baris mengikutinya, kecuali klik pada elemen interaktif lain atau saat teks diseleksi |
 | `UiStepper` | Stepper mockup | `steps: {key,label}[]`, `current` | `<ol>`, langkah aktif `aria-current="step"`, langkah selesai diberi teks tersembunyi "selesai" |
 | `UiErrorSummary` | GOV.UK error summary | `title` (default "Ada masalah"), `errors: {message, fieldId?}[]` | `role="alert"`, `tabindex="-1"`, menerima fokus saat muncul; tiap galat menjadi tautan ke `#fieldId` |
@@ -228,7 +228,7 @@ Pemeriksaan sisi API untuk modul 2–5 milik paket modulnya (B13–B16), dengan 
 | --- | --- | --- |
 | `screens/legacy-dna/` | `dna`, `/m/dna` | B4, yang mendaftarkan `dna` baru |
 | `screens/legacy-tna/` | `tna`, `/m/tna` | B5, yang mendaftarkan `tna` baru |
-| `screens/legacy-review/` | `tna-review`, `/m/tna/review` (PK-14, `meta.roles` HR dan Admin ETA) | B7, yang mendaftarkan `review` |
+| ~~`screens/legacy-review/`~~ | `tna-review`, `/m/tna/review` (PK-14, `meta.roles` HR dan Admin ETA) | Dihapus paritas B7 web (23 Nov): rute `tna-review` pindah ke `screens/b7-tinjauan/` sebagai antrean lintas karyawan (`AntreanView.vue`), di samping `review` per gap |
 | `screens/legacy-interview/` | `interview`, `/m/:key(dna\|tna)/sessions/:id` | B6 |
 | `screens/legacy-cca/` | `legacy-cca`, `/m/:key(cca)` | B10, yang mendaftarkan `cc` |
 | `screens/legacy-ina/` | `legacy-ina`, `/m/:key(ina)` | B9, yang mendaftarkan `ina` |
@@ -247,7 +247,7 @@ Alamat rute lama tidak berubah. Rute inti tetap di `router/index.ts`: `login` (`
 | `ina` | B9 | `users`, `jobs`, `cfg` | B11 |
 | `review` (anak `tna`) | B7 | `tenants`, `platform` | B12 |
 
-Perhatian: `li` adalah **rute** Rencana belajar milik B8, sedangkan `module.li` adalah **flag** Learning Intervention milik B13 dan `li` juga kunci grup accordion. Ketiganya tidak saling memakai nama rute. Nama yang sudah terpakai dan tidak boleh dipakai ulang: `home`, `login`, `email-link`, `interview`, `tna-review` (sampai B7 menghapus `legacy-review`), `legacy-cca`, `legacy-ina`, `ui-kit`. Layar B7 bernama `review` (pengecualian dari konvensi `<kunci>-<anak>`), sehingga tidak bertabrakan dengan `tna-review` lama selama keduanya masih ada.
+Perhatian: `li` adalah **rute** Rencana belajar milik B8, sedangkan `module.li` adalah **flag** Learning Intervention milik B13 dan `li` juga kunci grup accordion. Ketiganya tidak saling memakai nama rute. Nama yang sudah terpakai dan tidak boleh dipakai ulang: `home`, `login`, `email-link`, `interview`, `tna-review` (antrean B7, `screens/b7-tinjauan/`), `legacy-cca`, `legacy-ina`, `ui-kit`. Layar B7 bernama `review` (pengecualian dari konvensi `<kunci>-<anak>`, path `/tna/tinjauan`, per gap), sehingga tidak bertabrakan dengan antrean `tna-review` yang tetap ada.
 
 **Kewajiban paket beranda.** Begitu `dash` milik B3 (atau `my` B8, `users` B11, `tenants` B12) terdaftar **dan flag-nya menyala**, pengguna tampilan itu tidak lagi mendarat di Beranda setelah login. Helper login di e2e lama (`loginAs` di `poc-dna-tna.spec.ts`, `gating.spec.ts`) menunggu `card-dna` dan URL `/`; paket itu wajib memperbaruinya di PR yang sama.
 

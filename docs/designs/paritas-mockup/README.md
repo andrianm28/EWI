@@ -29,7 +29,7 @@ Yang sudah sama: 27 token warna `:root`, menu kelima peran (fungsi `N`) kecuali 
 | Layar | Pemilik paket | Catatan |
 | --- | --- | --- |
 | Panel Asisten ELGOS (FAB + chat di semua layar) | B17 (T5) | API dan flag `assistant` sudah ada, `ShellExtra.vue` belum |
-| Tinjauan temuan AI per gap (HR) | B7 (T5) | Masih memakai `views/ReviewView.vue` POC lama |
+| Tinjauan temuan AI per gap (HR) | B7 (T5) | Dibangun di [b7-tinjauan-web.md](b7-tinjauan-web.md) (rute `review`); akses atasan RV-3 perlu keputusan |
 | Alur wawancara ulang LIM (chat → benchmark → hasil bisnis → ringkasan) | B15 tahap 3 (T7) | Antrean saja yang ada |
 | EliteMentor di dalam shell (belajar online, check-in offline) | perlu keputusan | Aturan arsitektur 1 mengarah ke deep link |
 

@@ -1,0 +1,23 @@
+/* B7 Tinjauan HR: ukuran mengikuti mockup (Main.dc.html .bc, .rad, .mod, kartu solusi). */
+.b7-bc { font-size: 12px; margin-bottom: 8px; display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+.b7-link { color: var(--el-primary); text-decoration: underline; }
+.b7-sub { color: var(--el-on-surface-variant); margin: 0 0 20px; }
+.b7-small { font-size: 12px; }
+.b7-gap-xs { margin-top: 4px; }
+.b7-gap-s { margin-top: 8px; }
+.b7-gap-m { margin-top: 12px; }
+.b7-row { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+.b7-end { margin-left: auto; }
+.b7-grid { align-items: start; }
+.b7-col { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
+.b7-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
+.b7-h3 { margin: 0; }
+.b7-findings { list-style: none; margin: 0; padding: 0; }
+.b7-finding { padding: 12px 0; border-bottom: 1px solid var(--el-outline-variant); }
+.b7-finding__text { margin-bottom: 8px; }
+.b7-mod { border: 1px solid var(--el-outline-variant); border-radius: 12px; padding: 12px 14px; background: var(--el-surface-card); margin: 12px 0; }
+.b7-mod__code { font-size: 12px; color: var(--el-on-surface-variant); }
+.b7-mod__name { font-weight: 500; }
+.b7-explain { margin: 8px 0 12px; }
+.b7-queue { list-style: none; margin: 16px 0 0; padding: 0; display: grid; gap: 12px; }
+.b7-form { display: grid; gap: 8px; max-width: 560px; margin-top: 12px; }

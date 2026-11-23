@@ -34,6 +34,10 @@ const PLAN_COLS = `p.id, p.user_id AS "userId", u.name AS "userName", p.finding_
 const { REVIEWED } = require('../modules/tna/review-status');
 const REVIEWED_SQL = `(${REVIEWED.map((x) => `'${x}'`).join(', ')})`;
 const { scopeSql } = require('./scope-sql');
+// Paritas B7 web: kolom pencocokan temuan ke gap (aturan R6 findingsByGap). Internal, dibuang sebelum respons.
+const GAP_MATCH_COLS = `pr.metric_type AS "metricType", pr.period AS "metricPeriod", s.focus_kind AS "focusKind",
+  s.focus_competency_id AS "focusCompetencyId", s.focus_metric_type AS "focusMetricType", s.focus_metric_key AS "focusMetricKey",
+  s.focus_period AS "focusPeriod"`;
 const REVIEW_COLS = `f.id, f.project_id AS "projectId", f.session_id AS "sessionId", f.user_id AS "userId", u.name AS "userName",
   f.category, f.title, f.detail, f.competency_id AS "competencyId", c.name AS "competencyName",
   f.performance_record_id AS "performanceRecordId", pr.name AS "metricName", pr.target::float AS target, pr.actual::float AS actual,
@@ -44,7 +48,7 @@ const REVIEW_COLS = `f.id, f.project_id AS "projectId", f.session_id AS "session
   f.review_hold_at AS "heldAt", hb.name AS "heldByName", f.review_hold_note AS "holdNote",
   f.improvement_handoff_at AS "handedOffAt", s.ended_at AS "sessionEndedAt", s.consent_withdrawn_at AS "consentWithdrawnAt",
   s.status AS "sessionStatus", s.summary_at AS "summaryAt", s.summary_confirmed_at AS "summaryConfirmedAt",
-  s.summary_disputed AS "summaryDisputed", s.summary_note AS "summaryNote"`;
+  s.summary_disputed AS "summaryDisputed", s.summary_note AS "summaryNote", ${GAP_MATCH_COLS}`;
 // B8: temuan draf dari sesi yang persetujuannya ditarik tidak diteruskan ke antrean review
 const NOT_WITHDRAWN_DRAFT = `NOT (f.review_status = 'draft' AND s.consent_withdrawn_at IS NOT NULL)`;
 const { isFrozen, notFrozen, planFrozen } = require('./frozen-sql');
@@ -970,10 +974,13 @@ function createLnaStores(sequelize, { cipher } = {}) {
     async listReviewedForSolutions(tenantId, { projectId } = {}) {
       const rep = { tenantId, reviewed: REVIEWED };
       let sql = `SELECT f.id AS "findingId", f.user_id AS "userId", u.name AS "userName", f.category, f.title,
-                        f.competency_id AS "competencyId", c.name AS "competencyName", f.improvement_handoff_at AS "handedOffAt"
+                        f.competency_id AS "competencyId", c.name AS "competencyName", f.improvement_handoff_at AS "handedOffAt",
+                        f.session_id AS "sessionId", pr.name AS "metricName", ${GAP_MATCH_COLS}
                    FROM lna_findings f
                    LEFT JOIN users u ON u.id = f.user_id
                    LEFT JOIN lna_competencies c ON c.id = f.competency_id
+                   LEFT JOIN lna_interview_sessions s ON s.id = f.session_id AND s.tenant_id = f.tenant_id
+                   LEFT JOIN lna_performance_records pr ON pr.id = f.performance_record_id
                   WHERE f.tenant_id = :tenantId AND f.review_status IN (:reviewed) AND ${notFrozen('f')}`;
       if (projectId) { sql += ' AND f.project_id = :projectId'; rep.projectId = projectId; }
       const findings = await open(tenantId, await select(`${sql} ORDER BY f.created_at, f.finding_seq`, rep), ['title']);

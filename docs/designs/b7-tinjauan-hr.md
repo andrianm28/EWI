@@ -67,7 +67,7 @@ Semua di router `tna`, jadi lewat `requireSubmodule('tna')`. Semua hanya HR (`re
 
 ### Tanpa flag (hanya menambah field baca pada pengaman review PR #16)
 
-1. `GET /api/tna/review` (ada, `projectId` opsional). Tambahan per item: `held`, `heldAt`, `heldByName`, `holdNote`, `suggestedClassification`, `reviewDueAt`, `overdue`. Tambahan di respons: `counts.held`, `counts.overdue` (dihitung dari seluruh draf dalam cakupan `projectId` yang sama, bukan hanya baris yang difilter `status`), `targetDays`.
+1. `GET /api/tna/review` (ada, `projectId` opsional; filter gap opsional `kind` + `competencyId` | `metricType`, `name`, `period` sejak paritas B7 web, lihat `paritas-mockup/b7-tinjauan-web.md` keputusan 3). Tambahan per item: `held`, `heldAt`, `heldByName`, `holdNote`, `suggestedClassification`, `reviewDueAt`, `overdue`. Tambahan di respons: `counts.held`, `counts.overdue` (dihitung dari seluruh draf dalam cakupan `projectId` yang sama, bukan hanya baris yang difilter `status`), `targetDays`.
    - Awal hitungan = waktu sesi wawancara selesai (`lna_interview_sessions.ended_at`, sesuai PM-3 "setelah wawancara selesai"); temuan tanpa sesi memakai `createdAt` temuan.
    - `reviewDueAt` = jam yang sama pada hari kerja ke-`targetDays` setelah tanggal awal (tanggal dan hari menurut WIB; hari kerja = Senin–Jumat). Contoh dengan 2 hari: Senin 10.00 → Rabu 10.00; Kamis 10.00 → Senin 10.00; Jumat 23.30 → Selasa 23.30; Sabtu 10.00 → Selasa 10.00; Minggu 10.00 → Selasa 10.00. `[⏳ DITERIMA]` tanpa kalender libur nasional; test unit mencakup kelima contoh.
    - `overdue` = masih `draft` dan `now > reviewDueAt`. Temuan yang ditahan tetap dihitung terlambat.
@@ -212,6 +212,6 @@ B7 tidak membuat tabel tindakan perbaikan. B9 membaca temuan yang diteruskan lew
 - [x] `apps/api/src/config/env.js` (`ELITEMENTOR_ASSIGNMENTS_ENABLED`)
 - [x] `apps/api/tests/unit/review-sla.test.js`, `apps/api/tests/unit/elitementor.test.js`, `apps/api/tests/integration/tinjauan-hr.test.js`
 - [x] `apps/web/src/api/lna.ts` (tipe dan pemanggil baru)
-- [ ] `apps/web/src/screens/b7-tinjauan/` (rute `review`), hapus `screens/legacy-review`, e2e
+- [x] `apps/web/src/screens/b7-tinjauan/` (rute `review` per gap + antrean `tna-review`), hapus `screens/legacy-review`, e2e. Spek tahap: `docs/designs/paritas-mockup/b7-tinjauan-web.md` (termasuk filter gap opsional pada `GET /review` dan `GET /review/solutions`)
 
 Catatan triase awal dipindahkan ke `docs/designs/egm/b7/triase-awal.md`; hasil egm-resolve di `docs/designs/egm/b7/goldfish_review_report.md`.

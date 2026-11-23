@@ -78,7 +78,7 @@ const paretoNote = computed(() => {
 
 // Urutan, teks, dan tujuan butir "Perlu tindakan" (spek bagian 3.5). Tombol hanya muncul bila layarnya bisa dibuka.
 const ACTIONS: { key: ActionKey; text: (n: number) => string; desc: string; cta: string; routes: string[] }[] = [
-  { key: 'review_pending', text: (n) => `${n} temuan menunggu tinjauan HR`, desc: 'Temuan belum terlihat atasan dan karyawan sebelum ditinjau.', cta: 'Tinjau', routes: ['review', 'tna-review'] },
+  { key: 'review_pending', text: (n) => `${n} temuan menunggu tinjauan HR`, desc: 'Temuan belum terlihat atasan dan karyawan sebelum ditinjau.', cta: 'Tinjau', routes: ['tna-review'] }, // antrean seluruh tenant; layar `review` per gap butuh rujukan gap (paritas B7 web)
   { key: 'interviews_open', text: (n) => `${n} wawancara akar masalah belum selesai`, desc: 'Terjadwal atau sedang berjalan.', cta: 'Lihat', routes: ['tna'] },
   { key: 'plan_needs_module', text: (n) => `${n} rencana belajar butuh modul baru`, desc: 'Belum ada materi di katalog yang cocok.', cta: 'Lihat', routes: ['tna'] },
   { key: 'non_training_findings', text: (n) => `${n} temuan Improvement Needs (di luar pelatihan)`, desc: 'Untuk diketahui: ditindaklanjuti di luar program belajar.', cta: 'Lihat', routes: ['ina'] },
