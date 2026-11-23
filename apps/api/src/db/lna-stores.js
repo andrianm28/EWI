@@ -57,8 +57,8 @@ const REVIEW_FROM = `FROM lna_findings f
                    LEFT JOIN users r ON r.id = f.reviewed_by
                    LEFT JOIN users hb ON hb.id = f.review_hold_by
                    LEFT JOIN lna_interview_sessions s ON s.id = f.session_id AND s.tenant_id = f.tenant_id
-                   LEFT JOIN lna_competencies c ON c.id = f.competency_id
-                   LEFT JOIN lna_performance_records pr ON pr.id = f.performance_record_id`;
+                   LEFT JOIN lna_competencies c ON c.id = f.competency_id AND c.tenant_id = f.tenant_id
+                   LEFT JOIN lna_performance_records pr ON pr.id = f.performance_record_id AND pr.tenant_id = f.tenant_id`;
 const REVIEW_ENC = ['title', 'detail', 'reviewNote', 'originalTitle', 'originalDetail', 'holdNote', 'summaryNote'];
 
 /** B6 (A9): kolom sesi mentah diganti satu tanda `summaryState` (+ catatan karyawan bila ada). */
@@ -978,9 +978,9 @@ function createLnaStores(sequelize, { cipher } = {}) {
                         f.session_id AS "sessionId", pr.name AS "metricName", ${GAP_MATCH_COLS}
                    FROM lna_findings f
                    LEFT JOIN users u ON u.id = f.user_id
-                   LEFT JOIN lna_competencies c ON c.id = f.competency_id
+                   LEFT JOIN lna_competencies c ON c.id = f.competency_id AND c.tenant_id = f.tenant_id
                    LEFT JOIN lna_interview_sessions s ON s.id = f.session_id AND s.tenant_id = f.tenant_id
-                   LEFT JOIN lna_performance_records pr ON pr.id = f.performance_record_id
+                   LEFT JOIN lna_performance_records pr ON pr.id = f.performance_record_id AND pr.tenant_id = f.tenant_id
                   WHERE f.tenant_id = :tenantId AND f.review_status IN (:reviewed) AND ${notFrozen('f')}`;
       if (projectId) { sql += ' AND f.project_id = :projectId'; rep.projectId = projectId; }
       const findings = await open(tenantId, await select(`${sql} ORDER BY f.created_at, f.finding_seq`, rep), ['title']);

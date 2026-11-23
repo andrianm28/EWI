@@ -559,8 +559,11 @@ run('B7 tinjauan HR (Postgres)', () => {
       expect(all.body.counts).toMatchObject({ draft: 2, approved: 1, edited: 0, rejected: 1, held: 0 });
       expect(all.body.gap).toEqual({ key: `c:${gapComp}`, label: 'Analisis insiden' });
       expect(JSON.stringify(all.body)).not.toContain('RAHASIA-GAP');
+      // tanpa rincian temuan (PO-6 A): layar per gap hanya judul dan klasifikasi
+      expect(JSON.stringify(all.body)).not.toContain('RINCIAN-RAHASIA');
       const item = all.body.data.find((x) => x.id === g.a);
       for (const k of ['metricType', 'metricPeriod', 'focusKind', 'focusCompetencyId', 'focusMetricType', 'focusMetricKey', 'focusPeriod']) expect(item).not.toHaveProperty(k);
+      for (const k of ['detail', 'originalDetail', 'summaryNote']) expect(item).not.toHaveProperty(k);
       // status bawaan tetap draf
       expect(ids(await review({ kind: 'competency', competencyId: gapComp }))).toEqual([g.a, g.b].sort());
       // tanpa filter gap: perilaku lama, temuan gap lain ikut
@@ -572,6 +575,11 @@ run('B7 tinjauan HR (Postgres)', () => {
       expect(res.status).toBe(200);
       expect(ids(res)).toEqual([g.okr]);
       expect(res.body.gap).toEqual({ key: 'o:sla|respons tiket b7|2026-11', label: 'Respons tiket B7' });
+      // nama target dirapikan seperti parseGap (spasi berlebih); lebih dari 255 karakter ditolak
+      const messy = await review({ kind: 'okr', metricType: 'sla', name: '  Respons   tiket B7 ', period: '2026-11', status: 'all' });
+      expect(messy.body.gap).toEqual({ key: 'o:sla|respons tiket b7|2026-11', label: 'Respons tiket B7' });
+      expect(ids(messy)).toEqual([g.okr]);
+      expect((await review({ kind: 'okr', metricType: 'sla', name: 'x'.repeat(256), period: '2026-11' })).status).toBe(400);
     });
 
     it('rujukan gap tidak valid 400, kompetensi tenant lain 404, hanya HR', async () => {
@@ -581,6 +589,25 @@ run('B7 tinjauan HR (Postgres)', () => {
       expect((await review({ kind: 'competency', competencyId: otherComp })).status).toBe(404);
       expect((await review({ kind: 'competency', competencyId: gapComp }, 'spv')).status).toBe(403);
       expect((await review({ kind: 'competency', competencyId: gapComp }, 'ani')).status).toBe(403);
+      // projectId bukan UUID -> 400, bukan galat cast di database
+      expect((await review({ kind: 'competency', competencyId: gapComp, projectId: 'bukan-uuid' })).status).toBe(400);
+      expect((await review({ projectId: 'bukan-uuid' })).status).toBe(400);
+      expect((await review({ kind: 'competency', competencyId: gapComp, projectId })).status).toBe(200);
+    });
+
+    it('temuan dari wawancara yang persetujuannya ditarik tidak ikut data, counts, maupun solusi per gap', async () => {
+      const ws = await stores.interviews.create(tenant.id, { projectId, submodule: 'tna', intervieweeId: u.ani });
+      await db.query(`UPDATE lna_interview_sessions SET status = 'completed', ended_at = now(), consent_withdrawn_at = now() WHERE id = :id`, { replacements: { id: ws.id } });
+      const wd = (await finding('ani', { title: 'Ditarik draf', competencyId: gapComp, sessionId: ws.id })).id;
+      const wa = (await finding('ani', { title: 'Ditarik disetujui', competencyId: gapComp, sessionId: ws.id, reviewStatus: 'approved' })).id;
+      const q = { kind: 'competency', competencyId: gapComp };
+      const all = await review({ ...q, status: 'all' });
+      expect(ids(all)).toEqual([g.a, g.b, g.e, g.r].sort());
+      expect(all.body.counts).toMatchObject({ draft: 2, approved: 1, rejected: 1 });
+      const sol = await request(app()).get(`/api/tna/review/solutions?${new URLSearchParams(q)}`).set(as('hr'));
+      const solIds = [...sol.body.data.training, ...sol.body.data.improvement].map((x) => x.findingId);
+      expect(solIds).not.toContain(wd);
+      expect(solIds).not.toContain(wa);
     });
 
     it('solusi per gap: hanya temuan gap itu', async () => {
@@ -593,8 +620,34 @@ run('B7 tinjauan HR (Postgres)', () => {
       expect(okr.body.data.training).toEqual([]);
       expect(okr.body.data.improvement.map((x) => x.findingId)).toEqual([g.okr]);
       expect((await request(app()).get('/api/tna/review/solutions?kind=lain').set(as('hr'))).status).toBe(400);
+      expect((await request(app()).get(`/api/tna/review/solutions?${new URLSearchParams({ kind: 'competency', competencyId: otherComp })}`).set(as('hr'))).status).toBe(404);
+      expect((await request(app()).get(`/api/tna/review/solutions?${q}`).set(as('spv'))).status).toBe(403);
       const unfiltered = await request(app()).get('/api/tna/review/solutions').set(as('hr'));
       expect(unfiltered.body.data.training.length).toBeGreaterThan(1);
+    });
+  });
+
+  // Pertahanan berlapis: join kompetensi dan baris kinerja ikut memfilter tenant, jadi rujukan silang tenant
+  // (yang tidak dicegah FK) tidak membocorkan nama milik tenant lain.
+  describe('join kompetensi dan kinerja dibatasi tenant', () => {
+    it('nama kompetensi dan target tenant lain tidak ikut di antrean maupun solusi', async () => {
+      const a = app();
+      const [[xc]] = await db.query(`INSERT INTO lna_competencies (tenant_id, kind, name) VALUES (:t, 'job', 'KOMPETENSI-TENANT-LAIN') RETURNING id`, { replacements: { t: other.id } });
+      const [[xp]] = await db.query('SELECT id FROM lna_projects WHERE tenant_id = :t LIMIT 1', { replacements: { t: other.id } });
+      const [[xr]] = await db.query(
+        `INSERT INTO lna_performance_records (tenant_id, project_id, user_id, metric_type, name, target, actual, is_met, period, direction)
+         VALUES (:t, :p, :u, 'sla', 'TARGET-TENANT-LAIN', 85, 70, false, '2026-11', 'higher') RETURNING id`,
+        { replacements: { t: other.id, p: xp.id, u: u.xl } },
+      );
+      const draft = (await finding('ani', { title: 'Rujukan silang draf', competencyId: xc.id, performanceRecordId: xr.id, sessionId: null })).id;
+      const done = (await finding('ani', { title: 'Rujukan silang', competencyId: xc.id, performanceRecordId: xr.id, sessionId: null, reviewStatus: 'approved' })).id;
+      const queue = await request(a).get('/api/tna/review?status=all').set(as('hr'));
+      expect(queue.status).toBe(200);
+      expect(queue.body.data.find((x) => x.id === draft)).toMatchObject({ competencyName: null, metricName: null });
+      expect(JSON.stringify(queue.body)).not.toContain('TENANT-LAIN');
+      const sol = await request(a).get('/api/tna/review/solutions').set(as('hr'));
+      expect(sol.body.data.training.find((x) => x.findingId === done)).toMatchObject({ competencyName: null });
+      expect(JSON.stringify(sol.body)).not.toContain('TENANT-LAIN');
     });
   });
 });
