@@ -332,6 +332,21 @@ test('P8 R2: dialog penugasan bisa ditutup dengan tombol Tutup dan Esc', async (
   await expect(page.getByRole('dialog')).toHaveCount(0)
 })
 
+test('P8 review: galat jaringan saat menugaskan tampil di dialog, bukan di balik latar modal', async ({ page }) => {
+  await setup(page, { flags: { ...BOARD, 'tna.interview_assignment': true } })
+  await page.route('**/assignments', (r) => (r.request().method() === 'POST' ? r.abort() : r.fallback()))
+  await page.goto(`/tna/gap?kind=competency&competencyId=${ID_KOMPETENSI}`)
+  await page.getByRole('button', { name: 'Mulai wawancara akar masalah' }).click()
+  const dialog = page.getByRole('dialog', { name: 'Tugaskan wawancara akar masalah' })
+  const form = dialog.getByRole('form', { name: 'Tugaskan wawancara' })
+  await form.getByRole('checkbox', { name: 'Dimas' }).check()
+  await form.getByLabel('Tenggat').fill('2026-12-05')
+  await form.getByRole('button', { name: 'Tugaskan wawancara' }).click()
+  await expect(dialog.getByRole('alert')).toContainText('Penugasan gagal')
+  await dialog.getByRole('button', { name: 'Tutup' }).click()
+  await expect(page.getByRole('alert')).toContainText('Penugasan gagal')
+})
+
 test('P8 R4: skor 0-100 tanpa "%", desimal koma; R6: selisih OKR merah', async ({ page }) => {
   await setup(page, { flags: BOARD })
   await page.goto('/tna?tab=kompetensi')
