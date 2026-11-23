@@ -373,4 +373,33 @@ run('Admin Tenant B11 (Postgres)', () => {
       } finally { mailer.send = send; }
     });
   });
+  describe('audit 23 Nov: batas pengelola interim (hr_admin) dan admin multi-peran', () => {
+    it('hr_admin interim tidak bisa membuat atau menaikkan akun menjadi Admin Tenant', async () => {
+      const made = await post('/users', { email: `calon-admin-${Date.now()}@b11.test`, name: 'Calon', role: 'tenant_admin' }, 'adminB');
+      expect(made.status).toBe(403);
+      expect(made.body.error.code).toBe('ROLE_FORBIDDEN');
+      const up = await patch(`/users/${id.stafB}`, { role: 'tenant_admin' }, 'adminB');
+      expect(up.status).toBe(403);
+      expect(up.body.error.code).toBe('ROLE_FORBIDDEN');
+      // peran lain tetap bisa diberikan selama masa interim
+      expect((await patch(`/users/${id.stafB}`, { role: 'supervisor' }, 'adminB')).status).toBe(200);
+      await patch(`/users/${id.stafB}`, { role: 'learner' }, 'adminB');
+    });
+
+    it('hr_admin interim tidak bisa mengubah akun Admin Tenant yang sudah ada', async () => {
+      await addUser(B.id, 'realAdminB', 'tenant_admin');
+      const res = await patch(`/users/${id.realAdminB}`, { role: 'learner' }, 'adminB');
+      expect(res.status).toBe(403);
+      expect(res.body.error.code).toBe('ROLE_FORBIDDEN');
+    });
+
+    it('Admin Tenant dari daftar peran (user_roles), bukan peran utama, tetap lolos gerbang', async () => {
+      await addUser(B.id, 'multiB', 'learner');
+      await db.query('INSERT INTO user_roles (tenant_id, user_id, role) VALUES (:t, :u, \'tenant_admin\')', { replacements: { t: B.id, u: id.multiB } });
+      await db.query(`INSERT INTO feature_flags (tenant_id, key, enabled) VALUES (:t, 'auth.multi_role', true)
+        ON CONFLICT (tenant_id, key) DO UPDATE SET enabled = true`, { replacements: { t: B.id } });
+      tok.multiB = await tokens.sign({ id: id.multiB, tenantId: B.id, role: 'tenant_admin', email: 'multiB@b11.test' });
+      expect((await get('/users', 'multiB')).status).toBe(200);
+    });
+  });
 });

@@ -59,7 +59,12 @@ function createTenantAdminStores(sequelize) {
     },
     /** Peran dan status terkini pelaku (bukan dari klaim token), untuk gerbang Admin Tenant. */
     async actor(tenantId, id) {
-      return one('SELECT id, role, status FROM users WHERE tenant_id = :tenantId AND id = :id', { tenantId, id });
+      // roles: peran utama + daftar peran B2 (user_roles), agar admin tenant multi-peran tidak ditolak (audit 23 Nov)
+      return one(
+        `SELECT u.id, u.role, u.status,
+                ARRAY(SELECT DISTINCT r FROM unnest(array_append(
+                  ARRAY(SELECT ur.role FROM user_roles ur WHERE ur.tenant_id = u.tenant_id AND ur.user_id = u.id), u.role)) AS r)::text[] AS roles
+           FROM users u WHERE u.tenant_id = :tenantId AND u.id = :id`, { tenantId, id });
     },
     async tenantInfo(tenantId) {
       return one('SELECT name, elitementor_organization_id IS NOT NULL AS "organizationMapped" FROM tenants WHERE id = :tenantId', { tenantId });
