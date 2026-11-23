@@ -94,7 +94,7 @@ async function loginAs(page: Page, o: Opts = {}): Promise<Sent[]> {
 
 const nav = (page: Page) => page.getByRole('navigation', { name: 'Navigasi utama' })
 
-test('HR: tab Vision & Mission menampilkan kesiapan, gap, dan status validasi; HR memvalidasi persyaratan', async ({ page }) => {
+test('HR: tab Vision & Mission menampilkan kesiapan dan gap; status validasi dan tombol Validasi ada di panel baris (P5 CC-3)', async ({ page }) => {
   const sent = await loginAs(page)
   await nav(page).getByRole('link', { name: 'Core Competencies' }).click()
   await expect(page.getByRole('heading', { level: 1, name: 'Core Competencies' })).toBeVisible()
@@ -103,19 +103,30 @@ test('HR: tab Vision & Mission menampilkan kesiapan, gap, dan status validasi; H
   await expect(panel.getByText('79%').first()).toBeVisible()
   await expect(panel.getByText('1 dari 2')).toBeVisible()
   const vision = page.getByTestId('cc-sumber-vision')
+  // P5 CC-3: lima kolom mockup, tanpa Validasi/Tindakan
+  await expect(vision.getByRole('columnheader')).toHaveText(['Persyaratan kompetensi (turunan)', 'Target', 'Aktual', 'Gap', 'Klasifikasi'])
   const cloud = vision.getByRole('row', { name: /Arsitektur public cloud/ })
   await expect(cloud).toContainText('Perlu ditinjau HR')
-  await expect(cloud).toContainText('Menunggu validasi HR')
   await expect(cloud).toContainText('−17')
+  await expect(cloud).not.toContainText('Menunggu validasi HR')
+  await expect(cloud.getByRole('button')).toHaveCount(0)
   await expect(vision.getByRole('row', { name: /Otomasi/ })).toContainText('Belum diukur')
-  await expect(vision.getByRole('row', { name: /Tata kelola layanan/ })).toContainText('Tervalidasi')
   await expect(panel.getByRole('note').last()).toContainText('2 persyaratan kompetensi menunggu validasi HR')
 
-  await cloud.getByRole('button', { name: 'Validasi Arsitektur public cloud' }).click()
+  await cloud.getByRole('cell').nth(2).click()
+  await expect(page).toHaveURL(/ubah=r-1/)
+  const editor = vision.getByTestId('cc-editor')
+  await expect(editor).toContainText('Menunggu validasi HR')
+  await editor.getByRole('button', { name: 'Validasi Arsitektur public cloud' }).click()
   await expect(panel.getByRole('status')).toContainText('divalidasi')
   expect(sent).toContainEqual({ method: 'PATCH', path: '/requirements/r-1', body: { status: 'validated' } })
-  // review P3: tombol di dalam baris bertautan tidak ikut mengikuti tautan baris
   await expect(page).not.toHaveURL(/ubah=/)
+
+  await vision.getByRole('row', { name: /Tata kelola layanan/ }).getByRole('cell').nth(1).click()
+  await expect(vision.getByTestId('cc-editor')).toContainText('Tervalidasi')
+  await expect(vision.getByTestId('cc-editor').getByRole('button', { name: /^Validasi/ })).toHaveCount(0)
+  await vision.getByTestId('cc-editor').getByRole('button', { name: 'Tolak Tata kelola layanan' }).click()
+  expect(sent).toContainEqual({ method: 'PATCH', path: '/requirements/r-2', body: { status: 'rejected' } })
 
   await vision.getByRole('button', { name: 'Tambah persyaratan kompetensi' }).click()
   await vision.getByLabel('Nama').fill('Keamanan cloud')
@@ -243,17 +254,69 @@ test('P3 CC-3 (klik baris): klik baris persyaratan membuka panel ubah baris itu'
   await expect(vision.getByLabel('Nama')).toHaveCount(0)
 })
 
-test('P3 review: tombol Ubah dan Batal menjaga ?ubah selaras dengan panel', async ({ page }) => {
+test('P3 review: klik baris lain dan Batal menjaga ?ubah selaras dengan panel', async ({ page }) => {
   await loginAs(page)
   await page.goto('/cc')
   const vision = page.getByTestId('cc-sumber-vision')
   await vision.getByRole('row', { name: /Arsitektur public cloud/ }).getByRole('cell').nth(1).click()
   await expect(page).toHaveURL(/ubah=r-1/)
-  await vision.getByRole('row', { name: /Tata kelola layanan/ }).getByRole('button', { name: /^Ubah/ }).click()
+  await vision.getByRole('row', { name: /Tata kelola layanan/ }).getByRole('cell').nth(3).click()
   await expect(page).toHaveURL(/ubah=r-2/)
   await expect(vision.getByLabel('Nama')).toHaveValue('Tata kelola layanan')
   await vision.getByRole('button', { name: 'Batal' }).click()
   await expect(page).not.toHaveURL(/ubah=/)
   await vision.getByRole('row', { name: /Arsitektur public cloud/ }).getByRole('cell').nth(1).click()
   await expect(vision.getByLabel('Nama')).toHaveValue('Arsitektur public cloud')
+})
+
+// Paritas P5 (docs/designs/paritas-mockup/p5-lna.md)
+const fitsWidth = (page: Page, scope: ReturnType<Page['getByTestId']>) =>
+  scope.locator('.el-table__scroll').first().evaluate((el) => el.scrollWidth <= el.clientWidth + 1)
+
+test('P5 CC-3/CC-5: tabel VM muat di 1280 tanpa gulir; bar gap merah hanya bila gap 20 atau lebih, lebar gap/35', async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 900 })
+  await loginAs(page)
+  await page.goto('/cc')
+  const vision = page.getByTestId('cc-sumber-vision')
+  await expect(vision.getByRole('row', { name: /Arsitektur public cloud/ })).toBeVisible()
+  expect(await fitsWidth(page, vision)).toBe(true)
+  const bar = vision.getByRole('progressbar', { name: 'Gap Arsitektur public cloud' })
+  await expect(bar).toHaveAttribute('aria-valuenow', '49')
+  await expect(bar).not.toHaveClass(/el-bar--critical/)
+  // KPI kesiapan kartu sumber tanpa bingkai (CC-4); note KPI (CC-6)
+  await expect(vision.getByTestId('cc-kesiapan')).not.toHaveClass(/el-card/)
+  await expect(page.getByTestId('cc-req-vm').getByText('persyaratan kompetensi', { exact: true })).toBeVisible()
+})
+
+test('P5 CV-7..CV-10: Values tiga KPI, label Kesiapan, bar kesiapan hijau bila 80 atau lebih, tanpa paragraf pengantar', async ({ page }) => {
+  await loginAs(page)
+  await page.goto('/cc?tab=val')
+  const values = page.getByTestId('cc-req-values')
+  await expect(values.getByText('Nilai dengan gap terbesar')).toBeVisible()
+  await expect(values.getByText('Gap terbesar', { exact: true })).toHaveCount(0)
+  await expect(values.getByText('Seberapa besar gap karyawan dalam menunjukkan perilaku')).toHaveCount(0)
+  await expect(values.getByRole('progressbar', { name: 'Kesiapan Credible' })).toHaveClass(/el-bar--success/)
+  await expect(values.getByRole('progressbar', { name: 'Kesiapan Committed' })).toHaveClass(/el-bar--critical/)
+  await expect(page.getByTestId('cc-sumber-value').first().getByTestId('cc-kesiapan')).toHaveText(/^Kesiapan\s*90%$/)
+  const committed = page.getByTestId('cc-sumber-value').filter({ hasText: 'Committed' })
+  await expect(committed.getByRole('progressbar', { name: 'Gap Serah terima rapi' })).toHaveClass(/el-bar--critical/)
+})
+
+test('P5 AA-1..AA-6: Wawancara AI atasan dengan breadcrumb, chip Perlu wawancara, tanggal singkat, tombol tim tonal nonaktif', async ({ page }) => {
+  const team = [{ userId: 'u-a', name: 'Karyawan A', jobRoleName: 'Engineer', status: 'completed' }, { userId: 'u-b', name: 'Karyawan B', jobRoleName: 'Engineer', status: 'assigned' }]
+  await loginAs(page, { role: 'supervisor', assignments: { role: 'leader', mine: { leader: assignment('leader', 'assigned'), employee: null }, canAssign: true, team } })
+  await page.goto('/aiv')
+  await expect(page.getByRole('navigation', { name: 'Lokasi' })).toHaveText(/Learning Needs Analysis\s*›\s*Wawancara AI/)
+  const card = page.getByTestId('cc-wawancara-pimpinan')
+  await expect(card).toContainText('Perlu wawancara')
+  await expect(card).toContainText('Batas waktu 30 Nov 2026')
+  await expect(card.getByRole('heading', { name: 'Wawancara pimpinan dari HR' })).toHaveClass(/el-h3/)
+  await expect(page.getByRole('row', { name: /Karyawan A/ }).getByRole('button', { name: 'Selesai' })).toBeDisabled()
+  await expect(page.getByRole('row', { name: /Karyawan B/ }).getByRole('button', { name: 'Menunggu karyawan' })).toBeDisabled()
+})
+
+test('P5 AA-1: karyawan juga melihat breadcrumb Wawancara AI', async ({ page }) => {
+  await loginAs(page, { role: 'learner', assignments: { role: 'employee', mine: { leader: null, employee: assignment('employee', 'assigned') } } })
+  await page.goto('/aiv')
+  await expect(page.getByRole('navigation', { name: 'Lokasi' })).toHaveText(/Learning Needs Analysis\s*›\s*Wawancara AI/)
 })

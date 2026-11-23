@@ -142,23 +142,52 @@ test('HR: sintesis menandai gap besar, menyembunyikan angka di bawah 5 responden
   })
   await loginSebagai(page, 'hr', { flags: FLAGS })
   await page.goto('/cc?tab=aiv')
+  // P5 AH-1: KPI ke-4 Tema tersintesis dari sintesis
+  const hr = page.getByTestId('cc-wawancara-hr')
+  await expect(hr.locator('.el-kpi__label')).toHaveText(['Pimpinan ditugaskan', 'Wawancara pimpinan selesai', 'Karyawan selesai', 'Tema tersintesis'])
   const kartu = page.getByTestId('cc-sintesis')
-  await expect(kartu.getByText('Tema tersintesis')).toBeVisible()
+  // P5 AH-6/AH-7: daftar tema mockup, bukan tabel
+  await expect(kartu).toContainText('Tema dari wawancara pimpinan, dan seberapa jauh jawaban karyawan sejalan.')
+  await expect(kartu.getByRole('table')).toHaveCount(0)
+  const panas = kartu.getByTestId('cc-tema').filter({ hasText: 'Kolaborasi lintas tim' })
+  await expect(panas).toContainText('Visi')
+  await expect(panas).toContainText('pimpinan sepakat 100% · karyawan sejalan 80% · gap −20')
+  const bar = panas.getByRole('progressbar')
+  await expect(bar).toHaveAttribute('aria-valuenow', '80')
+  await expect(bar).toHaveClass(/el-bar--critical/)
+  const sedikit = kartu.getByTestId('cc-tema').filter({ hasText: 'Fokus pelanggan' })
+  await expect(sedikit).toContainText('pimpinan sepakat 100% · karyawan sejalan - · gap -')
+  await expect(sedikit.getByRole('progressbar')).not.toHaveClass(/el-bar--critical/)
   await expect(kartu.getByText('Angka karyawan diperbarui setiap 5 penyelesaian baru', { exact: false })).toBeVisible()
-  const panas = kartu.getByRole('row', { name: /Kolaborasi lintas tim/ })
-  await expect(panas).toContainText('80%')
-  await expect(panas).toContainText('5–9 karyawan')
-  await expect(panas).toContainText('Gap besar')
-  const sedikit = kartu.getByRole('row', { name: /Fokus pelanggan/ })
-  await expect(sedikit).toContainText('<5 karyawan')
-  await expect(sedikit.getByRole('button', { name: /Isi dari sintesis/ })).toHaveCount(0)
 
-  await panas.getByRole('button', { name: 'Isi dari sintesis Kolaborasi lintas tim' }).click()
+  // aksi sekunder di bagian lipat
+  await expect(kartu.getByRole('button', { name: /Isi dari sintesis/ })).toHaveCount(0)
+  await kartu.getByText('Kelola nilai aktual dan pratinjau').click()
+  const kelola = kartu.getByTestId('cc-sintesis-kelola')
+  await expect(kelola.getByRole('row', { name: /Fokus pelanggan/ }).getByRole('button', { name: /Isi dari sintesis/ })).toHaveCount(0)
+  await kelola.getByRole('button', { name: 'Isi dari sintesis Kolaborasi lintas tim' }).click()
   await expect(kartu.getByRole('status')).toHaveText('Nilai aktual Kolaborasi lintas tim diisi dari sintesis. Nilai sebelumnya: kosong.')
   expect(tulis[0].body).toEqual({ requirementIds: ['r-1'] })
 
-  await kartu.getByRole('button', { name: 'Karyawan' }).click()
-  await kartu.getByRole('button', { name: 'Pratinjau sesi karyawan' }).click()
+  await kartu.getByRole('button', { name: 'Pratinjau sesi pimpinan' }).click()
   await expect(kartu.getByTestId('cc-pratinjau')).toContainText('Dukungan: Pratinjau 4 Corporate Vision')
-  expect(tulis[1].query.get('tier')).toBe('employee')
+  expect(tulis[1].query.get('tier')).toBe('leader')
+  await kartu.getByRole('button', { name: 'Pratinjau sesi karyawan' }).click()
+  await expect.poll(() => tulis.length).toBe(3)
+  expect(tulis[2].query.get('tier')).toBe('employee')
+
+  await kartu.getByRole('link', { name: 'Lihat Corporate Values' }).click()
+  await expect(page.getByRole('tab', { name: 'Corporate Values' })).toHaveAttribute('aria-selected', 'true')
+})
+
+test('P5 AH-9: sintesis tanpa daftar tema menampilkan pesan galat, bukan kartu rusak', async ({ page }) => {
+  await mockApi(page, (req) => {
+    if (req.method === 'GET' && req.path === '/cca/assignments') return { json: { data: { role: 'hr', mine: { leader: null, employee: null }, kpis: { leadersEligible: 0, leadersAssigned: 0, leadersCompleted: 0, employeesAssigned: 0, employeesCompleted: 0 }, leaders: [] } } }
+    if (req.method === 'GET' && req.path.startsWith('/cca/')) return { json: { data: [] } }
+    return undefined
+  })
+  await loginSebagai(page, 'hr', { flags: FLAGS })
+  await page.goto('/cc?tab=aiv')
+  await expect(page.getByTestId('cc-sintesis')).toContainText('Sintesis belum bisa dimuat')
+  await expect(page.getByTestId('cc-sintesis').getByText('Lihat Vision & Mission')).toHaveCount(0)
 })

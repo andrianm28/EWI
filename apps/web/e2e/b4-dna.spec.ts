@@ -102,11 +102,11 @@ test('HR: ringkasan, kamus dengan filter dan pengesahan, kurikulum, dan rencana 
   await expect(kamus.getByRole('status')).toHaveText('2 kompetensi disahkan.')
   await expect(kamus.getByRole('button', { name: 'Sahkan kamus' })).toHaveCount(0)
 
-  await page.getByRole('tab', { name: 'Kurikulum BIA' }).click()
+  await page.getByRole('tab', { name: 'Kurikulum Basic · Intermediate · Advanced' }).click()
   await expect(page.getByTestId('dn-kur')).toContainText('1 kompetensi belum punya level program')
   await expect(page.getByTestId('dn-kur')).toContainText('Automation')
 
-  await page.getByRole('tab', { name: 'Kebutuhan pegawai' }).click()
+  await page.getByRole('tab', { name: 'Kebutuhan pengembangan pegawai' }).click()
   // A4: cakupan tampil di tabel bila belum semua modul dinilai
   await expect(page.getByRole('row', { name: /Ani/ })).toContainText('dinilai 1 dari 2')
   await expect(page.getByRole('row', { name: /Budi/ })).not.toContainText('dinilai 2 dari')
@@ -160,4 +160,20 @@ test('P3 DN-1/DN-2: breadcrumb 12px dan kartu Agen AI tanpa tombol (belum ada la
   await expect(kartu).toContainText('Pilot')
   await expect(kartu).toContainText('AI mewawancarai atasan pemilik jabatan untuk memvalidasi hasil DACUM, lalu karyawan jabatan itu untuk menilai posisi mereka pada tingkat Basic, Intermediate, Advanced.')
   await expect(kartu.getByRole('link')).toHaveCount(0)
+})
+
+// Paritas P5 (docs/designs/paritas-mockup/p5-lna.md)
+test('P5 DN-3/DN-4/DN-11/DN-13/DN-14: label tab dan copy mockup, judul kurikulum satu baris, chip tahap per tingkat', async ({ page }) => {
+  await mockDna(page)
+  await loginSebagai(page, 'hr', B4)
+  await page.goto('/dna')
+  await expect(page.getByRole('tab')).toHaveText(['Ringkasan', 'Kamus kompetensi', 'Kurikulum Basic · Intermediate · Advanced', 'Kebutuhan pengembangan pegawai'])
+  await expect(page.getByText('Jabatan lain akan muncul di pilihan di atas setelah kamusnya dibuat lewat DACUM.')).toBeVisible()
+  await page.getByRole('tab', { name: 'Kurikulum Basic · Intermediate · Advanced' }).click()
+  await expect(page.getByTestId('dn-kur').getByRole('heading', { level: 2 }).first()).toHaveText(/^Basic · \d+ modul$/)
+  await page.getByRole('tab', { name: 'Kebutuhan pengembangan pegawai' }).click()
+  const ani = page.getByRole('row', { name: /Ani/ })
+  await expect(ani.locator('.el-chip').first()).toHaveClass(/el-chip--review/)
+  await expect(page.getByRole('row', { name: /Budi/ }).locator('.el-chip').first()).toHaveClass(/el-chip--success/)
+  await expect(ani.getByRole('cell').nth(2)).toHaveCSS('text-align', 'left')
 })
