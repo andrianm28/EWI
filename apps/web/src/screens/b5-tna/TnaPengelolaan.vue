@@ -1,8 +1,8 @@
 <script setup lang="ts">
-// TNA: dipicu target OKR/KPI/SLA yang tidak tercapai (RG-2). Tampilan menyesuaikan peran (RG-3).
+// Pengelolaan TNA (dulu views/TnaView.vue, POC): dipicu target OKR/KPI/SLA yang tidak tercapai (RG-2). Tampilan menyesuaikan peran (RG-3).
+// Dipasang di bawah papan gap oleh TnaScreen (docs/designs/b5-training-needs.md bagian 16). Isi dan data-testid dipertahankan.
 // HR wajib memilih siapa yang diwawancarai karena BT-29 belum diputuskan (tidak ada pilihan bawaan).
 import { computed, onMounted, ref } from 'vue'
-import AppShell from '@/components/AppShell.vue'
 import ImportPanel from '@/components/ImportPanel.vue'
 import {
   lna, COURSE_STATUS_LABEL, PLAN_STATUS_LABEL, PLAN_NEXT, FLAG_TRAINING_REQUEST, FLAG_NON_TRAINING_HR, formatWib,
@@ -10,6 +10,7 @@ import {
 } from '@/api/lna'
 import { useSessionStore } from '@/stores/session'
 
+defineProps<{ heading?: string }>()
 const session = useSessionStore()
 const dash = ref<TnaDashboard | null>(null)
 const pareto = ref<ParetoRow[]>([])
@@ -27,6 +28,8 @@ const notice = ref('')
 
 const isHr = computed(() => ['hr_admin', 'eta_admin'].includes(session.role))
 const isLearner = computed(() => session.role === 'learner')
+// R-1: saat penugasan dari papan gap menyala, jadwal massal lama disembunyikan (penugasan lewat detail gap)
+const assignmentOn = computed(() => session.hasFlag('tna.interview_assignment'))
 const mySessions = computed(() => sessions.value.filter((s) => s.intervieweeId === session.user?.id && s.status !== 'completed'))
 // PM-8 B: BT-31 ditunda, tombol permintaan training hanya tampil bila flag dinyalakan
 const canRequestTraining = computed(() => isLearner.value && session.hasFlag(FLAG_TRAINING_REQUEST))
@@ -118,8 +121,8 @@ const target = (f: Finding) => (f.metricName ? `${f.metricName}: target ${f.targ
 </script>
 
 <template>
-  <AppShell>
-    <h1 class="text-lg font-semibold">TNA · Training Needs Analysis</h1>
+  <div>
+    <h2 v-if="heading" class="mt-6 text-base font-semibold">{{ heading }}</h2>
     <p class="mt-1 text-sm text-slate-600">Kebutuhan training dari target OKR/KPI/SLA yang belum tercapai.</p>
     <p v-if="error" role="alert" class="mt-3 text-sm text-red-600">{{ error }}</p>
     <p v-if="notice" role="status" class="mt-3 text-sm text-emerald-700">{{ notice }}</p>
@@ -139,7 +142,7 @@ const target = (f: Finding) => (f.metricName ? `${f.metricName}: target ${f.targ
       <p class="text-sm text-slate-600">Sekitar 30 menit, membahas target yang belum tercapai.</p>
       <template v-for="s in mySessions" :key="s.id">
         <p v-if="s.status === 'scheduled' && isExpired(s)" class="mt-2 text-sm text-red-600">Undangan sudah berakhir. Minta HR memperpanjang undangan Anda.</p>
-        <RouterLink v-else :to="`/m/tna/sessions/${s.id}`" class="mt-2 block text-sm text-blue-700">
+        <RouterLink v-else :to="`/iv/${s.id}`" class="mt-2 block text-sm text-blue-700">
           {{ s.status === 'scheduled' ? 'Mulai wawancara' : 'Lanjutkan wawancara' }}
         </RouterLink>
         <p v-if="s.inviteExpiresAt && !isExpired(s)" class="text-xs text-slate-500">Undangan berlaku sampai {{ formatWib(s.inviteExpiresAt) }} WIB.</p>
@@ -156,7 +159,7 @@ const target = (f: Finding) => (f.metricName ? `${f.metricName}: target ${f.targ
     <!-- R3-3: data kinerja (mis. ekspor HappyFive) dan data karyawan lewat file XLSX/CSV -->
     <ImportPanel v-if="isHr" submodule="tna" :projects="projects" class="mt-4" @imported="load" />
 
-    <section v-if="isHr" class="mt-4 grid gap-4 md:grid-cols-2">
+    <section v-if="isHr && !assignmentOn" class="mt-4 grid gap-4 md:grid-cols-2">
       <form class="space-y-2 rounded-lg border bg-white p-4 text-sm" @submit.prevent="schedule">
         <h2 class="font-medium">Jadwalkan wawancara TNA</h2>
         <label class="block">Periode <input v-model="period" required class="mt-1 w-full rounded border px-2 py-1" placeholder="2026-11" /></label>
@@ -277,5 +280,5 @@ const target = (f: Finding) => (f.metricName ? `${f.metricName}: target ${f.targ
         </li>
       </ul>
     </section>
-  </AppShell>
+  </div>
 </template>

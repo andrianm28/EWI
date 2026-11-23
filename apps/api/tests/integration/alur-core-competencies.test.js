@@ -10,8 +10,8 @@ const { createApp } = require('../../src/app');
 const { createStubProvider } = require('../../src/ai/stub-provider');
 const { FLAGS } = require('../../src/core/flags');
 const { makeConfig } = require('../helpers');
-const { siapkanTenant, tambahPengguna, pembuatMasuk, hapusTenant, langkah, kodeGalat, hariWib } = require('../alur/driver');
-const { KARYAWAN_LAIN, TENANT_LAIN } = require('../alur/data');
+const { siapkanTenant, tambahPengguna, pembuatMasuk, hapusTenant, langkah, kodeGalat } = require('../alur/driver');
+const { KARYAWAN_LAIN, TENANT_LAIN, tanggalWib } = require('../alur/data');
 
 const run = process.env.DATABASE_URL ? describe : describe.skip;
 
@@ -21,7 +21,7 @@ run('Alur Core Competencies berjenjang (HR, pimpinan, atasan, karyawan)', () => 
   const slug = `alur-cca-${crypto.randomBytes(3).toString('hex')}`;
   const RINGKASAN_KEPALA = 'Ringkasan kepala divisi: fokus kolaborasi lintas tim.';
   const RINGKASAN_TIM = 'Ringkasan anggota tim KENARI-CCA-7D1';
-  const tenggat = hariWib(7);
+  const tenggat = tanggalWib(7);
 
   beforeAll(async () => {
     db = createDb({ databaseUrl: process.env.DATABASE_URL, dbSchema: process.env.DB_SCHEMA || 'ewi' });

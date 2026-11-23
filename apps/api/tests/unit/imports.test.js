@@ -89,6 +89,84 @@ describe('R3-3 kinerja: tipe nilai BT-26', () => {
   });
 });
 
+describe('B4 impor kamus: kode, rumpun, level program, job function', () => {
+  const kind = getKind('dna_competencies');
+  const role = { id: 'r1', name: 'Engineer Service Delivery', levels: [{ id: 'l1', name: 'Junior' }] };
+  const makeCtx = () => {
+    const keyOf = (c) => `${c.jobRoleId || ''}|${c.careerLevelId || ''}|${c.name.trim().toLowerCase()}`;
+    return {
+      roles: [role], keyOf, seen: new Set(), existing: new Map([[keyOf({ jobRoleId: 'r1', name: 'Ticket life cycle' }), { id: 'c-old', kind: 'job' }], [keyOf({ jobRoleId: 'r1', name: 'Integritas kerja' }), { id: 'c-core', kind: 'core' }]]),
+      jobFunctions: new Map([['r1', new Map([[1, 'jf-1'], [3, 'jf-3']])]]),
+      codeKey: (jobRoleId, code) => `${jobRoleId}|${code.trim().toLowerCase()}`, codes: new Map([['r1|st-b1', 'c-b1']]),
+    };
+  };
+  const base = { jobRole: 'engineer service delivery', name: 'Automation & IaC' };
+  const makeCtxWith = (ctx) => ({ ...ctx, seen: new Set() });
+
+  it('judul "Level" dipetakan ke Level Program, bukan Jenjang karier', () => {
+    const m = suggestMapping(['Jabatan', 'Kode', 'Kompetensi', 'Rumpun', 'Level', 'Grade'], kind.fields);
+    expect(m).toMatchObject({ jobRole: 'Jabatan', code: 'Kode', name: 'Kompetensi', stream: 'Rumpun', programTier: 'Level', careerLevel: 'Grade' });
+  });
+  it('baris baru membawa kode, rumpun, tingkat (B/I/A), dan job function bernomor', () => {
+    const res = kind.validate({ ...base, code: 'TC-I1', stream: 'Technical', programTier: 'I', jobFunctions: 'JF1; 3' }, makeCtx());
+    expect(res.value).toMatchObject({ jobRoleId: 'r1', kind: 'job', code: 'TC-I1', stream: 'Technical', programTier: 'intermediate', jobFunctionIds: ['jf-1', 'jf-3'] });
+    expect(kind.validate({ ...base, programTier: 'Advance' }, makeCtx()).value.programTier).toBe('advanced');
+    expect(kind.validate(base, makeCtx()).value).toMatchObject({ code: null, programTier: null, jobFunctionIds: null });
+  });
+  it('file lama: kolom "Level" berisi nama jenjang (mis. Junior) dibaca sebagai Jenjang, bukan ditolak', () => {
+    expect(kind.validate({ ...base, programTier: 'junior' }, makeCtx()).value).toMatchObject({ careerLevelId: 'l1', programTier: null });
+    // kolom Jenjang sudah terisi: nilai bukan B/I/A tetap ditolak
+    expect(kind.validate({ ...base, careerLevel: 'Junior', programTier: 'junior' }, makeCtx()).error).toMatch(/Level Program/);
+  });
+  it('alasan penolakan kolom baru', () => {
+    expect(kind.validate({ ...base, programTier: 'expert' }, makeCtx()).error).toMatch(/Level Program/);
+    expect(kind.validate({ ...base, jobFunctions: '2' }, makeCtx()).error).toMatch(/nomor 2 belum ada/);
+    expect(kind.validate({ ...base, jobFunctions: 'insiden' }, makeCtx()).error).toMatch(/berisi nomor/);
+    expect(kind.validate({ ...base, code: 'st-b1' }, makeCtx()).error).toMatch(/sudah dipakai kompetensi lain/);
+    expect(kind.validate({ name: 'Integritas', code: 'C-1' }, makeCtx()).error).toMatch(/Kode butuh Job Role/);
+    const ctx = makeCtx();
+    expect(kind.validate({ ...base, code: 'X-1' }, ctx).value.code).toBe('X-1');
+    expect(kind.validate({ ...base, name: 'Lain', code: 'x-1' }, ctx).error).toMatch(/sudah dipakai/);
+  });
+  it('kompetensi yang sudah ada: diperbarui bila kolom B4 terisi, ditolak bila tidak', () => {
+    expect(kind.validate({ jobRole: role.name, name: 'ticket life cycle' }, makeCtx()).error).toMatch(/sudah ada di kamus/);
+    const res = kind.validate({ jobRole: role.name, name: 'ticket life cycle', code: 'ST-B4', programTier: 'basic', jobFunctions: '3' }, makeCtx());
+    expect(res.value).toEqual({ id: 'c-old', patch: { code: 'ST-B4', programTier: 'basic' }, jobFunctionIds: ['jf-3'] });
+  });
+  it('impor ulang dengan nilai yang sama tidak mengubah apa pun (pengesahan tidak direset); hanya kolom yang berubah masuk patch', () => {
+    const ctx = makeCtx();
+    ctx.existing.set(ctx.keyOf({ jobRoleId: 'r1', name: 'Approved' }), { id: 'c-ok', kind: 'job', code: 'ST-B9', stream: 'Technical', programTier: 'basic' });
+    ctx.codes.set('r1|st-b9', 'c-ok');
+    expect(kind.validate({ jobRole: role.name, name: 'approved', code: 'ST-B9', stream: 'Technical', programTier: 'B' }, ctx).error).toMatch(/sudah ada di kamus.*tidak ada perubahan/);
+    expect(kind.validate({ jobRole: role.name, name: 'approved', code: 'ST-B9', programTier: 'intermediate' }, makeCtxWith(ctx)).value).toEqual({ id: 'c-ok', patch: { programTier: 'intermediate' }, jobFunctionIds: null });
+    // hanya pemetaan job function: diterima tanpa patch (pemetaan tidak mereset pengesahan)
+    expect(kind.validate({ jobRole: role.name, name: 'approved', code: 'ST-B9', jobFunctions: '1' }, makeCtxWith(ctx)).value).toEqual({ id: 'c-ok', patch: {}, jobFunctionIds: ['jf-1'] });
+  });
+  it('sel Job Function tanpa nomor ditolak (tidak menghapus pemetaan); kompetensi inti yang sudah ada tidak bisa dipetakan', () => {
+    expect(kind.validate({ jobRole: role.name, name: 'ticket life cycle', jobFunctions: ';' }, makeCtx()).error).toMatch(/berisi nomor/);
+    expect(kind.validate({ jobRole: role.name, name: 'ticket life cycle', jobFunctions: 'JF' }, makeCtx()).error).toMatch(/berisi nomor/);
+    expect(kind.validate({ jobRole: role.name, name: 'Integritas kerja', jobFunctions: '1' }, makeCtx()).error).toMatch(/hanya untuk kompetensi jabatan/);
+  });
+});
+
+describe('B4 impor job function', () => {
+  const kind = getKind('dna_job_functions');
+  const makeCtx = () => ({
+    roles: [{ id: 'r1', name: 'Engineer Service Delivery' }],
+    state: new Map([['r1', { orders: new Set([1]), names: new Set(['penanganan insiden']), next: 2 }]]),
+  });
+  it('nomor kosong melanjutkan nomor terakhir; nomor dan nama ganda ditolak', () => {
+    const ctx = makeCtx();
+    expect(kind.validate({ jobRole: 'Engineer Service Delivery', name: 'Change management' }, ctx).value).toEqual({ jobRoleId: 'r1', order: 2, name: 'Change management' });
+    expect(kind.validate({ jobRole: 'Engineer Service Delivery', name: 'Automation', order: 5 }, ctx).value.order).toBe(5);
+    expect(kind.validate({ jobRole: 'Engineer Service Delivery', name: 'Migrasi' }, ctx).value.order).toBe(3);
+    expect(kind.validate({ jobRole: 'Engineer Service Delivery', name: 'Keamanan', order: 1 }, ctx).error).toMatch(/No 1 sudah dipakai/);
+    expect(kind.validate({ jobRole: 'Engineer Service Delivery', name: 'PENANGANAN insiden' }, ctx).error).toMatch(/sudah ada/);
+    expect(kind.validate({ jobRole: 'Tidak ada', name: 'X' }, ctx).error).toMatch(/belum ada/);
+    expect(kind.validate({ jobRole: 'Engineer Service Delivery', name: 'X', order: 0 }, ctx).error).toMatch(/1-999/);
+  });
+});
+
 describe('PK-20 toleransi per KPI (PM-1 opsi B)', () => {
   const kind = getKind('tna_performance');
   const base = { employeeId: 'E-1', metricType: 'kpi', name: 'Resolusi tiket < 4 jam', valueType: 'persen', target: '90%' };

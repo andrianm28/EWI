@@ -85,7 +85,7 @@ describe('Akses Admin Tenant (B11)', () => {
 
 describe('Impor kamus per jabatan (B11)', () => {
   const roles = [{ id: 'jr-1', name: 'Engineer', levels: [{ id: 'lv-1', name: 'Junior' }] }, { id: 'jr-2', name: 'Sales', levels: [] }];
-  const stores = { dna: { listJobRoles: async () => roles, listCompetencies: async () => [] } };
+  const stores = { dna: { listJobRoles: async () => roles, listCompetencies: async () => [], listJobFunctions: async () => [] } };
   const kind = getKind('dna_competencies');
   const check = (rows, options) => validateRows(kind, rows, { stores, tenantId: 't', options });
 

@@ -116,7 +116,7 @@ function gapRouter({ stores, flags, audit }) {
       return { kind: 'competency', competencyId: q.competencyId };
     }
     if (q.kind === 'okr') {
-      if (!METRIC_TYPES.includes(q.metricType) || typeof q.name !== 'string' || !q.name.trim() || typeof q.period !== 'string' || !q.period) {
+      if (!METRIC_TYPES.includes(q.metricType) || typeof q.name !== 'string' || !q.name.trim() || typeof q.period !== 'string' || !q.period || q.period.length > 32) {
         throw badRequest('Jenis metrik, nama target, dan periode wajib diisi untuk gap OKR');
       }
       return { kind: 'okr', metricType: q.metricType, name: q.name, period: q.period };
@@ -133,7 +133,7 @@ function gapRouter({ stores, flags, audit }) {
     if (!row) throw notFound('Gap tidak ditemukan');
     const link = b.links.get(key);
     const session = (id) => (link && link.byUser.get(id)) || null;
-    const base = (m) => ({ id: m.id, name: m.name, jobRoleName: m.jobRoleName ?? null, self: m.id === req.user.id, assignable: m.id !== req.user.id, session: session(m.id) });
+    const base = (m) => ({ id: m.id, name: m.name, jobRoleId: m.jobRoleId ?? null, jobRoleName: m.jobRoleName ?? null, self: m.id === req.user.id, assignable: m.id !== req.user.id, session: session(m.id) });
     let employees; let jobRoles = [];
     if (gap.kind === 'competency') {
       const latest = latestScores(b.assessments);

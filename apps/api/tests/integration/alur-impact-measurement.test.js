@@ -10,8 +10,8 @@ const { createApp } = require('../../src/app');
 const { createStubProvider } = require('../../src/ai/stub-provider');
 const { FLAGS } = require('../../src/core/flags');
 const { makeConfig } = require('../helpers');
-const { siapkanTenant, tambahPengguna, pembuatMasuk, hapusTenant, langkah, kodeGalat, hariWib: hari } = require('../alur/driver');
-const { JABATAN, KOMPETENSI, KARYAWAN_LAIN, TENANT_LAIN } = require('../alur/data');
+const { siapkanTenant, tambahPengguna, pembuatMasuk, hapusTenant, langkah, kodeGalat } = require('../alur/driver');
+const { JABATAN, KOMPETENSI, KARYAWAN_LAIN, TENANT_LAIN, tanggalWib: hari } = require('../alur/data');
 
 const run = process.env.DATABASE_URL ? describe : describe.skip;
 const FLAG_LIM = [FLAGS.MODULE_DNA, FLAGS.MODULE_LI, FLAGS.MODULE_LD, FLAGS.MODULE_LIM];
@@ -40,10 +40,11 @@ run('Alur pengukuran dampak belajar (HR, atasan)', () => {
     await a.dna.tempatkan(orang.hr, orang.karyawan, role);
     await a.dna.tempatkan(orang.hr, orang.lain, role);
     orang.jabatan = role;
-    modul = await a.li.imporModul(orang.hr, {
-      code: 'L1-ESK', name: 'Eskalasi tiket dan produk layanan', level: 'basic', jobRoles: JABATAN.name,
-      competencies: `${kEskalasi}; ${kProduk}`, items: [{ type: 'S', text: 'Menentukan jalur eskalasi ke L2' }, { type: 'K', text: 'Memahami katalog produk layanan' }],
-    });
+    await a.li.imporModul(orang.hr, [
+      `L1-ESK,Eskalasi tiket dan produk layanan,basic,,,${JABATAN.name},${kEskalasi}; ${kProduk},S,Menentukan jalur eskalasi ke L2`,
+      'L1-ESK,,,,,,,K,Memahami katalog produk layanan',
+    ]);
+    modul = (await a.li.pustaka(orang.hr)).data.find((m) => m.code === 'L1-ESK');
   });
 
   afterAll(async () => {
@@ -52,10 +53,11 @@ run('Alur pengukuran dampak belajar (HR, atasan)', () => {
   });
 
   it('HR menjalankan pelatihan offline dari modul library: peserta, kehadiran, dan skor vendor (B13 → B14)', async () => {
-    const pelatihan = await a.ld.pelatihanOffline(orang.hr, {
-      title: 'Workshop eskalasi L1', moduleId: modul.id, startsOn: hari(-20), endsOn: hari(-19),
-      skor: [{ pengguna: orang.karyawan, score: 80 }, { pengguna: orang.lain, score: 65 }],
-    });
+    const { id } = await a.ld.buatPelatihan(orang.hr, { title: 'Workshop eskalasi L1', moduleId: modul.id, startsOn: hari(-20), endsOn: hari(-19) });
+    await a.ld.tambahPeserta(orang.hr, id, { userIds: [orang.karyawan.id, orang.lain.id] });
+    await a.ld.kehadiran(orang.hr, id, [{ userId: orang.karyawan.id, present: true }, { userId: orang.lain.id, present: true }]);
+    await a.ld.asesmen(orang.hr, id, { mode: 'vendor_manual' });
+    const pelatihan = await a.ld.skor(orang.hr, id, [{ userId: orang.karyawan.id, score: 80 }, { userId: orang.lain.id, score: 65 }]);
     expect(pelatihan.assessmentStatus).toBe('manual');
   });
 

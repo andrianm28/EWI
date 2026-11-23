@@ -414,6 +414,45 @@ run('B6 ringkasan wawancara akar masalah (Postgres)', () => {
     expect((await api(app, sidS).summary('joko')).status).toBe(201);
   });
 
+  // Tunggu sampai ada backend lain yang menunggu kunci baris, supaya test benar-benar menguji jalur menunggu (bukan tebakan waktu).
+  async function waitForLockWaiter() {
+    for (let i = 0; i < 100; i += 1) {
+      const [[r]] = await db.query(`SELECT count(*)::int AS n FROM pg_stat_activity WHERE datname = current_database() AND wait_event_type = 'Lock'`);
+      if (r.n > 0) return;
+      await new Promise((res) => setTimeout(res, 20));
+    }
+    throw new Error('Tidak ada permintaan yang menunggu kunci baris');
+  }
+
+  it('balapan di tingkat baris: jawaban yang lolos penjaga sebelum ulangi/ringkasan selesai tidak ikut tersimpan (egm Stage 7 D-M4)', async () => {
+    // ulangi memegang kunci baris sesi; jawaban dengan penjaga dikirim sebelum ulangi commit tidak boleh mendarat di sesi yang sudah direset.
+    // SQL ulangi ditulis manual karena kunci harus dipegang sambil addTurn menunggu (efeknya sama dengan stores.interviews.restart).
+    const sid = await openSession('lia');
+    const before = await turnCount(sid);
+    const tx = await db.transaction();
+    await db.query('SELECT id FROM lna_interview_sessions WHERE id = :sid FOR UPDATE', { replacements: { sid }, transaction: tx });
+    const pending = stores.interviews.addTurn(tenant.id, sid, 'human', 'Jawaban yang terlambat', { guard: { restartCount: 0 } });
+    await waitForLockWaiter();
+    await db.query('DELETE FROM lna_interview_turns WHERE session_id = :sid', { replacements: { sid }, transaction: tx });
+    await db.query(`UPDATE lna_interview_sessions SET status = 'scheduled', consent_at = NULL, restart_count = restart_count + 1 WHERE id = :sid`,
+      { replacements: { sid }, transaction: tx });
+    await tx.commit();
+    expect(await pending).toBeNull();
+    expect(await turnCount(sid)).toBe(0);
+    expect(before).toBe(2);
+
+    // jawaban sedang disimpan (kunci baris dipegang) ketika ringkasan disimpan: ringkasan berbasis transkrip lama dibuang
+    const sid2 = await openSession('lia');
+    const tx2 = await db.transaction();
+    await db.query('SELECT id FROM lna_interview_sessions WHERE id = :sid FOR SHARE', { replacements: { sid: sid2 }, transaction: tx2 });
+    await db.query(`INSERT INTO lna_interview_turns (session_id, speaker, text) VALUES (:sid, 'human', 'x')`, { replacements: { sid: sid2 }, transaction: tx2 });
+    const pendingSave = stores.interviews.saveSummary(tenant.id, sid2, [], { restartCount: 0, turnCount: 2 });
+    await waitForLockWaiter();
+    await tx2.commit();
+    expect(await pendingSave).toBeNull();
+    expect(await raw(sid2)).toMatchObject({ summaryAt: null });
+  });
+
   it('durasi 15 menit berhenti di 5 pertanyaan; fokus kompetensi muncul di pertanyaan pembuka', async () => {
     const app = createApp({ config, stores });
     const recordIds = [];

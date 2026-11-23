@@ -79,7 +79,8 @@ test('layar anak menyalakan butir induknya lewat meta.menuKey', async ({ page })
 
 test('karyawan: menu peralihan tanpa grup dan tanpa pemilih tampilan', async ({ page }) => {
   await loginAs(page, { role: 'learner' })
-  await expect(nav(page).getByRole('link')).toHaveText(['Beranda', 'Developmental Needs', 'Training Needs'])
+  // B6 memasang rute `iv`, jadi butir karyawan "Wawancara akar masalah" ikut tampil
+  await expect(nav(page).getByRole('link')).toHaveText(['Beranda', 'Wawancara akar masalah', 'Developmental Needs', 'Training Needs'])
   await expect(nav(page).getByRole('button')).toHaveCount(0)
   await expect(page.getByTestId('identitas')).toContainText('Karyawan')
   await expect(page.getByRole('group', { name: 'Tampilan' })).toHaveCount(0)
@@ -110,11 +111,11 @@ test('ganti tampilan: HR pindah ke Karyawan (saya), menu berganti, pilihan berta
 
   await views.getByRole('button', { name: 'Karyawan (saya)' }).click()
   await expect(page).toHaveURL(/\/uji\/my$/)
-  await expect(nav(page).getByRole('link')).toHaveText(['Hasil saya'])
+  await expect(nav(page).getByRole('link')).toHaveText(['Hasil saya', 'Wawancara akar masalah'])
   await expect(page.getByTestId('identitas')).toContainText('Karyawan')
 
   await page.reload()
-  await expect(nav(page).getByRole('link')).toHaveText(['Hasil saya'])
+  await expect(nav(page).getByRole('link')).toHaveText(['Hasil saya', 'Wawancara akar masalah'])
   await expect(views.getByRole('button', { name: 'Karyawan (saya)' })).toHaveAttribute('aria-pressed', 'true')
 
   // Tautan langsung ke layar HR memindahkan tampilan kembali
@@ -257,7 +258,7 @@ test.describe('layar sempit', () => {
     await expect(menu).toBeFocused()
     await menu.click()
     await nav(page).getByRole('link', { name: 'Training Needs' }).click()
-    await expect(page).toHaveURL(/\/m\/tna$/)
+    await expect(page).toHaveURL(/\/tna$/) // B5: rute baru /tna
     await expect(page.getByRole('link', { name: 'Beranda' })).toBeHidden()
   })
 

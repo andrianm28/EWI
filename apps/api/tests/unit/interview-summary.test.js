@@ -87,6 +87,12 @@ describe('topik fokus kompetensi (A10)', () => {
     expect(aiContext(ctx, { intervieweeId: 'u1' }).focus).toBeNull();
   });
 
+  it('prompt wawancara TNA menandai target yang makin kecil makin baik (direction tersimpan: lower)', () => {
+    const triggers = [{ id: 't1', metricType: 'sla', name: 'Waktu respons', target: 15, actual: 22, period: '2026-11', direction: 'lower', unit: 'menit' }];
+    const text = P.interviewSystemPrompt({ submodule: 'tna', context: { competencies: [], triggers, focus: null }, askedCount: 0, maxQuestions: 5 });
+    expect(text).toMatch(/Waktu respons.*\(makin kecil makin baik\)/);
+  });
+
   it('prompt wawancara TNA mengganti blok target dengan topik fokus bila tidak ada target meleset', () => {
     const context = aiContext(ctx, session);
     const withFocus = P.interviewSystemPrompt({ submodule: 'tna', context, askedCount: 0, maxQuestions: 5 });
