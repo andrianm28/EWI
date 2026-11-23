@@ -60,7 +60,7 @@ test('HR: peta per divisi, bukti, jalur jenjang, dan keputusan menunggu atasan',
   await expect(map).toContainText('Memenuhi syarat Senior')
   await expect(map).toContainText('Belum memenuhi kompetensi jabatan')
   await expect(map).toContainText('Program lulus, OKR belum 80%')
-  await expect(map).toContainText('OKR 79%') // pembulatan tidak menyeberangi ambang
+  await expect(map).toContainText('OKR saat ini 79%') // pembulatan tidak menyeberangi ambang
   await expect(page.getByTestId('cp-evidence')).toContainText('Bukti untuk Ani')
   await expect(page.getByTestId('cp-evidence')).toContainText('Pencapaian OKR (syarat ≥ 80%)')
   await expect(page.getByTestId('cp-evidence')).toContainText('93% · terpenuhi')

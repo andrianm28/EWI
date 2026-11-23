@@ -187,7 +187,7 @@ test('P7 LD-1/2/3/5/6/8: copy, insight berbingkai, chip mode/status, batas mono,
   const soon = page.getByRole('table', { name: 'Pelatihan yang akan datang' })
   await expect(soon.locator('.el-chip', { hasText: 'Offline' })).toHaveClass(/el-chip--improvement/)
   await expect(soon.locator('.el-chip', { hasText: 'Asesmen' })).toHaveClass(/el-chip--review/)
-  await expect(soon).toContainText('Saran: siapkan jadwal sebelum hari-H')
+  await expect(soon).toContainText('Saran: siapkan jadwal dan tempat sebelum hari-H')
   await expect(soon).toContainText('Mahaka Institute')
 })
 
