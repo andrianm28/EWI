@@ -1,4 +1,4 @@
-const { MIN_RESPONDENTS, HOT_GAP, respondentBand, synthesize } = require('../../src/modules/cca/synthesis');
+const { MIN_RESPONDENTS, HOT_GAP, EMPLOYEE_BATCH, respondentBand, synthesize } = require('../../src/modules/cca/synthesis');
 
 const REQ = [{ id: 'r1', name: 'Kolaborasi lintas tim' }, { id: 'r2', name: 'Fokus pelanggan' }];
 let seq = 0;
@@ -11,6 +11,7 @@ describe('CCA sintesis pimpinan vs karyawan (D-6, D-7)', () => {
   it('konstanta mengikuti spek', () => {
     expect(MIN_RESPONDENTS).toBe(5);
     expect(HOT_GAP).toBe(20);
+    expect(EMPLOYEE_BATCH).toBe(5);
   });
 
   it('skor = setuju + setengah partial dibagi responden yang menyinggung; not_covered tidak dihitung', () => {
@@ -38,9 +39,12 @@ describe('CCA sintesis pimpinan vs karyawan (D-6, D-7)', () => {
   });
 
   it('angka karyawan dibulatkan ke kelipatan 5; gap dan hot dari angka itu', () => {
-    // 4 sejalan + 3 tidak = 57,1 -> 55; gap 100 - 55 = 45
-    const out = synthesize(REQ, [jawab('p1', 'leader', { r1: 'agree' }), ...karyawan(4, 'aligned'), ...karyawan(3, 'not_aligned')]);
-    expect(baris(out, 'r1')).toMatchObject({ employeeAligned: 55, employeeRespondents: '5–9', gap: 45, hot: true });
+    // 11 sejalan + 3 partial + 1 tidak dari 15 = 83,3 -> 85; gap 100 - 85 = 15
+    const out = synthesize(REQ, [jawab('p1', 'leader', { r1: 'agree' }), ...karyawan(11, 'aligned'), ...karyawan(3, 'partial'), ...karyawan(1, 'not_aligned')]);
+    expect(baris(out, 'r1')).toMatchObject({ employeeAligned: 85, employeeRespondents: '10–19', gap: 15, hot: false });
+    // 3 sejalan + 2 tidak dari 5 = 60; gap 40
+    const b = synthesize(REQ, [jawab('p1', 'leader', { r1: 'agree' }), ...karyawan(3, 'aligned'), ...karyawan(2, 'not_aligned')]);
+    expect(baris(b, 'r1')).toMatchObject({ employeeAligned: 60, employeeRespondents: '5–9', gap: 40, hot: true });
   });
 
   it('hot hanya bila gap 20 atau lebih', () => {
@@ -50,8 +54,8 @@ describe('CCA sintesis pimpinan vs karyawan (D-6, D-7)', () => {
     // pimpinan 100, karyawan 4 sejalan + 1 tidak = 80 -> gap 20 (hot)
     const b = synthesize(REQ, [jawab('p1', 'leader', { r1: 'agree' }), ...karyawan(4, 'aligned'), ...karyawan(1, 'not_aligned')]);
     expect(baris(b, 'r1')).toMatchObject({ gap: 20, hot: true });
-    // karyawan 5 dari 6 = 83,3 -> 85; gap 15
-    const c = synthesize(REQ, [jawab('p1', 'leader', { r1: 'agree' }), ...karyawan(5, 'aligned'), ...karyawan(1, 'not_aligned')]);
+    // karyawan 17 dari 20 = 85; gap 15
+    const c = synthesize(REQ, [jawab('p1', 'leader', { r1: 'agree' }), ...karyawan(17, 'aligned'), ...karyawan(3, 'not_aligned')]);
     expect(baris(c, 'r1')).toMatchObject({ employeeAligned: 85, gap: 15, hot: false });
   });
 
@@ -82,5 +86,49 @@ describe('CCA sintesis pimpinan vs karyawan (D-6, D-7)', () => {
     expect(out.map((x) => x.requirementId)).toEqual(['r1', 'r2']);
     // 'aligned' bukan sikap tier pimpinan
     expect(baris(out, 'r1')).toMatchObject({ leaderAgree: 100, leaderRespondents: 1 });
+  });
+
+  describe('angka karyawan diperbarui per 5 penyelesaian baru (keputusan user 23 Nov, D1)', () => {
+    const jam = (i) => `2026-11-23T${String(i).padStart(2, '0')}:00:00Z`;
+    const urut = (stances) => stances.map((st, i) => jawab(`k${i}`, 'employee', { r1: st }, jam(i)));
+
+    it('penyelesaian ke-6 sampai ke-9 tidak mengubah angka karyawan; ke-10 memperbaruinya', () => {
+      const lima = urut(['aligned', 'aligned', 'aligned', 'aligned', 'aligned']);
+      expect(baris(synthesize(REQ, lima), 'r1')).toMatchObject({ employeeAligned: 100, employeeRespondents: '5–9' });
+      const sembilan = [...lima, ...urut(['x', 'x', 'x', 'x', 'x', 'not_aligned', 'not_aligned', 'not_aligned', 'not_aligned']).slice(5)];
+      expect(baris(synthesize(REQ, sembilan), 'r1')).toMatchObject({ employeeAligned: 100, employeeRespondents: '5–9', gap: null });
+      const sepuluh = [...lima, ...urut(Array(10).fill('not_aligned')).slice(5)];
+      // 5 sejalan + 5 tidak = 50
+      expect(baris(synthesize(REQ, sepuluh), 'r1')).toMatchObject({ employeeAligned: 50, employeeRespondents: '10–19' });
+    });
+
+    it('urutan waktu selesai yang menentukan, bukan urutan data masuk', () => {
+      const data = urut(['not_aligned', 'aligned', 'aligned', 'aligned', 'aligned', 'aligned']);
+      // yang paling akhir selesai (k5) belum dihitung meski datang pertama: k0 tidak + 4 sejalan = 80
+      expect(baris(synthesize(REQ, [...data].reverse()), 'r1')).toMatchObject({ employeeAligned: 80 });
+    });
+
+    it('waktu selesai sama: urutan id penugasan yang menentukan, jadi hasilnya tetap', () => {
+      const data = urut(Array(4).fill('aligned'));
+      const kembar = [{ ...jawab('a', 'employee', { r1: 'aligned' }, jam(9)), id: 'id-a' }, { ...jawab('b', 'employee', { r1: 'not_aligned' }, jam(9)), id: 'id-b' }];
+      const satu = baris(synthesize(REQ, [...data, ...kembar]), 'r1');
+      const dua = baris(synthesize(REQ, [...kembar.reverse(), ...data]), 'r1');
+      expect(satu).toMatchObject({ employeeAligned: 100 });
+      expect(dua).toEqual(satu);
+    });
+
+    it('putaran ulang satu karyawan dihitung sebagai penyelesaian baru, jadi tidak langsung mengubah angka', () => {
+      const lima = urut(['aligned', 'aligned', 'aligned', 'aligned', 'aligned']);
+      const ulang = jawab('k0', 'employee', { r1: 'not_aligned' }, jam(10));
+      expect(baris(synthesize(REQ, [...lima, ulang]), 'r1')).toMatchObject({ employeeAligned: 100 });
+      // empat penyelesaian baru lagi: batch kedua penuh, putaran ulang k0 kini dipakai (k0 tidak + 4 sejalan + 4 sejalan baru)
+      const empat = [11, 12, 13, 14].map((i) => jawab(`b${i}`, 'employee', { r1: 'aligned' }, jam(i)));
+      expect(baris(synthesize(REQ, [...lima, ulang, ...empat]), 'r1')).toMatchObject({ employeeAligned: 90, employeeRespondents: '5–9' });
+    });
+
+    it('angka pimpinan tetap diperbarui setiap penyelesaian', () => {
+      const out = synthesize(REQ, [...urut(Array(5).fill('aligned')), jawab('p1', 'leader', { r1: 'agree' }, jam(20))]);
+      expect(baris(out, 'r1')).toMatchObject({ leaderAgree: 100, leaderRespondents: 1, employeeAligned: 100 });
+    });
   });
 });

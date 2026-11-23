@@ -1,6 +1,7 @@
 <script setup lang="ts">
 // B10 tahap 2: kartu "Sintesis AI: pimpinan dan karyawan" untuk HR (spek 11.4, D-6, D-7, D-9) dan pratinjau sesi.
-// Angka karyawan hanya tampil dari 5 responden, dibulatkan ke kelipatan 5; responden ditampilkan sebagai rentang.
+// Angka karyawan hanya tampil dari 5 responden, dibulatkan ke kelipatan 5, diperbarui per 5 penyelesaian baru;
+// responden ditampilkan sebagai rentang.
 import { onMounted, ref } from 'vue'
 import { cca, THEME_LABEL, type InterviewQuestion, type Synthesis, type SynthesisRow } from '@/api/cca'
 import { UiButton, UiCard, UiChip, UiDataTable, UiErrorSummary, UiKpiCard, UiNote, UiProgressBar, UiSegmented, type UiColumn } from '@/ui'
@@ -75,7 +76,7 @@ async function showPreview() {
           <UiButton v-if="asRow(row).employeeAligned !== null" variant="text" size="sm" :disabled="busy" @click="apply(asRow(row))">Isi dari sintesis<span class="el-sr-only"> {{ row.name }}</span></UiButton>
         </template>
       </UiDataTable>
-      <UiNote style="margin-top: 12px">Angka karyawan hanya tampil bila paling sedikit {{ data.minRespondents }} karyawan menyinggung persyaratan itu, dibulatkan ke kelipatan 5. Ringkasan karyawan tidak dibuka per orang.</UiNote>
+      <UiNote style="margin-top: 12px">Angka karyawan hanya tampil bila paling sedikit {{ data.minRespondents }} karyawan menyinggung persyaratan itu, dibulatkan ke kelipatan 5. Angka karyawan diperbarui setiap {{ data.employeeBatch }} penyelesaian baru, jadi wawancara yang baru selesai bisa belum terhitung. Ringkasan karyawan tidak dibuka per orang.</UiNote>
     </template>
 
     <h3 class="el-h3" style="margin-top: 24px">Pratinjau sesi</h3>

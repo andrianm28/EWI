@@ -316,6 +316,12 @@ dokumen visi-misi (CCA-B21/B22) **tidak** ikut tahap 2a ini (lihat 11.9).
   `employeeRespondents` dikirim sebagai pita (`"<5"`, `"5–9"`, `"10–19"`, `"20+"`). Pimpinan tidak diberi ambang (HR sudah
   boleh membaca ringkasan pimpinan per orang). [⚠️ BELUM TERVERIFIKASI: angka 5 dan pita adalah pilihan penulis; risiko
   sisa (selisih pita di batas) dicatat untuk Andrian dan legal.]
+  **Keputusan user 23 Nov (kartu D1): angka karyawan diperbarui per 5 penyelesaian baru.** Penyelesaian tier karyawan
+  (termasuk putaran ulang orang yang sama) diurutkan menurut `completed_at`, lalu `id` penugasan bila sama; sintesis
+  hanya memakai kelipatan penuh `EMPLOYEE_BATCH` = 5 pertama, sisanya menunggu batch berikutnya. Jadi selisih dua tampilan
+  selalu berasal dari paling sedikit 5 penyelesaian dan tidak bisa dikaitkan ke satu orang lewat `teamDone`. Angka
+  pimpinan tetap diperbarui setiap penyelesaian. `GET /synthesis` mengirim `employeeBatch` dan layar menjelaskan bahwa
+  wawancara yang baru selesai bisa belum terhitung. `employeesCompleted` tetap rentang dari semua yang selesai.
 - **D-8 Teks persetujuan CCA.** Menambah `CONSENT_VERSIONS.cca` mengubah `core/consent` (kode bersama, review Andrian).
   **Keputusan user 23 Nov (kartu): draf `cca-consent-id-v1.0` baru, menunggu legal**, dari teks TNA v1.0 dengan tujuan
   "pemetaan pemahaman visi, misi, dan nilai; bukan penilaian kinerja" (kalimat mockup). Layar mengirim versi teks yang
@@ -466,7 +472,7 @@ Spec P1–P7. Triase `egm-resolve`:
 
 | # | Temuan | Kategori | Tindakan |
 | --- | --- | --- | --- |
-| D1 | HR bisa menebak jawaban satu karyawan dari selisih sintesis sebelum/sesudah ia selesai, dibantu `teamDone` dan `employeesCompleted` yang tepat | ESCALATE + PROPOSE FIX sebagian | KPI karyawan selesai di sintesis kini rentang; risiko sisa (penyegaran tiap selesai, `teamDone` tahap 1) ke Andrian dan legal: usulan segarkan angka karyawan per 5 penyelesaian baru atau saat putaran ditutup |
+| D1 | HR bisa menebak jawaban satu karyawan dari selisih sintesis sebelum/sesudah ia selesai, dibantu `teamDone` dan `employeesCompleted` yang tepat | ESCALATE + PROPOSE FIX | KPI karyawan selesai di sintesis kini rentang. Keputusan user 23 Nov: angka karyawan diperbarui per 5 penyelesaian baru (D-7, PR susulan). Legal tetap perlu melihat |
 | D2 | Semua galat jadi 502 dengan pesan teknis | PROPOSE FIX | hanya `AiError` → 502 pesan umum; galat lain diteruskan; pakai `ai-calls.callAi` |
 | D3, P1 | Pertanyaan tanpa nama persyaratan (D-3) | PROPOSE FIX | nama persyaratan potret dikirim ke `ccaQuestion`; test |
 | D4 | Layar mengirim versi persetujuan dari server | PROPOSE FIX | kirim `CCA_CONSENT_VERSION` layar |

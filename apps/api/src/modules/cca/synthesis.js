@@ -5,6 +5,9 @@ const { CCA_STANCES } = require('../../ai/prompts');
 
 const MIN_RESPONDENTS = 5;
 const HOT_GAP = 20;
+// keputusan user 23 Nov (D1): angka karyawan hanya bergeser setiap 5 penyelesaian baru, supaya selisih dua tampilan
+// tidak bisa dikaitkan ke satu orang
+const EMPLOYEE_BATCH = 5;
 
 function respondentBand(n) {
   if (n < MIN_RESPONDENTS) return `<${MIN_RESPONDENTS}`;
@@ -24,6 +27,16 @@ function latestResponses(responses) {
   return [...latest.values()];
 }
 
+const byCompletion = (a, b) => (new Date(a.completedAt) - new Date(b.completedAt)) || String(a.id || '').localeCompare(String(b.id || ''));
+
+// penyelesaian karyawan (termasuk putaran ulang) diurutkan menurut waktu selesai; hanya kelipatan penuh EMPLOYEE_BATCH
+// pertama yang dipakai, sisanya menunggu batch berikutnya
+function settledResponses(responses) {
+  const employee = responses.filter((r) => r.tier === 'employee').sort(byCompletion);
+  const settled = employee.slice(0, Math.floor(employee.length / EMPLOYEE_BATCH) * EMPLOYEE_BATCH);
+  return [...responses.filter((r) => r.tier !== 'employee'), ...settled];
+}
+
 function score(responses, tier, requirementId) {
   const [full, partial, none] = CCA_STANCES[tier];
   let n = 0; let points = 0;
@@ -40,10 +53,11 @@ function score(responses, tier, requirementId) {
 
 /**
  * requirements: [{ id }] (tervalidasi, sumber aktif).
- * responses: [{ assigneeId, tier, completedAt, stances: { [requirementId]: stance } }] (penugasan completed).
+ * responses: [{ id, assigneeId, tier, completedAt, stances: { [requirementId]: stance } }] (penugasan completed).
+ * Karyawan: hanya batch EMPLOYEE_BATCH penyelesaian yang sudah penuh (D-7).
  */
 function synthesize(requirements, responses) {
-  const latest = latestResponses(responses);
+  const latest = latestResponses(settledResponses(responses));
   return requirements.map((req) => {
     const leader = score(latest, 'leader', req.id);
     const employee = score(latest, 'employee', req.id);
@@ -61,4 +75,4 @@ function synthesize(requirements, responses) {
   });
 }
 
-module.exports = { MIN_RESPONDENTS, HOT_GAP, respondentBand, synthesize };
+module.exports = { MIN_RESPONDENTS, HOT_GAP, EMPLOYEE_BATCH, respondentBand, synthesize };

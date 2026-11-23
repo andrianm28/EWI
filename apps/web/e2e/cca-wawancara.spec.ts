@@ -119,6 +119,7 @@ test('karyawan: mengulang wawancara sekali langsung memuat pertanyaan pertama', 
 
 const SYNTH = {
   minRespondents: 5,
+  employeeBatch: 5,
   kpis: { themes: 2, leadersCompleted: 2, employeesCompleted: '5–9' },
   themes: [
     { requirementId: 'r-1', name: 'Kolaborasi lintas tim', sourceKind: 'vision', sourceTitle: 'Corporate Vision', leaderAgree: 100, leaderRespondents: 1, employeeAligned: 80, employeeRespondents: '5–9', gap: 20, hot: true, actualScore: null, actualSource: null },
@@ -143,6 +144,7 @@ test('HR: sintesis menandai gap besar, menyembunyikan angka di bawah 5 responden
   await page.goto('/cc?tab=aiv')
   const kartu = page.getByTestId('cc-sintesis')
   await expect(kartu.getByText('Tema tersintesis')).toBeVisible()
+  await expect(kartu.getByText('Angka karyawan diperbarui setiap 5 penyelesaian baru', { exact: false })).toBeVisible()
   const panas = kartu.getByRole('row', { name: /Kolaborasi lintas tim/ })
   await expect(panas).toContainText('80%')
   await expect(panas).toContainText('5–9 karyawan')

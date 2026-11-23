@@ -387,7 +387,7 @@ function createCcaStores(sequelize, { cipher } = {}) {
           WHERE a.tenant_id = :tenantId AND a.status = 'completed' AND a.completed_at IS NOT NULL`, { tenantId });
       const byAssignment = new Map();
       for (const r of rows) {
-        if (!byAssignment.has(r.id)) byAssignment.set(r.id, { assigneeId: r.assigneeId, tier: r.tier, completedAt: r.completedAt, stances: {} });
+        if (!byAssignment.has(r.id)) byAssignment.set(r.id, { id: r.id, assigneeId: r.assigneeId, tier: r.tier, completedAt: r.completedAt, stances: {} });
         if (r.requirementId) byAssignment.get(r.id).stances[r.requirementId] = r.stance;
       }
       return [...byAssignment.values()];

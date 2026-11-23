@@ -56,7 +56,7 @@ run('B10 tahap 2: wawancara dan sintesis Core Competencies (Postgres)', () => {
     await add('dir', 'pimpinan');
     await add('spv3', 'supervisor');
     await add('spv', 'supervisor', { sup: u.dir });
-    for (let i = 1; i <= 6; i += 1) await add(`k${i}`, 'learner', { sup: u.spv });
+    for (let i = 1; i <= 9; i += 1) await add(`k${i}`, 'learner', { sup: u.spv });
     await add('luar', 'hr_admin', { t: other.id });
     for (const t of [tenant.id, other.id]) {
       await db.query(`INSERT INTO entitlements (tenant_id, product) VALUES (:t, 'cca')`, { replacements: { t } });
@@ -259,20 +259,27 @@ run('B10 tahap 2: wawancara dan sintesis Core Competencies (Postgres)', () => {
   });
 
   describe('sintesis HR', () => {
-    it('angka karyawan baru tampil dari 5 responden; gap 20 ditandai; HR mengisi nilai aktual dan nilai lama dikembalikan', async () => {
+    it('angka karyawan baru tampil dari 5 responden dan hanya diperbarui per 5 penyelesaian; gap 20 ditandai; HR mengisi nilai aktual', async () => {
       // spv (pimpinan menengah) sudah selesai di tier pimpinan, jadi bisa menugaskan timnya
-      const assigned = await send('post', '/assignments', { assigneeIds: ['k1', 'k2', 'k3', 'k4', 'k5', 'k6'].map((k) => u[k]), dueDate: future }, 'spv');
-      expect(assigned.body.data.assigned).toHaveLength(6);
+      const tim = ['k1', 'k2', 'k3', 'k4', 'k5', 'k6', 'k7', 'k8', 'k9'];
+      const assigned = await send('post', '/assignments', { assigneeIds: tim.map((k) => u[k]), dueDate: future }, 'spv');
+      expect(assigned.body.data.assigned).toHaveLength(9);
       const jawaban = { k1: 'Kolaborasi antar divisi penting.', k2: 'Kolaborasi antar divisi penting.', k3: 'Kolaborasi antar divisi penting.', k4: 'Saya paham vision perusahaan.', k5: 'Saya paham vision perusahaan.' };
+      const selesai = async (ks) => { for (const k of ks) await wawancara(k, (await milik(k, 'employee')).id, Array(4).fill(jawaban[k] || 'Saya belum yakin.')); };
+      const kolaborasi = async () => (await get('/synthesis', 'hr')).body.data.themes.find((x) => x.requirementId === req.kolaborasi.id);
 
-      // empat responden menyinggung persyaratan: angka disembunyikan
-      for (const k of ['k1', 'k2', 'k3', 'k4']) await wawancara(k, (await milik(k, 'employee')).id, Array(4).fill(jawaban[k]));
+      // spv (tier karyawan, tes sebelumnya) + k1-k4 = batch pertama; baru 4 yang menyinggung persyaratan: angka disembunyikan
+      await selesai(['k1', 'k2', 'k3', 'k4']);
+      expect(await kolaborasi()).toMatchObject({ employeeAligned: null, employeeRespondents: '<5', gap: null, hot: false });
+
+      // k5 sudah menyinggung, tetapi batch kedua belum penuh (2 dari 5): angka belum berubah (keputusan user 23 Nov)
+      await selesai(['k5', 'k6']);
+      expect(await kolaborasi()).toMatchObject({ employeeAligned: null, employeeRespondents: '<5', gap: null });
+
+      await selesai(['k7', 'k8', 'k9']);
       let s = (await get('/synthesis', 'hr')).body.data;
-      expect(s.themes.find((x) => x.requirementId === req.kolaborasi.id)).toMatchObject({ employeeAligned: null, employeeRespondents: '<5', gap: null, hot: false });
-
-      for (const k of ['k5', 'k6']) await wawancara(k, (await milik(k, 'employee')).id, Array(4).fill(jawaban[k] || 'Saya belum yakin.'));
-      s = (await get('/synthesis', 'hr')).body.data;
       expect(s.minRespondents).toBe(5);
+      expect(s.employeeBatch).toBe(5);
       // pimpinan: direktur setuju (spv tidak menyinggung) = 100; karyawan: 3 sejalan + 2 partial dari 5 = 80
       expect(s.themes.find((x) => x.requirementId === req.kolaborasi.id)).toMatchObject({
         name: 'Kolaborasi lintas tim', sourceTitle: 'Corporate Vision', leaderAgree: 100, leaderRespondents: 1,
@@ -280,7 +287,7 @@ run('B10 tahap 2: wawancara dan sintesis Core Competencies (Postgres)', () => {
       });
       expect(s.themes.find((x) => x.requirementId === req.pelanggan.id)).toMatchObject({ leaderAgree: 100, employeeAligned: null, gap: null });
       expect(s.themes.map((x) => x.requirementId)).not.toContain(req.draf.id);
-      expect(s.kpis).toEqual({ themes: 3, leadersCompleted: 2, employeesCompleted: '5–9' });
+      expect(s.kpis).toEqual({ themes: 3, leadersCompleted: 2, employeesCompleted: '10–19' });
 
       const ap = await send('post', '/synthesis/apply', { requirementIds: [req.kolaborasi.id, req.pelanggan.id, req.draf.id] }, 'hr');
       expect(ap.status).toBe(200);

@@ -7,7 +7,7 @@ const { currentConsentVersion, isAcceptedConsentVersion } = require('../../core/
 const { CCA_THEMES, ccaDefaultQuestion } = require('../../ai/prompts');
 const { AiError } = require('../../ai/errors');
 const { callAi } = require('../interviews/ai-calls');
-const { MIN_RESPONDENTS, respondentBand, synthesize } = require('./synthesis');
+const { MIN_RESPONDENTS, EMPLOYEE_BATCH, respondentBand, synthesize } = require('./synthesis');
 
 const MAX_REQUIREMENTS = 20;
 const MAX_RESTARTS = 1;
@@ -196,6 +196,7 @@ function mountInterview(r, { stores, ai, aiConfig = {}, audit, interview }) {
       data: {
         themes: rows,
         minRespondents: MIN_RESPONDENTS,
+        employeeBatch: EMPLOYEE_BATCH,
         // karyawan selesai sebagai rentang (D-7): angka tepat di sini memudahkan menebak satu orang dari selisih tampilan
         kpis: { themes: rows.filter((x) => x.leaderRespondents > 0).length, leadersCompleted: people('leader'), employeesCompleted: respondentBand(people('employee')) },
       },
