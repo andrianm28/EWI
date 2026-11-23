@@ -24,7 +24,8 @@ run('Alur akses atasan ke perbaikan (B9, B11)', () => {
   beforeAll(async () => {
     db = createDb({ databaseUrl: process.env.DATABASE_URL, dbSchema: process.env.DB_SCHEMA || 'ewi' });
     const config = makeConfig();
-    a = langkah(createApp({ config, stores: createStores(db), ai: createStubProvider() }), pembuatMasuk(config));
+    const st = createStores(db);
+    a = langkah(createApp({ config, stores: st, ai: createStubProvider() }), pembuatMasuk(config, st.authSessions));
     const t = await siapkanTenant(db, {
       slug: `alur-ina-${akhiran}`,
       flags: [FLAGS.MODULE_DNA, FLAGS.MODULE_TNA, FLAGS.MODULE_INA, FLAGS.INA_DASHBOARD, FLAGS.TENANT_ADMIN],
