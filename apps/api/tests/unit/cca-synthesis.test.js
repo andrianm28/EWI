@@ -1,9 +1,9 @@
-const { MIN_RESPONDENTS, HOT_GAP, EMPLOYEE_BATCH, respondentBand, synthesize } = require('../../src/modules/cca/synthesis');
+const { MIN_RESPONDENTS, HOT_GAP, EMPLOYEE_BATCH, respondentBand, synthesize, batchToSettle } = require('../../src/modules/cca/synthesis');
 
 const REQ = [{ id: 'r1', name: 'Kolaborasi lintas tim' }, { id: 'r2', name: 'Fokus pelanggan' }];
 let seq = 0;
-// satu jawaban terkonfirmasi: siapa, tier, kapan, sikap per persyaratan
-const jawab = (assigneeId, tier, stances, completedAt = `2026-11-2${seq++ % 9}T08:00:00Z`) => ({ assigneeId, tier, completedAt, stances });
+// satu jawaban terkonfirmasi: siapa, tier, kapan, sikap per persyaratan; jawaban karyawan sudah masuk batch (settled)
+const jawab = (assigneeId, tier, stances, completedAt = `2026-11-2${seq++ % 9}T08:00:00Z`, settled = true) => ({ assigneeId, tier, completedAt, stances, settled });
 const karyawan = (n, stance, req = 'r1') => Array.from({ length: n }, (_, i) => jawab(`k${req}${stance}${i}`, 'employee', { [req]: stance }));
 const baris = (out, id) => out.find((x) => x.requirementId === id);
 
@@ -89,46 +89,38 @@ describe('CCA sintesis pimpinan vs karyawan (D-6, D-7)', () => {
   });
 
   describe('angka karyawan diperbarui per 5 penyelesaian baru (keputusan user 23 Nov, D1)', () => {
-    const jam = (i) => `2026-11-23T${String(i).padStart(2, '0')}:00:00Z`;
-    const urut = (stances) => stances.map((st, i) => jawab(`k${i}`, 'employee', { r1: st }, jam(i)));
+    const tunggu = (assigneeId, stances) => jawab(assigneeId, 'employee', stances, '2026-11-23T10:00:00Z', false);
 
-    it('penyelesaian ke-6 sampai ke-9 tidak mengubah angka karyawan; ke-10 memperbaruinya', () => {
-      const lima = urut(['aligned', 'aligned', 'aligned', 'aligned', 'aligned']);
-      expect(baris(synthesize(REQ, lima), 'r1')).toMatchObject({ employeeAligned: 100, employeeRespondents: '5–9' });
-      const sembilan = [...lima, ...urut(['x', 'x', 'x', 'x', 'x', 'not_aligned', 'not_aligned', 'not_aligned', 'not_aligned']).slice(5)];
-      expect(baris(synthesize(REQ, sembilan), 'r1')).toMatchObject({ employeeAligned: 100, employeeRespondents: '5–9', gap: null });
-      const sepuluh = [...lima, ...urut(Array(10).fill('not_aligned')).slice(5)];
-      // 5 sejalan + 5 tidak = 50
-      expect(baris(synthesize(REQ, sepuluh), 'r1')).toMatchObject({ employeeAligned: 50, employeeRespondents: '10–19' });
+    it('jawaban karyawan yang belum masuk batch tidak dihitung; angka pimpinan tetap dihitung', () => {
+      const lima = karyawan(5, 'aligned');
+      const out = synthesize(REQ, [...lima, tunggu('t1', { r1: 'not_aligned' }), tunggu('t2', { r1: 'not_aligned' }), jawab('p1', 'leader', { r1: 'agree' })]);
+      expect(baris(out, 'r1')).toMatchObject({ leaderAgree: 100, leaderRespondents: 1, employeeAligned: 100, employeeRespondents: '5–9', gap: 0 });
     });
 
-    it('urutan waktu selesai yang menentukan, bukan urutan data masuk', () => {
-      const data = urut(['not_aligned', 'aligned', 'aligned', 'aligned', 'aligned', 'aligned']);
-      // yang paling akhir selesai (k5) belum dihitung meski datang pertama: k0 tidak + 4 sejalan = 80
-      expect(baris(synthesize(REQ, [...data].reverse()), 'r1')).toMatchObject({ employeeAligned: 80 });
+    it('lima penyelesaian masuk batch tetapi hanya empat menyinggung persyaratan: angka tetap disembunyikan', () => {
+      const out = synthesize(REQ, [...karyawan(4, 'aligned'), jawab('k-lain', 'employee', { r2: 'aligned' })]);
+      expect(baris(out, 'r1')).toMatchObject({ employeeAligned: null, employeeRespondents: '<5' });
     });
 
-    it('waktu selesai sama: urutan id penugasan yang menentukan, jadi hasilnya tetap', () => {
-      const data = urut(Array(4).fill('aligned'));
-      const kembar = [{ ...jawab('a', 'employee', { r1: 'aligned' }, jam(9)), id: 'id-a' }, { ...jawab('b', 'employee', { r1: 'not_aligned' }, jam(9)), id: 'id-b' }];
-      const satu = baris(synthesize(REQ, [...data, ...kembar]), 'r1');
-      const dua = baris(synthesize(REQ, [...kembar.reverse(), ...data]), 'r1');
-      expect(satu).toMatchObject({ employeeAligned: 100 });
-      expect(dua).toEqual(satu);
-    });
-
-    it('putaran ulang satu karyawan dihitung sebagai penyelesaian baru, jadi tidak langsung mengubah angka', () => {
-      const lima = urut(['aligned', 'aligned', 'aligned', 'aligned', 'aligned']);
-      const ulang = jawab('k0', 'employee', { r1: 'not_aligned' }, jam(10));
+    it('putaran ulang yang belum masuk batch: putaran lama orang itu tetap dipakai', () => {
+      const lima = karyawan(5, 'aligned');
+      const ulang = { ...tunggu(lima[0].assigneeId, { r1: 'not_aligned' }), completedAt: '2026-12-01T00:00:00Z' };
       expect(baris(synthesize(REQ, [...lima, ulang]), 'r1')).toMatchObject({ employeeAligned: 100 });
-      // empat penyelesaian baru lagi: batch kedua penuh, putaran ulang k0 kini dipakai (k0 tidak + 4 sejalan + 4 sejalan baru)
-      const empat = [11, 12, 13, 14].map((i) => jawab(`b${i}`, 'employee', { r1: 'aligned' }, jam(i)));
-      expect(baris(synthesize(REQ, [...lima, ulang, ...empat]), 'r1')).toMatchObject({ employeeAligned: 90, employeeRespondents: '5–9' });
+      expect(baris(synthesize(REQ, [...lima, { ...ulang, settled: true }]), 'r1')).toMatchObject({ employeeAligned: 80 });
     });
 
-    it('angka pimpinan tetap diperbarui setiap penyelesaian', () => {
-      const out = synthesize(REQ, [...urut(Array(5).fill('aligned')), jawab('p1', 'leader', { r1: 'agree' }, jam(20))]);
-      expect(baris(out, 'r1')).toMatchObject({ leaderAgree: 100, leaderRespondents: 1, employeeAligned: 100 });
+    it('batch dibentuk bila yang menunggu berasal dari paling sedikit 5 orang berbeda; semua yang menunggu ikut', () => {
+      const p = (id, assigneeId) => ({ id, assigneeId });
+      expect(batchToSettle([p('a1', 'A'), p('a2', 'B'), p('a3', 'C'), p('a4', 'D')], EMPLOYEE_BATCH)).toEqual([]);
+      expect(batchToSettle([p('a1', 'A'), p('a2', 'B'), p('a3', 'C'), p('a4', 'D'), p('a5', 'E'), p('a6', 'F')], EMPLOYEE_BATCH))
+        .toEqual(['a1', 'a2', 'a3', 'a4', 'a5', 'a6']);
+    });
+
+    it('putaran ulang orang yang sama tidak mengisi batch sendirian', () => {
+      const p = (id, assigneeId) => ({ id, assigneeId });
+      const satuOrang = [p('a1', 'A'), p('a2', 'A'), p('a3', 'A'), p('a4', 'B'), p('a5', 'C')];
+      expect(batchToSettle(satuOrang, EMPLOYEE_BATCH)).toEqual([]);
+      expect(batchToSettle([...satuOrang, p('a6', 'D'), p('a7', 'E')], EMPLOYEE_BATCH)).toHaveLength(7);
     });
   });
 });

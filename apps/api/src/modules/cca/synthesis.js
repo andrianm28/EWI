@@ -5,8 +5,8 @@ const { CCA_STANCES } = require('../../ai/prompts');
 
 const MIN_RESPONDENTS = 5;
 const HOT_GAP = 20;
-// keputusan user 23 Nov (D1): angka karyawan hanya bergeser setiap 5 penyelesaian baru, supaya selisih dua tampilan
-// tidak bisa dikaitkan ke satu orang
+// keputusan user 23 Nov (D1): angka karyawan hanya bergeser setiap 5 penyelesaian baru dari orang berbeda, supaya
+// selisih dua tampilan tidak menunjuk satu orang
 const EMPLOYEE_BATCH = 5;
 
 function respondentBand(n) {
@@ -27,14 +27,16 @@ function latestResponses(responses) {
   return [...latest.values()];
 }
 
-const byCompletion = (a, b) => (new Date(a.completedAt) - new Date(b.completedAt)) || String(a.id || '').localeCompare(String(b.id || ''));
+// jawaban karyawan dihitung hanya setelah masuk batch (settled, ditandai saat konfirmasi oleh batchToSettle)
+const counted = (r) => r.tier !== 'employee' || r.settled;
 
-// penyelesaian karyawan (termasuk putaran ulang) diurutkan menurut waktu selesai; hanya kelipatan penuh EMPLOYEE_BATCH
-// pertama yang dipakai, sisanya menunggu batch berikutnya
-function settledResponses(responses) {
-  const employee = responses.filter((r) => r.tier === 'employee').sort(byCompletion);
-  const settled = employee.slice(0, Math.floor(employee.length / EMPLOYEE_BATCH) * EMPLOYEE_BATCH);
-  return [...responses.filter((r) => r.tier !== 'employee'), ...settled];
+/**
+ * Penyelesaian karyawan yang menunggu batch: [{ id, assigneeId }]. Batch dibentuk bila yang menunggu berasal dari
+ * paling sedikit `batchSize` orang berbeda (putaran ulang satu orang tidak mengisi batch sendirian); semua ikut.
+ */
+function batchToSettle(pending, batchSize) {
+  const people = new Set(pending.map((x) => x.assigneeId));
+  return people.size >= batchSize ? pending.map((x) => x.id) : [];
 }
 
 function score(responses, tier, requirementId) {
@@ -53,11 +55,11 @@ function score(responses, tier, requirementId) {
 
 /**
  * requirements: [{ id }] (tervalidasi, sumber aktif).
- * responses: [{ id, assigneeId, tier, completedAt, stances: { [requirementId]: stance } }] (penugasan completed).
- * Karyawan: hanya batch EMPLOYEE_BATCH penyelesaian yang sudah penuh (D-7).
+ * responses: [{ assigneeId, tier, completedAt, settled, stances: { [requirementId]: stance } }] (penugasan completed).
+ * Karyawan hanya dihitung bila `settled` (D-7, keputusan user 23 Nov).
  */
 function synthesize(requirements, responses) {
-  const latest = latestResponses(settledResponses(responses));
+  const latest = latestResponses(responses.filter(counted));
   return requirements.map((req) => {
     const leader = score(latest, 'leader', req.id);
     const employee = score(latest, 'employee', req.id);
@@ -75,4 +77,4 @@ function synthesize(requirements, responses) {
   });
 }
 
-module.exports = { MIN_RESPONDENTS, HOT_GAP, EMPLOYEE_BATCH, respondentBand, synthesize };
+module.exports = { MIN_RESPONDENTS, HOT_GAP, EMPLOYEE_BATCH, respondentBand, synthesize, batchToSettle };

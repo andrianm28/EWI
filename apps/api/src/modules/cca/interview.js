@@ -7,7 +7,7 @@ const { currentConsentVersion, isAcceptedConsentVersion } = require('../../core/
 const { CCA_THEMES, ccaDefaultQuestion } = require('../../ai/prompts');
 const { AiError } = require('../../ai/errors');
 const { callAi } = require('../interviews/ai-calls');
-const { MIN_RESPONDENTS, EMPLOYEE_BATCH, respondentBand, synthesize } = require('./synthesis');
+const { MIN_RESPONDENTS, EMPLOYEE_BATCH, respondentBand, synthesize, batchToSettle } = require('./synthesis');
 
 const MAX_REQUIREMENTS = 20;
 const MAX_RESTARTS = 1;
@@ -163,7 +163,7 @@ function mountInterview(r, { stores, ai, aiConfig = {}, audit, interview }) {
 
   r.post('/assignments/:id/summary/confirm', interview, wrap(async (req, res) => {
     const a = await ownAssignment(req);
-    const row = await stores.cca.confirmInterview(req.tenantId, a.id);
+    const row = await stores.cca.confirmInterview(req.tenantId, a.id, { settle: (pending) => batchToSettle(pending, EMPLOYEE_BATCH) });
     if (!row) throw invalidState('Ringkasan belum dibuat atau wawancara sudah dikirim');
     await audit.record(req, 'update', 'cca.assignment', { assignmentId: a.id, status: 'completed' });
     res.json({ data: { status: 'completed' } });

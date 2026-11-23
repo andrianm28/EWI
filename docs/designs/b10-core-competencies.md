@@ -317,11 +317,17 @@ dokumen visi-misi (CCA-B21/B22) **tidak** ikut tahap 2a ini (lihat 11.9).
   boleh membaca ringkasan pimpinan per orang). [⚠️ BELUM TERVERIFIKASI: angka 5 dan pita adalah pilihan penulis; risiko
   sisa (selisih pita di batas) dicatat untuk Andrian dan legal.]
   **Keputusan user 23 Nov (kartu D1): angka karyawan diperbarui per 5 penyelesaian baru.** Penyelesaian tier karyawan
-  (termasuk putaran ulang orang yang sama) diurutkan menurut `completed_at`, lalu `id` penugasan bila sama; sintesis
-  hanya memakai kelipatan penuh `EMPLOYEE_BATCH` = 5 pertama, sisanya menunggu batch berikutnya. Jadi selisih dua tampilan
-  selalu berasal dari paling sedikit 5 penyelesaian dan tidak bisa dikaitkan ke satu orang lewat `teamDone`. Angka
-  pimpinan tetap diperbarui setiap penyelesaian. `GET /synthesis` mengirim `employeeBatch` dan layar menjelaskan bahwa
-  wawancara yang baru selesai bisa belum terhitung. `employeesCompleted` tetap rentang dari semua yang selesai.
+  baru masuk sintesis setelah ditandai `synthesis_settled_at` (migrasi `20261123002000-cca-sintesis-batch`). Penandaan
+  terjadi di transaksi konfirmasi, di bawah kunci per tenant: bila penyelesaian yang menunggu berasal dari paling sedikit
+  `EMPLOYEE_BATCH` = 5 orang berbeda, semuanya ditandai sekaligus. Putaran ulang satu orang tidak mengisi batch sendirian;
+  sampai putaran barunya masuk batch, putaran lamanya yang dihitung. Batas batch disimpan, jadi tidak bergeser saat
+  karyawan dihapus atau dua konfirmasi berbalapan. Penyelesaian sebelum keputusan ini ditandai saat migrasi (sudah tampil).
+  Angka pimpinan tetap diperbarui setiap penyelesaian. `GET /synthesis` mengirim `employeeBatch` dan layar menjelaskan
+  bahwa wawancara yang baru selesai bisa belum terhitung. `employeesCompleted` di sintesis tetap rentang dari semua yang
+  selesai; `GET /assignments` HR tetap mengirim hitungan tepat dan `teamDone` per pimpinan (tahap 1, sengaja).
+  [⚠️ RISIKO SISA untuk Andrian dan legal: (1) bila dari 5 orang dalam satu batch hanya satu yang menyinggung persyaratan
+  X, selisih angka X berasal dari satu orang itu, hanya tersamar di antara 5 orang; (2) menghapus karyawan yang sudah
+  masuk batch mengeluarkan jawabannya dari sintesis, jadi selisihnya menunjukkan sikap orang yang dihapus.]
 - **D-8 Teks persetujuan CCA.** Menambah `CONSENT_VERSIONS.cca` mengubah `core/consent` (kode bersama, review Andrian).
   **Keputusan user 23 Nov (kartu): draf `cca-consent-id-v1.0` baru, menunggu legal**, dari teks TNA v1.0 dengan tujuan
   "pemetaan pemahaman visi, misi, dan nilai; bukan penilaian kinerja" (kalimat mockup). Layar mengirim versi teks yang
@@ -333,7 +339,8 @@ dokumen visi-misi (CCA-B21/B22) **tidak** ikut tahap 2a ini (lihat 11.9).
 
 ### 11.3 Data dan migrasi
 
-Migrasi baru `apps/api/migrations/20261123001000-cca-wawancara.js` (blok 10, berkas kedua), raw SQL.
+Migrasi baru `apps/api/migrations/20261123001000-cca-wawancara.js` (blok 10, berkas kedua), raw SQL. Keputusan D1
+menambah `20261123002000-cca-sintesis-batch.js`: kolom `cca_assignments.synthesis_settled_at` + indeks parsial (D-7).
 
 `up`:
 - `cca_assignments` + `consent_version varchar(64)`, `consent_at timestamptz`, `started_at timestamptz`,
@@ -472,7 +479,7 @@ Spec P1–P7. Triase `egm-resolve`:
 
 | # | Temuan | Kategori | Tindakan |
 | --- | --- | --- | --- |
-| D1 | HR bisa menebak jawaban satu karyawan dari selisih sintesis sebelum/sesudah ia selesai, dibantu `teamDone` dan `employeesCompleted` yang tepat | ESCALATE + PROPOSE FIX | KPI karyawan selesai di sintesis kini rentang. Keputusan user 23 Nov: angka karyawan diperbarui per 5 penyelesaian baru (D-7, PR susulan). Legal tetap perlu melihat |
+| D1 | HR bisa menebak jawaban satu karyawan dari selisih sintesis sebelum/sesudah ia selesai, dibantu `teamDone` dan `employeesCompleted` yang tepat | ESCALATE + PROPOSE FIX | KPI karyawan selesai di sintesis kini rentang. Keputusan user 23 Nov: angka karyawan diperbarui per batch 5 penyelesaian dari orang berbeda, penanda batch disimpan (D-7). Risiko sisa per persyaratan dan penghapusan karyawan ke Andrian dan legal |
 | D2 | Semua galat jadi 502 dengan pesan teknis | PROPOSE FIX | hanya `AiError` → 502 pesan umum; galat lain diteruskan; pakai `ai-calls.callAi` |
 | D3, P1 | Pertanyaan tanpa nama persyaratan (D-3) | PROPOSE FIX | nama persyaratan potret dikirim ke `ccaQuestion`; test |
 | D4 | Layar mengirim versi persetujuan dari server | PROPOSE FIX | kirim `CCA_CONSENT_VERSION` layar |
@@ -604,3 +611,20 @@ Sumbu Spec (spek ini):
 | P-4 | Baris yang ditolak tidak bisa dipulihkan dari layar | Ditunda, ⏳ di bagian 13 |
 | P-5..7 | `role` di `GET /`, `participants`, bentuk respons isian agregat tidak tertulis | Dicatat di bagian 5 |
 | P-8 | Tanggal layar memakai zona peramban, API memakai WIB | Diperbaiki (`due.ts`) |
+
+### 11.12 Triase review keputusan D1 (23 Nov)
+
+Goldfish diff review + code review dua sumbu atas versi pertama (batch dihitung ulang dari baris yang ada).
+
+| # | Temuan | Triase | Tindakan |
+|---|---|---|---|
+| R1 | Menghapus karyawan yang sudah selesai menggeser batas batch, sehingga satu penyelesaian baru bisa langsung tampil | PROPOSE FIX | Penanda batch disimpan (`synthesis_settled_at`) |
+| R2 | Putaran ulang satu orang bisa mengisi batch sendirian | PROPOSE FIX | Batch butuh 5 orang berbeda (`batchToSettle`) |
+| R3 | `completed_at = now()` adalah awal transaksi; dua konfirmasi berbalapan bisa bertukar urutan | PROPOSE FIX | Penandaan di bawah kunci advisory per tenant, tidak bergantung urutan waktu |
+| R4 | `GET /assignments` HR masih mengirim hitungan tepat dan `teamDone` | ACCEPT + CATAT | Dicatat di D-7 sebagai sengaja (tahap 1) |
+| R5 | Klaim spek "tidak bisa dikaitkan ke satu orang" terlalu kuat | PROPOSE FIX | Diganti risiko sisa per persyaratan dan penghapusan (D-7) |
+| R6 | Test "disembunyikan di bawah 5" tidak lagi menguji ambang; satu asersi `gap: null` tautologis | PROPOSE FIX | Test baru: 5 masuk batch, 4 menyinggung; test lama diganti |
+| S1 | Dua pembanding urutan waktu (`byCompletion`, `latestResponses`); fallback `id \|\| ''` | Gugur | Urutan batch tidak lagi dihitung dari waktu |
+| S2 | Branch bukan `feat/ewi-ELITMEN-xxx`, tanpa tiket | ACCEPT | Aturan branch agen thread ini (`claude/project-thread-*`) |
+| S3 | Tanpa flag baru | ACCEPT | Perbaikan privasi perilaku D-7 yang sudah di balik `cca.interview` |
+
