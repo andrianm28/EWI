@@ -125,6 +125,8 @@ export const lna = {
   reviewFinding: (id: string, body: ReviewDecision) => post<{ data: ReviewItem }>(`/tna/findings/${id}/review`, body),
   myResults: () => call<{ data: MyResults }>('/my/results'),
   myLearningPlan: () => call<{ data: LearningCard[]; delivery: LearningDelivery }>('/my/learning-plan'),
+  /** Permintaan data milik sendiri, semua status; tanpa flag (hak subjek data). */
+  myDataRequests: () => call<{ data: DataRequest[] }>('/employees/me/data-requests'),
   createDataRequest: (type: DataRequestType, reason?: string) => post<{ data: DataRequest }>('/employees/me/data-requests', { type, reason }),
   cancelDataRequest: (id: string) => call<{ data: { id: string; status: string } }>(`/employees/me/data-requests/${id}`, { method: 'DELETE' }),
   dataRequests: (status: 'open' | 'done' | 'cancelled' | 'all' = 'open') => call<{ data: DataRequestRow[] }>(`/employees/data-requests?status=${status}`),

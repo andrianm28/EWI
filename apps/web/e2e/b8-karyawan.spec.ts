@@ -1,6 +1,6 @@
 import { test, expect, type Page } from '@playwright/test'
 import { loginSebagai, type OpsiSesi, type Peran } from './support/sesi'
-import { mockApi, cocok, type ResponsApi } from './support/api'
+import { mockApi, mockApiDasar, cocok, type ResponsApi } from './support/api'
 
 // B8 layar web: "Hasil saya" (rute my) dan "Rencana belajar" (rute li). Spek: docs/designs/b8-karyawan.md "Layar web".
 // API di-mock lewat support/ B18.
@@ -30,8 +30,10 @@ function hasil(me: string, over: Record<string, unknown> = {}) {
 
 async function masuk(page: Page, peran: Peran = 'karyawan', opsi: OpsiSesi = {}, over: Record<string, unknown> = {}) {
   const me = `u-${peran}`
-  await mockApi(page, (req) => {
+  // Penangan dasar: kalah dari mockApi milik test, apa pun urutannya
+  await mockApiDasar(page, (req) => {
     if (cocok(req, 'GET /my/results')) return data(hasil(me, over))
+    if (cocok(req, 'GET /employees/me/data-requests')) return data([])
     return undefined
   })
   return loginSebagai(page, peran, { ...opsi, flags: { ...ON, ...opsi.flags } })
@@ -112,4 +114,95 @@ test('HR dengan flag menyala melihat "Karyawan (saya)" dan mendarat di Hasil say
   await views.getByRole('button', { name: 'Karyawan (saya)' }).click()
   await expect(page).toHaveURL(/\/my$/)
   await expect(page.getByRole('heading', { level: 1, name: 'Hasil saya' })).toBeVisible()
+})
+
+test('hasil gagal dimuat: galat dan Coba lagi; kartu Data saya tetap tampil', async ({ page }) => {
+  let gagal = true
+  await mockApi(page, (req) => {
+    if (cocok(req, 'GET /my/results') && gagal) return { status: 500, json: { error: { code: 'ERROR', message: 'Server sedang bermasalah' } } }
+    if (cocok(req, 'GET /employees/me/data-requests')) return data([])
+    return undefined
+  })
+  await masuk(page)
+  await expect(page.getByText('Server sedang bermasalah')).toBeVisible()
+  await expect(page.getByTestId('my-privacy')).toBeVisible()
+  gagal = false
+  await page.getByRole('button', { name: 'Coba lagi' }).click()
+  await expect(page.getByRole('table')).toBeVisible()
+})
+
+interface Kirim { method: string; path: string; body: unknown }
+async function dataSaya(page: Page, o: { peran?: Peran; permintaan?: unknown[]; tolak?: boolean } = {}) {
+  const sent: Kirim[] = []
+  let rows = o.permintaan ?? []
+  await mockApi(page, (req) => {
+    if (cocok(req, 'GET /employees/me/data-requests')) return data(rows)
+    if (cocok(req, 'GET /employees/:id/export')) { sent.push({ method: 'GET', path: req.path, body: null }); return { json: { data: { profile: {} } } } }
+    if (cocok(req, 'POST /employees/me/data-requests')) {
+      sent.push({ method: 'POST', path: req.path, body: req.body })
+      if (o.tolak) return { status: 409, json: { error: { code: 'REQUEST_EXISTS', message: 'Permintaan hapus data Anda masih diproses' } } }
+      const b = req.body as { type: string }
+      const row = { id: 'r9', type: b.type, status: 'open', createdAt: '2026-11-23T03:00:00.000Z', dueAt: b.type === 'delete_data' ? '2026-11-26T03:00:00.000Z' : null, sessions: 1 }
+      rows = [row, ...rows]
+      return data(row, 201)
+    }
+    const batal = cocok(req, 'DELETE /employees/me/data-requests/:id')
+    if (batal) { sent.push({ method: 'DELETE', path: req.path, body: null }); rows = []; return data({ id: batal.id, status: 'cancelled' }) }
+    return undefined
+  })
+  await masuk(page, o.peran ?? 'karyawan', {}, { interviews: [{ sessionId: 's0', submodule: 'tna', status: 'completed', endedAt: '2026-11-10T03:00:00.000Z', consentVersion: 'tna-consent-id-v1.0', consentWithdrawnAt: null, transcriptPath: '/api/tna/sessions/s0/transcript' }] })
+  return sent
+}
+
+test('Data saya: unduh memakai jalur ekspor tanpa awalan ganda', async ({ page }) => {
+  const sent = await dataSaya(page)
+  const unduh = page.waitForEvent('download')
+  await page.getByTestId('my-privacy').getByRole('button', { name: 'Unduh data saya' }).click()
+  expect((await unduh).suggestedFilename()).toMatch(/^elgos-data-saya-\d{4}-\d{2}-\d{2}\.json$/)
+  expect(sent).toEqual([{ method: 'GET', path: '/employees/u-karyawan/export', body: null }])
+})
+
+test('Data saya: tarik persetujuan lewat konfirmasi di halaman', async ({ page }) => {
+  const sent = await dataSaya(page)
+  const kartu = page.getByTestId('my-privacy')
+  await kartu.getByRole('button', { name: 'Tarik persetujuan wawancara' }).click()
+  const panel = kartu.getByRole('region', { name: 'Konfirmasi tarik persetujuan' })
+  await expect(panel).toContainText('tidak bisa dipulihkan')
+  await panel.getByRole('button', { name: 'Batal' }).click()
+  expect(sent).toEqual([])
+  await kartu.getByRole('button', { name: 'Tarik persetujuan wawancara' }).click()
+  await kartu.getByRole('button', { name: 'Ya, tarik persetujuan' }).click()
+  await expect(kartu.getByRole('status')).toHaveText('Persetujuan ditarik. 1 wawancara dihentikan.')
+  expect(sent).toEqual([{ method: 'POST', path: '/employees/me/data-requests', body: { type: 'withdraw_consent' } }])
+})
+
+test('Data saya: minta hapus dengan alasan, lalu batalkan', async ({ page }) => {
+  const sent = await dataSaya(page)
+  const kartu = page.getByTestId('my-privacy')
+  await kartu.getByLabel('Alasan (opsional)').fill('Saya keluar dari perusahaan')
+  await kartu.getByRole('button', { name: 'Kirim permintaan hapus' }).click()
+  await expect(kartu.getByRole('status')).toContainText('Permintaan hapus terkirim')
+  await expect(kartu.getByRole('button', { name: 'Kirim permintaan hapus' })).toHaveCount(0)
+  await expect(kartu.getByRole('listitem').filter({ hasText: 'Hapus data' })).toContainText('Terbuka')
+  await kartu.getByRole('button', { name: 'Batalkan' }).click()
+  await expect(kartu.getByRole('button', { name: 'Kirim permintaan hapus' })).toBeVisible()
+  expect(sent).toEqual([
+    { method: 'POST', path: '/employees/me/data-requests', body: { type: 'delete_data', reason: 'Saya keluar dari perusahaan' } },
+    { method: 'DELETE', path: '/employees/me/data-requests/r9', body: null },
+  ])
+})
+
+test('Data saya: galat 409 tampil; akun HR tidak melihat isian hapus', async ({ page, browser }) => {
+  await dataSaya(page, { tolak: true })
+  const kartu = page.getByTestId('my-privacy')
+  await kartu.getByRole('button', { name: 'Kirim permintaan hapus' }).click()
+  await expect(kartu.getByText('Permintaan hapus data Anda masih diproses')).toBeVisible()
+
+  const hr = await (await browser.newContext()).newPage()
+  await mockApi(hr, (req) => (cocok(req, 'GET /dashboard') ? data({}) : undefined))
+  await dataSaya(hr, { peran: 'hr' })
+  await hr.getByRole('group', { name: 'Tampilan' }).getByRole('button', { name: 'Karyawan (saya)' }).click()
+  const k = hr.getByTestId('my-privacy')
+  await expect(k).toContainText('Akun HR atau Admin ETA dihapus lewat Admin ETA.')
+  await expect(k.getByRole('button', { name: 'Kirim permintaan hapus' })).toHaveCount(0)
 })

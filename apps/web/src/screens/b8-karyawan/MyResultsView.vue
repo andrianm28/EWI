@@ -2,23 +2,39 @@
 // "Hasil saya": beranda tampilan karyawan (mockup KARYAWAN: BERANDA). Spek: docs/designs/b8-karyawan.md "Layar web".
 // Semua data dari GET /api/my/results (hanya milik pengguna ini, berlaku untuk semua peran, K2).
 import { computed, onMounted, ref } from 'vue'
+import { useRouter } from 'vue-router'
 import AppShell from '@/components/AppShell.vue'
 import { ApiError } from '@/api/client'
 import { formatWib, lna, type MyResults } from '@/api/lna'
+import DataSaya from './DataSaya.vue'
 import { UiButton, UiCard, UiDataTable, UiErrorSummary, UiNote, UiStatus, type UiColumn } from '@/ui'
 import { COMPETENCY_STATUS, inviteAction, planSummary, scoreText } from './view'
-import { routeOpen } from '@/router'
+import { homeFor, routeOpen } from '@/router'
 import { useSessionStore } from '@/stores/session'
 import './b8.css'
 
 const session = useSessionStore()
 const res = ref<MyResults | null>(null)
 const error = ref('')
+const loading = ref(true)
+const router = useRouter()
 
 async function load() {
-  try { res.value = (await lna.myResults()).data; error.value = '' } catch (e) { error.value = e instanceof ApiError ? e.message : 'Hasil Anda tidak bisa dimuat' }
+  loading.value = true; error.value = ''
+  try { res.value = (await lna.myResults()).data } catch (e) {
+    // Flag dimatikan selama sesi: akses dimuat ulang lalu pindah ke beranda tampilan
+    if (e instanceof ApiError && e.code === 'FEATURE_DISABLED') {
+      await session.loadAccess().catch(() => {})
+      await router.replace({ name: homeFor(session.activeView) })
+      return
+    }
+    error.value = e instanceof ApiError ? e.message : 'Hasil Anda tidak bisa dimuat'
+  } finally { loading.value = false }
 }
 onMounted(load)
+
+// Tarik persetujuan hanya bila ada yang bisa ditarik: undangan terbuka atau wawancara yang belum ditarik
+const canWithdraw = computed(() => !!res.value?.invitations?.length || !!res.value?.interviews?.some((i) => !i.consentWithdrawnAt))
 
 const position = computed(() => {
   const p = res.value?.person
@@ -40,7 +56,11 @@ const rows = computed(() => (res.value?.competencies?.items ?? []).map((c) => ({
 <template>
   <AppShell>
     <h1 class="b8-h1">Hasil saya</h1>
-    <UiErrorSummary :errors="error ? [{ message: error }] : []" />
+    <p v-if="loading && !res" class="el-muted" role="status">Memuat hasil Anda…</p>
+    <template v-if="error">
+      <UiErrorSummary :errors="[{ message: error }]" />
+      <UiButton variant="outlined" size="sm" @click="load">Coba lagi</UiButton>
+    </template>
     <template v-if="res">
       <p class="el-muted b8-sub">{{ position }}</p>
       <section v-if="res.invitations?.length" data-testid="my-invitations" aria-label="Undangan wawancara" class="b8-list b8-sub">
@@ -68,5 +88,6 @@ const rows = computed(() => (res.value?.competencies?.items ?? []).map((c) => ({
         </template>
       </UiCard>
     </template>
+    <DataSaya :can-withdraw="canWithdraw" @changed="load" />
   </AppShell>
 </template>

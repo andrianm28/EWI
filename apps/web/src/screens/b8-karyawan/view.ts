@@ -50,6 +50,13 @@ export function inviteAction(inv: Pick<Invitation, 'canStart' | 'canContinue'>):
   return null
 }
 
+export const REQUEST_STATUS_LABEL: Record<string, string> = { open: 'Terbuka', done: 'Selesai', cancelled: 'Dibatalkan' }
+
+/** Peran akun (bukan tampilan aktif) yang tidak boleh meminta hapus lewat Data saya; sama dengan DELETE /employees/:userId. */
+export function isAdminAccount(roles: string[]): boolean {
+  return roles.some((r) => r === 'hr_admin' || r === 'eta_admin')
+}
+
 export const REQUEST_LABEL: Record<string, string> = {
   withdraw_consent: 'Tarik persetujuan wawancara',
   delete_data: 'Hapus data',

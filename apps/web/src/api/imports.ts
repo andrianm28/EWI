@@ -37,6 +37,19 @@ export async function raw(path: string, init: RequestInit = {}) {
   return res
 }
 
+/** Mengunduh `path` (dengan token) sebagai berkas `filename`. Pemakai lama dengan kode blob sendiri belum dipindah. */
+export async function downloadFile(path: string, filename: string) {
+  const res = await raw(path)
+  const url = URL.createObjectURL(await res.blob())
+  const a = document.createElement('a')
+  a.href = url
+  a.download = filename
+  document.body.appendChild(a)
+  a.click()
+  a.remove()
+  setTimeout(() => URL.revokeObjectURL(url), 1000)
+}
+
 export const imports = {
   templates: (sm: Submodule) => call<{ data: ImportKind[] }>(`/${sm}/imports/templates`),
   history: (sm: Submodule) => call<{ data: ImportBatch[] }>(`/${sm}/imports/batches`),
