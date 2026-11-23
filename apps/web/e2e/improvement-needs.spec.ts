@@ -75,7 +75,14 @@ test('HR: KPI, tabel tindakan, ubah status, tambah tindakan, dan akses atasan', 
   await expect(table.getByRole('row')).toHaveCount(3)
   await expect(table).toContainText('Perbarui SOP eskalasi insiden')
   await expect(table).toContainText('Lewat tenggat')
-  await expect(page.getByTestId('ina-ai')).toContainText('Pilot')
+  // P3 IN-1..IN-3: breadcrumb, kartu Agen AI copy mockup tanpa tombol, tabel verifikasi di kartu sendiri
+  await expect(page.getByRole('navigation', { name: 'Lokasi' })).toHaveText(/Learning Needs Analysis\s*›\s*Improvement Needs/)
+  const agen = page.getByTestId('ina-ai')
+  await expect(agen.getByRole('heading', { name: 'Agen AI · Verifikasi tindakan perbaikan' })).toBeVisible()
+  await expect(agen).toContainText('Pilot')
+  await expect(agen).toContainText('AI menanyai pemilik tindakan perbaikan (atasan atau karyawan pada jabatan terkait) tentang hambatan dan status, lalu merangkum untuk HR.')
+  await expect(agen.getByRole('button')).toHaveCount(0)
+  await expect(page.getByTestId('ina-verifikasi')).toContainText('Belum ada verifikasi')
   await expect(page.getByTestId('ina-tersembunyi')).toHaveText('Lihat 1 tindakan yang menyangkut individu')
 
   // status hanya menawarkan transisi yang sah

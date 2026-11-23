@@ -36,6 +36,15 @@ describe('gap kompetensi (R2, R2b, R3, R4)', () => {
     });
   });
 
+  it('menyertakan kode kompetensi untuk kolom Kode (paritas P3 TN-7); null bila belum ada', () => {
+    const { rows } = competencyGaps({
+      members: [member('a', [{ ...comp(C1, 'A', 3), code: 'ST-A2' }, comp(C2, 'B', 3)])],
+      assessments: [score('a', C1, 1, '2026-11-01'), score('a', C2, 1, '2026-11-01')],
+    });
+    expect(rows.find((r) => r.competencyId === C1).code).toBe('ST-A2');
+    expect(rows.find((r) => r.competencyId === C2).code).toBeNull();
+  });
+
   it('melewati kompetensi yang belum disahkan dan yang belum punya penilaian', () => {
     const comps = [comp(C1, 'A', 3, false), comp(C2, 'B', 3), comp(C3, 'C', 3)];
     const { rows, unapprovedCompetencies } = competencyGaps({

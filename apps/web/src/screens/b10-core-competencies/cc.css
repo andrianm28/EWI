@@ -1,5 +1,4 @@
 /* Gaya bersama layar Core Competencies (B10); dimuat oleh kedua rute karena masing-masing dimuat malas. */
-.cc-crumb { font-size: 12px; margin: 0 0 4px; }
 .cc-gap-title { margin-top: 28px; }
 .cc-stack > * + * { margin-top: 16px; }
 .cc-row { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; justify-content: space-between; }

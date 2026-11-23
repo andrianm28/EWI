@@ -1,5 +1,7 @@
 // Komponen UI bersama ELGOS (B0). Cara pakai dan daftar props: docs/designs/b0-fondasi-ui.md bagian 4.
+export { default as UiAgentCard } from './UiAgentCard.vue'
 export { default as UiAuditLine } from './UiAuditLine.vue'
+export { default as UiBreadcrumb } from './UiBreadcrumb.vue'
 export { default as UiButton } from './UiButton.vue'
 export { default as UiCard } from './UiCard.vue'
 export { default as UiChip } from './UiChip.vue'

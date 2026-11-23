@@ -68,7 +68,7 @@ Bagian layar, urutan mockup: kartu KPI → Status modul → Pareto 20/80 → Per
       { "no": 5, "key": "cp", "active": false }
     ],
     "pareto": {                        // null bila TNA tertutup
-      "rows": [ { "key": "…", "label": "Root Cause Analysis", "people": 4, "score": 6.2, "share": 0.41, "cumulativeShare": 0.41, "hot": true } ],
+      "rows": [ { "key": "…", "label": "Root Cause Analysis", "competencyId": "<uuid atau null>", "people": 4, "score": 6.2, "share": 0.41, "cumulativeShare": 0.41, "hot": true } ],
       "total": 7,                      // jumlah kebutuhan seluruh peringkat, sebelum dipotong 7 baris
       "hotCount": 2                    // dihitung dari seluruh peringkat (bisa lebih dari baris yang dikirim)
     },

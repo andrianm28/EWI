@@ -72,7 +72,7 @@ function competencyGaps({ members, assessments }) {
     const actual = round2(avg(scores));
     const targetPct = toPct(target); const actualPct = toPct(actual);
     rows.push({
-      key: `c:${comp.id}`, kind: 'competency', competencyId: comp.id, name: comp.name,
+      key: `c:${comp.id}`, kind: 'competency', competencyId: comp.id, code: comp.code || null, name: comp.name,
       target, actual, gap: round2(Math.max(0, target - actual)),
       targetPct, actualPct, gapPct: Math.max(0, targetPct - actualPct),
       assessed: scores.length, peopleWithGap, peopleTotal,

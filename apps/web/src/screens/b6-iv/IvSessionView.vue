@@ -5,7 +5,7 @@ import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import AppShell from '@/components/AppShell.vue'
 import { ApiError } from '@/api/client'
-import { UiAuditLine, UiButton, UiCard, UiChip, UiErrorSummary, UiField, UiNote, UiStatus, UiStepper } from '@/ui'
+import { UiAuditLine, UiBreadcrumb, UiButton, UiCard, UiChip, UiErrorSummary, UiField, UiNote, UiStatus, UiStepper } from '@/ui'
 import { useSessionStore } from '@/stores/session'
 import PercakapanWawancara from './PercakapanWawancara.vue'
 import PersetujuanTna from './PersetujuanTna.vue'
@@ -123,7 +123,7 @@ const audit = computed(() => {
 
 <template>
   <AppShell>
-    <nav class="el-muted tna-bc" aria-label="Lokasi"><RouterLink :to="{ name: 'iv' }" class="tna-link">Wawancara akar masalah</RouterLink> › Sesi</nav>
+    <UiBreadcrumb :items="[{ label: 'Wawancara akar masalah', to: { name: 'iv' } }, { label: 'Sesi' }]" />
     <h1 class="tna-h1">Wawancara akar masalah</h1>
     <p v-if="s?.focusLabel" class="el-muted">Topik: {{ s.focusLabel }}</p>
     <UiErrorSummary :errors="errors" />

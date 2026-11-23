@@ -6,7 +6,7 @@ import { useRoute } from 'vue-router'
 import AppShell from '@/components/AppShell.vue'
 import { ApiError } from '@/api/client'
 import { formatWib } from '@/api/lna'
-import { UiButton, UiCard, UiChip, UiDataTable, UiErrorSummary, UiField, UiKpiCard, UiStatus, type UiColumn } from '@/ui'
+import { UiBreadcrumb, UiButton, UiCard, UiChip, UiDataTable, UiErrorSummary, UiField, UiKpiCard, UiStatus, type UiColumn } from '@/ui'
 import { useSessionStore } from '@/stores/session'
 import { HR_ROLES, gaps, gapRefFromQuery, type DetailEmployee, type GapDetail, type Project } from './api'
 import { CLASSIFICATION_LABEL, CLASSIFICATION_TONE, num } from './labels'
@@ -144,7 +144,7 @@ const cols: UiColumn[] = [
 
 <template>
   <AppShell>
-    <nav class="el-muted tna-bc" aria-label="Lokasi"><RouterLink :to="{ name: 'tna', query: { tab: backTab } }" class="tna-link">Training Needs</RouterLink> › Detail gap</nav>
+    <UiBreadcrumb :items="[{ label: 'Training Needs', to: { name: 'tna', query: { tab: backTab } } }, { label: 'Detail gap' }]" />
     <UiErrorSummary :errors="allErrors" />
     <template v-if="d">
       <div class="tna-row tna-head">

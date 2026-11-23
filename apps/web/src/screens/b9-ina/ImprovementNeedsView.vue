@@ -9,7 +9,7 @@ import {
   type ActionCategory, type ActionStatus, type InaAction, type InaKpis, type InaLevel, type OwnerOption, type SupervisorAccess, type Verification,
 } from '@/api/ina'
 import { useSessionStore } from '@/stores/session'
-import { UiButton, UiCard, UiChip, UiDataTable, UiErrorSummary, UiField, UiKpiCard, UiNote, UiStatus, type UiColumn, type UiSortState } from '@/ui'
+import { UiAgentCard, UiBreadcrumb, UiButton, UiCard, UiChip, UiDataTable, UiErrorSummary, UiField, UiKpiCard, UiNote, UiStatus, type UiColumn, type UiSortState } from '@/ui'
 
 const session = useSessionStore()
 const aiOn = computed(() => session.access?.flags['ina.ai_verification'] === true)
@@ -183,7 +183,12 @@ const REPORTED_TONE = { done: 'success', in_progress: 'info', blocked: 'critical
 
 <template>
   <AppShell>
+    <UiBreadcrumb :items="[{ label: 'Learning Needs Analysis' }, { label: 'Improvement Needs' }]" />
     <h1 class="el-h1">Improvement Needs</h1>
+    <!-- Tanpa tombol: verifikasi dimulai per tindakan ("Verifikasi lewat AI"), bukan dari layar wawancara (paritas P3, K-P3-2) -->
+    <UiAgentCard v-if="aiOn && !loadError" title="Verifikasi tindakan perbaikan" data-testid="ina-ai">
+      AI menanyai pemilik tindakan perbaikan (atasan atau karyawan pada jabatan terkait) tentang hambatan dan status, lalu merangkum untuk HR.
+    </UiAgentCard>
     <p class="el-muted ina__lead">Tindakan perbaikan untuk masalah di luar pelatihan: SOP, alat, sistem, dan budaya kerja.</p>
 
     <UiNote v-if="loadError" tone="critical" data-testid="ina-galat">{{ loadError }}</UiNote>
@@ -192,29 +197,6 @@ const REPORTED_TONE = { done: 'success', in_progress: 'info', blocked: 'critical
     <template v-if="kpis && !loadError">
       <p v-if="notice" class="ina__notice" role="status" data-testid="ina-info">{{ notice }}</p>
       <UiErrorSummary v-if="!formOpen" :errors="formErrors" />
-
-      <UiCard v-if="manage && aiOn" tonal class="ina__section" data-testid="ina-ai">
-        <div class="ina__row">
-          <h2 class="el-h3">Agen AI · Verifikasi tindakan perbaikan</h2>
-          <UiChip tone="review">Pilot</UiChip>
-        </div>
-        <p class="el-muted">AI menanyakan status tindakan kepada pemiliknya lewat percakapan singkat, lalu meringkasnya untuk HR. Isi percakapan hanya bisa dibuka pemiliknya. Status tindakan tetap Anda yang memutuskan.</p>
-        <UiDataTable
-          v-if="verifications.length" :columns="[{ key: 'actionTitle', label: 'Tindakan' }, { key: 'ownerName', label: 'Pemilik' }, { key: 'status', label: 'Verifikasi' }, { key: 'reportedStatus', label: 'Dilaporkan pemilik' }, { key: 'summary', label: 'Ringkasan' }, { key: 'aksi', label: 'Aksi' }]"
-          :rows="(verifications as unknown as Record<string, unknown>[])" row-key="id" caption="Verifikasi tindakan perbaikan" caption-hidden class="ina__sub"
-        >
-          <template #cell-status="{ row }">{{ VERIFICATION_LABEL[(row as unknown as Verification).status] }}</template>
-          <template #cell-reportedStatus="{ row }">
-            <UiStatus v-if="(row as unknown as Verification).reportedStatus" :tone="REPORTED_TONE[(row as unknown as Verification).reportedStatus!]">{{ REPORTED_LABEL[(row as unknown as Verification).reportedStatus!] }}</UiStatus>
-            <span v-else class="el-muted">Belum ada</span>
-          </template>
-          <template #cell-summary="{ row }">{{ (row as unknown as Verification).summary ?? 'Belum ada' }}</template>
-          <template #cell-aksi="{ row }">
-            <UiButton v-if="['assigned', 'in_progress'].includes((row as unknown as Verification).status)" variant="text" size="sm" @click="cancelVerification(row as unknown as Verification)">Batalkan</UiButton>
-          </template>
-        </UiDataTable>
-        <p v-else class="el-muted ina__sub">Belum ada verifikasi. Pilih "Verifikasi lewat AI" pada tindakan yang punya pemilik.</p>
-      </UiCard>
 
       <div class="el-grid el-grid-4 ina__section" data-testid="ina-kpi">
         <UiKpiCard label="Tindakan" :value="String(kpis.total)" :note="kpis.overdue ? `${kpis.overdue} lewat tenggat` : 'tidak ada yang lewat tenggat'" />
@@ -311,6 +293,26 @@ const REPORTED_TONE = { done: 'success', in_progress: 'info', blocked: 'critical
         <UiNote class="ina__section">
           Akses: HR melihat semua tindakan. Atasan langsung melihat tindakan timnya hanya bila HR memberinya akses. Temuan yang menyangkut individu tidak ditampilkan di sini; hanya masalah proses dan sistem.
         </UiNote>
+
+        <UiCard v-if="manage && aiOn" class="ina__section" data-testid="ina-verifikasi">
+          <h2 class="el-h3">Verifikasi AI</h2>
+          <p class="el-muted">AI menanyakan status tindakan kepada pemiliknya lewat percakapan singkat, lalu meringkasnya untuk HR. Isi percakapan hanya bisa dibuka pemiliknya. Status tindakan tetap Anda yang memutuskan.</p>
+          <UiDataTable
+            v-if="verifications.length" :columns="[{ key: 'actionTitle', label: 'Tindakan' }, { key: 'ownerName', label: 'Pemilik' }, { key: 'status', label: 'Verifikasi' }, { key: 'reportedStatus', label: 'Dilaporkan pemilik' }, { key: 'summary', label: 'Ringkasan' }, { key: 'aksi', label: 'Aksi' }]"
+            :rows="(verifications as unknown as Record<string, unknown>[])" row-key="id" caption="Verifikasi tindakan perbaikan" caption-hidden class="ina__sub"
+          >
+            <template #cell-status="{ row }">{{ VERIFICATION_LABEL[(row as unknown as Verification).status] }}</template>
+            <template #cell-reportedStatus="{ row }">
+              <UiStatus v-if="(row as unknown as Verification).reportedStatus" :tone="REPORTED_TONE[(row as unknown as Verification).reportedStatus!]">{{ REPORTED_LABEL[(row as unknown as Verification).reportedStatus!] }}</UiStatus>
+              <span v-else class="el-muted">Belum ada</span>
+            </template>
+            <template #cell-summary="{ row }">{{ (row as unknown as Verification).summary ?? 'Belum ada' }}</template>
+            <template #cell-aksi="{ row }">
+              <UiButton v-if="['assigned', 'in_progress'].includes((row as unknown as Verification).status)" variant="text" size="sm" @click="cancelVerification(row as unknown as Verification)">Batalkan</UiButton>
+            </template>
+          </UiDataTable>
+          <p v-else class="el-muted ina__sub">Belum ada verifikasi. Pilih "Verifikasi lewat AI" pada tindakan yang punya pemilik.</p>
+        </UiCard>
 
         <UiCard v-if="manage" class="ina__section" data-testid="ina-akses">
           <h2 class="el-h3">Akses atasan</h2>

@@ -3,7 +3,7 @@
 import { computed, onMounted, ref } from 'vue'
 import AppShell from '@/components/AppShell.vue'
 import { ApiError } from '@/api/client'
-import { UiButton, UiCard, UiDataTable, UiKpiCard, UiNote, UiProgressBar, UiSegmented, UiStatus, UiTabs, type UiColumn } from '@/ui'
+import { UiBreadcrumb, UiButton, UiCard, UiDataTable, UiKpiCard, UiNote, UiProgressBar, UiSegmented, UiStatus, UiTabs, type UiColumn } from '@/ui'
 import { ld, type Dashboard, type Training } from './api'
 import { CHECK_SHORT, HEALTH, SOURCE_LABEL, tanggal } from './labels'
 import OfflinePanel from './OfflinePanel.vue'
@@ -64,6 +64,7 @@ async function runAction(a: Dashboard['actions'][number]) {
 
 <template>
   <AppShell>
+    <UiBreadcrumb :items="[{ label: 'Learning Delivery' }]" />
     <h1 class="el-h1">Learning Delivery</h1>
     <p class="el-muted">Pelatihan yang sedang dan akan berjalan. Pelatihan online diambil otomatis dari EliteMentor atau LMS; pelatihan offline diinput ke ELGOS.</p>
     <UiNote v-if="error" tone="critical" data-testid="galat">{{ error }}</UiNote>

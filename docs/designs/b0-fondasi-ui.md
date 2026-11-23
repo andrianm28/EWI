@@ -73,13 +73,15 @@ Semua komponen: Vue 3 `<script setup lang="ts">`, tanpa pustaka komponen pihak k
 | `UiStatus` | Carbon label status | `tone` = `success`\|`warning`\|`critical`\|`info`\|`neutral`, slot teks | ikon + teks, bukan warna saja; ikon default per tone |
 | `UiTabs` | M3 tab | `tabs: {key,label}[]`, `v-model` | `role="tablist"`, panah kiri/kanan, Home/End; panel milik pemakai dengan `role="tabpanel"` |
 | `UiSegmented` | M3 segmented | `options: {key,label}[]`, `v-model`, `label` | `role="group"` + `aria-pressed` |
-| `UiDataTable` | Carbon data table | `columns: {key,label,sortable?,align?,mono?}[]`, `rows`, `rowKey`, `caption`, `emptyText`, `v-model:sort`; slot `toolbar`, slot sel `#cell-<key>` | `<table>` asli dengan `<caption>`; header sortable berupa tombol dengan `aria-sort`; pembungkus bisa digulir horizontal |
+| `UiDataTable` | Carbon data table + `.row.lk` | `columns: {key,label,sortable?,align?,mono?}[]`, `rows`, `rowKey`, `caption`, `emptyText`, `v-model:sort`, `rowTo?: (row) => RouteLocationRaw \| null`, `rowLinkKey?` (bawaan kolom pertama); slot `toolbar`, slot sel `#cell-<key>` | `<table>` asli dengan `<caption>`; header sortable berupa tombol dengan `aria-sort`; pembungkus bisa digulir horizontal. Dengan `rowTo`, isi sel `rowLinkKey` menjadi tautan (satu titik fokus per baris) dan klik di mana pun pada baris mengikutinya, kecuali klik pada elemen interaktif lain atau saat teks diseleksi |
 | `UiStepper` | Stepper mockup | `steps: {key,label}[]`, `current` | `<ol>`, langkah aktif `aria-current="step"`, langkah selesai diberi teks tersembunyi "selesai" |
 | `UiErrorSummary` | GOV.UK error summary | `title` (default "Ada masalah"), `errors: {message, fieldId?}[]` | `role="alert"`, `tabindex="-1"`, menerima fokus saat muncul; tiap galat menjadi tautan ke `#fieldId` |
 | `UiSkipLink` | GOV.UK skip link | `target` (default `#isi`) | tersembunyi sampai difokus |
 | `UiAuditLine` | Carbon metadata | slot atau `items: string[]` digabung " · " | monospasi 11px |
 | `UiKpiCard` | `.kpi` | `label`, `value`, `note?` | label huruf besar kecil, nilai 32px |
 | `UiCard` | `.card` | `tonal?`, `as?` | |
+| `UiAgentCard` | `.card.t` "Agen AI · …" | `title` (tanpa awalan), `action?`, `to?: RouteLocationRaw \| null`; slot = teks | judul berupa `h2` 14px/500, chip "Pilot" (`UiChip tone="review"`); tombol tonal kecil hanya dirender bila `action` dan `to` ada, pemanggil memeriksa `routeOpen()`/flag |
+| `UiBreadcrumb` | `.bc` | `items: {label, to?}[]` | `<nav aria-label="Lokasi">` + `<ol>`; pemisah "›" `aria-hidden`; butir terakhir `aria-current="page"`; induk dengan `to` menjadi tautan bergaris bawah warna primary. Teks butir mengikuti `.bc` mockup |
 | `UiNote` | `.note` | `tone` = `info`\|`warning`\|`critical`\|`success` | `role="note"`; untuk galat pakai `UiErrorSummary` |
 | `UiProgressBar` | `.bar` | `value` 0–100, `tone?`, `label` | `role="progressbar"` + `aria-valuenow` |
 | `UiField` | `.lbl` + `.inp` | `id`, `label`, `hint?`, `error?`; slot menerima `{ attrs }` untuk di-`v-bind` ke input | label tertaut `for`; petunjuk dan galat tertaut `aria-describedby`; `aria-invalid` saat galat |

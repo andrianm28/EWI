@@ -122,6 +122,44 @@ test('HR membatalkan penugasan; penolakan API tampil di ringkasan galat', async 
   expect(sent.some((s) => s.path === '/api/tna/assignments/s-open/cancel')).toBe(true)
 })
 
+// Paritas P3 (docs/designs/paritas-mockup/p3-komponen-bersama.md)
+test('P3 TN-1: kartu Agen AI di atas subjudul, tombol Contoh wawancara ke daftar wawancara', async ({ page }) => {
+  await setup(page, { flags: BOARD })
+  await page.goto('/tna')
+  await expect(page.getByRole('navigation', { name: 'Lokasi' })).toHaveText(/Learning Needs Analysis\s*›\s*Training Needs/)
+  const kartu = page.getByTestId('tna-agen')
+  await expect(kartu.getByRole('heading', { name: 'Agen AI · Wawancara akar masalah' })).toBeVisible()
+  await expect(kartu).toContainText('Pilot')
+  await expect(kartu).toContainText('Setiap gap kompetensi diwawancarai AI untuk mencari akar masalah, lalu diklasifikasikan ke Training Needs atau Improvement Needs. Penugasan wawancara mengikuti alur HR, atasan, karyawan.')
+  await expect(kartu.getByRole('link', { name: 'Contoh wawancara' })).toHaveAttribute('href', '/iv')
+})
+
+test('P3 TN-7: kolom Kode pertama; klik di mana pun pada baris membuka detail gap; tautan nama bisa difokus', async ({ page }) => {
+  await setup(page, { flags: BOARD })
+  await page.goto('/tna?tab=kompetensi')
+  const comp = page.getByRole('table', { name: 'Gap kompetensi' })
+  await expect(comp.getByRole('columnheader').first()).toHaveText('Kode')
+  const baris = comp.getByRole('row', { name: /Analisis insiden/ })
+  await expect(baris.getByRole('cell').first()).toHaveText('ST-A2')
+  await baris.getByRole('cell', { name: '75%' }).click()
+  await expect(page).toHaveURL(/\/tna\/gap\?/)
+  await expect(page.getByRole('heading', { level: 1, name: 'Analisis insiden' })).toBeVisible()
+  const crumb = page.getByRole('navigation', { name: 'Lokasi' })
+  await expect(crumb).toHaveText(/Training Needs\s*›\s*Detail gap/)
+  await crumb.getByRole('link', { name: 'Training Needs' }).click()
+  await expect(page).toHaveURL(/tab=kompetensi/)
+  await comp.getByRole('link', { name: 'Analisis insiden' }).focus()
+  await page.keyboard.press('Enter')
+  await expect(page).toHaveURL(/\/tna\/gap\?/)
+})
+
+test('P3: baris gap OKR juga bisa diklik', async ({ page }) => {
+  await setup(page, { flags: BOARD })
+  await page.goto('/tna?tab=okr')
+  await page.getByRole('table', { name: 'Gap OKR' }).getByRole('row', { name: /Waktu respons/ }).getByRole('cell').last().click()
+  await expect(page).toHaveURL(/\/tna\/gap\?.*kind=okr/)
+})
+
 test('flag penugasan mati: detail gap tanpa formulir penugasan', async ({ page }) => {
   await setup(page, { flags: BOARD })
   await page.goto(`/tna/gap?kind=competency&competencyId=${ID_KOMPETENSI}`)

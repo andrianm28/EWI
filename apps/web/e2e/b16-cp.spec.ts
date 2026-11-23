@@ -122,3 +122,12 @@ test('HR menyetujui rekomendasi atasan; nama HR tercatat dan tombol keputusan hi
   await expect(page.getByTestId('cp-dec')).toContainText('Pengguna Contoh')
   await expect(page.getByRole('button', { name: 'Setujui Ani' })).toHaveCount(0)
 })
+
+test('P3 X-3: breadcrumb "Career & Promotion" 12px di atas judul', async ({ page }) => {
+  await mockCp(page, [])
+  await loginSebagai(page, 'hr', B16)
+  await page.goto('/cp')
+  const crumb = page.getByRole('navigation', { name: 'Lokasi' })
+  await expect(crumb).toHaveText('Career & Promotion')
+  await expect(crumb).toHaveCSS('font-size', '12px')
+})

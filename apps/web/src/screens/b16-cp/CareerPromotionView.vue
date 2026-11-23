@@ -4,7 +4,7 @@
 import { computed, onMounted, ref, watch } from 'vue'
 import AppShell from '@/components/AppShell.vue'
 import { useSessionStore } from '@/stores/session'
-import { UiAuditLine, UiButton, UiCard, UiChip, UiDataTable, UiErrorSummary, UiKpiCard, UiNote, UiSegmented, UiTabs, type UiColumn } from '@/ui'
+import { UiAuditLine, UiBreadcrumb, UiButton, UiCard, UiChip, UiDataTable, UiErrorSummary, UiKpiCard, UiNote, UiSegmented, UiTabs, type UiColumn } from '@/ui'
 import { cpApi, TIER_LABEL, type Action, type CareerMap, type CareerStatus, type DecisionRow, type Evidence, type MapRow, type Paths } from './api'
 
 type Tone = 'training' | 'improvement' | 'review' | 'success' | 'critical' | 'neutral'
@@ -130,6 +130,7 @@ function ruleFor(i: number): string {
 
 <template>
   <AppShell>
+    <UiBreadcrumb :items="[{ label: 'Career & Promotion' }]" />
     <h1 class="el-h1">Career &amp; Promotion</h1>
     <p class="el-muted" style="margin:0 0 4px">Posisi karyawan pada jenjang jabatan berdasarkan program kompetensi yang sudah lulus dan pencapaian OKR. {{ scopeText }}</p>
     <UiNote tone="warning" style="margin:12px 0">

@@ -194,3 +194,49 @@ test('karyawan: wawancara belum diaktifkan', async ({ page }) => {
   await page.goto('/aiv')
   await expect(page.getByText('Wawancara AI Core Competencies belum diaktifkan untuk organisasi Anda.')).toBeVisible()
 })
+
+// Paritas P3 (docs/designs/paritas-mockup/p3-komponen-bersama.md): kartu Agen AI, breadcrumb, dan baris klik
+const KARTU_VM = 'AI mewawancarai pimpinan tentang visi dan misi, lalu mewawancarai karyawan untuk menilai gap terhadap jawaban pimpinan. Alurnya seperti DACUM, untuk pimpinan perusahaan. HR menugaskan ke atasan, atasan ke karyawan.'
+const KARTU_NILAI = 'AI mewawancarai pimpinan tentang makna dan perilaku kunci tiap nilai 5C, lalu mewawancarai karyawan, terutama yang belum menyelesaikan program, untuk menilai gap terhadap jawaban pimpinan.'
+
+test('P3 CC-1/CV-1: kartu Agen AI di tab VM dan Values; tombol membuka tab Wawancara AI', async ({ page }) => {
+  await loginAs(page)
+  await page.goto('/cc')
+  const crumb = page.getByRole('navigation', { name: 'Lokasi' })
+  await expect(crumb).toHaveText(/Learning Needs Analysis\s*›\s*Core Competencies/)
+  await expect(crumb).toHaveCSS('font-size', '12px')
+  const vm = page.getByTestId('cc-agen-vm')
+  await expect(vm.getByRole('heading', { name: 'Agen AI · Wawancara pimpinan dan karyawan' })).toBeVisible()
+  await expect(vm).toContainText('Pilot')
+  await expect(vm).toContainText(KARTU_VM)
+  await vm.getByRole('link', { name: 'Buka wawancara AI' }).click()
+  await expect(page.getByRole('tab', { name: 'Wawancara AI' })).toHaveAttribute('aria-selected', 'true')
+
+  await page.getByRole('tab', { name: 'Corporate Values' }).click()
+  const val = page.getByTestId('cc-agen-val')
+  await expect(val.getByRole('heading', { name: 'Agen AI · Wawancara nilai' })).toBeVisible()
+  await expect(val).toContainText(KARTU_NILAI)
+  await expect(val.getByRole('link', { name: 'Buka wawancara AI' })).toBeVisible()
+})
+
+test('P3 CC-1: tanpa flag cca.interview kartu tetap ada tanpa tombol', async ({ page }) => {
+  await loginAs(page, { interview: false })
+  await page.goto('/cc')
+  const vm = page.getByTestId('cc-agen-vm')
+  await expect(vm).toContainText('Agen AI · Wawancara pimpinan dan karyawan')
+  await expect(vm.getByRole('link')).toHaveCount(0)
+  await expect(vm.getByRole('button')).toHaveCount(0)
+})
+
+test('P3 CC-3 (klik baris): klik baris persyaratan membuka panel ubah baris itu', async ({ page }) => {
+  await loginAs(page)
+  await page.goto('/cc')
+  const vision = page.getByTestId('cc-sumber-vision')
+  await vision.getByRole('row', { name: /Arsitektur public cloud/ }).getByRole('cell').nth(1).click()
+  await expect(page).toHaveURL(/ubah=r-1/)
+  await expect(vision.getByRole('heading', { name: 'Ubah persyaratan kompetensi' })).toBeVisible()
+  await expect(vision.getByLabel('Nama')).toHaveValue('Arsitektur public cloud')
+  await vision.getByRole('button', { name: 'Batal' }).click()
+  await expect(page).not.toHaveURL(/ubah=/)
+  await expect(vision.getByLabel('Nama')).toHaveCount(0)
+})

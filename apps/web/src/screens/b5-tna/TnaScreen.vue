@@ -5,7 +5,8 @@ import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import AppShell from '@/components/AppShell.vue'
 import { ApiError } from '@/api/client'
-import { UiCard, UiChip, UiDataTable, UiErrorSummary, UiKpiCard, UiNote, UiProgressBar, UiTabs, type UiColumn } from '@/ui'
+import { UiAgentCard, UiBreadcrumb, UiCard, UiChip, UiDataTable, UiErrorSummary, UiKpiCard, UiNote, UiProgressBar, UiTabs, type UiColumn } from '@/ui'
+import { routeOpen } from '@/router'
 import { useSessionStore } from '@/stores/session'
 import TnaPengelolaan from './TnaPengelolaan.vue'
 import { BOARD_ROLES, gaps, gapRefOf, type CompetencyGap, type GapSummary, type OkrGap } from './api'
@@ -63,7 +64,9 @@ const dist = computed(() => {
     key, label: CLASSIFICATION_LABEL[key], tone: CLASSIFICATION_TONE[key], n: s.classification[key] ?? 0, w: total ? ((s.classification[key] ?? 0) / total) * 100 : 0,
   }))
 })
+// Kolom Kode dari mockup (TN-7). Orang dan Status wawancara dipertahankan untuk pemindaian HR (paritas P3, K-P3-3).
 const compCols: UiColumn[] = [
+  { key: 'code', label: 'Kode', sortable: true, mono: true },
   { key: 'name', label: 'Kompetensi', sortable: true },
   { key: 'targetPct', label: 'Target', align: 'right', mono: true },
   { key: 'actualPct', label: 'Aktual', align: 'right', mono: true },
@@ -82,14 +85,18 @@ const okrCols: UiColumn[] = [
   { key: 'classification', label: 'Klasifikasi' },
 ]
 const detailLink = (row: CompetencyGap | OkrGap) => ({ name: 'tna-gap', query: { ...gapRefOf(row), tab: tab.value } })
+const ivTo = computed(() => (routeOpen('iv', session.activeView, session) ? { name: 'iv' } : null))
 </script>
 
 <template>
   <AppShell>
-    <nav class="el-muted tna-bc" aria-label="Lokasi">Learning Needs Analysis › Training Needs</nav>
+    <UiBreadcrumb :items="[{ label: 'Learning Needs Analysis' }, { label: 'Training Needs' }]" />
     <h1 class="tna-h1">Training Needs</h1>
 
     <template v-if="showBoard">
+      <UiAgentCard title="Wawancara akar masalah" action="Contoh wawancara" :to="ivTo" data-testid="tna-agen">
+        Setiap gap kompetensi diwawancarai AI untuk mencari akar masalah, lalu diklasifikasikan ke Training Needs atau Improvement Needs. Penugasan wawancara mengikuti alur HR, atasan, karyawan.
+      </UiAgentCard>
       <p class="el-muted">Reaktif: setiap gap adalah masalah yang bisa diwawancarai untuk menemukan akar penyebab, lalu diberi solusi pelatihan atau perbaikan.</p>
       <UiErrorSummary :errors="error ? [{ message: error }] : []" />
       <UiTabs id="tna-tab" v-model="tab" :tabs="TABS" label="Bagian Training Needs" />
@@ -122,8 +129,8 @@ const detailLink = (row: CompetencyGap | OkrGap) => ({ name: 'tna-gap', query: {
 
       <div v-else-if="tab === 'kompetensi'" id="tna-tab-panel-kompetensi" role="tabpanel" aria-labelledby="tna-tab-tab-kompetensi" class="tna-panel">
         <UiNote class="tna-gap-b"><b>Gap kompetensi</b> = kesenjangan skor karyawan terhadap target kompetensi jabatan. Buka gap untuk melihat detail dan menugaskan wawancara akar masalah.</UiNote>
-        <UiDataTable :columns="compCols" :rows="comps" row-key="key" caption="Gap kompetensi" caption-hidden empty-text="Belum ada gap. Impor data asesmen atau kinerja lebih dulu.">
-          <template #cell-name="{ row }"><RouterLink :to="detailLink(row)" class="tna-link">{{ row.name }}</RouterLink></template>
+        <UiDataTable :columns="compCols" :rows="comps" row-key="key" caption="Gap kompetensi" caption-hidden empty-text="Belum ada gap. Impor data asesmen atau kinerja lebih dulu." :row-to="detailLink" row-link-key="name">
+          <template #cell-name="{ row }"><span class="tna-link">{{ row.name }}</span></template>
           <template #cell-targetPct="{ row }">{{ row.targetPct }}%</template>
           <template #cell-actualPct="{ row }">{{ row.actualPct }}%</template>
           <template #cell-gapPct="{ row }">
@@ -142,8 +149,8 @@ const detailLink = (row: CompetencyGap | OkrGap) => ({ name: 'tna-gap', query: {
             <option v-for="p in summary.periods" :key="p" :value="p">{{ p }}</option>
           </select>
         </label>
-        <UiDataTable :columns="okrCols" :rows="okrs" row-key="key" caption="Gap OKR" caption-hidden empty-text="Belum ada target yang meleset pada periode ini.">
-          <template #cell-name="{ row }"><RouterLink :to="detailLink(row)" class="tna-link">{{ row.name }}</RouterLink></template>
+        <UiDataTable :columns="okrCols" :rows="okrs" row-key="key" caption="Gap OKR" caption-hidden empty-text="Belum ada target yang meleset pada periode ini." :row-to="detailLink" row-link-key="name">
+          <template #cell-name="{ row }"><span class="tna-link">{{ row.name }}</span></template>
           <template #cell-target="{ row }">{{ num(row.target, row.unit) }}</template>
           <template #cell-actual="{ row }">{{ num(row.actual, row.unit) }}</template>
           <template #cell-diff="{ row }">{{ num(row.diff, row.unit) }}</template>

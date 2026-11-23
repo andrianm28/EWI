@@ -6,7 +6,7 @@ export type Classification = 'training' | 'non_training' | 'review' | 'pending' 
 // type (bukan interface) supaya memenuhi Record<string, unknown> milik UiDataTable
 export type GapCounts = { classification: Classification; interviewed: boolean; interviewedCount: number; assignedCount: number }
 export type CompetencyGap = GapCounts & {
-  key: string; kind: 'competency'; competencyId: string; name: string; target: number; actual: number; gap: number
+  key: string; kind: 'competency'; competencyId: string; code: string | null; name: string; target: number; actual: number; gap: number
   targetPct: number; actualPct: number; gapPct: number; assessed: number; peopleWithGap: number; peopleTotal: number; cumulativeShare: number | null
 }
 export type OkrGap = GapCounts & {

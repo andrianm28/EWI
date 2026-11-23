@@ -182,3 +182,13 @@ test('Learning Intervention tidak tampil dan tidak bisa dibuka bila tenant tidak
   await page.goto('/lib')
   await expect(page).toHaveURL(/\/$/)
 })
+
+test('P3 X-3: breadcrumb bersama di Library, Program, dan Permintaan', async ({ page }) => {
+  await setup(page)
+  for (const [path, teks] of [['/lib', 'Library'], ['/prog', 'Program & Course'], ['/req', 'Permintaan & pengembangan']] as const) {
+    await page.goto(path)
+    const crumb = page.getByRole('navigation', { name: 'Lokasi' })
+    await expect(crumb).toHaveText(new RegExp(`Learning Intervention\\s*›\\s*${teks}`))
+    await expect(crumb).toHaveCSS('font-size', '12px')
+  }
+})

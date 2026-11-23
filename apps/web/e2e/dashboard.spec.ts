@@ -144,6 +144,22 @@ test('Pareto: baris prioritas ditandai teks, bukan warna saja; kosong punya pesa
   await expect(rows.nth(0).getByRole('progressbar')).toHaveAttribute('aria-valuenow', '50')
 })
 
+test('P3 D1: baris Pareto kompetensi menaut ke Detail gap bila papan gap terbuka', async ({ page }) => {
+  await loginAs(page, { flags: { 'tna.gap_board': true } })
+  const rows = page.getByTestId('pareto').getByTestId('pareto-baris')
+  await expect(rows).toHaveCount(3)
+  await expect(rows.nth(0)).toHaveAttribute('href', '/tna/gap?kind=competency&competencyId=c1')
+  // temuan tanpa kompetensi tidak punya detail gap
+  await expect(rows.nth(2)).not.toHaveAttribute('href', /.*/)
+  await rows.nth(1).focus()
+  await expect(rows.nth(1)).toBeFocused()
+})
+
+test('P3 D1: tanpa flag papan gap baris Pareto bukan tautan', async ({ page }) => {
+  await loginAs(page)
+  await expect(page.getByTestId('pareto').getByRole('link')).toHaveCount(0)
+})
+
 test('Pareto kosong dan TNA tertutup', async ({ page }) => {
   await loginAs(page, { dashboard: { ...HR_DATA, pareto: { rows: [], total: 0, hotCount: 0 } } })
   await expect(page.getByTestId('pareto')).toContainText('Belum ada temuan pelatihan yang disetujui HR.')

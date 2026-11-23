@@ -5,7 +5,7 @@ import { useRouter } from 'vue-router'
 import AppShell from '@/components/AppShell.vue'
 import './li.css'
 import { ApiError } from '@/api/client'
-import { UiButton, UiCard, UiChip, UiKpiCard, UiNote, UiStatus, UiTabs } from '@/ui'
+import { UiBreadcrumb, UiButton, UiCard, UiChip, UiKpiCard, UiNote, UiStatus, UiTabs } from '@/ui'
 import { li, type Level, type ModuleRow, type Programs } from './api'
 import { LEVEL_LABEL, jobLabel, priorityLabel, statusLabel } from './labels'
 
@@ -51,7 +51,7 @@ function primary(m: ModuleRow) {
 
 <template>
   <AppShell>
-    <p class="el-muted">Learning Intervention › Program &amp; Course</p>
+    <UiBreadcrumb :items="[{ label: 'Learning Intervention' }, { label: 'Program & Course' }]" />
     <h1 class="el-h1">Program &amp; Course</h1>
     <p class="el-muted">Program Basic, Intermediate, dan Advanced per jabatan, tersusun dari modul-modul di Library (DACUM Tool 3).</p>
     <UiNote v-if="error" tone="critical" data-testid="galat">{{ error }}</UiNote>

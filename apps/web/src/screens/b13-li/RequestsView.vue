@@ -5,7 +5,7 @@ import { useRouter } from 'vue-router'
 import AppShell from '@/components/AppShell.vue'
 import './li.css'
 import { ApiError } from '@/api/client'
-import { UiButton, UiCard, UiChip, UiNote, UiStatus } from '@/ui'
+import { UiBreadcrumb, UiButton, UiCard, UiChip, UiNote, UiStatus } from '@/ui'
 import { li, type CatalogItem, type RequestStatus, type Requests, type VendorRequest } from './api'
 import { DRAFT_LABEL, NEXT_REQUEST, REQUEST_LABEL, priorityLabel } from './labels'
 
@@ -40,7 +40,7 @@ async function develop(moduleId: string) {
 
 <template>
   <AppShell>
-    <p class="el-muted">Learning Intervention › Permintaan &amp; pengembangan</p>
+    <UiBreadcrumb :items="[{ label: 'Learning Intervention' }, { label: 'Permintaan & pengembangan' }]" />
     <h1 class="el-h1">Permintaan &amp; pengembangan modul</h1>
     <p class="el-muted">Dua jalur untuk memiliki modul: meminta dari {{ vendor }}, atau mengembangkan sendiri bersama ELGOS berdasarkan tujuan pembelajaran dari DACUM Tool 1 dan 2.</p>
     <UiNote v-if="error" tone="critical" data-testid="galat">{{ error }}</UiNote>
