@@ -41,12 +41,12 @@ Hanya dijalankan manusia (Andrian atau yang ditunjuk) di mesinnya sendiri, denga
 aws sso login --profile elgos-qa        # atau kredensial STS berumur pendek
 export AWS_PROFILE=elgos-qa
 NODE_ENV=test DATABASE_URL=postgres://ewi:ewi@localhost:5432/ewi_qa MAIL_PROVIDER=memory \
-AI_PROVIDER=bedrock BEDROCK_REGION=ap-southeast-1 BEDROCK_MODEL_ID=anthropic.claude-sonnet-5 \
+AI_PROVIDER=bedrock BEDROCK_REGION=ap-southeast-1 BEDROCK_MODEL_ID=global.anthropic.claude-sonnet-5-5 \
 AI_PRICE_INPUT_PER_MTOK=<harga> AI_PRICE_OUTPUT_PER_MTOK=<harga> QA_MALAM_MAX_TOKENS=400000 \
   npm run qa:malam -w apps/api -- --siapkan-db --keluaran ./qa-malam-hasil
 ```
 
-Region dan model mengikuti PD-2b (Jakarta, lalu Singapura, lalu profil `apac.`). Hasil cek 23 Nov: Jakarta hanya lewat profil `global.`, jadi QA malam memakai Singapura `ap-southeast-1` dengan `anthropic.claude-sonnet-5` on-demand, sama dengan aplikasi (keputusan user 23 Nov 11.01 WIB, spek `docs/designs/pd-2b-bedrock-singapura.md`). Konfigurasi divalidasi oleh `loadConfig`, jadi region atau profil di luar PD-2b ditolak sebelum panggilan pertama.
+Region dan model mengikuti PD-2b dan keputusan user 23 Nov: Sonnet 5.5 lewat profil `global.anthropic.claude-sonnet-5-5` dari endpoint Singapura `ap-southeast-1`, sama dengan aplikasi (spek `docs/designs/pd-2b-bedrock-singapura.md`). QA malam memakai ID profil itu sebagai `BEDROCK_MODEL_ID`. Konfigurasi divalidasi oleh `loadConfig`, jadi region atau profil di luar PD-2b ditolak sebelum panggilan pertama.
 
 ### Opsi dan env
 
@@ -120,7 +120,7 @@ Satu berkas `apps/api/tests/qa-malam/persona/<id>.json`, nama berkas sama dengan
 Workflow `.github/workflows/qa-malam.yml` dilewati selama variabel repo `QA_MALAM_ROLE_ARN` kosong, jadi aman digabung sebelum akun siap. Kode yang diuji selalu branch `dev`. Alasannya: kode itu berjalan dengan kredensial Bedrock, dan ke `dev` hanya masuk PR yang direview Andrian. Branch agen, termasuk branch integrasi, tidak diuji oleh workflow.
 
 1. **Akun, role, dan alarm anggaran.** Jalankan wizard akun ELGOS dari PR #3 (`infra/setup-akun-elgos.sh`). Wizard menerapkan stack `infra/live/shared`: role `elgos-qa-malam` dengan trust OIDC GitHub untuk subjek `repo:andrianm28/EWI:environment:qa-malam` dan izin hanya `bedrock:InvokeModel` pada model atau inference profile QA, plus alarm anggaran akun. Wizard juga membuat environment `qa-malam` yang hanya boleh dipakai dari `main`.
-2. **Variabel repo.** Wizard memasang `QA_MALAM_ROLE_ARN`, `QA_MALAM_BEDROCK_REGION` (isi `ap-southeast-1`), dan `QA_MALAM_BEDROCK_MODEL_ID` (isi `anthropic.claude-sonnet-5`; ID inference profile hanya bila kelak memakai profil `apac.`) sebagai variabel repo, bukan variabel environment, karena `if` di tingkat job tidak melihat variabel environment. Sejak PR #3 head 503d4dd wizard juga menanyakan dan memasang `QA_MALAM_AI_PRICE_INPUT_PER_MTOK` dan `QA_MALAM_AI_PRICE_OUTPUT_PER_MTOK` (US$ per sejuta token, dari halaman harga Bedrock untuk model dan region itu), serta opsional `QA_MALAM_MAX_TOKENS` (bawaan 400000).
+2. **Variabel repo.** Wizard memasang `QA_MALAM_ROLE_ARN`, `QA_MALAM_BEDROCK_REGION` (isi `ap-southeast-1`), dan `QA_MALAM_BEDROCK_MODEL_ID` (isi ID inference profile `global.anthropic.claude-sonnet-5-5`; wizard mengisinya dari ID profil bila ada, lalu dari ID model dasar) sebagai variabel repo, bukan variabel environment, karena `if` di tingkat job tidak melihat variabel environment. Sejak PR #3 head 503d4dd wizard juga menanyakan dan memasang `QA_MALAM_AI_PRICE_INPUT_PER_MTOK` dan `QA_MALAM_AI_PRICE_OUTPUT_PER_MTOK` (US$ per sejuta token, dari halaman harga Bedrock untuk model dan region itu), serta opsional `QA_MALAM_MAX_TOKENS` (bawaan 400000).
 3. **Berkas workflow di default branch.** GitHub hanya menjalankan `schedule` dan `workflow_dispatch` dari default branch (`main`, sekarang masih kosong). Pilihannya: menaruh `qa-malam.yml` di `main` lewat PR kecil yang direview Andrian, atau mengganti default branch.
 4. **Kode QA malam di `dev`.** Workflow baru berguna setelah PR #8 masuk `dev`. Sebelum itu, malam kalibrasi dijalankan sebagai run manual oleh Andrian dari branch integrasi, setelah ia memeriksa diff-nya (bagian "Dengan Bedrock, run manual").
 5. **Uji sekali.** Actions > QA malam > Run workflow. Kode 2 di run pertama biasanya berarti akses model belum diberikan di akun atau harga belum diisi.

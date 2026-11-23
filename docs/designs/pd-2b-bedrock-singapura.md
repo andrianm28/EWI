@@ -1,6 +1,7 @@
 # PD-2b terjawab: AI teks dan QA malam di Bedrock Singapura
 
-Status: spek kecil thread integrasi (23 Nov). Pemilik keputusan: user, kartu di thread infra 23 Nov 11.01 WIB.
+Status: spek kecil thread integrasi (23 Nov), direvisi siang itu (bagian 7). Pemilik keputusan: user, kartu di thread
+infra 23 Nov 11.01 WIB, lalu pesan di thread infra 23 Nov 12.27 WIB ("ganti penuh ke 5.5", "lwt singapur").
 Reviewer wajib: Andrian (`apps/api/src/config/env.js` dimuat seluruh API, kode bersama).
 
 Sumber tunggal nilai region dan model: `docs/ewi/ai-teks.md`. Berkas lain menautkannya, kecuali contoh perintah dan
@@ -31,9 +32,9 @@ in-region Singapura salah region, dan satu-satunya jalan di Jakarta (profil `glo
 |---|---|---|
 | `apps/api/src/config/env.js` | `BEDROCK_REGION` bawaan `ap-southeast-3` | bawaan `ap-southeast-1`; komentar mencatat hasil cek 23 Nov |
 | `apps/api/tests/unit/config.test.js` | mengharapkan bawaan Jakarta | mengharapkan bawaan Singapura (`in-region:ap-southeast-1`) |
-| `.env.example` | `BEDROCK_REGION=ap-southeast-3`, `BEDROCK_MODEL_ID=` | `BEDROCK_REGION=ap-southeast-1`, `BEDROCK_MODEL_ID=anthropic.claude-sonnet-5` (dipakai bila `AI_PROVIDER=bedrock`) |
+| `.env.example` | `BEDROCK_REGION=ap-southeast-3`, `BEDROCK_MODEL_ID=` | `BEDROCK_REGION=ap-southeast-1`, `BEDROCK_MODEL_ID=anthropic.claude-sonnet-5` (dipakai bila `AI_PROVIDER=bedrock`; diganti di bagian 7) |
 | `docs/ewi/ai-teks.md` | PD-2b tanpa hasil, "belum bisa dicek" | hasil cek 23 Nov, bawaan baru, model terpilih |
-| `docs/ewi/qa-malam.md` | contoh `<region QA>`, `<ID model atau profil apac.>` | `ap-southeast-1`, `anthropic.claude-sonnet-5`; nilai variabel repo QA malam |
+| `docs/ewi/qa-malam.md` | contoh `<region QA>`, `<ID model atau profil apac.>` | `ap-southeast-1`, `anthropic.claude-sonnet-5`; nilai variabel repo QA malam (diganti di bagian 7) |
 | `.github/workflows/qa-malam.yml` | `BEDROCK_REGION` dan `aws-region` hanya dari `vars.QA_MALAM_BEDROCK_REGION` | jatuh ke `ap-southeast-1` bila variabel repo kosong (pola `QA_MALAM_MAX_TOKENS`); variabel repo tetap menang |
 | `docs/designs/b18-e2e-qa-malam.md` | PD-2b tanpa hasil | baris PD-2b mencatat hasil Singapura dan menautkan `ai-teks.md` |
 | `docs/ewi/poc-dna-tna.md` | "lokasi PD-2b: Jakarta, Singapura, atau profil apac." | ditambah hasil 23 Nov (Singapura) dengan tautan ke `ai-teks.md` |
@@ -45,7 +46,7 @@ Yang tidak berubah, dengan alasan:
 - `BEDROCK_MODEL_ID` tetap wajib diisi (tanpa bawaan di kode). Model bisa berganti tanpa rilis, dan boot yang gagal
   karena model kosong lebih aman daripada diam-diam memakai model lama. Workflow QA malam juga tanpa bawaan model:
   role `elgos-qa-malam` hanya dibuat bila model QA diisi di Terraform, jadi variabel model kosong berarti job dilewati.
-- Penjaga profil lintas region tidak berubah. `global.` tetap ditolak tanpa `AI_ALLOW_CROSS_REGION=true`. Catatan:
+- Penjaga profil lintas region tidak berubah pada revisi pagi (bagian 7 mengubahnya untuk `global.`). Catatan:
   `AI_ALLOW_CROSS_REGION=true` juga melewati pemeriksaan `AI_ALLOWED_REGIONS`, bukan hanya penjaga profil.
 
 ## 3. Bukan cakupan (milik thread infra, PR #3)
@@ -79,7 +80,7 @@ menunggu legal, jadi spek ini tidak mengubahnya. DPIA dan teks persetujuan perlu
 - Baru: `BEDROCK_REGION=ap-southeast-3` eksplisit tetap diterima (`in-region:ap-southeast-3`).
 - Baru: `BEDROCK_REGION=''` (mis. baris kosong di `.env`) jatuh ke Singapura.
 - Baru: `AI_ALLOWED_REGIONS=ap-southeast-3` tanpa `BEDROCK_REGION` kini menolak boot (lihat risiko).
-- Tetap: `us-east-1` ditolak, profil `global.`/`us.`/`eu.` ditolak kecuali diizinkan.
+- Tetap: `us-east-1` ditolak, profil `us.`/`eu.` ditolak kecuali diizinkan (`global.` diizinkan sejak bagian 7).
 - Gerbang penuh pada hasil gabungan.
 
 ## 5. Risiko
@@ -126,3 +127,64 @@ Sumbu Spec:
 | Gerbang penuh belum terbukti | Info | Dijalankan pada hasil gabungan sebelum push |
 | `qa-malam-cli.test.js` memakai Jakarta sebagai data uji dengan penyedia palsu | Info | Tidak diubah, tanpa dampak |
 </content>
+
+## 7. Revisi 23 Nov siang: Sonnet 5.5 lewat profil global dari Singapura
+
+User mengganti model penuh ke Sonnet 5.5 (thread infra, 23 Nov 12.27 WIB: "ganti penuh ke 5.5", lalu "lwt singapur").
+Di Singapura Sonnet 5.5 tidak tersedia on-demand, hanya lewat profil `global.anthropic.claude-sonnet-5-5`. Jadi
+panggilan dan tagihan lewat endpoint `ap-southeast-1`, dan `BEDROCK_MODEL_ID` berisi ID profil itu. Keputusan ini
+menggantikan pilihan Sonnet 5 in-region pukul 11.01 WIB.
+
+Masalahnya: penjaga profil di `env.js` menolak semua profil selain `apac.`, jadi staging dan produksi gagal boot dengan
+model terpilih kecuali `AI_ALLOW_CROSS_REGION=true`.
+
+### Perubahan
+
+| Berkas | Sebelum | Sesudah |
+|---|---|---|
+| `apps/api/src/config/env.js` | profil selain `apac.` ditolak tanpa `AI_ALLOW_CROSS_REGION` | `apac.` dan `global.` diterima (`ALLOWED_PROFILES`); `us.`, `eu.`, dst. tetap ditolak; pesan galat menyebut `apac./global.` |
+| `apps/api/tests/unit/config.test.js` | test produksi `anthropic.claude-sonnet-5`, `global.` di daftar yang ditolak | test produksi `global.anthropic.claude-sonnet-5-5` (`cross-region:global`, `allowCrossRegion: false`); bentuk ARN profil `global.` diterima; `global.` dengan `us-east-1` tetap ditolak |
+| `.env.example` | `BEDROCK_MODEL_ID=anthropic.claude-sonnet-5` | `BEDROCK_MODEL_ID=global.anthropic.claude-sonnet-5-5`, komentar implikasi lintas region |
+| `docs/ewi/ai-teks.md` | Sonnet 5 in-region | Sonnet 5.5 lewat profil global, izin IAM profil, implikasi UU PDP di "Batas yang diketahui" |
+| `docs/ewi/qa-malam.md` | perintah dan variabel repo dengan Sonnet 5 | ID profil `global.anthropic.claude-sonnet-5-5` sebagai `BEDROCK_MODEL_ID` dan `QA_MALAM_BEDROCK_MODEL_ID` |
+| `docs/designs/b18-e2e-qa-malam.md`, `docs/ewi/poc-dna-tna.md`, komentar `bedrock-provider.js` | Singapura / profil `apac.` | Sonnet 5.5 lewat profil global dari Singapura |
+
+`qa-malam.yml` tidak berubah: model tetap dari variabel repo, dan wizard (PR #3) mengisi `QA_MALAM_BEDROCK_MODEL_ID`
+dengan ID profil bila ada.
+
+### Kenapa tidak memakai `AI_ALLOW_CROSS_REGION=true`
+
+- Variabel itu juga melewati `AI_ALLOWED_REGIONS` dan menerima profil `us.`/`eu.`. Satu salah ketik region atau model
+  akan lolos boot tanpa peringatan.
+- Variabel itu harus dipasang di `deploy/` (milik thread infra) dan di setiap lingkungan. Bila lupa, staging atau
+  produksi gagal boot pada hari rilis.
+- Keputusan user hanya menyebut `global.`. Menulisnya di kode membuat pilihan itu terlihat di review dan di test.
+
+Yang tetap dijaga: `BEDROCK_REGION` harus ada di `AI_ALLOWED_REGIONS` juga untuk profil `global.` (endpoint tetap
+Singapura atau Jakarta), dan `processing` tercetak `cross-region:global` saat boot untuk log dan DPIA.
+
+### Implikasi lintas region (untuk Andrian dan legal)
+
+- Profil `global.` meneruskan prompt ke region AWS mana pun, termasuk di luar APAC. Prompt berisi jawaban wawancara
+  karyawan, jadi ini transfer data pribadi lintas negara menurut UU PDP. Langkah sebelumnya (Singapura in-region) juga
+  lintas negara, tetapi tujuannya satu negara yang diketahui; dengan `global.` negara tujuan tidak bisa dipastikan.
+- DPIA dan teks persetujuan (PK-17, Fasha) harus menyebut "diproses Amazon Bedrock lewat profil global, region tujuan
+  bisa di luar Indonesia". Teks persetujuan di repo masih draf dan tidak diubah di sini (alasan di bagian 3).
+- Harga dari thread infra (Pricing API 23 Nov): profil global US$2/US$10 per juta token input/output, lebih murah dari
+  Sonnet 5 in-region (US$2,20/US$11). Harga QA malam tetap dari variabel repo yang diisi wizard.
+- IAM aplikasi dan role QA malam (PR #3, statement `ModelLewatProfil`) mengizinkan model dasar Anthropic di region mana
+  pun hanya bila dipanggil lewat inference profile di akun ini.
+
+### Test
+
+- Merah dulu (commit `1b9102d`): test produksi dengan `global.anthropic.claude-sonnet-5-5` gagal dengan pesan penjaga
+  profil. Hijau di commit berikutnya.
+- Baru: bentuk ARN `inference-profile/global.` diterima; `global.` dengan `BEDROCK_REGION=us-east-1` tetap ditolak.
+- Diubah: daftar yang ditolak kini hanya `us.` dan ARN `eu.`; jalan keluar `AI_ALLOW_CROSS_REGION` diuji dengan `us.`.
+
+### Risiko
+
+- Lingkungan yang memakai profil `global.` tanpa sadar kini boot tanpa peringatan. Lokasi pemrosesan tetap tercetak
+  saat boot (`server.js`).
+- Model yang tersedia lewat profil bisa berubah tanpa rilis. Uji asap `ai-smoke.js` (`docs/ewi/ai-teks.md` langkah 3)
+  perlu dijalankan dengan ID profil sebelum QA malam pertama.

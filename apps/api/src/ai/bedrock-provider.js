@@ -1,5 +1,5 @@
 'use strict';
-// Penyedia AI teks Amazon Bedrock (Claude) lewat Converse API (PK-06; PD-1 ★A; PD-2b: Jakarta, Singapura, atau profil apac.).
+// Penyedia AI teks Amazon Bedrock (Claude) lewat Converse API (PK-06; PD-1 ★A; PD-2b: Jakarta, Singapura, atau profil apac./global.).
 // Kredensial memakai rantai bawaan AWS SDK (kunci IAM yang sama dengan KMS dan SES di etavm2).
 // Setiap panggilan model mengembalikan catatan pemakaian token (R3-6) untuk disimpan pemanggil.
 const { BedrockRuntimeClient, ConverseCommand } = require('@aws-sdk/client-bedrock-runtime');
