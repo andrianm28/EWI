@@ -172,7 +172,7 @@ test('Impor data & integrasi: kamus per jabatan dengan sumber DACUM, ringkasan K
   await expect(kamus).toContainText('Belum diimpor')
   await expect(page.getByTestId('cfg-kpi')).toContainText('3 target · 2 belum tercapai')
   await expect(page.getByTestId('cfg-kpi')).toContainText('Berkas · okr_q4_2026.csv')
-  await expect(page.getByTestId('cfg-integrasi')).toContainText('EliteMentor: tersambung (SSO · sync-back)')
+  await expect(page.getByTestId('cfg-integrasi')).toContainText('EliteMentor: Terkonfigurasi (SSO · sync-back)')
   await expect(page.getByTestId('cfg-integrasi')).not.toContainText('deep link')
   await expect(page.getByTestId('cfg-integrasi')).toContainText('EliteMentor, Moodle')
 
@@ -200,4 +200,24 @@ test('flag admin.tenant mati: layar tidak bisa dibuka', async ({ page }) => {
   await expect(page).not.toHaveURL(/\/admin\/pengguna$/)
   await page.goto('/admin/pengguna')
   await expect(page).not.toHaveURL(/\/admin\/pengguna$/)
+})
+
+test('triase P7 ADM-1: HR yang membuka layar admin lewat alamat mendapat tautan antar tiga layar; menu tetap 1:1 mockup', async ({ page }) => {
+  await page.route('**/api/tenant-admin/**', (r) => {
+    const path = new URL(r.request().url()).pathname.replace(/^.*\/api\/tenant-admin/, '')
+    if (path === '/users') return json(r, { data: USERS, meta: { total: USERS.length, sso: false } })
+    if (path === '/roles') return json(r, { data: [] })
+    if (path === '/job-roles') return json(r, { data: JOBS })
+    return json(r, { error: { code: 'NOT_FOUND', message: 'tidak ada' } }, 404)
+  })
+  await login(page, 'hr_admin')
+  await expect(nav(page).getByRole('link', { name: 'Pengguna & peran' })).toHaveCount(0)
+  await page.goto('/admin/pengguna')
+  const links = page.getByRole('navigation', { name: 'Layar Admin Tenant' })
+  await expect(links.getByRole('link')).toHaveText(['Pengguna & peran', 'Jabatan & kamus kompetensi', 'Impor data & integrasi'])
+  await expect(links.getByRole('link', { name: 'Pengguna & peran' })).toHaveAttribute('aria-current', 'page')
+  await links.getByRole('link', { name: 'Jabatan & kamus kompetensi' }).click()
+  await expect(page).toHaveURL(/\/admin\/jabatan$/)
+  await expect(page.getByRole('heading', { level: 1, name: 'Jabatan & kamus kompetensi' })).toBeVisible()
+  await expect(links.getByRole('link', { name: 'Jabatan & kamus kompetensi' })).toHaveAttribute('aria-current', 'page')
 })

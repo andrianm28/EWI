@@ -355,11 +355,13 @@ test('P5 triase: Validasi tidak terkirim dua kali saat permintaan masih berjalan
 
 test('P7 CV-2/CV-4/CV-5: bar skor nilai hijau/merah, tabel tanpa bingkai ganda, rekomendasi berbingkai + tombol wawancara', async ({ page }) => {
   await loginAs(page)
-  await page.route(/\/programs\/dna-5c\/report$/, (r) => r.fulfill({ json: { data: { ...REPORT, values: [{ name: 'Credible', avgCompleted: 94.1, avgAll: 61.2 }, { name: 'Committed', avgCompleted: 80.2, avgAll: 55 }] } } }))
+  await page.route(/\/programs\/dna-5c\/report$/, (r) => r.fulfill({ json: { data: { ...REPORT, values: [{ name: 'Credible', avgCompleted: 94.1, avgAll: 61.2 }, { name: 'Committed', avgCompleted: 80.2, avgAll: 55 }, { name: 'Caring', avgCompleted: null, avgAll: null }] } } }))
   await page.goto('/cc?tab=val')
   const program = page.getByTestId('cc-program')
   await expect(program.getByRole('progressbar', { name: 'Skor Credible' })).toHaveClass(/el-bar--success/)
   await expect(program.getByRole('progressbar', { name: 'Skor Committed' })).toHaveClass(/el-bar--critical/)
+  // triase P7: tanpa skor (null) bar netral, bukan hijau atau merah
+  await expect(program.getByRole('progressbar', { name: 'Skor Caring' })).toHaveClass(/el-bar--primary/)
   await expect(program.getByRole('heading', { level: 3, name: 'Kinerja per komponen program' })).toBeVisible()
   await expect(program.getByRole('heading', { level: 3, name: 'Hasil per divisi' })).toBeVisible()
   await expect(program.locator('.el-table').first()).toHaveCSS('border-top-width', '0px')

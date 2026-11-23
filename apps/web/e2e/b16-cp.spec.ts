@@ -84,6 +84,8 @@ test('Atasan merekomendasikan dengan catatan; keputusan tercatat dengan nama', a
   await loginSebagai(page, 'atasan', B16)
   await page.goto('/cp')
   await page.getByRole('tab', { name: 'Keputusan promosi' }).click()
+  // triase P7: summary menyebut nama karyawan untuk pembaca layar
+  await expect(page.locator('summary', { hasText: 'Tambah catatan' })).toHaveText('Tambah catatan untuk Ani')
   await page.getByText('Tambah catatan').click()
   await page.getByLabel('Catatan untuk Ani').fill('Siap')
   await page.getByRole('button', { name: 'Rekomendasikan Ani' }).click()
@@ -163,7 +165,7 @@ test('P7 CP-1..9: copy mockup, label Divisi, baris dipilih lewat nama, chip stat
   await expect(table.getByRole('row').filter({ hasText: 'Budi' })).toContainText('Perlu lulus Basic')
   await expect(table.locator('.el-chip .el-icon')).toHaveCount(0)
   await page.getByRole('button', { name: 'Pilih Dedi' }).click()
-  await expect(page.getByRole('button', { name: 'Pilih Dedi' })).toHaveAttribute('aria-pressed', 'true')
+  await expect(page.getByRole('button', { name: 'Pilih Dedi' })).toHaveAttribute('aria-current', 'true')
   await expect(page.getByTestId('cp-evidence')).toContainText('Bukti untuk Dedi')
   await expect(page.getByTestId('cp-evidence')).toContainText('AI hanya menyusun ringkasan dan tidak merekomendasikan keputusan.')
   await page.getByRole('tab', { name: 'Keputusan promosi' }).click()
