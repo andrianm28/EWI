@@ -48,19 +48,31 @@ describe('loadConfig', () => {
     it('produksi memakai bedrock dan menolak stub', () => {
       expect(() => loadConfig({ ...prod, AI_PROVIDER: 'stub' })).toThrow(/AI_PROVIDER=stub tidak boleh di produksi/);
       expect(() => loadConfig(prod)).toThrow(/BEDROCK_MODEL_ID wajib/);
-      const cfg = loadConfig({ ...prod, BEDROCK_MODEL_ID: 'anthropic.model-uji' });
-      expect(cfg.ai).toMatchObject({ provider: 'bedrock', region: 'ap-southeast-3', modelId: 'anthropic.model-uji', maxQuestions: 8, processing: 'in-region:ap-southeast-3' });
+      // Model terpilih PD-2b (docs/designs/pd-2b-bedrock-singapura.md) lolos tanpa izin lintas region
+      const cfg = loadConfig({ ...prod, BEDROCK_MODEL_ID: 'global.anthropic.claude-sonnet-5-5' });
+      expect(cfg.ai).toMatchObject({ provider: 'bedrock', region: 'ap-southeast-1', modelId: 'global.anthropic.claude-sonnet-5-5', maxQuestions: 8, processing: 'cross-region:global', allowCrossRegion: false });
     });
-    it('PD-2b: Jakarta lalu Singapura in-region, atau profil apac.; profil di luar APAC ditolak kecuali diizinkan', () => {
+    it('PD-2b: bawaan Singapura, Jakarta boleh eksplisit, profil apac. atau global.; profil lain ditolak kecuali diizinkan', () => {
       const t = { ...base, NODE_ENV: 'test', AI_PROVIDER: 'bedrock' };
-      expect(loadConfig({ ...t, BEDROCK_MODEL_ID: 'm' }).ai.region).toBe('ap-southeast-3');
+      expect(loadConfig({ ...t, BEDROCK_MODEL_ID: 'm' }).ai.region).toBe('ap-southeast-1');
+      // Jakarta tetap diterima bila diisi eksplisit (mis. kelak Claude tersedia in-region di sana)
+      expect(loadConfig({ ...t, BEDROCK_MODEL_ID: 'm', BEDROCK_REGION: 'ap-southeast-3' }).ai.processing).toBe('in-region:ap-southeast-3');
+      // Nilai kosong (mis. baris `BEDROCK_REGION=` di .env) jatuh ke bawaan
+      expect(loadConfig({ ...t, BEDROCK_MODEL_ID: 'm', BEDROCK_REGION: '' }).ai.region).toBe('ap-southeast-1');
+      // Daftar yang hanya mengizinkan Jakarta wajib mengisi BEDROCK_REGION
+      expect(() => loadConfig({ ...t, BEDROCK_MODEL_ID: 'm', AI_ALLOWED_REGIONS: 'ap-southeast-3' })).toThrow(/BEDROCK_REGION harus salah satu dari ap-southeast-3/);
       expect(loadConfig({ ...t, BEDROCK_MODEL_ID: 'm', BEDROCK_REGION: 'ap-southeast-1' }).ai.processing).toBe('in-region:ap-southeast-1');
       expect(loadConfig({ ...t, BEDROCK_MODEL_ID: 'apac.anthropic.x', BEDROCK_REGION: 'ap-southeast-1' }).ai.processing).toBe('cross-region:apac');
       expect(() => loadConfig({ ...t, BEDROCK_MODEL_ID: 'm', BEDROCK_REGION: 'us-east-1' })).toThrow(/ap-southeast-3, ap-southeast-1/);
-      for (const id of ['global.anthropic.x', 'us.anthropic.x', 'arn:aws:bedrock:ap-southeast-1:1:inference-profile/eu.anthropic.x']) {
-        expect(() => loadConfig({ ...t, BEDROCK_MODEL_ID: id })).toThrow(/profil lintas region/);
+      // Profil global. dipilih user 23 Nov (Sonnet 5.5 tidak tersedia in-region di Singapura); daftar region tetap berlaku
+      expect(loadConfig({ ...t, BEDROCK_MODEL_ID: 'arn:aws:bedrock:ap-southeast-1:1:inference-profile/global.anthropic.x' }).ai.processing).toBe('cross-region:global');
+      // Hanya galat region; penjaga profil tidak ikut menolak
+      expect(() => loadConfig({ ...t, BEDROCK_MODEL_ID: 'global.anthropic.x', BEDROCK_REGION: 'us-east-1' })).toThrow(/tidak valid:\n- BEDROCK_REGION harus[^\n]*$/);
+      expect(loadConfig({ ...t, BEDROCK_MODEL_ID: 'GLOBAL.anthropic.x' }).ai.processing).toBe('cross-region:global');
+      for (const id of ['us.anthropic.x', 'arn:aws:bedrock:ap-southeast-1:1:inference-profile/eu.anthropic.x']) {
+        expect(() => loadConfig({ ...t, BEDROCK_MODEL_ID: id })).toThrow(/profil lintas region "(us|eu)\."; .* atau profil apac\.\/global\./);
       }
-      expect(loadConfig({ ...t, BEDROCK_MODEL_ID: 'global.anthropic.x', AI_ALLOW_CROSS_REGION: 'true' }).ai.modelId).toBe('global.anthropic.x');
+      expect(loadConfig({ ...t, BEDROCK_MODEL_ID: 'us.anthropic.x', AI_ALLOW_CROSS_REGION: 'true' }).ai.modelId).toBe('us.anthropic.x');
       expect(loadConfig({ ...t, BEDROCK_MODEL_ID: 'm', BEDROCK_REGION: 'ap-southeast-1', AI_ALLOWED_REGIONS: 'ap-southeast-1' }).ai.allowedRegions).toEqual(['ap-southeast-1']);
     });
     it('menolak penyedia tak dikenal, angka dan JSON yang tidak valid', () => {

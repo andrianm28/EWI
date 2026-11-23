@@ -48,6 +48,8 @@ export const MENU: MenuItem[] = [
   { key: 'aiv', label: 'Wawancara visi & nilai', icon: 'record_voice_over', views: ['karyawan'], submodule: 'cca' },
   { key: 'iv', label: 'Wawancara akar masalah', icon: 'forum', views: ['karyawan'], submodule: 'tna' },
   { key: 'li', label: 'Rencana belajar', icon: 'school', views: ['karyawan'] },
+  // B15 tahap 3: wawancara ulang AI setelah belajar (atasan juga peserta pelatihan)
+  { key: 'wu', label: 'Wawancara ulang', icon: 'forum', views: ['karyawan', 'atasan'], flag: 'lim.reinterview' },
   // Peralihan: karyawan masih membuka halaman DNA/TNA lama sampai "Hasil saya" (B8) terpasang, Admin Tenant
   // (juga HR, K2) sampai layar Pengguna (B11), dan Admin ETA (di halaman lama setara HR) sampai layar Tenant (B12)
   { key: 'dna', label: 'Developmental Needs', icon: 'account_tree', views: ['karyawan', 'admin', 'super'], submodule: 'dna', transitional: true },

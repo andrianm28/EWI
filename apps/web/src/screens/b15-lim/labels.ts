@@ -1,5 +1,5 @@
 // Label tampilan B15. Teks statis mockup (jebakan, prinsip pelaporan) ada di sini, bukan di API (spek bagian 3).
-import type { Coverage, Indicator, QueueRow, Strength, Verdict } from './api'
+import type { Application, Confidence, Coverage, Indicator, QueueRow, Retention, Strength, Verdict } from './api'
 
 type Tone = 'success' | 'warning' | 'critical' | 'info' | 'neutral'
 export const COVERAGE: Record<Coverage, { text: string; tone: Tone }> = {
@@ -15,6 +15,18 @@ export const STRENGTH: Record<Strength, { text: string; tone: Tone }> = {
 export const QUEUE_STATUS: Record<QueueRow['status'], { text: string; tone: Tone }> = {
   none: { text: 'Belum dijadwalkan', tone: 'warning' }, scheduled: { text: 'Terjadwal', tone: 'info' }, done: { text: 'Selesai', tone: 'success' },
 }
+// Tahap 3: temuan benchmark (mockup Pak Eji, fungsi limFind) dan tingkat keyakinan
+export const RETENTION: Record<Retention, { title: string; text: string; tone: Tone }> = {
+  retention_drop: { title: 'Hasil belajar tidak bertahan', text: 'Perlu penguatan', tone: 'critical' },
+  confirmed: { title: 'Hasil belajar terkonfirmasi', text: 'Terkonfirmasi', tone: 'success' },
+  missing: { title: 'Skor post atau wawancara ulang belum ada', text: 'Data belum lengkap', tone: 'neutral' },
+}
+export const APPLICATION: Record<Application, { title: string; text: string; tone: Tone }> = {
+  application_gap: { title: 'Belum diterapkan penuh di pekerjaan', text: 'Cek Improvement Needs', tone: 'warning' },
+  applied: { title: 'Kemampuan terlihat di kinerja', text: 'Terapan baik', tone: 'success' },
+  missing: { title: 'Skor kinerja belum diisi atasan', text: 'Data belum lengkap', tone: 'neutral' },
+}
+export const CONFIDENCE: Record<Confidence, string> = { low: 'Rendah', medium: 'Sedang', high: 'Tinggi' }
 export const WINDOW: Record<NonNullable<QueueRow['window']>, string> = { early: 'Belum waktunya', due: 'Waktunya sekarang', late: 'Lewat jendela 6 pekan' }
 export const QUESTIONS = [
   { key: 'businessProblem', label: 'Masalah bisnis' },

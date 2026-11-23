@@ -28,7 +28,7 @@ Sumber acuan:
 | PM-2 | Pemantauan kualitas AI |
 | PM-10 | Konteks AI hanya data milik karyawan yang diwawancarai |
 | PD-1, PD-7 | Keputusan akun AWS dan akses model Bedrock (belum dijawab, default A dipakai) |
-| PD-2b | Lokasi pemrosesan AI dengan latensi terendah |
+| PD-2b | Lokasi pemrosesan AI dengan latensi terendah. Hasil 23 Nov: Sonnet 5.5 lewat profil global dari endpoint Singapura, untuk aplikasi dan QA malam (model dan region di `docs/ewi/ai-teks.md`) |
 | BT-11 | Kendala operasional yang muncul di wawancara dicatat sebagai temuan Improvement Needs |
 | BT-23 | Satu target bisa menghasilkan temuan Training Needs dan Improvement Needs yang saling bertautan |
 | Kenari | String unik yang sengaja ditanam di data uji; bila muncul di tempat yang salah, ada kebocoran |
@@ -317,7 +317,7 @@ Keluaran: `qa-malam-<tanggal>.json` (angka, pelanggaran, teks yang melanggar, da
 - `timeout-minutes: 30`, `concurrency: qa-malam`. Laporan diunggah sebagai artefak (retensi 30 hari) dan ringkasannya ditulis ke step summary. Run gagal memakai notifikasi bawaan GitHub.
 - Workflow terjadwal hanya berjalan dari default branch (`main`), jadi aktif setelah berkas ini sampai di `main`.
 
-**Kebutuhan untuk thread infra (tidak ditulis B18 karena `infra/` milik thread infra; sudah ada di PR #3, `infra/live/shared/qa-malam.tf`):** role IAM `elgos-qa-malam` dengan trust OIDC `repo:andrianm28/EWI:environment:qa-malam`, izin hanya `bedrock:InvokeModel` pada ARN model yang dipakai (ditambah ARN inference profile bila memakai profil `apac.`), region mengikuti PD-2b, dan alarm anggaran. Role ini terpisah dari kunci IAM aplikasi (KMS dan SES).
+**Kebutuhan untuk thread infra (tidak ditulis B18 karena `infra/` milik thread infra; sudah ada di PR #3, `infra/live/shared/qa-malam.tf`):** role IAM `elgos-qa-malam` dengan trust OIDC `repo:andrianm28/EWI:environment:qa-malam`, izin hanya `bedrock:InvokeModel` pada ARN model yang dipakai (ditambah ARN inference profile bila memakai profil, `global.` sejak 23 Nov), region mengikuti PD-2b, dan alarm anggaran. Role ini terpisah dari kunci IAM aplikasi (KMS dan SES).
 
 **Run manual (cadangan sebelum workflow aktif):** dijalankan manusia (Andrian atau yang ditunjuk) di mesinnya dengan kredensial berumur pendek (`aws sso login` atau STS) dan Postgres lokal `ewi_qa`. Tidak pernah dari sesi agen, dan tidak pernah dengan kunci IAM aplikasi.
 

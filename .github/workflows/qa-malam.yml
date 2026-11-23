@@ -46,7 +46,8 @@ jobs:
       DB_SCHEMA: ewi
       MAIL_PROVIDER: memory
       AI_PROVIDER: bedrock
-      BEDROCK_REGION: ${{ vars.QA_MALAM_BEDROCK_REGION }}
+      # PD-2b (docs/designs/pd-2b-bedrock-singapura.md): Singapura bila variabel repo kosong
+      BEDROCK_REGION: ${{ vars.QA_MALAM_BEDROCK_REGION || 'ap-southeast-1' }}
       BEDROCK_MODEL_ID: ${{ vars.QA_MALAM_BEDROCK_MODEL_ID }}
       AI_PRICE_INPUT_PER_MTOK: ${{ vars.QA_MALAM_AI_PRICE_INPUT_PER_MTOK }}
       AI_PRICE_OUTPUT_PER_MTOK: ${{ vars.QA_MALAM_AI_PRICE_OUTPUT_PER_MTOK }}
@@ -63,7 +64,7 @@ jobs:
         with:
           role-to-assume: ${{ vars.QA_MALAM_ROLE_ARN }}
           role-session-name: elgos-qa-malam
-          aws-region: ${{ vars.QA_MALAM_BEDROCK_REGION }}
+          aws-region: ${{ vars.QA_MALAM_BEDROCK_REGION || 'ap-southeast-1' }}
       - name: Jalankan QA malam
         run: npm run qa:malam -w apps/api -- --siapkan-db --keluaran "$GITHUB_WORKSPACE/qa-malam-hasil"
       - name: Ringkasan ke step summary

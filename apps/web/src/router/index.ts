@@ -19,6 +19,8 @@ declare module 'vue-router' {
     views?: ViewKey[]
     /** Flag yang harus menyala. */
     flag?: string
+    /** Flag tambahan yang semuanya harus menyala (mis. modul + fitur di dalamnya). */
+    flags?: string[]
     /** Submodul yang harus dimiliki dan menyala. */
     submodule?: SubmoduleKey
     /** Modul 2–5: produk entitlement yang harus dimiliki tenant (mis. 'full_suite'), sama dengan pemeriksaan API-nya. */
@@ -71,6 +73,7 @@ type Session = Gates
 
 function passesGates(meta: RouteLocationNormalized['meta'], params: RouteLocationNormalized['params'], session: Session): boolean {
   if (meta.flag && session.access?.flags[meta.flag] !== true) return false
+  if (meta.flags && !meta.flags.every((f) => session.access?.flags[f] === true)) return false
   const key = (meta.submodule ?? (meta.submoduleParam ? params.key : undefined)) as SubmoduleKey | undefined
   if (key && !session.canOpen(key)) return false
   if (meta.roles && !session.roles.some((r) => meta.roles!.includes(r))) return false

@@ -10,6 +10,8 @@ import { lim, type CompetencyRow, type Indicator, type Overview, type PlanSummar
 import { COVERAGE, PITFALLS, PRINCIPLE, QUESTIONS, QUEUE_STATUS, STRENGTH, VERDICT, WINDOW, score, tanggal, targetText, withUnit } from './labels'
 import ImportPanel from '@/components/ImportPanel.vue'
 import PlanForm from './PlanForm.vue'
+import ReinterviewResult from './ReinterviewResult.vue'
+import './lim.css'
 
 const session = useSessionStore()
 const isHr = computed(() => session.activeView === 'hr')
@@ -24,6 +26,9 @@ const error = ref('')
 const notice = ref('')
 const busy = ref(false)
 const date = ref('')
+// tahap 3: hasil wawancara ulang satu karyawan (alur empat langkah mockup), menggantikan antrean saat dibuka
+const viewing = ref<QueueRow | null>(null)
+const canReinterview = computed(() => session.hasFlag('lim.reinterview'))
 
 const msg = (e: unknown, fallback: string) => (e instanceof ApiError ? e.message : fallback)
 
@@ -42,7 +47,7 @@ async function loadQueue() {
   if (!isHr.value || !planId.value) return
   try { queue.value = (await lim.queue(planId.value)).data } catch (e) { error.value = msg(e, 'Antrean wawancara ulang tidak bisa dimuat') }
 }
-watch(planId, loadOverview)
+watch(planId, () => { viewing.value = null; loadOverview() })
 watch([tab, planId], () => { if (tab.value === 'ai' && queue.value === null) loadQueue() })
 onMounted(() => loadPlans())
 
@@ -69,7 +74,10 @@ async function schedule(userIds: string[], when: string | null) {
   try {
     const { data: r } = await lim.schedule(planId.value, userIds, when)
     const parts = [when === null ? `${r.scheduled.length} jadwal dibatalkan` : `${r.scheduled.length} karyawan dijadwalkan`]
-    if (r.skipped.length) parts.push(`${r.skipped.length} sudah selesai`)
+    const done = r.skipped.filter((x) => x.reason === 'done').length
+    const running = r.skipped.length - done
+    if (done) parts.push(`${done} sudah selesai`)
+    if (running) parts.push(`${running} sedang diwawancara, jadwalnya tidak diubah`)
     if (r.rejected.length) parts.push(`${r.rejected.length} ditolak: ${r.rejected[0]!.message}`)
     notice.value = `${parts.join(', ')}.`
     await loadQueue()
@@ -207,9 +215,10 @@ const chainLabel = (r: Record<string, unknown>) => `${r.level} · ${r.label}`
       <div v-else-if="tab === 'ai'" id="lim-panel-ai" role="tabpanel" aria-labelledby="lim-tab-ai">
         <UiCard tonal as="section" aria-label="Agen AI pengukuran dampak">
           <p><b>Agen AI · Pengukuran dampak</b> <UiStatus tone="info">Pilot</UiStatus></p>
-          <p class="el-muted lim-small">AI mewawancarai ulang karyawan 4 sampai 6 pekan setelah belajar untuk memastikan hasil belajar bertahan. Satu wawancara per karyawan mencakup semua kompetensi rencana. Percakapan wawancara ulang menyusul di tahap 3.</p>
+          <p class="el-muted lim-small">AI mewawancarai ulang karyawan 4 sampai 6 pekan setelah belajar untuk memastikan hasil belajar bertahan, membandingkannya dengan kinerja kerja, lalu menghubungkannya ke hasil bisnis tim. Satu wawancara mencakup sampai 4 kompetensi rencana.</p>
         </UiCard>
         <UiNote v-if="!isHr" class="lim-gap">Antrean wawancara ulang dikelola HR. Hasilnya masuk ke tab Ringkasan dan Per kompetensi.</UiNote>
+        <ReinterviewResult v-else-if="viewing" class="lim-gap" :plan-id="planId" :user-id="viewing.userId" :name="viewing.name" @back="viewing = null" />
         <template v-else-if="queue">
           <div class="lim-row lim-gap">
             <label class="el-label">Tanggal wawancara ulang<input v-model="date" class="el-input" type="date"></label>
@@ -229,27 +238,17 @@ const chainLabel = (r: Record<string, unknown>) => `${r.level} · ${r.label}`
               <span v-else class="el-muted lim-small">Tanggal selesai belajar belum diketahui</span>
             </template>
             <template #cell-aksi="{ row }">
+              <UiButton v-if="Q(row).canView && canReinterview" variant="tonal" size="sm" :aria-label="`Lihat hasil ${Q(row).name}`" @click="viewing = Q(row)">Lihat hasil</UiButton>
               <span v-if="Q(row).status !== 'done'" class="lim-actions">
                 <UiButton variant="tonal" size="sm" :disabled="busy || !Q(row).postCompletedOn" :aria-label="`Jadwalkan ${Q(row).name}`" @click="schedule([Q(row).userId], date)">Jadwalkan</UiButton>
                 <UiButton v-if="Q(row).status === 'scheduled'" variant="text" size="sm" :disabled="busy" :aria-label="`Batalkan jadwal ${Q(row).name}`" @click="schedule([Q(row).userId], null)">Batalkan</UiButton>
               </span>
             </template>
           </UiDataTable>
-          <UiNote class="lim-gap">Dalam produk, karyawan mengerjakan wawancara ulang sendiri lewat EliteMentor. Wawancara yang sudah selesai tidak bisa dijadwalkan ulang.</UiNote>
+          <UiNote class="lim-gap">Karyawan mengerjakan wawancara ulang sendiri dari menu Wawancara ulang setelah dijadwalkan. Wawancara yang sudah selesai tidak bisa dijadwalkan ulang.</UiNote>
         </template>
       </div>
     </template>
   </AppShell>
 </template>
 
-<style>
-.lim-gap { margin-top: 16px; }
-.lim-small { font-size: 13px; }
-.lim-strong { font-weight: 500; }
-.lim-big { font-size: 24px; font-weight: 500; margin: 4px 0; }
-.lim-row { display: flex; gap: 12px; align-items: end; justify-content: space-between; flex-wrap: wrap; }
-.lim-q5 { display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); margin-top: 8px; }
-.lim-q { padding: 12px; border: 1px solid var(--el-outline-variant); border-radius: 12px; }
-.lim-factor { padding: 8px 12px; border: 1px solid var(--el-outline-variant); border-radius: 8px; margin: 0 0 8px; }
-.lim-actions { display: flex; gap: 4px; flex-wrap: wrap; }
-</style>

@@ -5,12 +5,12 @@ kini dijalankan model sungguhan lewat Amazon Bedrock. Suara (R3-1) tidak termasu
 
 ## Asumsi keputusan
 
-PD-1 belum dijawab (per 19 Nov); kode memakai opsi ★. PM-10 diputus A (17 Nov). PD-2 diganti PD-2b (19 Nov 20.28 WIB).
+PD-1 belum dijawab (per 19 Nov); kode memakai opsi ★. PM-10 diputus A (17 Nov). PD-2 diganti PD-2b (19 Nov 20.28 WIB); hasilnya dicek 23 Nov (Singapura, lihat baris PD-2b).
 
 | Kode | Asumsi | Akibat di kode |
 |---|---|---|
 | PD-1 | ★A Amazon Bedrock (Claude) | `AI_PROVIDER=bedrock`, adaptor `src/ai/bedrock-provider.js` (Converse API) |
-| PD-2b | ✅ Lokasi dengan latensi terendah ke Indonesia yang memenuhi spek (user, 19 Nov) | Urutan: Jakarta `ap-southeast-3` bila model Claude tersedia in-region, lalu Singapura `ap-southeast-1`, lalu profil lintas region `apac.`. `BEDROCK_REGION` (bawaan `ap-southeast-3`) wajib ada di `AI_ALLOWED_REGIONS` (bawaan `ap-southeast-3,ap-southeast-1`); profil `global.`, `us.`, `eu.`, dst. ditolak saat boot kecuali `AI_ALLOW_CROSS_REGION=true`. Lokasi yang dipakai tercetak saat boot (`in-region:<region>` atau `cross-region:apac`) untuk DPIA |
+| PD-2b | ✅ Lokasi dengan latensi terendah ke Indonesia yang memenuhi spek (user, 19 Nov). Hasil cek akun ELGOS 23 Nov: Jakarta hanya lewat profil `global.anthropic.*` (tanpa model in-region dan tanpa `apac.`); Singapura punya `anthropic.claude-sonnet-5` on-demand, sedangkan Sonnet 5.5 hanya lewat profil `global.`. User memilih Singapura dengan Sonnet 5 (kartu 23 Nov 11.01 WIB), lalu menggantinya penuh ke Sonnet 5.5 lewat Singapura (23 Nov 12.27 WIB) | Urutan: Jakarta `ap-southeast-3` bila model Claude tersedia in-region, lalu Singapura `ap-southeast-1`, lalu profil lintas region `apac.`; profil `global.` diizinkan sejak keputusan 23 Nov. Terpakai: endpoint Singapura, `BEDROCK_MODEL_ID=global.anthropic.claude-sonnet-5-5`, jadi prompt bisa diproses di region AWS mana pun (spek `docs/designs/pd-2b-bedrock-singapura.md`). `BEDROCK_REGION` (bawaan `ap-southeast-1`) wajib ada di `AI_ALLOWED_REGIONS` (bawaan `ap-southeast-3,ap-southeast-1`); profil `us.`, `eu.`, dst. ditolak saat boot kecuali `AI_ALLOW_CROSS_REGION=true`. Lokasi yang dipakai tercetak saat boot (`in-region:<region>` atau `cross-region:global`) untuk DPIA |
 | PM-10 | ✅ A (17 Nov) AI menyebut nama KPI dan angka milik karyawan itu | Model hanya menerima kompetensi jabatan dan target milik karyawan yang diwawancarai (`aiContext`); nama, email, dan data orang lain tidak dikirim |
 | R3-6 | ✅ A Pemakaian dicatat per panggilan sejak POC | Tabel `ai_usage_logs` (migrasi `20261117000100`) |
 
@@ -64,9 +64,9 @@ respons `POST /:id/complete` (`aiUsage`). Laporan biaya di panel Admin ETA belum
 | Variabel | Bawaan | Keterangan |
 |---|---|---|
 | `AI_PROVIDER` | `stub`, produksi `bedrock` | |
-| `BEDROCK_REGION` | `ap-southeast-3` | Harus ada di `AI_ALLOWED_REGIONS` (PD-2b) |
+| `BEDROCK_REGION` | `ap-southeast-1` | Harus ada di `AI_ALLOWED_REGIONS` (PD-2b); Jakarta tetap boleh diisi eksplisit |
 | `AI_ALLOWED_REGIONS` | `ap-southeast-3,ap-southeast-1` | |
-| `BEDROCK_MODEL_ID` | wajib untuk bedrock | ID model in-region, atau `apac.<id>` bila tidak ada in-region (langkah 2 di bawah) |
+| `BEDROCK_MODEL_ID` | wajib untuk bedrock | Terpakai sejak 23 Nov: `global.anthropic.claude-sonnet-5-5` (ID inference profile, dipanggil dari endpoint Singapura). Bisa juga ID model in-region atau `apac.<id>` (langkah 2 di bawah) |
 | `BEDROCK_EXTRA_FIELDS` | kosong | JSON `additionalModelRequestFields`, opsional |
 | `AI_MAX_QUESTIONS` | 8 | |
 | `AI_TIMEOUT_MS` | 30000 | per panggilan |
@@ -74,8 +74,9 @@ respons `POST /:id/complete` (`aiUsage`). Laporan biaya di panel Admin ETA belum
 | `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY` | | Sama dengan KMS dan SES |
 
 Berkas deploy (`deploy/`, `infra/`) milik thread infra; variabel di atas dan izin IAM perlu ditambahkan di sana (A7 butir 5):
-`bedrock:InvokeModel` pada `arn:aws:bedrock:<BEDROCK_REGION>::foundation-model/<model>`; bila memakai profil `apac.`,
-juga ARN profil inferensinya dan foundation model di semua region tujuan profil itu.
+`bedrock:InvokeModel` pada `arn:aws:bedrock:<BEDROCK_REGION>::foundation-model/<model>`; bila memakai profil (`global.` sejak
+23 Nov), juga ARN profil inferensinya dan foundation model di semua region tujuan profil itu. Thread infra memasangnya di
+`infra/modules/app-crypto` (statement `ModelLewatProfil`: model dasar di region mana pun hanya lewat profil di akun ini).
 
 ## Uji asap setelah akun AWS ELGOS ada
 
@@ -84,6 +85,8 @@ juga ARN profil inferensinya dan foundation model di semua region tujuan profil 
    a. Jakarta in-region: `aws bedrock list-foundation-models --region ap-southeast-3 --by-provider anthropic --query "modelSummaries[?contains(inferenceTypesSupported, 'ON_DEMAND')].modelId"`.
    b. Singapura in-region: perintah yang sama dengan `--region ap-southeast-1`.
    c. Profil APAC: `aws bedrock list-inference-profiles --region ap-southeast-3 --query "inferenceProfileSummaries[?starts_with(inferenceProfileId, 'apac.anthropic')].inferenceProfileId"` (ulangi untuk ap-southeast-1).
+   d. Profil global (dipakai sejak 23 Nov, keputusan user): perintah c dengan `'global.anthropic'` dan `--region ap-southeast-1`.
+      Region tujuan profil ini bisa di mana pun, jadi pilihan ini butuh keputusan user dan catatan DPIA.
    Pakai model Claude terbaru yang memenuhi spek. Bila a dan b sama-sama ada, bandingkan latensi dari etavm2 dengan
    uji asap di kedua region dan ambil yang lebih cepat. Bila tidak ada satu pun, bawa ke user.
 3. Isi `BEDROCK_REGION`, `BEDROCK_MODEL_ID`, dan kredensial, lalu jalankan dari root repo:
@@ -98,10 +101,12 @@ juga ARN profil inferensinya dan foundation model di semua region tujuan profil 
 
 ## Batas yang diketahui
 
-- Ketersediaan Claude in-region di Jakarta atau Singapura belum bisa dicek dari sini (tidak ada akun). Dokumentasi
-  model Claude terbaru di Bedrock mencantumkan profil geo `us.`, `eu.`, `au.`, `in.` dan `global.`, tanpa `apac.`;
-  bila hanya itu yang tersedia, ketiga pilihan PD-2b tidak terpenuhi dan perlu dibawa ke user. Jadi langkah 2 wajib
-  begitu akun ada.
+- Langkah 2 dijalankan thread infra pada 23 Nov dengan akun ELGOS: Jakarta hanya menyediakan profil `global.anthropic.*`,
+  Singapura menyediakan `anthropic.claude-sonnet-5` on-demand dan Sonnet 5.5 hanya lewat `global.anthropic.claude-sonnet-5-5`.
+  User memilih Sonnet 5.5 lewat profil global. Uji asap (langkah 3) dan rekaman fixture (langkah 4) tetap perlu dijalankan
+  dengan `BEDROCK_REGION=ap-southeast-1 BEDROCK_MODEL_ID=global.anthropic.claude-sonnet-5-5`.
+- Profil `global.` berarti prompt (jawaban wawancara karyawan) bisa diproses di region AWS mana pun, di luar Indonesia
+  dan APAC. Ini transfer data lintas negara menurut UU PDP: DPIA dan teks persetujuan wajib menyebutnya (thread legal).
 - Analisis masih sinkron di `POST /complete`; B4 memindahkannya ke job terpisah dengan dua kali penilaian (PD-13).
 - Tidak ada streaming jawaban; pertanyaan pendek (maks 400 token keluar).
 - PD-2b juga berlaku untuk suara live (thread penyedia suara, rencana Gemini Live); kode ini hanya mengatur AI teks.

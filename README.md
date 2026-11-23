@@ -14,7 +14,7 @@ apps/api   Node 24 + Express + Sequelize + Postgres (schema `ewi`)
 apps/web   Vue 3 + Vite + TypeScript + Pinia + Tailwind, e2e Playwright
 docs/      ADR, arsitektur, spec tiket (docs/ewi/tickets/ELITMEN-xxx.md)
 infra/     Terraform: hanya KMS per tenant + SES di AWS (docs/infra/vps-etavm2.md)
-deploy/    vps/ = staging + prod di etavm2; dev-worktree/ = dev per worktree; dev-public/ = dev etavm1 + pipeline deploy
+deploy/    vps/ = staging + prod di etavm2; dev-worktree/ = dev per worktree; dev-public/ = berkas compose/nginx lama (etavm1 dihentikan 23 Nov)
 ```
 
 ## UI web
@@ -29,7 +29,7 @@ Referensi komponen: `VITE_UI_KIT=1 npm run dev:web`, lalu buka `/ui-kit`.
 | Branch | Lingkungan | Workflow |
 |---|---|---|
 | PR ke mana pun | – | `ci.yml`: lint, migrasi naik-turun-naik, jest, build, e2e, terraform validate, cek skrip deploy |
-| `dev` | dev https://dev-elgos.eliteacademy.id (etavm1) | `deploy-dev.yml`: CI → image GHCR → deploy + health check + rollback |
+| `dev` | dev per worktree di etavm2 (etavm1 dihentikan 23 Nov) | `deploy-dev.yml`: CI → image GHCR (tanpa deploy) |
 | `main` | staging di etavm2 (prod: dijalankan manual dengan SHA yang sama) | `deploy.yml` |
 
 Di dalam API:

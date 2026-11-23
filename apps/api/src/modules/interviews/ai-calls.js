@@ -2,6 +2,8 @@
 // Konteks dan pencatatan pemakaian AI yang dipakai bersama oleh pertanyaan wawancara (index.js)
 // dan job analisis (analysis.js). Setiap panggilan model dicatat di ai_usage_logs (R3-6).
 const { estimateCost } = require('../../ai');
+const { AiError } = require('../../ai/errors');
+const { HttpError } = require('../../core/errors');
 
 /** Konteks pertanyaan & analisis: kompetensi posisi karyawan (DNA/TNA) + target merah pemicu (TNA). */
 async function buildContext(stores, tenantId, session) {
@@ -59,4 +61,19 @@ async function callAi(env, fn) {
   }
 }
 
-module.exports = { buildContext, aiContext, recordUsage, callAi };
+/**
+ * callAi untuk wawancara di luar mesin B6 (B10 CCA, B15 LIM): galat penyedia menjadi 502 AI_UNAVAILABLE dengan pesan
+ * umum (detail teknis hanya di log); galat lain diteruskan apa adanya.
+ */
+async function callAiOr502(env, fn, label) {
+  try {
+    return await callAi(env, fn);
+  } catch (e) {
+    if (!(e instanceof AiError)) throw e;
+    console.error(`AI ${label} gagal:`, e.code, e.message);
+    throw new HttpError(502, 'AI_UNAVAILABLE', 'Asisten AI sedang tidak bisa dihubungi. Coba lagi beberapa saat lagi.');
+  }
+}
+
+module.exports = {
+  callAiOr502, buildContext, aiContext, recordUsage, callAi };

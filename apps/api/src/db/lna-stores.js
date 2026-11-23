@@ -1794,7 +1794,7 @@ function createLnaStores(sequelize, { cipher } = {}) {
     },
   };
 
-  return { people, settings, dna, interviews, tna, catalog, projectsExtra, imports, aiUsage, analysis, dataRequests, assistant, promotion, ...createLiStores(sequelize), ...createLdStores(sequelize), ...createLimStores(sequelize) };
+  return { people, settings, dna, interviews, tna, catalog, projectsExtra, imports, aiUsage, analysis, dataRequests, assistant, promotion, ...createLiStores(sequelize), ...createLdStores(sequelize), ...createLimStores(sequelize, { cipher }) };
 }
 
 module.exports = { createLnaStores, scopeSql };

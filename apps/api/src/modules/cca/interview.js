@@ -5,8 +5,7 @@ const { ROLES, requireRole } = require('../../core/rbac');
 const { badRequest, notFound, HttpError } = require('../../core/errors');
 const { currentConsentVersion, isAcceptedConsentVersion } = require('../../core/consent');
 const { CCA_THEMES, ccaDefaultQuestion } = require('../../ai/prompts');
-const { AiError } = require('../../ai/errors');
-const { callAi } = require('../interviews/ai-calls');
+const { callAiOr502 } = require('../interviews/ai-calls');
 const { MIN_RESPONDENTS, EMPLOYEE_BATCH, respondentBand, synthesize, batchToSettle } = require('./synthesis');
 
 const MAX_REQUIREMENTS = 20;
@@ -38,13 +37,7 @@ function mountInterview(r, { stores, ai, aiConfig = {}, audit, interview }) {
    */
   async function askAi(req, fn) {
     const env = { stores, aiConfig, tenantId: req.tenantId, session: { projectId: null, id: null, intervieweeId: req.user.id, submodule: 'cca' } };
-    try {
-      return await callAi(env, fn);
-    } catch (e) {
-      if (!(e instanceof AiError)) throw e;
-      console.error('AI wawancara CCA gagal:', e.code, e.message);
-      throw new HttpError(502, 'AI_UNAVAILABLE', 'Asisten AI sedang tidak bisa dihubungi. Coba lagi beberapa saat lagi.');
-    }
+    return callAiOr502(env, fn, 'wawancara CCA');
   }
 
   /** Penugasan milik pemanggil, atau 404 (UUID salah, tidak ada, atau milik orang lain). */

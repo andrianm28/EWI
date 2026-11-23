@@ -137,12 +137,15 @@ function parseTrustProxy(raw) {
 
 // PD-2b (user, 19 Nov 20.28 WIB): lokasi pemrosesan AI dipilih yang latensinya paling rendah ke Indonesia dan memenuhi
 // spek. Urutan untuk teks: Jakarta (ap-southeast-3) bila model tersedia in-region, lalu Singapura (ap-southeast-1),
-// lalu profil inferensi lintas region APAC (apac.). Profil di luar APAC (global., us., eu., ...) ditolak kecuali
-// AI_ALLOW_CROSS_REGION=true diputuskan kemudian.
+// lalu profil inferensi lintas region APAC (apac.), ditambah profil global. sejak 23 Nov (spek bagian 7). Profil lain
+// (us., eu., ...) ditolak kecuali AI_ALLOW_CROSS_REGION=true.
+// Bawaan BEDROCK_REGION Singapura karena Claude tidak tersedia in-region di Jakarta (docs/designs/pd-2b-bedrock-singapura.md).
 const JAKARTA = 'ap-southeast-3';
 const SINGAPORE = 'ap-southeast-1';
 const DEFAULT_AI_REGIONS = [JAKARTA, SINGAPORE];
 const PROFILE_PREFIX = /(?:^|inference-profile\/)(global|apac|us|us-gov|eu|au|in|jp|ca)\./i;
+// Profil lintas region yang lolos tanpa AI_ALLOW_CROSS_REGION
+const DEFAULT_ALLOWED_PROFILES = ['apac', 'global'];
 
 function numberOr(raw, fallback, { min = 0 } = {}) {
   if (raw === undefined || raw === '') return fallback;
@@ -158,17 +161,18 @@ function loadAiConfig(env, errors) {
   if (production && provider === 'stub') errors.push('AI_PROVIDER=stub tidak boleh di produksi (pakai bedrock)');
   const allowCrossRegion = env.AI_ALLOW_CROSS_REGION === 'true';
   const allowedRegions = (env.AI_ALLOWED_REGIONS || DEFAULT_AI_REGIONS.join(',')).split(',').map((r) => r.trim()).filter(Boolean);
-  const region = env.BEDROCK_REGION || JAKARTA;
+  const region = env.BEDROCK_REGION || SINGAPORE;
   const modelId = (env.BEDROCK_MODEL_ID || '').trim();
+  const profile = ((modelId.match(PROFILE_PREFIX) || [])[1] || '').toLowerCase();
   let extraFields = null;
   if (provider === 'bedrock') {
     if (!modelId) errors.push('BEDROCK_MODEL_ID wajib diisi untuk AI_PROVIDER=bedrock (ID model Claude, lihat docs/ewi/ai-teks.md)');
     if (!allowCrossRegion && !allowedRegions.includes(region)) {
       errors.push(`BEDROCK_REGION harus salah satu dari ${allowedRegions.join(', ')} (PD-2b)`);
     }
-    const profile = (modelId.match(PROFILE_PREFIX) || [])[1];
-    if (!allowCrossRegion && profile && profile.toLowerCase() !== 'apac') {
-      errors.push(`BEDROCK_MODEL_ID memakai profil lintas region "${profile}."; PD-2b hanya mengizinkan model in-region Jakarta/Singapura atau profil apac.`);
+    if (!allowCrossRegion && profile && !DEFAULT_ALLOWED_PROFILES.includes(profile)) {
+      const izin = DEFAULT_ALLOWED_PROFILES.map((p) => `${p}.`).join('/');
+      errors.push(`BEDROCK_MODEL_ID memakai profil lintas region "${profile}."; PD-2b hanya mengizinkan model in-region Jakarta/Singapura atau profil ${izin}`);
     }
     if (env.BEDROCK_EXTRA_FIELDS) {
       try { extraFields = JSON.parse(env.BEDROCK_EXTRA_FIELDS); } catch { errors.push('BEDROCK_EXTRA_FIELDS harus JSON yang valid'); }
@@ -181,9 +185,8 @@ function loadAiConfig(env, errors) {
     priceOutputPerMTok: numberOr(env.AI_PRICE_OUTPUT_PER_MTOK, null),
   };
   for (const [k, v] of Object.entries(nums)) if (Number.isNaN(v)) errors.push(`Nilai ${k} untuk AI tidak valid`);
-  // Lokasi pemrosesan untuk log dan DPIA: in-region atau profil lintas region (mis. apac)
-  const profile = (modelId.match(PROFILE_PREFIX) || [])[1];
-  const processing = profile ? `cross-region:${profile.toLowerCase()}` : `in-region:${region}`;
+  // Lokasi pemrosesan untuk log dan DPIA: in-region atau profil lintas region (mis. global)
+  const processing = profile ? `cross-region:${profile}` : `in-region:${region}`;
   return Object.freeze({ provider, region, modelId, extraFields, allowCrossRegion, allowedRegions, processing, ...nums });
 }
 

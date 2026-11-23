@@ -1,5 +1,5 @@
-# Lingkungan dev ELGOS yang bisa diakses publik, di luar AWS (keputusan user 11 Nov 2026: etavm1).
-# Normalnya dideploy oleh pipeline (.github/workflows/deploy-dev.yml -> deploy.sh) dengan image dari GHCR:
+# DIHENTIKAN 23 Nov 2026: dev publik di etavm1 tidak dipakai lagi (aturan: hanya etavm2). Pipeline deploy-dev.yml
+# dan deploy.sh sudah dihapus; berkas ini tinggal untuk jalan lokal. Image dari GHCR:
 #   EWI_API_IMAGE / EWI_WEB_IMAGE = ghcr.io/andrianm28/ewi-{api,web}:<sha>, EWI_ENV_FILE = /srv/ewi-dev/.env
 # Jalan manual tanpa pipeline (build lokal):
 #   cd deploy/dev-public && cp .env.example .env   # isi EWI_JWT_SECRET

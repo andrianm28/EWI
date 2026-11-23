@@ -229,8 +229,20 @@ pause
 # ── 3 ─────────────────────────────────────────────────────────────────────
 stage "Profil admin akun ELGOS"
 say "Profil elgos-admin memakai role OrganizationAccountAccessRole dari profil management."
-aws configure set profile.elgos-admin.role_arn "arn:aws:iam::${ELGOS_ACCOUNT_ID}:role/OrganizationAccountAccessRole"
-aws configure set profile.elgos-admin.source_profile "$MGMT_PROFILE"
+# Provider AWS Terraform tidak mengenali kredensial `aws login` (login_session) sebagai
+# source_profile, jadi role dipasang di elgos-admin-sts dan elgos-admin mengambil kredensial
+# sementaranya lewat credential_process (berlaku juga untuk profil SSO / kunci biasa).
+aws configure set profile.elgos-admin-sts.role_arn "arn:aws:iam::${ELGOS_ACCOUNT_ID}:role/OrganizationAccountAccessRole"
+aws configure set profile.elgos-admin-sts.source_profile "$MGMT_PROFILE"
+aws configure set profile.elgos-admin-sts.region ap-southeast-1
+cfg="${AWS_CONFIG_FILE:-$HOME/.aws/config}"
+if [ -f "$cfg" ]; then  # buang role_arn/source_profile lama dari [profile elgos-admin]
+  cp "$cfg" "$cfg.bak-$(date +%Y%m%d%H%M%S)"
+  awk '/^\[/{s=($0=="[profile elgos-admin]")} !(s && /^(role_arn|source_profile)[[:space:]]*=/)' \
+    "$cfg" > "$cfg.tmp" && cat "$cfg.tmp" > "$cfg" && rm -f "$cfg.tmp"
+fi
+aws configure set profile.elgos-admin.credential_process \
+  "aws configure export-credentials --profile elgos-admin-sts --format process"
 aws configure set profile.elgos-admin.region ap-southeast-1
 aws sts get-caller-identity --profile elgos-admin --query Arn --output text \
   || { warn "gagal masuk akun ELGOS; tunggu beberapa menit setelah akun dibuat lalu jalankan ulang"; exit 1; }
@@ -239,7 +251,7 @@ pause
 
 # ── 4 ─────────────────────────────────────────────────────────────────────
 stage "Region Jakarta (PD-2b)"
-say "ap-southeast-3 adalah region opt-in; diaktifkan dulu agar Bedrock Jakarta bisa dicek."
+say "ap-southeast-3 adalah region opt-in; diaktifkan agar ketersediaan Bedrock Jakarta bisa dicek (QA dan aplikasi memakai Singapura, keputusan 23 Nov)."
 ST=$(aws account get-region-opt-status --profile elgos-admin --region-name ap-southeast-3 --query RegionOptStatus --output text || echo UNKNOWN)
 if [[ "$ST" != ENABLED && "$ST" != ENABLED_BY_DEFAULT ]]; then
   aws account enable-region --profile elgos-admin --region-name ap-southeast-3 || warn "enable-region gagal"
@@ -265,7 +277,7 @@ pause
 
 # ── 6 ─────────────────────────────────────────────────────────────────────
 stage "Akses model Claude di Bedrock"
-ask QA_BEDROCK_REGION "Region QA (ap-southeast-3 Jakarta; ap-southeast-1 bila Claude tidak ada di Jakarta):"
+ask QA_BEDROCK_REGION "Region QA (keputusan 23 Nov: ap-southeast-1 Singapura):"
 open_url "https://${QA_BEDROCK_REGION}.console.aws.amazon.com/bedrock/home?region=${QA_BEDROCK_REGION}#/model-catalog"
 step "Masuk konsol sebagai akun ELGOS (switch role ke OrganizationAccountAccessRole, akun $ELGOS_ACCOUNT_ID)."
 step "Buka model Claude yang dipakai aplikasi; bila diminta, isi formulir use case Anthropic (sekali per akun)."
@@ -274,10 +286,10 @@ aws bedrock list-foundation-models --profile elgos-admin --region "$QA_BEDROCK_R
   --query 'modelSummaries[].[modelId,join(`,`,inferenceTypesSupported)]' --output table || true
 aws bedrock list-inference-profiles --profile elgos-admin --region "$QA_BEDROCK_REGION" \
   --query "inferenceProfileSummaries[?contains(inferenceProfileId,'anthropic')].inferenceProfileId" --output table || true
-note "ON_DEMAND = bisa dipanggil langsung. Bila hanya INFERENCE_PROFILE, isi juga ID profil (mis. apac.anthropic...)."
-note "Profil apac. memproses data di region APAC lain: catat untuk keputusan residensi data (PD-2)."
-ask QA_BEDROCK_MODEL_ID "ID model dasar (anthropic....):"
-ask QA_INFERENCE_PROFILE_ID "ID inference profile (kosong bila ON_DEMAND):"
+note "ON_DEMAND = bisa dipanggil langsung. Bila hanya INFERENCE_PROFILE, isi juga ID profil (global./apac.)."
+note "Profil lintas region memproses data di region lain (global. = seluruh dunia): perlu keputusan PD-2."
+ask QA_BEDROCK_MODEL_ID "ID model dasar (keputusan 23 Nov: anthropic.claude-sonnet-5-5):"
+ask QA_INFERENCE_PROFILE_ID "ID inference profile (keputusan 23 Nov: global.anthropic.claude-sonnet-5-5; kosong bila ON_DEMAND):"
 write_env QA_BEDROCK_REGION "$QA_BEDROCK_REGION"
 write_env QA_BEDROCK_MODEL_ID "$QA_BEDROCK_MODEL_ID"
 write_env QA_INFERENCE_PROFILE_ID "$QA_INFERENCE_PROFILE_ID"

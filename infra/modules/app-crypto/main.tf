@@ -2,7 +2,8 @@
 #   - R2-3: satu customer managed key KMS per tenant (alias kontrak API: alias/<prefix>-<tenantId>)
 #   - IAM user per lingkungan untuk API di etavm2: hanya GenerateDataKey/Decrypt dengan encryption
 #     context {tenant} dan kirim email SES dari alamat mail_from.
-#   - PD-1 opsi A: InvokeModel Amazon Bedrock (Claude) hanya di region Singapura (PD-2).
+#   - PD-1 opsi A: InvokeModel Amazon Bedrock (Claude) dari region Singapura; sejak 23 Nov lewat profil
+#     global.* (Sonnet 5.5, keputusan user), jadi model dasar boleh di region lain hanya lewat profil.
 #   - N-4: semua izin hanya berlaku dari alamat IP etavm2 (allowed_source_ips).
 # Access key IAM user TIDAK dibuat di Terraform (agar tidak masuk state); buat lewat CLI, simpan di
 # /srv/elgos-<env>/.env di etavm2, rotasi tiap 90 hari (docs/infra/rotasi-kunci.md).
@@ -66,6 +67,20 @@ locals {
     ]
     Condition = local.dari_etavm2
   }] : []
+  bedrock_profil_statement = var.bedrock_enabled ? [{
+    # Keputusan user 23 Nov: Sonnet 5.5 lewat profil global.* dari Singapura. Profil meneruskan panggilan
+    # ke model dasar di region mana pun (global = ARN tanpa region), jadi model dasar Anthropic hanya
+    # diizinkan bila dipanggil lewat profil di akun ini.
+    Sid      = "ModelLewatProfil"
+    Effect   = "Allow"
+    Action   = ["bedrock:InvokeModel", "bedrock:InvokeModelWithResponseStream"]
+    Resource = ["${local.arn_prefix}:bedrock:*::foundation-model/anthropic.*"]
+    Condition = merge(local.dari_etavm2, {
+      StringLike = {
+        "bedrock:InferenceProfileArn" = "${local.arn_prefix}:bedrock:${data.aws_region.this.region}:${data.aws_caller_identity.this.account_id}:inference-profile/*"
+      }
+    })
+  }] : []
 }
 
 resource "aws_kms_key" "tenant" {
@@ -120,7 +135,7 @@ resource "aws_iam_user_policy" "app" {
           IpAddress    = { "aws:SourceIp" = var.allowed_source_ips }
         }
       },
-    ], local.bedrock_statement)
+    ], local.bedrock_statement, local.bedrock_profil_statement)
   })
 }
 

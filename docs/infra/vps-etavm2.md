@@ -36,7 +36,7 @@ api ──HTTPS──> AWS ap-southeast-1: KMS (GenerateDataKey/Decrypt, kunci p
 | push ke `main` | CI → image `ghcr.io/andrianm28/ewi-{api,web}:<sha>` → deploy **staging** |
 | Actions > Deploy > Run workflow (dari `main`) | `prod` + `image_tag` SHA 40 karakter yang ada di `main` → environment `prod` berpenyetuju |
 | Actions > Terraform > Run workflow (dari `main`) | apply lewat environment `infra` berpenyetuju |
-| dev | per worktree lewat `dev.sh` di etavm2 (user `elgos-dev`); `deploy-dev.yml` (PR #5) untuk dev-elgos di etavm1 sampai dipindah |
+| dev | per worktree lewat `dev.sh` di etavm2 (user `elgos-dev`); `deploy-dev.yml` hanya CI + image GHCR; job deploy etavm1 dihapus 23 Nov (aturan: jangan pernah etavm1) |
 
 Alur lengkap, pengaman, dan aturan migrasi: [alur-rilis.md](alur-rilis.md).
 
@@ -152,13 +152,23 @@ adanya dan nginx web (`location /api/voice/`, timeout 1 jam). Keluar ke
 Keputusan user 19 Nov: akun Bedrock siap 24 Nov, QA malam 24–26 Nov untuk Go/No-Go 27 Nov.
 `infra/live/shared/qa-malam.tf` membuat role `elgos-qa-malam` (OIDC dari environment GitHub
 `qa-malam` yang hanya boleh dari `main`, izin hanya `bedrock:InvokeModel` pada model QA, ditambah
-inference profile bila memakai profil `apac.`) dan budget `elgos-qa-malam` (★ US$100/bulan, peringatan
+inference profile bila memakai profil) dan budget `elgos-qa-malam` (★ US$100/bulan, peringatan
 50%/80%/prakiraan 100%, seluruh akun). Role terpisah dari user aplikasi (KMS/SES) dan tidak dibuat
-selama `qa_bedrock_model_id` kosong. Region mengikuti PD-2b: Jakarta `ap-southeast-3` (region
-opt-in), Singapura bila Claude tidak tersedia di Jakarta. Ketersediaan dicek saat akun ada.
+selama `qa_bedrock_model_id` kosong. Hasil cek 23 Nov di akun ELGOS: di Jakarta
+`ap-southeast-3` Claude hanya tersedia lewat profil `global.anthropic.*` (pemrosesan lintas region dunia,
+tanpa profil `apac.`); di Singapura `anthropic.claude-sonnet-5` tersedia ON_DEMAND, sedangkan
+`anthropic.claude-sonnet-5-5` hanya lewat profil `global.anthropic.claude-sonnet-5-5`. Keputusan user 23 Nov
+(menggantikan pilihan Sonnet 5 pagi itu): QA malam dan aplikasi memakai **Sonnet 5.5 lewat profil global dari
+endpoint ap-southeast-1** (`BEDROCK_MODEL_ID=global.anthropic.claude-sonnet-5-5`). Prompt bisa diproses di region
+AWS mana pun; DPIA/consent diperbarui thread legal. Harga Pricing API 23 Nov: global US$2/US$10 per juta token
+input/output (Sonnet 5 in-region US$2,20/US$11). IAM: role QA dan user aplikasi mengizinkan model dasar di semua
+region hanya bila dipanggil lewat inference profile di akun ini (`bedrock:InferenceProfileArn`).
+Urutan rollout: pasang `BEDROCK_MODEL_ID=global.anthropic.claude-sonnet-5-5` di `/srv/elgos-*/.env` **setelah**
+image yang memuat commit aplikasi 1d77cab (env.js menerima profil `global.`) terpasang; image lama menolak
+profil itu saat boot.
 
 Langkah tangan admin (akun, region, bootstrap, akses model, variabel repo, apply) dibungkus wizard
-`bash infra/setup-akun-elgos.sh` dari laptop admin. Variabel repo hasilnya: `QA_MALAM_ROLE_ARN`,
+`bash infra/setup-akun-elgos.sh` (23 Nov dijalankan di etavm2 dengan `aws login --remote`). Variabel repo hasilnya: `QA_MALAM_ROLE_ARN`,
 `QA_MALAM_BEDROCK_REGION`, `QA_MALAM_BEDROCK_MODEL_ID`, `QA_MALAM_AI_PRICE_INPUT_PER_MTOK`,
 `QA_MALAM_AI_PRICE_OUTPUT_PER_MTOK`, opsional `QA_MALAM_MAX_TOKENS`. Cadangan bila akun terlambat: satu run manual
 oleh Andrian 26 Nov.

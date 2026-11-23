@@ -1,12 +1,12 @@
 'use strict';
-// Penyedia AI teks Amazon Bedrock (Claude) lewat Converse API (PK-06; PD-1 ★A; PD-2b: Jakarta, Singapura, atau profil apac.).
+// Penyedia AI teks Amazon Bedrock (Claude) lewat Converse API (PK-06; PD-1 ★A; PD-2b: Jakarta, Singapura, atau profil apac./global.).
 // Kredensial memakai rantai bawaan AWS SDK (kunci IAM yang sama dengan KMS dan SES di etavm2).
 // Setiap panggilan model mengembalikan catatan pemakaian token (R3-6) untuk disimpan pemanggil.
 const { BedrockRuntimeClient, ConverseCommand } = require('@aws-sdk/client-bedrock-runtime');
 const { AiError, AI_ERRORS } = require('./errors');
 const P = require('./prompts');
 
-const MAX_TOKENS = { next_question: 400, assess_competencies: 2000, analyze_tna: 3000, assistant_reply: 500, summarize_cca: 1500 };
+const MAX_TOKENS = { next_question: 400, assess_competencies: 2000, analyze_tna: 3000, assistant_reply: 500, summarize_cca: 1500, lim_question: 500, summarize_lim: 1000 };
 
 /** Ubah galat SDK menjadi AiError dengan pesan yang jelas. */
 function mapError(err, modelId, region) {
@@ -134,6 +134,20 @@ function createBedrockProvider(config, { client } = {}) {
       const { value, usage } = await converseParsed('summarize_cca', { system: p.system, messages: [{ role: 'user', text: p.user }] },
         (raw) => P.parseCcaSummary(raw, { tier, turns, codes: p.codes }), 'ringkasan wawancara');
       return { ...value, usage };
+    },
+
+    // B15 tahap 3: pertanyaan dan penilaian wawancara ulang
+    async limQuestion({ competency, competencies, kind, position, total, turns }) {
+      const p = P.limQuestionPrompt({ competency, competencies, kind, position, total, turns });
+      const { value, usage } = await converseParsed('lim_question', p, P.parseLimQuestion, 'pertanyaan');
+      return { question: value, usage };
+    },
+
+    async summarizeLim({ competencies, turns }) {
+      const p = P.limScorePrompt({ competencies, turns });
+      const { value, usage } = await converseParsed('summarize_lim', { system: p.system, messages: [{ role: 'user', text: p.user }] },
+        (raw) => P.parseLimScores(raw, p.codes), 'penilaian wawancara ulang');
+      return { scores: value, usage };
     },
 
     // B17: jawaban Asisten ELGOS dari fakta yang sudah disaring server

@@ -22,11 +22,13 @@ const MEAS_COLS = `m.user_id AS "userId", m.competency_id AS "competencyId", m.p
   m.post_score::float8 AS "postScore", m.post_source AS "postSource", m.performance_score::float8 AS "performanceScore",
   m.performance_source AS "performanceSource", m.performance_note AS "performanceNote", m.reinterview_status AS "reinterviewStatus",
   to_char(m.reinterview_on, 'YYYY-MM-DD') AS "reinterviewOn", m.reinterview_score::float8 AS "reinterviewScore"`;
+const RI_COLS = `r.id, r.plan_id AS "planId", r.user_id AS "userId", r.status, r.consent_version AS "consentVersion", r.consent_at AS "consentAt",
+  r.competency_ids AS "competencyIds", r.completed_at AS "completedAt", r.created_at AS "createdAt"`;
 const MEAS_FIELDS = {
   preScore: ['pre_score', 'pre_source'], postScore: ['post_score', 'post_source'], performanceScore: ['performance_score', 'performance_source'],
 };
 
-function createLimStores(sequelize) {
+function createLimStores(sequelize, { cipher } = {}) {
   const select = (sql, replacements = {}, transaction) => sequelize.query(sql, { replacements, type: QueryTypes.SELECT, transaction });
   const one = async (sql, replacements, transaction) => (await select(sql, replacements, transaction))[0] || null;
   const write = async (sql, replacements, transaction) => (await sequelize.query(sql, { replacements, transaction }))[0];
@@ -43,6 +45,9 @@ function createLimStores(sequelize) {
        AND (p.period_from IS NULL OR COALESCE(t.starts_on, t.created_at::date) >= p.period_from)
        AND (p.period_until IS NULL OR COALESCE(t.starts_on, t.created_at::date) <= p.period_until)`;
   /** Karyawan aktif yang lolos saringan jabatan rencana. */
+  /** Tidak ada wawancara ulang berjalan untuk (rencana, karyawan) ini: jadwalnya dikunci sampai selesai (triase 12.7 #2). */
+  const NO_OPEN_REINTERVIEW = `NOT EXISTS (SELECT 1 FROM lim_reinterviews r WHERE r.tenant_id = :tenantId AND r.plan_id = :planId
+    AND r.user_id = :userId AND r.status = 'in_progress')`;
   const ROLE_OK = '(p.job_role_id IS NULL OR u.job_role_id = p.job_role_id)';
 
   const lim = {
@@ -174,9 +179,10 @@ function createLimStores(sequelize) {
     },
     /** Jadwalkan (date) atau batalkan (date null) wawancara ulang untuk pasangan yang belum done. */
     async schedule(tenantId, planId, userId, competencyIds, date, by) {
+      // pasangan milik wawancara ulang yang sedang berjalan tidak diubah (triase 12.7 #2); router melewatinya lebih dulu
       if (date === null) {
         await write(`UPDATE lim_measurements SET reinterview_status = 'none', reinterview_on = NULL, updated_by = :by, updated_at = now()
-          WHERE tenant_id = :tenantId AND plan_id = :planId AND user_id = :userId AND reinterview_status = 'scheduled'`, { tenantId, planId, userId, by });
+          WHERE tenant_id = :tenantId AND plan_id = :planId AND user_id = :userId AND reinterview_status = 'scheduled' AND ${NO_OPEN_REINTERVIEW}`, { tenantId, planId, userId, by });
         return;
       }
       // satu karyawan = satu wawancara: semua kompetensinya terjadwal bersama atau tidak sama sekali
@@ -185,7 +191,7 @@ function createLimStores(sequelize) {
           await write(`INSERT INTO lim_measurements (tenant_id, plan_id, user_id, competency_id, reinterview_status, reinterview_on, updated_by)
               VALUES (:tenantId, :planId, :userId, :competencyId, 'scheduled', :date, :by)
             ON CONFLICT (plan_id, user_id, competency_id) DO UPDATE SET reinterview_status = 'scheduled', reinterview_on = :date, updated_by = :by, updated_at = now()
-            WHERE lim_measurements.reinterview_status <> 'done'`, { tenantId, planId, userId, competencyId, date, by }, t);
+            WHERE lim_measurements.reinterview_status <> 'done' AND ${NO_OPEN_REINTERVIEW}`, { tenantId, planId, userId, competencyId, date, by }, t);
         }
       });
     },
@@ -197,6 +203,129 @@ function createLimStores(sequelize) {
             AND EXISTS (SELECT 1 FROM lna_competencies c WHERE c.id = :competencyId AND c.tenant_id = :tenantId)
         ON CONFLICT (plan_id, user_id, competency_id) DO UPDATE SET reinterview_status = 'done', reinterview_score = :score,
           reinterview_session_id = :sessionId, updated_at = now()`, { tenantId, planId, userId, competencyId, score, sessionId });
+    },
+
+    // --- B15 tahap 3: wawancara ulang AI (spek bagian 12) ---
+    /** Pasangan scheduled karyawan di rencana aktif, dengan data kompetensi untuk prompt. */
+    async scheduledPairs(tenantId, planId, userId) {
+      return select(`SELECT m.competency_id AS "competencyId", c.name, c.definition, c.indicators, to_char(m.reinterview_on, 'YYYY-MM-DD') AS "reinterviewOn"
+          FROM lim_measurements m JOIN lim_plans p ON p.id = m.plan_id AND p.tenant_id = m.tenant_id AND p.status = 'active'
+          JOIN lna_competencies c ON c.id = m.competency_id AND c.tenant_id = m.tenant_id
+         WHERE m.tenant_id = :tenantId AND m.plan_id = :planId AND m.user_id = :userId AND m.reinterview_status = 'scheduled'
+         ORDER BY c.name`, { tenantId, planId, userId });
+    },
+    /** Kompetensi potret (urutan potret dipertahankan). */
+    async competenciesByIds(tenantId, ids) {
+      if (!ids.length) return [];
+      const rows = await select('SELECT id, name, definition, indicators FROM lna_competencies WHERE tenant_id = :tenantId AND id IN (:ids)', { tenantId, ids });
+      const byId = new Map(rows.map((r) => [r.id, r]));
+      return ids.map((id) => byId.get(id)).filter(Boolean);
+    },
+    /** Rencana aktif tempat karyawan punya pasangan scheduled atau wawancara ulang. */
+    async myReinterviewPlans(tenantId, userId) {
+      return select(`SELECT p.id AS "planId", p.title AS "planTitle",
+            (SELECT to_char(min(m.reinterview_on), 'YYYY-MM-DD') FROM lim_measurements m WHERE m.plan_id = p.id AND m.tenant_id = p.tenant_id AND m.user_id = :userId AND m.reinterview_status = 'scheduled') AS "scheduledOn",
+            ARRAY(SELECT c.name FROM lim_measurements m JOIN lna_competencies c ON c.id = m.competency_id AND c.tenant_id = m.tenant_id
+                   WHERE m.plan_id = p.id AND m.tenant_id = p.tenant_id AND m.user_id = :userId AND m.reinterview_status = 'scheduled' ORDER BY c.name) AS scheduled,
+            (SELECT r.status FROM lim_reinterviews r WHERE r.plan_id = p.id AND r.tenant_id = p.tenant_id AND r.user_id = :userId
+              ORDER BY (r.status = 'in_progress') DESC, r.created_at DESC LIMIT 1) AS "lastStatus"
+          FROM lim_plans p
+         WHERE p.tenant_id = :tenantId AND p.status = 'active'
+           AND (EXISTS (SELECT 1 FROM lim_measurements m WHERE m.plan_id = p.id AND m.tenant_id = p.tenant_id AND m.user_id = :userId AND m.reinterview_status = 'scheduled')
+             OR EXISTS (SELECT 1 FROM lim_reinterviews r WHERE r.plan_id = p.id AND r.tenant_id = p.tenant_id AND r.user_id = :userId))
+         ORDER BY p.title`, { tenantId, userId });
+    },
+    /** Wawancara yang berjalan, atau yang selesai terbaru. */
+    async currentReinterview(tenantId, planId, userId) {
+      return one(`SELECT ${RI_COLS} FROM lim_reinterviews r WHERE r.tenant_id = :tenantId AND r.plan_id = :planId AND r.user_id = :userId
+        ORDER BY (r.status = 'in_progress') DESC, r.created_at DESC LIMIT 1`, { tenantId, planId, userId });
+    },
+    /** Karyawan rencana yang punya wawancara berjalan, dan wawancara selesai terbaru per karyawan. */
+    async reinterviewIndex(tenantId, planId) {
+      const rows = await select(`SELECT DISTINCT ON (r.user_id, r.status) r.user_id AS "userId", r.id, r.status FROM lim_reinterviews r
+        WHERE r.tenant_id = :tenantId AND r.plan_id = :planId ORDER BY r.user_id, r.status, r.created_at DESC`, { tenantId, planId });
+      return {
+        inProgress: new Set(rows.filter((r) => r.status === 'in_progress').map((r) => r.userId)),
+        latestCompleted: new Map(rows.filter((r) => r.status === 'completed').map((r) => [r.userId, r.id])),
+      };
+    },
+    /** Buat wawancara (persetujuan). Return baris, atau null bila sudah ada yang berjalan. */
+    async startReinterview(tenantId, { planId, userId, consentVersion, competencyIds }) {
+      const rows = await write(`INSERT INTO lim_reinterviews (tenant_id, plan_id, user_id, consent_version, competency_ids)
+          VALUES (:tenantId, :planId, :userId, :consentVersion, CAST(:ids AS uuid[]))
+        ON CONFLICT (plan_id, user_id) WHERE status = 'in_progress' DO NOTHING RETURNING id`,
+      { tenantId, planId, userId, consentVersion, ids: `{${competencyIds.join(',')}}` });
+      return rows.length ? one(`SELECT ${RI_COLS} FROM lim_reinterviews r WHERE r.tenant_id = :tenantId AND r.id = :id`, { tenantId, id: rows[0].id }) : null;
+    },
+    async listReinterviewTurns(tenantId, reinterviewId) {
+      const rows = await select(`SELECT t.position, t.role, t.kind, t.competency_id AS "competencyId", t.text, t.options FROM lim_reinterview_turns t
+        WHERE t.tenant_id = :tenantId AND t.reinterview_id = :reinterviewId ORDER BY t.position`, { tenantId, reinterviewId });
+      await cipher.open(tenantId, rows, ['text', 'options']);
+      return rows.map((r) => ({ ...r, options: r.options ? JSON.parse(r.options) : null }));
+    },
+    /** Sisipkan giliran di bawah kunci baris wawancara (pola B10): hanya bila masih berjalan dan giliran = position - 1. */
+    async insertReinterviewTurn(tenantId, reinterviewId, { position, role, kind, competencyId, text: body, options }) {
+      return tx(async (t) => {
+        const locked = await one(`SELECT r.id FROM lim_reinterviews r WHERE r.tenant_id = :tenantId AND r.id = :reinterviewId AND r.status = 'in_progress' FOR UPDATE`,
+          { tenantId, reinterviewId }, t);
+        if (!locked) return null;
+        const { n } = await one('SELECT count(*)::int AS n FROM lim_reinterview_turns WHERE tenant_id = :tenantId AND reinterview_id = :reinterviewId', { tenantId, reinterviewId }, t);
+        if (n !== position - 1) return null;
+        await write(`INSERT INTO lim_reinterview_turns (tenant_id, reinterview_id, position, role, kind, competency_id, text, options)
+          VALUES (:tenantId, :reinterviewId, :position, :role, :kind, :competencyId, :text, :options)`, {
+          tenantId, reinterviewId, position, role, kind, competencyId,
+          text: await cipher.encrypt(tenantId, body), options: options ? await cipher.encrypt(tenantId, JSON.stringify(options)) : null,
+        }, t);
+        return { position };
+      });
+    },
+    /**
+     * Tutup wawancara (T-5) dalam satu transaksi: kunci baris, syarat masih in_progress, tulis skor ke pasangan potret yang
+     * belum done (termasuk yang jadwalnya dibatalkan HR bersamaan dengan persetujuan; wawancaranya tetap terjadi), simpan
+     * ringkasan terenkripsi. Return true bila menutup, false bila sudah ditutup kiriman lain.
+     */
+    async completeReinterview(tenantId, id, { scores, summary }) {
+      const enc = await cipher.encrypt(tenantId, JSON.stringify(summary));
+      return tx(async (t) => {
+        const r = await one(`SELECT r.plan_id AS "planId", r.user_id AS "userId" FROM lim_reinterviews r
+          WHERE r.tenant_id = :tenantId AND r.id = :id AND r.status = 'in_progress' FOR UPDATE`, { tenantId, id }, t);
+        if (!r) return false;
+        for (const s of scores) {
+          await write(`UPDATE lim_measurements SET reinterview_status = 'done', reinterview_score = :score, reinterview_session_id = :id, updated_at = now()
+            WHERE tenant_id = :tenantId AND plan_id = :planId AND user_id = :userId AND competency_id = :competencyId AND reinterview_status <> 'done'`,
+          { tenantId, id, planId: r.planId, userId: r.userId, competencyId: s.competencyId, score: s.score }, t);
+        }
+        await write(`UPDATE lim_reinterviews SET status = 'completed', summary = :enc, completed_at = now(), updated_at = now()
+          WHERE tenant_id = :tenantId AND id = :id`, { tenantId, id, enc }, t);
+        return true;
+      });
+    },
+    /** Wawancara selesai karyawan di satu rencana (atau semua rencana bila planId null), terbaru dulu, ringkasan dibuka. */
+    async completedReinterviews(tenantId, userId, { planId = null } = {}) {
+      const rows = await select(`SELECT ${RI_COLS}, r.summary, p.title AS "planTitle" FROM lim_reinterviews r
+          JOIN lim_plans p ON p.id = r.plan_id AND p.tenant_id = r.tenant_id
+         WHERE r.tenant_id = :tenantId AND r.user_id = :userId AND r.status = 'completed' ${planId ? 'AND r.plan_id = :planId' : ''}
+         ORDER BY r.completed_at DESC`, { tenantId, userId, planId });
+      await cipher.open(tenantId, rows, ['summary']);
+      return rows.map((r) => ({ ...r, summary: r.summary ? JSON.parse(r.summary) : null }));
+    },
+    /** Ekspor PK-15: semua wawancara ulang karyawan. self: alasan dan transkrip ikut. */
+    async reinterviewsForExport(tenantId, userId, { self = false } = {}) {
+      const rows = await select(`SELECT ${RI_COLS}, r.summary, p.title AS "planTitle" FROM lim_reinterviews r
+          JOIN lim_plans p ON p.id = r.plan_id AND p.tenant_id = r.tenant_id
+         WHERE r.tenant_id = :tenantId AND r.user_id = :userId ORDER BY r.created_at`, { tenantId, userId });
+      await cipher.open(tenantId, rows, ['summary']);
+      const names = new Map((await lim.competenciesByIds(tenantId, [...new Set(rows.flatMap((r) => r.competencyIds))])).map((c) => [c.id, c.name]));
+      const out = [];
+      for (const r of rows) {
+        const scores = r.summary ? JSON.parse(r.summary).competencies : [];
+        out.push({
+          planId: r.planId, planTitle: r.planTitle, status: r.status, consentVersion: r.consentVersion, consentAt: r.consentAt, completedAt: r.completedAt,
+          competencies: scores.map((s) => ({ competencyId: s.competencyId, name: names.get(s.competencyId) || null, score: s.score, ...(self ? { reason: s.reason } : {}) })),
+          ...(self ? { turns: (await lim.listReinterviewTurns(tenantId, r.id)).map(({ position, role, kind, text, options }) => ({ position, role, kind, text, options })) } : {}),
+        });
+      }
+      return out;
     },
 
     async listIndicators(tenantId, planId) {

@@ -40,7 +40,10 @@ module.exports = {
     const r = express.Router();
     const hr = requireRole(ROLES.HR_ADMIN);
 
-    async function visibleCategories(tenantId) {
+    // PM-6: temuan non-training hanya untuk HR/Super Admin di daftar umum. Atasan melihatnya hanya lewat
+    // /findings/non-training dengan izin HR; karyawan tidak melihatnya (audit 23 Nov).
+    async function visibleCategories(tenantId, role) {
+      if (![ROLES.HR_ADMIN, ROLES.ETA_ADMIN].includes(role)) return ['training'];
       const ina = (await flags.isEnabled(tenantId, FLAGS.MODULE_INA)) && (await flags.isEnabled(tenantId, FLAGS.INA_DASHBOARD));
       return ina ? ['training', 'non_training'] : ['training'];
     }
@@ -302,7 +305,7 @@ module.exports = {
     // --- Temuan & Pareto ---
     r.get('/findings', wrap(async (req, res) => {
       const scope = await scopeFor(req, stores.people);
-      const rows = await stores.tna.listFindings(req.tenantId, scope, { projectId: req.query.projectId, categories: await visibleCategories(req.tenantId) });
+      const rows = await stores.tna.listFindings(req.tenantId, scope, { projectId: req.query.projectId, categories: await visibleCategories(req.tenantId, req.user.role) });
       await audit.readIndividual(req, 'tna.findings', { employeeIds: rows.map((f) => f.userId), objectType: 'tna_finding', objectIds: rows.map((f) => f.id) });
       res.json({ data: rows });
     }));

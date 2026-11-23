@@ -56,6 +56,8 @@ const FLAGS = Object.freeze({
   TNA_INTERVIEW_SUMMARY: 'tna.interview_summary',
   // B10: wawancara AI berjenjang visi-misi-nilai (pimpinan lalu karyawan); hasil program dan persyaratan tetap bisa dibuka tanpa ini
   CCA_INTERVIEW: 'cca.interview',
+  // B15 tahap 3: karyawan menjalankan wawancara ulang AI sendiri; HR membaca skor, benchmark, dan rekomendasi aturan
+  LIM_REINTERVIEW: 'lim.reinterview',
   // B3 (19 Nov): dashboard utama HR dan dashboard tim atasan. Mati = pengguna tetap mendarat di Beranda lama
   DASHBOARD_MAIN: 'dashboard.main',
 });

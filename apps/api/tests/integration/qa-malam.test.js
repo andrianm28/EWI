@@ -92,7 +92,7 @@ run('QA malam dengan penyedia stub (Postgres)', () => {
     expect(laporan.persona[0].tautan).toEqual(expect.any(Number));
     expect(laporan.cakupan.operasi).toEqual(expect.objectContaining({ nextQuestion: expect.any(Number), analyzeTna: expect.any(Number) }));
     // assistantReply (B17) dan wawancara Core Competencies (B10 tahap 2) belum punya persona QA malam
-    expect(laporan.cakupan.belumDiuji).toEqual(['assessCompetencies', 'assistantReply', 'ccaQuestion', 'summarizeCca']);
+    expect(laporan.cakupan.belumDiuji).toEqual(['assessCompetencies', 'assistantReply', 'ccaQuestion', 'limQuestion', 'summarizeCca', 'summarizeLim']);
     expect(laporan.cakupan.alur).toEqual({ selesai: 1 });
   });
 
