@@ -11,6 +11,8 @@ const { badRequest, notFound, HttpError } = require('../../core/errors');
 const { reviewDue, suggestedClassification, CLASSIFICATIONS, categoryFor } = require('./review-sla');
 const { PLAN_STATUS_LABEL } = require('./plan-status');
 const { toCsv } = require('./csv');
+const { gapKeyOf, findingsInGap } = require('./gaps');
+const { parseGapQuery } = require('./assignment');
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const ACTIVE_PLAN = ['new', 'in_progress'];
@@ -19,9 +21,30 @@ const MAX_HANDOFF = 200;
 const BOM = String.fromCharCode(0xfeff);
 const EXPORT_HEADER = ['ID Karyawan', 'Nama', 'Email', 'Kompetensi', 'Kode Course', 'Judul Course', 'Program', 'Status Rencana'];
 
+// Kolom internal pencocokan gap (lna-stores GAP_MATCH_COLS); tidak dikirim ke klien
+const GAP_MATCH_FIELDS = ['metricType', 'metricPeriod', 'focusKind', 'focusCompetencyId', 'focusMetricType', 'focusMetricKey', 'focusPeriod'];
+const withoutGapFields = (row) => Object.fromEntries(Object.entries(row).filter(([k]) => !GAP_MATCH_FIELDS.includes(k)));
+
+/**
+ * Paritas B7 web: filter gap opsional dari query (parameter sama dengan `/tna/gaps/detail`). Tanpa `kind` -> null
+ * (perilaku lama). Kompetensi harus milik tenant ini (404). Return { key, label, keep(rows) }.
+ */
+async function gapFilterOf(req, stores) {
+  if (req.query.kind === undefined || req.query.kind === '') return null;
+  const gap = parseGapQuery(req.query);
+  let label = gap.name;
+  if (gap.kind === 'competency') {
+    const competency = await stores.dna.getCompetency(req.tenantId, gap.competencyId);
+    if (!competency) throw notFound('Gap tidak ditemukan');
+    label = competency.name;
+  }
+  const key = gapKeyOf(gap);
+  return { key, label, keep: (rows) => findingsInGap(rows, key) };
+}
+
 /** Bentuk satu butir antrean tinjauan: field tahan, saran klasifikasi, dan batas tinjauan. */
 function toReviewItem(row, targetDays, now = new Date()) {
-  const { sessionEndedAt, ...item } = row;
+  const { sessionEndedAt, ...item } = withoutGapFields(row);
   return {
     ...item,
     held: Boolean(item.heldAt) && item.reviewStatus === 'draft',
@@ -97,11 +120,13 @@ function reviewWorkspaceRouter({ stores, settings, catalog, flags, audit, assign
 
   // --- Solusi: rekomendasi course untuk temuan pelatihan, daftar temuan perbaikan ---
   r.get('/review/solutions', hr, flag, wrap(async (req, res) => {
-    const [rows, conf, inaEnabled] = await Promise.all([
+    const gap = await gapFilterOf(req, stores);
+    const [all, conf, inaEnabled] = await Promise.all([
       stores.tna.listReviewedForSolutions(req.tenantId, { projectId: projectIdOf(req) }),
       settings.get(req.tenantId),
       flags.isEnabled(req.tenantId, FLAGS.MODULE_INA),
     ]);
+    const rows = gap ? gap.keep(all) : all;
     const training = [];
     for (const f of rows.filter((x) => x.category === 'training')) {
       let recommendation = null;
@@ -198,4 +223,4 @@ function assertNotWithdrawn(item) {
   if (item && item.consentWithdrawnAt) throw frozenError();
 }
 
-module.exports = { reviewWorkspaceRouter, toReviewItem, assertNotWithdrawn, frozenError };
+module.exports = { reviewWorkspaceRouter, toReviewItem, gapFilterOf, assertNotWithdrawn, frozenError };

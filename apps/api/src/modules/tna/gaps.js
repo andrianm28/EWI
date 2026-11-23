@@ -175,6 +175,17 @@ function findingsByGap({ findings, sessionsById = new Map() }) {
   return out;
 }
 
+/**
+ * Paritas B7 web: temuan satu gap menurut R6, untuk baris yang membawa kolom fokus sesinya sendiri
+ * (`focusKind`, `focusCompetencyId`, `focusMetricType`, `focusMetricKey`, `focusPeriod`). Urutan masukan dipertahankan.
+ */
+function findingsInGap(findings, key) {
+  const sessionsById = new Map(findings.filter((f) => f.sessionId && f.focusKind).map((f) => [f.sessionId, {
+    focusKind: f.focusKind, focusCompetencyId: f.focusCompetencyId, focusMetricType: f.focusMetricType, focusMetricKey: f.focusMetricKey, focusPeriod: f.focusPeriod,
+  }]));
+  return findingsByGap({ findings, sessionsById }).get(key) || [];
+}
+
 /** R7: apa yang boleh dilihat pemanggil. nonTrainingUserIds null = semua karyawan. */
 function visibility({ role, userId, hasGrant = false, flagNonTraining = false, directReportIds = [] }) {
   if (HR_ROLES.includes(role)) return { draft: true, nonTraining: flagNonTraining, nonTrainingUserIds: null };
@@ -250,6 +261,6 @@ function evidenceFor(row, employees = []) {
 }
 
 module.exports = {
-  SCORE_MAX, HYPOTHESES, toPct, latestScores, withPareto, competencyGaps, okrGaps, gapKeyOf, linkSessions, findingsByGap,
+  SCORE_MAX, HYPOTHESES, toPct, latestScores, withPareto, competencyGaps, okrGaps, gapKeyOf, linkSessions, findingsByGap, findingsInGap,
   visibility, classify, decorate, summarize, evidenceFor, isOpen,
 };

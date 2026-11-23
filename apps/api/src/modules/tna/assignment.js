@@ -42,6 +42,21 @@ function parseGap(gap) {
   throw badRequest('Jenis gap tidak dikenal; pilih gap kompetensi atau gap OKR');
 }
 
+/** Rujukan gap dari query (`/gaps/detail`, tinjauan per gap): sama dengan parameter tautan detail gap di web. */
+function parseGapQuery(q) {
+  if (q.kind === 'competency') {
+    if (!isUuid(q.competencyId)) throw badRequest('Kompetensi tidak valid');
+    return { kind: 'competency', competencyId: q.competencyId };
+  }
+  if (q.kind === 'okr') {
+    if (!METRIC_TYPES.includes(q.metricType) || typeof q.name !== 'string' || !q.name.trim() || typeof q.period !== 'string' || !q.period || q.period.length > 32) {
+      throw badRequest('Jenis metrik, nama target, dan periode wajib diisi untuk gap OKR');
+    }
+    return { kind: 'okr', metricType: q.metricType, name: q.name, period: q.period };
+  }
+  throw badRequest('Jenis gap tidak dikenal; pilih gap kompetensi atau gap OKR');
+}
+
 /** Validasi bentuk permintaan penugasan. Keberadaan ID di tenant dicek di router. */
 function validateAssignment(body, now = new Date()) {
   const b = body || {};
@@ -105,5 +120,5 @@ function planAssignments({ eligible, existing, now = new Date() }) {
 }
 
 module.exports = {
-  DURATIONS, MODES, DUE_MAX_DAYS, MAX_EMPLOYEES, isUuid, parseDueDate, validateAssignment, eligibleEmployees, planAssignments,
+  DURATIONS, MODES, DUE_MAX_DAYS, MAX_EMPLOYEES, isUuid, parseDueDate, parseGapQuery, validateAssignment, eligibleEmployees, planAssignments,
 };
