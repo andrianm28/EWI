@@ -22,9 +22,9 @@ export const DASHBOARD_HR = {
   ],
   pareto: {
     rows: [
-      { key: 'c1', label: 'Root Cause Analysis', people: 9, score: 12, share: 0.5, cumulativeShare: 0.5, hot: true },
-      { key: 'c2', label: 'Ticket Life Cycle', people: 6, score: 7, share: 0.29, cumulativeShare: 0.79, hot: true },
-      { key: 'c3', label: 'Komunikasi pelanggan', people: 3, score: 5, share: 0.21, cumulativeShare: 1, hot: false },
+      { key: 'c1', competencyId: 'c1', label: 'Root Cause Analysis', people: 9, score: 12, share: 0.5, cumulativeShare: 0.5, hot: true },
+      { key: 'c2', competencyId: 'c2', label: 'Ticket Life Cycle', people: 6, score: 7, share: 0.29, cumulativeShare: 0.79, hot: true },
+      { key: 't:komunikasi pelanggan', competencyId: null, label: 'Komunikasi pelanggan', people: 3, score: 5, share: 0.21, cumulativeShare: 1, hot: false },
     ],
     total: 3,
     hotCount: 2,

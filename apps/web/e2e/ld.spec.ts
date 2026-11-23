@@ -152,3 +152,11 @@ test('Learning Delivery tidak tampil dan tidak bisa dibuka bila tenant tidak pun
   await page.goto('/ld')
   await expect(page).toHaveURL(/\/$/)
 })
+
+test('P3 X-3: breadcrumb "Learning Delivery" 12px di atas judul', async ({ page }) => {
+  await setup(page)
+  await page.goto('/ld')
+  const crumb = page.getByRole('navigation', { name: 'Lokasi' })
+  await expect(crumb).toHaveText('Learning Delivery')
+  await expect(crumb).toHaveCSS('font-size', '12px')
+})

@@ -19,7 +19,7 @@ const SUMMARY = {
   classification: { training: 1, non_training: 0, review: 1, pending: 1 }, unapprovedCompetencies: 2,
 }
 const COMP = {
-  key: `c:${ID_KOMPETENSI}`, kind: 'competency', competencyId: ID_KOMPETENSI, name: 'Analisis insiden', target: 3, actual: 2.25, gap: 0.75,
+  key: `c:${ID_KOMPETENSI}`, kind: 'competency', competencyId: ID_KOMPETENSI, code: 'ST-A2', name: 'Analisis insiden', target: 3, actual: 2.25, gap: 0.75,
   targetPct: 75, actualPct: 56, gapPct: 19, assessed: 4, peopleWithGap: 3, peopleTotal: 5, cumulativeShare: 0.41,
   classification: 'pending', interviewed: false, interviewedCount: 0, assignedCount: 1,
 }

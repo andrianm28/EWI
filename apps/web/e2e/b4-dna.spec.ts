@@ -146,3 +146,18 @@ test('karyawan membuka menu Developmental Needs: diarahkan ke halaman POC, bukan
   await page.goto('/dna')
   await expect(page).toHaveURL(/\/m\/dna$/)
 })
+
+// Paritas P3 (docs/designs/paritas-mockup/p3-komponen-bersama.md)
+test('P3 DN-1/DN-2: breadcrumb 12px dan kartu Agen AI tanpa tombol (belum ada layar tujuan)', async ({ page }) => {
+  await mockDna(page)
+  await loginSebagai(page, 'hr', B4)
+  await page.goto('/dna')
+  const crumb = page.getByRole('navigation', { name: 'Lokasi' })
+  await expect(crumb).toHaveText(/Learning Needs Analysis\s*›\s*Developmental Needs/)
+  await expect(crumb).toHaveCSS('font-size', '12px')
+  const kartu = page.getByTestId('dn-agen')
+  await expect(kartu.getByRole('heading', { name: 'Agen AI · Validasi kamus kompetensi' })).toBeVisible()
+  await expect(kartu).toContainText('Pilot')
+  await expect(kartu).toContainText('AI mewawancarai atasan pemilik jabatan untuk memvalidasi hasil DACUM, lalu karyawan jabatan itu untuk menilai posisi mereka pada tingkat Basic, Intermediate, Advanced.')
+  await expect(kartu.getByRole('link')).toHaveCount(0)
+})
