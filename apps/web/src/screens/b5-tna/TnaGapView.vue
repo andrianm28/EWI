@@ -29,10 +29,13 @@ const error = ref('')
 /** Galat formulir penugasan, masing-masing menaut ke field-nya (spek bagian 16: field terkait ditandai). */
 const formErrors = ref<{ message: string; fieldId?: string }[]>([])
 const fieldError = (fieldId: string) => formErrors.value.find((e) => e.fieldId === fieldId)?.message
-const pageErrors = computed(() => (error.value ? [{ message: error.value }] : []))
+// Galat umum tampil di dialog selama dialog terbuka (latar modal tidak terbaca), selain itu di halaman
+const generalErrors = computed(() => (error.value ? [{ message: error.value }] : []))
+const pageErrors = computed(() => (assignOpen.value ? [] : generalErrors.value))
+const dialogErrors = computed(() => [...formErrors.value, ...generalErrors.value])
 /** P8 R2 (TD-5): formulir penugasan di dialog, dibuka dari CTA satu baris. */
 const assignOpen = ref(false)
-function openAssign() { formErrors.value = []; notice.value = ''; assignOpen.value = true }
+function openAssign() { formErrors.value = []; error.value = ''; notice.value = ''; assignOpen.value = true }
 const notice = ref('')
 const busy = ref(false)
 
@@ -203,7 +206,7 @@ const cols: UiColumn[] = [
       </UiCard>
       <p v-else-if="isHr" class="tna-gap"><RouterLink :to="reviewTo" class="tna-link">Langsung ke tinjauan HR</RouterLink></p>
       <UiDialog v-if="assignOn" :open="assignOpen" title="Tugaskan wawancara akar masalah" @close="assignOpen = false">
-        <UiErrorSummary :errors="formErrors" />
+        <UiErrorSummary :errors="dialogErrors" />
         <form aria-label="Tugaskan wawancara" class="tna-form" novalidate @submit.prevent="assign">
           <UiField id="tna-project" label="Proyek" :error="fieldError('tna-project')">
             <template #default="{ attrs }">
