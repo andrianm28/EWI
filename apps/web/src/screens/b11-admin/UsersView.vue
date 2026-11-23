@@ -6,7 +6,6 @@ import { ApiError } from '@/api/client'
 import { tenantAdmin, type AdminUser, type JobRole, type RoleOption } from '@/api/tenantAdmin'
 import { useSessionStore } from '@/stores/session'
 import { UiButton, UiCard, UiChip, UiDataTable, UiErrorSummary, UiField, UiNote, UiStatus, type UiColumn, type UiSortState } from '@/ui'
-import AdminNav from './AdminNav.vue'
 
 const session = useSessionStore()
 const users = ref<AdminUser[]>([])
@@ -43,7 +42,7 @@ onMounted(load)
 
 const COLUMNS: UiColumn[] = [
   { key: 'name', label: 'Nama', sortable: true },
-  { key: 'email', label: 'Email', sortable: true, mono: true },
+  { key: 'email', label: 'Email', sortable: true },
   { key: 'roleLabel', label: 'Peran', sortable: true },
   { key: 'jobRoleName', label: 'Jabatan', sortable: true },
   { key: 'status', label: 'Status', sortable: true },
@@ -113,14 +112,14 @@ const setStatus = (u: AdminUser, status: 'active' | 'disabled') => act(async () 
 
 <template>
   <AppShell>
-    <AdminNav current="users" />
     <h1 class="el-h1">Pengguna &amp; peran</h1>
     <p class="el-muted adm__lead">Admin tenant mengelola akun dan peran di perusahaannya saja. Data tidak terlihat oleh tenant lain.</p>
 
     <UiNote v-if="loadError" tone="critical">{{ loadError }}</UiNote>
     <p v-else-if="loading" class="el-muted">Memuat pengguna…</p>
     <template v-else>
-      <p v-if="notice" class="adm__notice" role="status" data-testid="adm-info">{{ notice }}</p>
+      <!-- ADM-2: note sukses hijau; role=status di pembungkus agar tetap dibacakan -->
+      <div v-if="notice" role="status" class="adm__notice"><UiNote tone="success" data-testid="adm-info">{{ notice }}</UiNote></div>
       <UiErrorSummary v-if="!formOpen" :errors="errors" />
 
       <UiCard v-if="formOpen" class="adm__section" data-testid="usr-form">
@@ -162,9 +161,11 @@ const setStatus = (u: AdminUser, status: 'active' | 'disabled') => act(async () 
           <UiChip v-if="sso" tone="success">SSO aktif</UiChip>
           <label class="el-sr-only" for="usr-cari">Cari pengguna</label>
           <input id="usr-cari" v-model="search" class="el-input adm__search" type="search" placeholder="Cari nama atau email" />
-          <UiButton v-if="!formOpen" size="sm" data-testid="usr-undang" @click="openForm()">Undang pengguna</UiButton>
+          <UiButton v-if="!formOpen" size="sm" icon="person_add" class="adm__push" data-testid="usr-undang" @click="openForm()">Undang pengguna</UiButton>
         </template>
-        <template #cell-name="{ row }"><b>{{ asUser(row).name ?? 'Tanpa nama' }}</b></template>
+        <template #cell-name="{ row }"><b class="adm__nowrap">{{ asUser(row).name ?? 'Tanpa nama' }}</b></template>
+        <!-- ADM-4: email mono 12px -->
+        <template #cell-email="{ row }"><span class="el-mono adm__email">{{ asUser(row).email }}</span></template>
         <template #cell-roleLabel="{ row }"><UiChip>{{ asUser(row).roleLabel }}</UiChip></template>
         <template #cell-jobRoleName="{ row }">{{ asUser(row).jobRoleName ?? '' }}</template>
         <template #cell-status="{ row }"><UiStatus :tone="statusOf(asUser(row)).tone">{{ statusOf(asUser(row)).label }}</UiStatus></template>
@@ -189,6 +190,10 @@ const setStatus = (u: AdminUser, status: 'active' | 'disabled') => act(async () 
 .adm__lead { margin: 0 0 16px; }
 .adm__section { margin-top: 16px; }
 .adm__row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
-.adm__notice { margin: 0 0 12px; color: var(--el-success); font-weight: 500; }
+.adm__notice { margin: 0 0 12px; }
 .adm__search { height: 40px; min-width: 220px; }
+/* ADM-3/4/5 */
+.adm__push { margin-left: auto; }
+.adm__email { font-size: 12px; }
+.adm__nowrap { white-space: nowrap; }
 </style>

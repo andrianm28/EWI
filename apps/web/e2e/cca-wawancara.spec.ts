@@ -101,7 +101,7 @@ test('P7 AIV-2/4/6/7/9: daftar ber-bullet, sesi di kartu mandiri, audit agen, ri
   await expect(sesi.locator('.el-audit')).toContainText('Agen ELGOS (POC) · log audit: 0 jawaban')
   await expect(sesi.getByTestId('cc-turn-ai').first()).toContainText('ELGOS AI')
   for (const jawaban of ['a', 'b', 'c', 'd']) {
-    await sesi.getByLabel('Jawaban').fill(jawaban)
+    await sesi.getByRole('textbox', { name: 'Jawaban' }).fill(jawaban)
     await sesi.getByRole('button', { name: 'Kirim' }).click()
     await expect(sesi.getByTestId('cc-turn-participant').last()).toContainText(jawaban)
   }

@@ -72,7 +72,7 @@ async function assign(rows: TeamRow[]) {
         <h1 class="el-h1">{{ session.activeView === 'atasan' ? 'Wawancara AI' : 'Wawancara visi, misi, dan nilai' }}</h1>
         <UiChip tone="review">Pilot</UiChip>
       </div>
-      <p class="el-muted">
+      <p class="el-muted cc-sub">
         <template v-if="session.activeView === 'atasan'">Anda diwawancarai AI sebagai pimpinan, lalu menugaskan wawancara ke anggota tim Anda.</template>
         <template v-else>AI mewawancarai Anda tentang pemahaman visi, misi, dan nilai perusahaan. Ditugaskan oleh atasan Anda.</template>
       </p>
@@ -98,7 +98,7 @@ async function assign(rows: TeamRow[]) {
               </div>
               <UiButton v-if="mineLeader && ACTION[mineLeader.status] && openId !== mineLeader.id" @click="openId = mineLeader.id">{{ ACTION[mineLeader.status] }}</UiButton>
             </div>
-            <InterviewSession v-if="mineLeader && openId === mineLeader.id" :key="mineLeader.id" :assignment-id="mineLeader.id" style="margin-top: 16px" @finished="finished" />
+            <InterviewSession v-if="mineLeader && openId === mineLeader.id" :key="mineLeader.id" :assignment-id="mineLeader.id" style="margin-top: 16px" @finished="finished" @close="openId = null" />
           </UiCard>
           <UiCard>
             <h3 class="el-h3">Teruskan wawancara ke tim Anda</h3>
@@ -120,6 +120,10 @@ async function assign(rows: TeamRow[]) {
           </UiCard>
         </template>
 
+        <!-- AIV-6: sesi karyawan tampil di kartu "Percakapan" mandiri, menggantikan kartu penugasan -->
+        <UiCard v-else-if="mineEmployee && openId === mineEmployee.id" data-testid="cc-wawancara-sesi">
+          <InterviewSession :key="mineEmployee.id" :assignment-id="mineEmployee.id" @finished="finished" @close="openId = null" />
+        </UiCard>
         <UiCard v-else data-testid="cc-wawancara-karyawan">
           <UiChip :tone="TONE[statusOf(mineEmployee)]">{{ STATUS_LABEL[statusOf(mineEmployee)] }}</UiChip>
           <h2 class="el-h2" style="margin: 8px 0 4px">Wawancara visi, misi, dan nilai</h2>
@@ -131,8 +135,7 @@ async function assign(rows: TeamRow[]) {
               <li>Dipakai untuk rencana belajar, bukan penilaian kinerja.</li>
               <li>Atasan hanya melihat status selesai atau belum.</li>
             </ul>
-            <UiButton v-if="ACTION[mineEmployee.status] && openId !== mineEmployee.id" @click="openId = mineEmployee.id">{{ ACTION[mineEmployee.status] }}</UiButton>
-            <InterviewSession v-if="openId === mineEmployee.id" :key="mineEmployee.id" :assignment-id="mineEmployee.id" style="margin-top: 16px" @finished="finished" />
+            <UiButton v-if="ACTION[mineEmployee.status]" @click="openId = mineEmployee.id">{{ ACTION[mineEmployee.status] }}</UiButton>
           </template>
         </UiCard>
 

@@ -123,7 +123,9 @@ const STEP_STATUS: Record<Step, string> = { expired: 'Berakhir', consent: 'Belum
 const audit = computed(() => {
   const v = s.value
   if (!v?.sessionCode) return []
-  return [v.sessionCode, v.aiLabel ?? 'ELGOS-AI', `log audit: persetujuan tercatat · ${v.answerCount ?? 0} jawaban`]
+  // IV-3: sebelum persetujuan diberikan, audit tidak boleh menyebut persetujuan tercatat
+  const consent = step.value === 'consent' ? 'persetujuan belum' : 'persetujuan tercatat'
+  return [v.sessionCode, v.aiLabel ?? 'ELGOS-AI', `log audit: ${consent} · ${v.answerCount ?? 0} jawaban`]
 })
 </script>
 
@@ -131,7 +133,7 @@ const audit = computed(() => {
   <AppShell>
     <UiBreadcrumb :items="crumbs" />
     <h1 class="tna-h1">Wawancara akar masalah</h1>
-    <p v-if="s?.focusLabel" class="el-muted">Topik: {{ s.focusLabel }}</p>
+    <p v-if="s?.focusLabel" class="el-muted iv-sub">Topik: {{ s.focusLabel }}</p>
     <UiErrorSummary :errors="errors" />
 
     <UiCard v-if="s && s.transcriptVisible === false">
@@ -172,12 +174,14 @@ const audit = computed(() => {
           <p v-if="summary && !summary.findings.length">Tidak ditemukan hambatan yang jelas.</p>
           <ul class="iv-findings">
             <li v-for="(f, i) in summary?.findings ?? []" :key="i" class="iv-finding">
-              <div class="iv-finding__title">{{ f.title }}</div>
-              <div v-if="f.detail" class="el-muted">{{ f.detail }}</div>
-              <div class="iv-actions">
+              <div class="iv-finding__body">
+                <div class="iv-finding__title">{{ f.title }}</div>
+                <div v-if="f.detail" class="el-muted">{{ f.detail }}</div>
+                <span v-if="confidence(f.confidence) !== null" class="el-muted iv-small">Keyakinan AI: {{ confidence(f.confidence) }}%</span>
+              </div>
+              <div class="iv-finding__chips">
                 <UiChip :tone="f.category === 'training' ? 'training' : 'improvement'">{{ CLASSIFICATION_LABEL[f.category] }}</UiChip>
                 <UiChip v-if="f.confidence === null || f.confidence < 0.5" tone="review">Perlu ditinjau HR</UiChip>
-                <span v-if="confidence(f.confidence) !== null" class="el-muted iv-small">Keyakinan AI sementara: {{ confidence(f.confidence) }}%</span>
               </div>
             </li>
           </ul>
@@ -196,7 +200,7 @@ const audit = computed(() => {
 
         <p v-else-if="s.consentWithdrawnAt && (step === 'done' || step === 'closed')">Persetujuan Anda untuk wawancara ini sudah ditarik.</p>
         <template v-else-if="step === 'done'">
-          <p v-if="s.summaryState === 'confirmed' || s.summaryState === 'disputed'">Ringkasan sudah dikirim ke HR untuk ditinjau.</p>
+          <UiNote v-if="s.summaryState === 'confirmed' || s.summaryState === 'disputed'" tone="success"><b>Terima kasih.</b> Ringkasan sudah dikirim ke HR untuk ditinjau. Anda akan menerima rencana belajar atau kabar tindak lanjut.</UiNote>
           <p v-else>Wawancara ini sudah selesai.</p>
         </template>
         <p v-else>Sesi ini dibatalkan.</p>
@@ -204,8 +208,9 @@ const audit = computed(() => {
         <section v-if="(step === 'done' || step === 'closed') && turns.length" aria-label="Transkrip" class="iv-mt">
           <PercakapanWawancara :turns="turns" :can-answer="false" />
         </section>
+        <!-- IV-4: baris audit di dalam kartu kanan, di bawah konten -->
+        <UiAuditLine v-if="audit.length" :items="audit" />
       </UiCard>
     </div>
-    <UiAuditLine v-if="audit.length" :items="audit" class="iv-mt" />
   </AppShell>
 </template>

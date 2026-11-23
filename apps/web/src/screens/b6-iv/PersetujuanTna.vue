@@ -23,7 +23,7 @@ function next() {
 <template>
   <section class="iv-consent" data-testid="consent">
     <UiErrorSummary :errors="errors" />
-      <h2 class="iv-h3">Sebelum mulai: tentang wawancara ini</h2>
+      <h2 class="iv-h2">Persetujuan sebelum mulai</h2>
       <p>
         Wawancara ini membantu perusahaan memahami mengapa sebagian target kerja Anda belum tercapai dan dukungan apa yang Anda butuhkan,
         misalnya pelatihan, alat kerja, atau perbaikan proses. Wawancara ini <strong>bukan penilaian kinerja</strong> dan tidak dipakai

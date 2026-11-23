@@ -85,7 +85,7 @@ test('P7 IV-1/3/4/5/9/10/11: judul persetujuan, audit sebelum setuju di dalam ka
   await expect(ai).toHaveCSS('border-top-left-radius', '16px')
   await page.getByLabel('Jawaban').fill('Saya belum pernah dilatih eskalasi.')
   await page.getByRole('button', { name: 'Kirim' }).click()
-  const me = page.getByTestId('turn-me').first()
+  const me = page.getByTestId('turn-human').first()
   await expect(me).toHaveCSS('background-color', 'rgb(11, 58, 110)')
   await expect(audit).toContainText('persetujuan tercatat · 1 jawaban')
   await page.getByRole('button', { name: 'Lihat ringkasan temuan' }).click()

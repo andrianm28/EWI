@@ -65,8 +65,8 @@ test('Admin Tenant mendarat di Pengguna & peran; undang, kirim ulang, dan nonakt
   // P7 ADM-1/3/4/5: tanpa baris pil AdminNav; tombol undang berikon; email mono 12px; nama satu baris
   await expect(page.getByRole('navigation', { name: 'Layar Admin Tenant' })).toHaveCount(0)
   await expect(page.getByTestId('usr-undang').locator('.el-icon')).toHaveCount(1)
-  await expect(page.getByRole('cell', { name: 'a@demo.test' })).toHaveCSS('font-size', '12px')
-  await expect(page.getByRole('row').filter({ hasText: 'Admin Satu' }).getByRole('cell').first()).toHaveCSS('white-space', 'nowrap')
+  await expect(page.getByRole('cell', { name: 'a@demo.test', exact: true }).locator('.el-mono')).toHaveCSS('font-size', '12px')
+  await expect(page.getByRole('row').filter({ hasText: 'Admin Satu' }).locator('b.adm__nowrap')).toHaveCSS('white-space', 'nowrap')
   await expect(page.getByText('SSO aktif')).toBeVisible()
 
   const row = (name: string) => page.getByRole('row').filter({ hasText: name })
