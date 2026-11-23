@@ -28,7 +28,7 @@ Sumber acuan:
 | PM-2 | Pemantauan kualitas AI |
 | PM-10 | Konteks AI hanya data milik karyawan yang diwawancarai |
 | PD-1, PD-7 | Keputusan akun AWS dan akses model Bedrock (belum dijawab, default A dipakai) |
-| PD-2b | Lokasi pemrosesan AI dengan latensi terendah. Hasil 23 Nov: Singapura `ap-southeast-1`, `anthropic.claude-sonnet-5` on-demand, untuk aplikasi dan QA malam (`docs/designs/pd-2b-bedrock-singapura.md`) |
+| PD-2b | Lokasi pemrosesan AI dengan latensi terendah. Hasil 23 Nov: Singapura, untuk aplikasi dan QA malam (model dan region di `docs/ewi/ai-teks.md`) |
 | BT-11 | Kendala operasional yang muncul di wawancara dicatat sebagai temuan Improvement Needs |
 | BT-23 | Satu target bisa menghasilkan temuan Training Needs dan Improvement Needs yang saling bertautan |
 | Kenari | String unik yang sengaja ditanam di data uji; bila muncul di tempat yang salah, ada kebocoran |

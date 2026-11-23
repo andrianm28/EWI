@@ -1,6 +1,10 @@
 # PD-2b terjawab: AI teks dan QA malam di Bedrock Singapura
 
 Status: spek kecil thread integrasi (23 Nov). Pemilik keputusan: user, kartu di thread infra 23 Nov 11.01 WIB.
+Reviewer wajib: Andrian (`apps/api/src/config/env.js` dimuat seluruh API, kode bersama).
+
+Sumber tunggal nilai region dan model: `docs/ewi/ai-teks.md`. Berkas lain menautkannya, kecuali contoh perintah dan
+nilai variabel yang harus bisa langsung dipakai (`.env.example`, `docs/ewi/qa-malam.md`).
 
 ## 1. Konteks
 
@@ -30,15 +34,17 @@ in-region Singapura salah region, dan satu-satunya jalan di Jakarta (profil `glo
 | `.env.example` | `BEDROCK_REGION=ap-southeast-3`, `BEDROCK_MODEL_ID=` | `BEDROCK_REGION=ap-southeast-1`, `BEDROCK_MODEL_ID=anthropic.claude-sonnet-5` (dipakai bila `AI_PROVIDER=bedrock`) |
 | `docs/ewi/ai-teks.md` | PD-2b tanpa hasil, "belum bisa dicek" | hasil cek 23 Nov, bawaan baru, model terpilih |
 | `docs/ewi/qa-malam.md` | contoh `<region QA>`, `<ID model atau profil apac.>` | `ap-southeast-1`, `anthropic.claude-sonnet-5`; nilai variabel repo QA malam |
-| `docs/designs/b18-e2e-qa-malam.md` | PD-2b tanpa hasil | baris PD-2b mencatat lokasi QA malam |
-| `docs/ewi/poc-dna-tna.md` | "lokasi PD-2b: Jakarta, Singapura, atau profil apac." | ditambah hasil 23 Nov (Singapura) |
+| `.github/workflows/qa-malam.yml` | `BEDROCK_REGION` dan `aws-region` hanya dari `vars.QA_MALAM_BEDROCK_REGION` | jatuh ke `ap-southeast-1` bila variabel repo kosong (pola `QA_MALAM_MAX_TOKENS`); variabel repo tetap menang |
+| `docs/designs/b18-e2e-qa-malam.md` | PD-2b tanpa hasil | baris PD-2b mencatat hasil Singapura dan menautkan `ai-teks.md` |
+| `docs/ewi/poc-dna-tna.md` | "lokasi PD-2b: Jakarta, Singapura, atau profil apac." | ditambah hasil 23 Nov (Singapura) dengan tautan ke `ai-teks.md` |
 
 Yang tidak berubah, dengan alasan:
 
 - `AI_ALLOWED_REGIONS` tetap `ap-southeast-3,ap-southeast-1`. PD-2b masih mengutamakan Jakarta bila suatu saat Claude
   tersedia in-region di sana, dan daftar ini hanya pagar, bukan pilihan.
 - `BEDROCK_MODEL_ID` tetap wajib diisi (tanpa bawaan di kode). Model bisa berganti tanpa rilis, dan boot yang gagal
-  karena model kosong lebih aman daripada diam-diam memakai model lama.
+  karena model kosong lebih aman daripada diam-diam memakai model lama. Workflow QA malam juga tanpa bawaan model:
+  role `elgos-qa-malam` hanya dibuat bila model QA diisi di Terraform, jadi variabel model kosong berarti job dilewati.
 - Penjaga profil lintas region tidak berubah. `global.` tetap ditolak tanpa `AI_ALLOW_CROSS_REGION=true`. Catatan:
   `AI_ALLOW_CROSS_REGION=true` juga melewati pemeriksaan `AI_ALLOWED_REGIONS`, bukan hanya penjaga profil.
 
@@ -50,8 +56,10 @@ tidak bentrok dengan commit PR #3 yang masih berjalan. Diserahkan ke thread infr
 - `infra/live/shared/qa-malam.tf`: bawaan `qa_bedrock_region` masih `ap-southeast-3` dan deskripsinya masih "Jakarta;
   Singapura bila Claude tidak tersedia di Jakarta" (wizard mengirim nilai eksplisit, jadi bawaan ini hanya berlaku bila
   Terraform dijalankan tanpa wizard).
-- `infra/setup-akun-elgos.sh`: teks pertanyaan region QA, dan langkah mengaktifkan region opt-in Jakarta "agar Bedrock
-  Jakarta bisa dicek" yang kini tidak dibutuhkan untuk AI teks.
+- `infra/setup-akun-elgos.sh`: teks pertanyaan region QA, petunjuk "isi juga ID profil (mis. apac.anthropic...)", dan
+  langkah mengaktifkan region opt-in Jakarta "agar Bedrock Jakarta bisa dicek" yang kini tidak dibutuhkan untuk AI teks.
+
+Thread infra menyelaraskan butir-butir ini di PR #3 head `9e5dfb5` (23 Nov), yang lalu digabung ulang ke branch integrasi.
 - `deploy/vps/.env.example`: `BEDROCK_MODEL_ID` kosong dan komentar "dicek saat akun AWS ELGOS ada".
 - `docs/infra/vps-etavm2.md`: paragraf region QA malam.
 
@@ -66,9 +74,10 @@ menunggu legal, jadi spek ini tidak mengubahnya. DPIA dan teks persetujuan perlu
 ## 4. Test
 
 - Diubah, `config.test.js`: tanpa `BEDROCK_REGION`, `loadConfig` menghasilkan `region: 'ap-southeast-1'` dan
-  `processing: 'in-region:ap-southeast-1'` (produksi dengan model `anthropic.claude-sonnet-5`, dan test PD-2b).
+  `processing: 'in-region:ap-southeast-1'` (test produksi kini memakai model `anthropic.claude-sonnet-5` dan memeriksa
+  `allowCrossRegion: false`, dan test PD-2b).
 - Baru: `BEDROCK_REGION=ap-southeast-3` eksplisit tetap diterima (`in-region:ap-southeast-3`).
-- Baru: `BEDROCK_REGION=''` (yang dikirim `qa-malam.yml` bila variabel repo belum diisi) jatuh ke Singapura.
+- Baru: `BEDROCK_REGION=''` (mis. baris kosong di `.env`) jatuh ke Singapura.
 - Baru: `AI_ALLOWED_REGIONS=ap-southeast-3` tanpa `BEDROCK_REGION` kini menolak boot (lihat risiko).
 - Tetap: `us-east-1` ditolak, profil `global.`/`us.`/`eu.` ditolak kecuali diizinkan.
 - Gerbang penuh pada hasil gabungan.
@@ -94,4 +103,26 @@ Review spek oleh goldfish `egm:egm-codebase-details` (tanpa riwayat percakapan),
 | `AI_ALLOW_CROSS_REGION` juga melewati daftar region | Minor | Diterima: dicatat di bagian 2, perilaku tidak diubah |
 | Butir test "unit baru" mengulang butir pertama | Minor | Diterima: bagian 4 disusun ulang |
 | Kasus `BEDROCK_REGION=''` dan `AI_ALLOWED_REGIONS=ap-southeast-3` tanpa region belum diuji | Minor | Diterima: dua test baru, risiko kedua dicatat |
+
+Review diff `mattpocock-skills:code-review`, titik tetap `ab81a82` (sumbu Standards):
+
+| Temuan | Bobot | Triase |
+|---|---|---|
+| Dua test di `fa83fa7` ditulis setelah hijau, jadi test karakterisasi | Judgement call | Diterima apa adanya, dicatat jujur di PR #8; perilakunya sudah ada sebelum perubahan |
+| `env.js` kode bersama, spek tidak menyebut reviewer | Judgement call | Diperbaiki: baris "Reviewer wajib" |
+| Nama branch bukan `feat/ewi-ELITMEN-xxx` | Judgement call | Ditolak: pekerjaan thread integrasi hanya boleh di branch integrasi; bukan tiket ELITMEN |
+| Nilai region dan model tertulis di 7 berkas (Shotgun Surgery) | Judgement call | Sebagian: `ai-teks.md` jadi sumber tunggal, spek B18 dan `poc-dna-tna.md` menautkannya; `.env.example` dan `qa-malam.md` tetap memuat nilai karena harus bisa langsung disalin |
+| Test produksi dan test "PD-2b terjawab" hampir sama | Judgement call | Diperbaiki: digabung jadi satu test produksi |
+| Judul test PD-2b menyesatkan; judul memakai tanggal | Judgement call | Diperbaiki: judul menyebut perilaku |
+| Komentar log keputusan di `env.js` akan basi | Judgement call | Diperbaiki: komentar satu baris yang menautkan spek |
+
+Sumbu Spec:
+
+| Temuan | Bobot | Triase |
+|---|---|---|
+| Alasan test `BEDROCK_REGION=''` keliru: di QA malam job dilewati atau `configure-aws-credentials` gagal lebih dulu | Diterima | Alasan di bagian 4 dan komentar test diperbaiki; test tetap untuk `.env` dengan nilai kosong |
+| Region QA malam di repo sepenuhnya bergantung pada variabel repo | Diterima | `qa-malam.yml` jatuh ke `ap-southeast-1` bila kosong (bagian 2); model tetap tanpa bawaan (alasan di bagian 2) |
+| Penyerahan infra belum menyebut petunjuk `apac.` di wizard | Diterima | Ditambah di bagian 3; dikerjakan thread infra di PR #3 `9e5dfb5` |
+| Gerbang penuh belum terbukti | Info | Dijalankan pada hasil gabungan sebelum push |
+| `qa-malam-cli.test.js` memakai Jakarta sebagai data uji dengan penyedia palsu | Info | Tidak diubah, tanpa dampak |
 </content>

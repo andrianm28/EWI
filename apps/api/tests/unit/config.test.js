@@ -48,19 +48,16 @@ describe('loadConfig', () => {
     it('produksi memakai bedrock dan menolak stub', () => {
       expect(() => loadConfig({ ...prod, AI_PROVIDER: 'stub' })).toThrow(/AI_PROVIDER=stub tidak boleh di produksi/);
       expect(() => loadConfig(prod)).toThrow(/BEDROCK_MODEL_ID wajib/);
-      const cfg = loadConfig({ ...prod, BEDROCK_MODEL_ID: 'anthropic.model-uji' });
-      expect(cfg.ai).toMatchObject({ provider: 'bedrock', region: 'ap-southeast-1', modelId: 'anthropic.model-uji', maxQuestions: 8, processing: 'in-region:ap-southeast-1' });
-    });
-    it('PD-2b terjawab 23 Nov: tanpa BEDROCK_REGION, model terpilih diproses in-region Singapura', () => {
+      // Model terpilih PD-2b (docs/designs/pd-2b-bedrock-singapura.md) lolos tanpa izin lintas region
       const cfg = loadConfig({ ...prod, BEDROCK_MODEL_ID: 'anthropic.claude-sonnet-5' });
-      expect(cfg.ai).toMatchObject({ region: 'ap-southeast-1', modelId: 'anthropic.claude-sonnet-5', processing: 'in-region:ap-southeast-1', allowCrossRegion: false });
+      expect(cfg.ai).toMatchObject({ provider: 'bedrock', region: 'ap-southeast-1', modelId: 'anthropic.claude-sonnet-5', maxQuestions: 8, processing: 'in-region:ap-southeast-1', allowCrossRegion: false });
     });
-    it('PD-2b: Jakarta lalu Singapura in-region, atau profil apac.; profil di luar APAC ditolak kecuali diizinkan', () => {
+    it('PD-2b: bawaan Singapura, Jakarta boleh eksplisit, atau profil apac.; profil di luar APAC ditolak kecuali diizinkan', () => {
       const t = { ...base, NODE_ENV: 'test', AI_PROVIDER: 'bedrock' };
       expect(loadConfig({ ...t, BEDROCK_MODEL_ID: 'm' }).ai.region).toBe('ap-southeast-1');
       // Jakarta tetap diterima bila diisi eksplisit (mis. kelak Claude tersedia in-region di sana)
       expect(loadConfig({ ...t, BEDROCK_MODEL_ID: 'm', BEDROCK_REGION: 'ap-southeast-3' }).ai.processing).toBe('in-region:ap-southeast-3');
-      // qa-malam.yml mengirim string kosong bila variabel repo belum diisi
+      // Nilai kosong (mis. baris `BEDROCK_REGION=` di .env) jatuh ke bawaan
       expect(loadConfig({ ...t, BEDROCK_MODEL_ID: 'm', BEDROCK_REGION: '' }).ai.region).toBe('ap-southeast-1');
       // Daftar yang hanya mengizinkan Jakarta wajib mengisi BEDROCK_REGION
       expect(() => loadConfig({ ...t, BEDROCK_MODEL_ID: 'm', AI_ALLOWED_REGIONS: 'ap-southeast-3' })).toThrow(/BEDROCK_REGION harus salah satu dari ap-southeast-3/);
