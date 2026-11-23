@@ -46,6 +46,7 @@ run('Aturan bisnis wajib live (Postgres)', () => {
     await add('hr', 'hr_admin');
     await add('spv', 'supervisor');
     await add('dimas', 'learner', u.spv);
+    await add('eta', 'eta_admin');
     await db.query(`INSERT INTO entitlements (tenant_id, product) VALUES (:t, 'full_suite')`, { replacements: { t: tenant.id } });
     await flag('module.tna', true);
     [[{ id: projectId }]] = await db.query(`INSERT INTO lna_projects (tenant_id, name) VALUES (:t, 'L1') RETURNING id`, { replacements: { t: tenant.id } });
@@ -141,6 +142,9 @@ run('Aturan bisnis wajib live (Postgres)', () => {
 
     // Hanya HR yang memberi akses; target harus atasan
     expect((await request(app).put(`/api/tna/non-training-access/${u.spv}`).set(as('spv'))).status).toBe(403);
+    // Keputusan user 23 Nov (spek B9 §15): Admin ETA tidak mengelola akses atasan
+    expect((await request(app).put(`/api/tna/non-training-access/${u.spv}`).set(as('eta'))).status).toBe(403);
+    expect((await request(app).delete(`/api/tna/non-training-access/${u.spv}`).set(as('eta'))).status).toBe(403);
     expect((await request(app).put(`/api/tna/non-training-access/${u.dimas}`).set(as('hr'))).status).toBe(404);
     const grant = await request(app).put(`/api/tna/non-training-access/${u.spv}`).set(as('hr'));
     expect(grant.body.data).toMatchObject({ granted: true, changed: true });

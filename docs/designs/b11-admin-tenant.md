@@ -268,7 +268,7 @@ E2E `apps/web/e2e/admin-tenant.spec.ts` (4 test) dengan API mock.
 | ⏳ | Token akun yang dinonaktifkan masih berlaku sampai kedaluwarsa | PK-16/B1 (sesi) |
 | ⚠️ | Bentuk berkas DACUM asli belum dilihat | Data Mas Abdan 26 Nov, B4 |
 | ⚠️ | "Terkonfigurasi" EliteMentor belum uji panggil | Kontrak FR-EM |
-| ⏳ | Selama peralihan setiap `hr_admin` adalah admin tenant penuh (termasuk menonaktifkan pengelola hasil onboarding) | Diterima user 23 Nov, juga bila B2 lewat 2 Des; setiap perubahan tercatat di audit |
+| ⏳ | Selama peralihan setiap `hr_admin` adalah admin tenant penuh (termasuk menonaktifkan pengelola hasil onboarding) | Diterima user 23 Nov, juga bila B2 lewat 2 Des; setiap perubahan tercatat di audit. Review Andrian tetap wajib (aturan 7) |
 | ⏳ | Prasyarat B2: pengelola hasil onboarding dimigrasi ke `tenant_admin` sebelum `hr_admin` dicabut | PR B2 |
 | ⏳ | `hr_admin` yang diturunkan tetap memakai hak HR di modul lain sampai token habis (8 jam) | PK-16/B1 |
 | ⏳ | Dua admin saling menonaktifkan bersamaan bisa meninggalkan tenant tanpa pengelola | Pemulihan lewat Super Admin (B12); kunci baris bila B2 menambah aturan admin terakhir |
