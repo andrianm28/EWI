@@ -80,21 +80,21 @@ Acuan domain: [B10](../b10-core-competencies.md) (bagian 11 dan 13), [B5](../b5-
 
 ## Test (e2e, API di-mock)
 
-- [ ] `core-competencies.spec.ts`: header tabel VM persis 5 kolom; baris tidak memuat "Menunggu validasi HR"/tombol Validasi; klik baris → panel memuat "Menunggu validasi HR" dan tombol Validasi/Tolak; Validasi mengirim PATCH; di 1280 tabel tanpa gulir horizontal; bar gap −20 merah (critical), −17 primer; Values 3 KPI, label "Kesiapan", bar kesiapan ≥80 success.
-- [ ] `cca-wawancara.spec.ts`: sintesis berupa daftar (tanpa tabel), teks "pimpinan sepakat 100% · karyawan sejalan 80% · gap −20", bar 80 dan merah; tema < 5 responden "karyawan sejalan -"; tombol Lihat Vision & Mission/Lihat Corporate Values berpindah tab; "Isi dari sintesis" di bagian lipat; pratinjau pimpinan dan karyawan; KPI ke-4 "Tema tersintesis"; sintesis tanpa `themes` → pesan galat.
-- [ ] `core-competencies.spec.ts` atasan: breadcrumb "Learning Needs Analysis › Wawancara AI"; chip "Perlu wawancara"; tombol tim nonaktif "Selesai"; tanggal "30 Nov 2026".
-- [ ] `tna-gap.spec.ts`: papan menyala → `tna-findings` tidak ada di `/tna`, tautan "Kelola TNA" → `/tna/kelola` memuat `tna-findings` dan breadcrumb; papan mati → `/tna` tetap berisi pengelolaan; pengelolaan tanpa kelas Tailwind (`slate-`, `bg-white`, `text-blue`); KPI note TN-3; tombol "Lihat gap kompetensi"; bar gap < 20 primer.
-- [ ] `poc-dna-tna.spec.ts` tetap hijau (label dan test id pengelolaan dipertahankan).
-- [ ] `improvement-needs.spec.ts`: 7 header kolom tanpa "Aksi"; h2 "Tindakan perbaikan"; klik baris → `?ubah=a-1` dan formulir ubah dengan tombol "Verifikasi lewat AI"; tabel muat di 1440 dan 1280; atasan tanpa akses → note warning; subjudul dan note KPI mockup.
-- [ ] `b4-dna.spec.ts`: label tab mockup, judul kurikulum "Basic · N modul", chip tahap basic bernada review.
+- [x] `core-competencies.spec.ts`: header tabel VM persis 5 kolom; baris tidak memuat "Menunggu validasi HR"/tombol Validasi; klik baris → panel memuat "Menunggu validasi HR" dan tombol Validasi/Tolak; Validasi mengirim PATCH; di 1280 tabel tanpa gulir horizontal; bar gap −20 merah (critical), −17 primer; Values 3 KPI, label "Kesiapan", bar kesiapan ≥80 success.
+- [x] `cca-wawancara.spec.ts`: sintesis berupa daftar (tanpa tabel), teks "pimpinan sepakat 100% · karyawan sejalan 80% · gap −20", bar 80 dan merah; tema < 5 responden "karyawan sejalan -"; tombol Lihat Vision & Mission/Lihat Corporate Values berpindah tab; "Isi dari sintesis" di bagian lipat; pratinjau pimpinan dan karyawan; KPI ke-4 "Tema tersintesis"; sintesis tanpa `themes` → pesan galat.
+- [x] `core-competencies.spec.ts` atasan: breadcrumb "Learning Needs Analysis › Wawancara AI"; chip "Perlu wawancara"; tombol tim nonaktif "Selesai"; tanggal "30 Nov 2026".
+- [x] `tna-gap.spec.ts`: papan menyala → `tna-findings` tidak ada di `/tna`, tautan "Kelola TNA" → `/tna/kelola` memuat `tna-findings` dan breadcrumb; papan mati → `/tna` tetap berisi pengelolaan; pengelolaan tanpa kelas Tailwind (`slate-`, `bg-white`, `text-blue`); KPI note TN-3; tombol "Lihat gap kompetensi"; bar gap < 20 primer.
+- [x] `poc-dna-tna.spec.ts` tetap hijau (label dan test id pengelolaan dipertahankan).
+- [x] `improvement-needs.spec.ts`: 7 header kolom tanpa "Aksi"; h2 "Tindakan perbaikan"; klik baris → `?ubah=a-1` dan formulir ubah dengan tombol "Verifikasi lewat AI"; tabel muat di 1440 dan 1280; atasan tanpa akses → note warning; subjudul dan note KPI mockup.
+- [x] `b4-dna.spec.ts`: label tab mockup, judul kurikulum "Basic · N modul", chip tahap basic bernada review.
 
 ## File
 
-- [ ] `apps/web/src/screens/b10-core-competencies/RequirementsTab.vue`, `SynthesisCard.vue`, `AssignmentsHr.vue`, `InterviewAssignmentView.vue`, `cc.css`, `apps/web/src/api/cca.ts` (`fmtDateShort`)
-- [ ] `apps/web/src/screens/b5-tna/TnaScreen.vue`, `TnaPengelolaan.vue`, `TnaKelolaView.vue` (baru), `routes.ts`, `tna.css`
-- [ ] `apps/web/src/screens/b9-ina/ImprovementNeedsView.vue`
-- [ ] `apps/web/src/screens/b4-dna/DevelopmentNeedsView.vue`
-- [ ] e2e di atas; `docs/designs/paritas-mockup/gaps-lna.md` (penanda Ditutup/Sebagian)
+- [x] `apps/web/src/screens/b10-core-competencies/RequirementsTab.vue`, `SynthesisCard.vue`, `AssignmentsHr.vue`, `InterviewAssignmentView.vue`, `cc.css`, `apps/web/src/api/cca.ts` (`fmtDate(iso, 'short')`)
+- [x] `apps/web/src/screens/b5-tna/TnaScreen.vue`, `TnaPengelolaan.vue`, `TnaKelolaView.vue` (baru), `routes.ts`, `tna.css`
+- [x] `apps/web/src/screens/b9-ina/ImprovementNeedsView.vue`
+- [x] `apps/web/src/screens/b4-dna/DevelopmentNeedsView.vue`
+- [x] e2e di atas; `docs/designs/paritas-mockup/gaps-lna.md` (penanda Ditutup/Sebagian)
 
 ## Review spek
 
