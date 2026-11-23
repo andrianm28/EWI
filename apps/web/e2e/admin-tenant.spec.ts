@@ -62,6 +62,11 @@ test('Admin Tenant mendarat di Pengguna & peran; undang, kirim ulang, dan nonakt
   await expect(nav(page).getByRole('link')).toHaveText(['Pengguna & peran', 'Jabatan & kamus kompetensi', 'Impor data & integrasi'])
   await expect(page.getByRole('heading', { level: 1, name: 'Pengguna & peran' })).toBeVisible()
   await expect(page.getByTestId('usr-jumlah')).toHaveText('3 pengguna')
+  // P7 ADM-1/3/4/5: tanpa baris pil AdminNav; tombol undang berikon; email mono 12px; nama satu baris
+  await expect(page.getByRole('navigation', { name: 'Layar Admin Tenant' })).toHaveCount(0)
+  await expect(page.getByTestId('usr-undang').locator('.el-icon')).toHaveCount(1)
+  await expect(page.getByRole('cell', { name: 'a@demo.test', exact: true }).locator('.el-mono')).toHaveCSS('font-size', '12px')
+  await expect(page.getByRole('row').filter({ hasText: 'Admin Satu' }).locator('b.adm__nowrap')).toHaveCSS('white-space', 'nowrap')
   await expect(page.getByText('SSO aktif')).toBeVisible()
 
   const row = (name: string) => page.getByRole('row').filter({ hasText: name })
@@ -79,6 +84,9 @@ test('Admin Tenant mendarat di Pengguna & peran; undang, kirim ulang, dan nonakt
   await page.getByLabel('Jabatan').selectOption('j-1')
   await page.getByRole('button', { name: 'Kirim undangan' }).click()
   await expect(page.getByTestId('adm-info')).toContainText('Undangan dikirim ke atasan.baru@demo.test')
+  // P7 ADM-2: note sukses hijau di dalam wilayah status
+  await expect(page.getByTestId('adm-info')).toHaveClass(/el-note--success/)
+  await expect(page.getByRole('status').getByTestId('adm-info')).toBeVisible()
   expect(sent[0]).toEqual({ method: 'POST', path: '/users', body: { name: 'Atasan Baru', email: 'atasan.baru@demo.test', role: 'supervisor', jobRoleId: 'j-1', employeeId: null } })
 
   await row('Karyawan A').getByRole('button', { name: 'Kirim ulang undangan' }).click()
@@ -104,6 +112,10 @@ test('Jabatan & kamus: daftar, nama kembar ditolak, lihat kamus', async ({ page 
   await expect(row('Engineer Service Delivery')).toContainText('DACUM · DACUM_SD_v2.1.xlsx')
   await expect(row('Sales')).toContainText('Belum tersedia')
   await expect(row('Sales').getByRole('button', { name: 'Lihat kamus' })).toHaveCount(0)
+  // P7 JOB-2/JOB-3: jumlah "—" tanpa kamus, sumber kosong copy mockup
+  await expect(row('Sales')).toContainText('Belum ada lokakarya DACUM')
+  await expect(row('Sales').getByRole('cell', { name: '—' }).first()).toBeVisible()
+  await expect(page.getByRole('navigation', { name: 'Layar Admin Tenant' })).toHaveCount(0)
 
   await page.getByTestId('job-tambah').click()
   await page.getByLabel('Nama jabatan').fill('sales')
@@ -160,7 +172,7 @@ test('Impor data & integrasi: kamus per jabatan dengan sumber DACUM, ringkasan K
   await expect(kamus).toContainText('Belum diimpor')
   await expect(page.getByTestId('cfg-kpi')).toContainText('3 target · 2 belum tercapai')
   await expect(page.getByTestId('cfg-kpi')).toContainText('Berkas · okr_q4_2026.csv')
-  await expect(page.getByTestId('cfg-integrasi')).toContainText('EliteMentor: Terkonfigurasi (SSO · sync-back)')
+  await expect(page.getByTestId('cfg-integrasi')).toContainText('EliteMentor: tersambung (SSO · sync-back)')
   await expect(page.getByTestId('cfg-integrasi')).not.toContainText('deep link')
   await expect(page.getByTestId('cfg-integrasi')).toContainText('EliteMentor, Moodle')
 

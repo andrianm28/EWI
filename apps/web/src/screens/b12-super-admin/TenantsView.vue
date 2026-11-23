@@ -130,18 +130,18 @@ const accessLabel = (m: TenantModule) => (m.entitled === null ? 'Tidak perlu lan
 <template>
   <AppShell>
     <h1 class="el-h1">Tenant</h1>
-    <p class="el-muted sa__lead">Semua organisasi pengguna ELGOS. Super Admin melihat metadata dan angka; transkrip wawancara tidak pernah tampil di konsol ini.</p>
+    <p class="el-muted sa__lead">Super admin mengonfigurasi multi-tenant: satu tenant adalah satu perusahaan dengan datanya sendiri. Transkrip wawancara tidak pernah tampil di konsol ini.</p>
 
     <UiNote v-if="loadError" tone="critical">{{ loadError }}</UiNote>
     <p v-else-if="loading" class="el-muted">Memuat tenant…</p>
     <template v-else-if="list">
       <div class="el-grid el-grid-3">
-        <UiKpiCard data-testid="kpi-tenant" label="Tenant aktif" :value="list.kpis.activeTenants" :note="`dari ${list.kpis.tenants} tenant`" />
-        <UiKpiCard label="Total pengguna" :value="list.kpis.users" />
-        <UiKpiCard label="Modul tersedia" :value="list.kpis.modulesAvailable" note="dari 8 modul" />
+        <UiKpiCard data-testid="kpi-tenant" label="Tenant aktif" :value="list.kpis.activeTenants" :note="`dari ${list.kpis.tenants} tenant terdaftar`" />
+        <UiKpiCard label="Total pengguna" :value="list.kpis.users" note="seluruh tenant" />
+        <UiKpiCard label="Modul tersedia" :value="list.kpis.modulesAvailable" note="dapat diaktifkan per tenant" />
       </div>
 
-      <p v-if="notice" class="sa__notice sa__section" role="status">{{ notice }}</p>
+      <div v-if="notice" class="sa__notice sa__section" role="status"><UiNote tone="success">{{ notice }}</UiNote></div>
       <UiErrorSummary v-if="!formOpen" :errors="errors" />
 
       <UiCard v-if="formOpen" class="sa__section" data-testid="tn-form">
@@ -150,10 +150,10 @@ const accessLabel = (m: TenantModule) => (m.entitled === null ? 'Tidak perlu lan
           <UiErrorSummary :errors="errors" />
           <div class="el-grid el-grid-2">
             <UiField id="tn-nama" v-slot="{ attrs }" label="Nama perusahaan" hint="Slug dibuat dari nama ini dan tidak bisa diganti setelah tenant dibuat.">
-              <input v-bind="attrs" v-model="form.name" class="el-input" type="text" maxlength="255" autocomplete="off" />
+              <input v-bind="attrs" v-model="form.name" class="el-input" type="text" maxlength="255" autocomplete="off" placeholder="PT Contoh Sejahtera" />
             </UiField>
             <UiField id="tn-email" v-slot="{ attrs }" label="Email admin tenant" hint="Link undangan dikirim ke alamat ini dan berlaku 7 hari.">
-              <input v-bind="attrs" v-model="form.adminEmail" class="el-input" type="email" maxlength="320" autocomplete="off" />
+              <input v-bind="attrs" v-model="form.adminEmail" class="el-input" type="email" maxlength="320" autocomplete="off" placeholder="admin@contoh.co.id" />
             </UiField>
             <UiField id="tn-admin" v-slot="{ attrs }" label="Nama admin tenant" hint="Opsional.">
               <input v-bind="attrs" v-model="form.adminName" class="el-input" type="text" maxlength="255" autocomplete="off" />
@@ -162,6 +162,7 @@ const accessLabel = (m: TenantModule) => (m.entitled === null ? 'Tidak perlu lan
               <input v-bind="attrs" v-model="form.id" class="el-input sa__mono" type="text" maxlength="36" autocomplete="off" />
             </UiField>
           </div>
+          <p class="el-muted sa__section">Admin tenant menerima undangan dan menyiapkan pengguna, jabatan, dan data sendiri.</p>
           <p v-if="checked && checked.for === formKey()" class="sa__slug" data-testid="slug-hasil">
             Slug: <code>{{ checked.slug }}</code>
             <UiStatus v-if="checked.exists" tone="warning">Slug ini sudah dipakai tenant lain. Ganti nama perusahaan.</UiStatus>
@@ -182,6 +183,8 @@ const accessLabel = (m: TenantModule) => (m.entitled === null ? 'Tidak perlu lan
         </template>
         <template #cell-name="{ row }"><b>{{ asTenant(row).name }}</b><br /><span class="el-muted sa__mono">{{ asTenant(row).slug }}</span></template>
         <template #cell-status="{ row }"><UiStatus :tone="TENANT_STATUS[asTenant(row).status].tone">{{ TENANT_STATUS[asTenant(row).status].label }}</UiStatus></template>
+        <!-- TEN-5: "{aktif} / {tersedia}" -->
+        <template #cell-activeModules="{ row }"><span class="el-mono">{{ asTenant(row).activeModules }} / {{ list.kpis.modulesAvailable }}</span></template>
         <template #cell-adminEmail="{ row }">{{ asTenant(row).adminEmail ?? 'Belum ada' }}</template>
         <template #cell-aksi="{ row }">
           <div class="sa__row">
@@ -225,7 +228,7 @@ const accessLabel = (m: TenantModule) => (m.entitled === null ? 'Tidak perlu lan
 .sa__section { margin-top: 16px; }
 .sa__row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
 .sa__between { justify-content: space-between; }
-.sa__notice { margin: 0 0 12px; color: var(--el-success); font-weight: 500; }
+.sa__notice { margin: 0 0 12px; }
 .sa__mono { font-family: var(--el-font-mono, monospace); font-size: 0.875rem; }
 .sa__slug { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin: 12px 0 0; }
 .sa__table { width: 100%; border-collapse: collapse; margin-top: 8px; }

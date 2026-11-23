@@ -100,12 +100,12 @@ async function downloadCsv() {
 <template>
   <AppShell>
     <h1 class="el-h1">Konfigurasi platform</h1>
-    <p class="el-muted pf__lead">Pengaturan di halaman ini berlaku untuk semua tenant ELGOS.</p>
+    <p class="el-muted pf__lead">Pengaturan yang berlaku untuk seluruh tenant. Perubahan dicatat di log audit platform.</p>
 
     <UiNote v-if="loadError" tone="critical">{{ loadError }}</UiNote>
     <p v-else-if="loading" class="el-muted">Memuat konfigurasi…</p>
     <template v-else-if="settings">
-      <p v-if="notice" class="pf__notice" role="status">{{ notice }}</p>
+      <div v-if="notice" class="pf__notice" role="status"><UiNote tone="success">{{ notice }}</UiNote></div>
       <UiErrorSummary :errors="errors" />
 
       <div class="el-grid el-grid-2">
@@ -278,7 +278,7 @@ async function downloadCsv() {
 .pf__section { margin-top: 16px; }
 .pf__row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
 .pf__between { justify-content: space-between; }
-.pf__notice { margin: 0 0 12px; color: var(--el-success); font-weight: 500; }
+.pf__notice { margin: 0 0 12px; }
 .pf__dl { display: grid; grid-template-columns: minmax(140px, 40%) 1fr; gap: 8px 16px; margin: 8px 0 0; }
 .pf__dl dt { font-weight: 500; }
 .pf__dl dd { margin: 0; }

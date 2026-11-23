@@ -7,8 +7,8 @@ import AppShell from '@/components/AppShell.vue'
 import { ApiError } from '@/api/client'
 import { COURSE_STATUS_LABEL, lna, type LearningCard, type LearningDelivery } from '@/api/lna'
 import { leaveIfDisabled } from './gate'
-import { UiButton, UiCard, UiChip, UiErrorSummary } from '@/ui'
-import { launchLabel, planStatusLabel } from './view'
+import { UiButton, UiCard, UiChip, UiErrorSummary, UiIcon, UiNote } from '@/ui'
+import { launchLabel, modeTone, planStatusLabel } from './view'
 import './b8.css'
 
 const NEEDS_MODULE_LABEL = 'Modul sedang disiapkan'
@@ -50,7 +50,7 @@ onMounted(load)
       <UiCard v-for="c in cards" :key="c.id" :data-testid="`li-card-${c.id}`" class="b8-card">
         <div class="b8-row">
           <UiChip v-if="c.level" tone="training">{{ c.level }}</UiChip>
-          <UiChip v-if="c.mode">{{ c.mode }}</UiChip>
+          <UiChip v-if="c.mode" :tone="modeTone(c.mode)">{{ c.mode }}</UiChip>
           <UiChip :tone="c.status === 'completed' ? 'success' : 'neutral'">{{ planStatusLabel(c) }}</UiChip>
           <UiChip v-if="c.courseStatus === 'failed'" tone="critical">{{ COURSE_STATUS_LABEL.failed }}</UiChip>
           <UiChip v-if="c.needsModule && c.title !== NEEDS_MODULE_LABEL" tone="review">{{ NEEDS_MODULE_LABEL }}</UiChip>
@@ -63,12 +63,14 @@ onMounted(load)
           <span v-if="c.code" class="b8-mono">{{ c.code }}</span><span v-else />
           <template v-if="!c.needsModule">
             <a v-if="c.launchUrl" :href="c.launchUrl" target="_blank" rel="noopener noreferrer" class="el-btn el-btn--filled el-btn--sm">
-              {{ launchLabel(c) }}<span class="el-sr-only"> (tab baru)</span>
+              <UiIcon v-if="c.where.target === 'elitementor'" name="smart_toy" :size="18" />{{ launchLabel(c) }}<span class="el-sr-only"> (tab baru)</span>
             </a>
             <span v-else class="el-muted b8-small">Tautan belum tersedia</span>
           </template>
         </div>
       </UiCard>
     </div>
+    <!-- LI-4: catatan EliteMentor di bawah grid -->
+    <UiNote v-if="cards?.length && delivery?.target === 'elitementor'" class="b8-gap">Pelatihan online dipelajari bersama EliteMentor. Untuk pelatihan offline, ujian dikerjakan di EliteMentor saat Anda berada di lokasi; skor langsung masuk ke ELGOS.</UiNote>
   </AppShell>
 </template>

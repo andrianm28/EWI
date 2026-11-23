@@ -45,7 +45,7 @@ const aivTo = computed(() => (session.hasFlag('cca.interview') ? { name: 'cc', q
       <UiAgentCard title="Wawancara nilai" action="Buka wawancara AI" :to="aivTo" data-testid="cc-agen-val">
         AI mewawancarai pimpinan tentang makna dan perilaku kunci tiap nilai 5C, lalu mewawancarai karyawan, terutama yang belum menyelesaikan program, untuk menilai gap terhadap jawaban pimpinan.
       </UiAgentCard>
-      <ProgramSection />
+      <ProgramSection :interview-to="aivTo" />
       <h2 class="el-h2 cc-gap-title">Gap perilaku per nilai</h2>
       <RequirementsTab group="values" />
     </div>

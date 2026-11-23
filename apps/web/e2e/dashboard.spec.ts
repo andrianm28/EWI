@@ -144,6 +144,18 @@ test('Pareto: baris prioritas ditandai teks, bukan warna saja; kosong punya pesa
   await expect(rows.nth(0).getByRole('progressbar')).toHaveAttribute('aria-valuenow', '50')
 })
 
+test('P7 D2/D3: angka Pareto mono di kanan baris label; tombol Buka bervarian teks', async ({ page }) => {
+  await loginAs(page)
+  const row = page.getByTestId('pareto').getByTestId('pareto-baris').nth(0)
+  const label = row.getByText('Root Cause Analysis')
+  const num = row.getByText('9 orang · kum. 50%')
+  const lb = (await label.boundingBox())!
+  const nb = (await num.boundingBox())!
+  expect(Math.abs(nb.y - lb.y)).toBeLessThan(12)
+  expect(nb.x).toBeGreaterThan(lb.x + lb.width)
+  await expect(page.getByTestId('modul').nth(0).getByRole('link', { name: 'Buka Learning Needs Analysis' })).toHaveClass(/el-btn--text/)
+})
+
 test('P3 D1: baris Pareto kompetensi menaut ke Detail gap bila papan gap terbuka', async ({ page }) => {
   await loginAs(page, { flags: { 'tna.gap_board': true } })
   const rows = page.getByTestId('pareto').getByTestId('pareto-baris')

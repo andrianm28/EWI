@@ -22,11 +22,18 @@
 .cc-meter + .cc-meter { margin-top: 12px; }
 .cc-meter .cc-row { margin-bottom: 6px; }
 .cc-small { font-size: 12px; }
+/* P7 AIV-4: daftar ber-bullet, jarak 16px ke tombol */
 .cc-list { line-height: 26px; margin: 0; padding-left: 20px; }
-.cc-summary { display: grid; grid-template-columns: minmax(0, 160px) minmax(0, 1fr); gap: 8px 16px; margin: 0; }
-.cc-summary dt { font-weight: 600; }
-.cc-summary dd { margin: 0; }
-@media (max-width: 600px) { .cc-summary { grid-template-columns: minmax(0, 1fr); } .cc-summary dd { margin-bottom: 8px; } }
+ul.cc-list { margin: 0 0 16px; list-style: disc; }
+/* P7 AIV-2: subjudul langsung di bawah judul (menimpa jarak .cc-stack) */
+.cc-stack > .cc-sub { margin-top: 0; }
+/* P7 CV-4: tabel di dalam kartu tanpa bingkai sendiri */
+.cc-flat.el-table { border: 0; border-radius: 0; background: transparent; }
+/* P7 CV-5, AIV-9: kotak `.mod` mockup */
+.cc-mod { border: 1px solid var(--el-outline-variant); border-radius: 12px; padding: 12px 14px; background: var(--el-surface-card); margin-bottom: 8px; }
+.cc-detail { font-size: 13px; }
+.cc-mod__q { font-size: 12px; color: var(--el-on-surface-variant); }
+.cc-mod__a { font-weight: 500; }
 /* P5 AA-2: kartu wawancara pimpinan, teks kiri dan tombol kanan */
 .cc-leadcard { display: flex; justify-content: space-between; align-items: center; gap: 16px; }
 @media (max-width: 600px) { .cc-leadcard { flex-wrap: wrap; } }

@@ -133,7 +133,7 @@ const modules = computed(() => (data.value?.modules ?? []).flatMap((m) => {
           </div>
           <div class="dash-row">
             <span class="el-muted dash-small">{{ m.parts }}</span>
-            <UiButton v-if="m.open" variant="outlined" size="sm" :to="{ name: m.open }" :aria-label="`Buka ${m.name}`">Buka</UiButton>
+            <UiButton v-if="m.open" variant="text" size="sm" :to="{ name: m.open }" :aria-label="`Buka ${m.name}`">Buka</UiButton>
           </div>
         </UiCard>
       </div>
@@ -150,11 +150,11 @@ const modules = computed(() => (data.value?.modules ?? []).flatMap((m) => {
               :aria-label="paretoTo(r) ? `${r.label}, ${r.people} orang` : undefined"
               :class="['dash-pareto', { 'dash-pareto--link': paretoTo(r) }]"
             >
+              <!-- D2: label (+ chip Prioritas) kiri, angka mono kanan dalam satu baris; batang di bawah -->
               <div class="dash-row">
-                <span class="dash-strong">{{ r.label }}</span>
-                <UiChip v-if="r.hot" tone="critical" icon="warning">Prioritas</UiChip>
+                <span class="dash-label"><span class="dash-strong">{{ r.label }}</span><UiChip v-if="r.hot" tone="critical" icon="warning">Prioritas</UiChip></span>
+                <span class="el-muted el-mono dash-small dash-num">{{ r.people }} orang · kum. {{ pct(r.cumulativeShare) }}%</span>
               </div>
-              <div class="el-muted el-mono dash-small">{{ r.people }} orang · kum. {{ pct(r.cumulativeShare) }}%</div>
               <UiProgressBar :value="pct(r.cumulativeShare)" :tone="r.hot ? 'critical' : 'primary'" :label="`Kumulatif ${r.label}`" />
             </component>
           </template>
@@ -182,10 +182,12 @@ const modules = computed(() => (data.value?.modules ?? []).flatMap((m) => {
 .dash-mod { display: flex; flex-direction: column; gap: 10px; }
 .dash-row { display: flex; justify-content: space-between; align-items: center; gap: 8px; min-height: 32px; }
 .dash-small { font-size: 12px; }
+.dash-label { display: inline-flex; align-items: center; gap: 8px; flex-wrap: wrap; min-width: 0; }
+.dash-num { white-space: nowrap; text-align: right; }
 .dash-flat { margin: 0; }
 .dash-top { align-items: start; }
 .dash-note { margin: -4px 0 12px; }
-.dash-pareto { margin-bottom: 14px; display: flex; flex-direction: column; gap: 4px; }
+.dash-pareto { margin-bottom: 12px; display: flex; flex-direction: column; gap: 6px; }
 .dash-pareto--link { color: inherit; text-decoration: none; border-radius: 8px; margin-left: -8px; margin-right: -8px; padding: 0 8px; }
 .dash-pareto--link:hover { background: var(--el-surface-1); }
 .dash-strong { font-weight: 500; }

@@ -45,8 +45,17 @@ export function planSummary(byStatus: Record<string, number>): string {
 }
 
 /** Teks tombol tautan keluar ke tempat belajar. */
-export function launchLabel(card: Pick<LearningCard, 'status' | 'where'>): string {
-  return card.status === 'completed' ? `Buka ${card.where.label}` : `Belajar dengan ${card.where.label}`
+export function launchLabel(card: Pick<LearningCard, 'status' | 'where'> & { mode?: string | null }): string {
+  if (card.status === 'completed') return `Buka ${card.where.label}`
+  // LI-2: pelatihan offline diujikan di tempat lewat EliteMentor/LMS
+  return isOffline(card.mode) ? `Ujian di ${card.where.label}` : `Belajar dengan ${card.where.label}`
+}
+
+const isOffline = (mode?: string | null) => (mode ?? '').toLowerCase() === 'offline'
+/** LI-1 / K-P7-1: chip mode online = training, offline = tersier (padanan `c-no` mockup). */
+export function modeTone(mode: string): 'training' | 'improvement' | 'neutral' {
+  if (isOffline(mode)) return 'improvement'
+  return mode.toLowerCase() === 'online' ? 'training' : 'neutral'
 }
 
 type Invitation = NonNullable<MyResults['invitations']>[number]

@@ -235,6 +235,17 @@ test('Rencana belajar: kosong, dan pengantar memakai nama LMS tenant', async ({ 
   await expect(page.getByText('Belum ada rencana belajar. Modul akan muncul di sini setelah HR menyetujui hasil wawancara Anda.')).toBeVisible()
 })
 
+test('P7 LI-1..LI-4: chip mode berwarna, offline "Ujian di EliteMentor", ikon di tombol, catatan EliteMentor', async ({ page }) => {
+  await rencana(page, [{ ...KARTU[3], id: 'on', mode: 'Online' }, { ...KARTU[3], id: 'off', mode: 'Offline' }])
+  const on = page.getByTestId('li-card-on')
+  const off = page.getByTestId('li-card-off')
+  await expect(on.locator('.el-chip', { hasText: 'Online' })).toHaveClass(/el-chip--training/)
+  await expect(off.locator('.el-chip', { hasText: 'Offline' })).toHaveClass(/el-chip--improvement/)
+  await expect(off.getByRole('link', { name: /Ujian di EliteMentor/ })).toBeVisible()
+  await expect(on.getByRole('link', { name: /Belajar dengan EliteMentor/ }).locator('.el-icon')).toHaveCount(1)
+  await expect(page.getByRole('note').filter({ hasText: 'Pelatihan online dipelajari bersama EliteMentor. Untuk pelatihan offline, ujian dikerjakan di EliteMentor saat Anda berada di lokasi; skor langsung masuk ke ELGOS.' })).toBeVisible()
+})
+
 test('HR dengan peran dari API (B2) berganti ke Karyawan (saya) lewat switch-role', async ({ page }) => {
   const ganti: unknown[] = []
   await mockApi(page, (req) => {

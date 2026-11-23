@@ -5,7 +5,6 @@ import AppShell from '@/components/AppShell.vue'
 import { ApiError } from '@/api/client'
 import { tenantAdmin, SOURCE_LABEL, type ImportSummary, type LastImport } from '@/api/tenantAdmin'
 import { UiCard, UiChip, UiField, UiNote } from '@/ui'
-import AdminNav from './AdminNav.vue'
 import ImportFlow from './ImportFlow.vue'
 
 const summary = ref<ImportSummary | null>(null)
@@ -42,13 +41,13 @@ const emDetail = computed(() => {
   // status ini hanya berarti konfigurasi lengkap, bukan uji koneksi langsung
   const parts = [e.sso ? 'SSO' : '', e.webhookSync ? 'sync-back' : ''].filter(Boolean)
   if (e.status !== 'terkonfigurasi') return 'Belum dikonfigurasi'
-  return parts.length ? `Terkonfigurasi (${parts.join(' · ')})` : 'Terkonfigurasi'
+  // CFG-2: kata mockup "tersambung"
+  return parts.length ? `tersambung (${parts.join(' · ')})` : 'tersambung'
 })
 </script>
 
 <template>
   <AppShell>
-    <AdminNav current="cfg" />
     <h1 class="el-h1">Impor data &amp; integrasi</h1>
     <p class="el-muted adm__lead">Admin tenant menyiapkan model kompetensi dan data kinerja perusahaannya.</p>
 

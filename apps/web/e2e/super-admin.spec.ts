@@ -91,12 +91,22 @@ test('1. Super Admin mendarat di Tenant; KPI dan status tenant tampil sebagai te
   await expect(rows.filter({ hasText: 'PT Tunggu' })).toContainText('Menunggu admin')
   await expect(rows.filter({ hasText: 'PT Beku' })).toContainText('Ditangguhkan')
   await expect(nav(page).getByRole('link')).toContainText(['Tenant', 'Konfigurasi platform'])
+  // P7 TEN-1/2/5
+  await expect(page.getByText('Super admin mengonfigurasi multi-tenant: satu tenant adalah satu perusahaan dengan datanya sendiri.')).toBeVisible()
+  await expect(page.getByText('dari 3 tenant terdaftar')).toBeVisible()
+  await expect(page.getByText('seluruh tenant')).toBeVisible()
+  await expect(page.getByText('dapat diaktifkan per tenant')).toBeVisible()
+  await expect(rows.filter({ hasText: 'PT Elitery' })).toContainText(/\d+ \/ \d+/)
 })
 
 test('2. Buat tenant: Periksa memberi slug, slug ganda diperingatkan, simpan, undangan gagal bisa dikirim ulang', async ({ page }) => {
   const { sent } = await konsol(page)
   await loginSebagai(page, 'super', { flags: ON })
   await page.getByRole('button', { name: 'Buat tenant baru' }).click()
+  // P7 TEN-6
+  await expect(page.getByLabel('Nama perusahaan')).toHaveAttribute('placeholder', 'PT Contoh Sejahtera')
+  await expect(page.getByLabel('Email admin tenant')).toHaveAttribute('placeholder', 'admin@contoh.co.id')
+  await expect(page.getByText('Admin tenant menerima undangan dan menyiapkan pengguna, jabatan, dan data sendiri.')).toBeVisible()
   await page.getByLabel('Nama perusahaan').fill('PT Elitery')
   await page.getByLabel('Email admin tenant').fill('admin@baru.test')
   await page.getByRole('button', { name: 'Periksa' }).click()
@@ -107,6 +117,7 @@ test('2. Buat tenant: Periksa memberi slug, slug ganda diperingatkan, simpan, un
   await expect(page.getByTestId('slug-hasil')).toContainText('pt-contoh-baru')
   await page.getByRole('button', { name: 'Buat tenant', exact: true }).click()
   await expect(page.getByRole('status')).toContainText('email undangan gagal terkirim')
+  await expect(page.getByRole('status').locator('.el-note--success')).toBeVisible()
   const row = page.getByRole('table', { name: 'Daftar tenant' }).getByRole('row').filter({ hasText: 'PT Contoh Baru' })
   await expect(row).toContainText('Menunggu admin')
   await row.getByRole('button', { name: 'Kirim ulang undangan' }).click()
