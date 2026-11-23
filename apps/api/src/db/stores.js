@@ -162,6 +162,9 @@ function userRoleStore(sequelize) {
 /**
  * encryption: config.encryption (R2-3). Tanpa config hanya boleh di test (kunci lokal acak per proses).
  */
+const { createPlatformStore } = require('../modules/platform/store');
+const { createPlatformLogStore } = require('../core/platform-log/store');
+
 function createStores(sequelize, { encryption } = {}) {
   const q = (sql, replacements, type = QueryTypes.SELECT) => sequelize.query(sql, { replacements, type });
   let enc = encryption;
@@ -173,6 +176,10 @@ function createStores(sequelize, { encryption } = {}) {
 
   return {
     cipher,
+    // B12: query agregat konsol Super Admin dan handle transaksi untuk tulisan platform
+    platform: createPlatformStore(sequelize),
+    platformLog: createPlatformLogStore(sequelize),
+    db: sequelize,
     /** PK-07: kesiapan database (kueri sungguhan, bukan sekadar koneksi terbuka). */
     async ping() { await sequelize.query('SELECT 1', { type: QueryTypes.SELECT }); },
     /** PK-07 / P1-7: siapa user koneksi aplikasi dan apakah superuser (diperiksa saat boot). */
@@ -276,13 +283,14 @@ function createStores(sequelize, { encryption } = {}) {
         return Object.fromEntries(rows.map((r) => [r.key, true]));
       },
       /** Upsert flag tenant; mengembalikan nilai sebelumnya (null bila belum pernah diset). */
-      async setTenantFlag(tenantId, key, enabled, userId) {
-        const [prev] = await q('SELECT enabled FROM feature_flags WHERE tenant_id = :tenantId AND key = :key', { tenantId, key });
+      async setTenantFlag(tenantId, key, enabled, userId, { transaction } = {}) {
+        const [prev] = await sequelize.query('SELECT enabled FROM feature_flags WHERE tenant_id = :tenantId AND key = :key',
+          { replacements: { tenantId, key }, type: QueryTypes.SELECT, transaction });
         await sequelize.query(
           `INSERT INTO feature_flags (tenant_id, key, enabled, updated_by, updated_at)
            VALUES (:tenantId, :key, :enabled, :userId, now())
            ON CONFLICT (tenant_id, key) DO UPDATE SET enabled = EXCLUDED.enabled, updated_by = EXCLUDED.updated_by, updated_at = now()`,
-          { replacements: { tenantId, key, enabled, userId: userId || null } },
+          { replacements: { tenantId, key, enabled, userId: userId || null }, transaction },
         );
         return prev ? prev.enabled : null;
       },

@@ -46,8 +46,8 @@ const MENUS = Object.freeze({
     ['cfg', 'Impor data & integrasi', 'upload_file'],
   ],
   super: [
-    ['tenants', 'Tenant', 'apartment'],
-    ['platform', 'Konfigurasi platform', 'tune'],
+    ['tenants', 'Tenant', 'apartment', FLAGS.PLATFORM_CONSOLE],
+    ['platform', 'Konfigurasi platform', 'tune', FLAGS.PLATFORM_CONSOLE],
   ],
 });
 

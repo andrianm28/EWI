@@ -35,6 +35,8 @@ const FLAGS = Object.freeze({
   AUTH_SSO: 'auth.sso',
   // B2: satu akun memakai beberapa peran dan berpindah tampilan di bilah atas
   AUTH_MULTI_ROLE: 'auth.multi_role',
+  // B12 (19 Nov): konsol Super Admin (tenant, modul tenant, konfigurasi platform); dibaca di tenant tempat Super Admin login
+  PLATFORM_CONSOLE: 'platform.console',
   // B7 (19 Nov): tinjauan HR versi mockup Pak Eji: klasifikasi tiga tombol, solusi pelatihan, penugasan, ekspor gap,
   // dan serah temuan ke Improvement Needs
   TNA_REVIEW_WORKSPACE: 'tna.review_workspace',
@@ -62,7 +64,7 @@ const KNOWN = new Set(Object.values(FLAGS));
  * store: {
  *   getTenantFlags(tenantId) -> Promise<Record<string, boolean>>
  *   getKillSwitches?() -> Promise<Record<string, boolean>>        // R2-1: saklar darurat global
- *   setTenantFlag?(tenantId, key, enabled, userId) -> Promise<boolean|null>  // nilai sebelumnya
+ *   setTenantFlag?(tenantId, key, enabled, userId, { transaction }?) -> Promise<boolean|null>  // nilai sebelumnya
  *   setKillSwitch?(key, active, reason, userId) -> Promise<boolean|null>
  * }
  * Flag efektif = flag tenant menyala DAN kill switch fitur itu tidak aktif.
@@ -91,9 +93,10 @@ function createFlagService(store) {
         return { key, tenantEnabled, killSwitch, effective: tenantEnabled && !killSwitch };
       });
     },
-    async setTenantFlag(tenantId, flag, enabled, userId) {
+    /** opts.transaction: tulis di dalam transaksi pemanggil (B12: saklar modul bersama audit). */
+    async setTenantFlag(tenantId, flag, enabled, userId, opts) {
       assertKnown(flag);
-      return store.setTenantFlag(tenantId, flag, enabled, userId);
+      return opts ? store.setTenantFlag(tenantId, flag, enabled, userId, opts) : store.setTenantFlag(tenantId, flag, enabled, userId);
     },
     async setKillSwitch(flag, active, reason, userId) {
       assertKnown(flag);

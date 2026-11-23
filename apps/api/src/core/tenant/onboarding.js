@@ -82,6 +82,20 @@ function normalizeSpec(raw, { requireId = false } = {}) {
  * - dryRun: semua langkah dijalankan lalu di-ROLLBACK; tidak ada yang tersimpan.
  * Mengembalikan laporan langkah: [{ step, status: 'dibuat'|'ada'|'diperbarui'|'dilewati', detail }].
  */
+/**
+ * Tambah entitlement aktif untuk produk ini bila belum ada (produk itu sendiri atau full_suite yang mencakupnya).
+ * db: { query(sql, params) -> { rows } } dengan parameter posisi $n (pg.Client, atau adapter transaksi B12).
+ * Return true bila baris baru dibuat.
+ */
+async function ensureEntitlement(db, tenantId, product, source) {
+  const active = (await db.query(
+    `SELECT 1 FROM entitlements WHERE tenant_id = $1 AND product IN ($2, 'full_suite') AND starts_at <= now() AND (ends_at IS NULL OR ends_at > now()) LIMIT 1`,
+    [tenantId, product])).rows[0];
+  if (active) return false;
+  await db.query('INSERT INTO entitlements (tenant_id, product, source) VALUES ($1, $2, $3)', [tenantId, product, source]);
+  return true;
+}
+
 async function onboardTenant({ db, provider, spec: rawSpec, production = false, dryRun = false }) {
   if (production && provider.name !== 'kms') {
     throw new OnboardingError('Produksi wajib ENCRYPTION_PROVIDER=kms: onboarding ditolak');
@@ -154,12 +168,7 @@ async function onboardTenant({ db, provider, spec: rawSpec, production = false, 
 
     // 4. Entitlement: hanya ditambah bila belum ada yang aktif untuk produk itu
     for (const product of spec.products) {
-      const active = (await db.query(
-        `SELECT 1 FROM entitlements WHERE tenant_id = $1 AND product = $2 AND starts_at <= now() AND (ends_at IS NULL OR ends_at > now()) LIMIT 1`,
-        [tenantId, product])).rows[0];
-      if (active) { add('entitlement', 'ada', product); continue; }
-      await db.query(`INSERT INTO entitlements (tenant_id, product, source) VALUES ($1, $2, 'onboarding')`, [tenantId, product]);
-      add('entitlement', 'dibuat', product);
+      add('entitlement', (await ensureEntitlement(db, tenantId, product, 'onboarding')) ? 'dibuat' : 'ada', product);
     }
 
     // 5. Flag: hanya yang disebut di spesifikasi; flag lain tetap pada nilainya (default mati)
@@ -198,4 +207,4 @@ async function onboardTenant({ db, provider, spec: rawSpec, production = false, 
   return { tenantId, slug: spec.slug, name: spec.name, dryRun, report, users: spec.users };
 }
 
-module.exports = { normalizeSpec, onboardTenant, OnboardingError, ADMIN_ROLES, PRODUCTS };
+module.exports = { normalizeSpec, onboardTenant, ensureEntitlement, OnboardingError, ADMIN_ROLES, PRODUCTS };

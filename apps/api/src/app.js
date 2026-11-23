@@ -38,6 +38,10 @@ const { createCatalogService, elitementorAdapter, moodleAdapter } = require('./i
 const tenantAdmin = require('./modules/tenant-admin');
 const { createStorage } = require('./integrations/storage');
 const { createLdSync } = require('./modules/ld/sync');
+const { createPlatformService } = require('./modules/platform/service');
+const { platformRouter } = require('./modules/platform/routes');
+const { createPlatformLog } = require('./core/platform-log');
+const { requireRole } = require('./core/rbac');
 const SUBMODULE_MODULES = ['cca', 'dna', 'tna', 'ina', 'li', 'ld', 'lim'].map((k) => require(`./modules/${k}`));
 
 /**
@@ -116,6 +120,14 @@ function createApp({ config, stores, ai, catalog, mailer, rateLimits, readiness,
     users: stores.users, sessions, policy, audit, requireAuth: auth, limits, attempts, flags,
     tenantPicker: config.loginTenantPicker, localLogin: authConfig.localLogin,
   }));
+
+  // B12: konsol Super Admin, dipasang sebelum /api supaya auth tidak berjalan dua kali (ADR 0002)
+  if (stores.platform) {
+    const platformLog = createPlatformLog({ store: stores.platformLog });
+    const platform = createPlatformService({ db: stores.db, store: stores.platform, flags, entitlements, audit, platformLog });
+    app.use('/api/platform', auth, tenantContext(), requireRole(),
+      requireFlag(flags, FLAGS.PLATFORM_CONSOLE, 'Konsol platform belum diaktifkan'), platformRouter({ service: platform }));
+  }
 
   const api = express.Router();
   api.use(auth, tenantContext());
