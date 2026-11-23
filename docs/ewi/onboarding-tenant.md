@@ -19,14 +19,16 @@ Asumsi keputusan (★, belum dijawab user per 17 Nov): PD-19 butir 6 (UUID tenan
    |---|---|
    | `id` | UUID dari Terraform. Wajib bila memakai KMS. |
    | `slug`, `name` | Slug login (huruf kecil, angka, tanda hubung) dan nama organisasi. Slug tidak bisa diganti lewat skrip. |
-   | `products` | `full_suite` atau sebagian dari `cca`, `dna`, `tna`, `ina`. |
+   | `products` | `full_suite` atau sebagian dari `cca`, `dna`, `tna`, `ina`. Boleh kosong (B12): modul lalu dinyalakan per tenant dari konsol Super Admin. |
    | `flags` | Daftar flag yang dinyalakan, atau objek `{ "flag": true/false }`. Flag yang tidak disebut tetap mati. POC: `module.dna`, `module.tna`. |
-   | `users` | Akun pengelola: `hr_admin` (minimal satu), `eta_admin`, `pimpinan`. Karyawan masuk lewat impor, bukan di sini. |
+   | `users` | Akun pengelola: `tenant_admin` atau `hr_admin` (minimal satu dari keduanya), `eta_admin`, `pimpinan`. Karyawan masuk lewat impor, bukan di sini. |
    | `settings` | Opsional, digabung di tingkat atas, mis. `{ "tna": { "interviewScope": "all_members", "interviewJobRoleId": "..." } }`. |
 
 4. **Periksa tanpa menyimpan.** `node apps/api/scripts/onboard-tenant.js apps/api/scripts/tenants/<slug>.json --periksa`. Semua langkah dijalankan lalu dibatalkan. Di sini kunci KMS ikut diuji.
 5. **Jalankan.** Ulangi tanpa `--periksa`. Tiap baris laporan berstatus `dibuat`, `diperbarui`, `ada`, atau `dilewati`.
-6. **Undang pengelola.** Tambah `--kirim-undangan` untuk mengirim link masuk 7 hari ke akun yang belum pernah masuk. Atau pengelola meminta link sendiri di halaman login.
+6. **Undang pengelola.** Tambah `--kirim-undangan` untuk mengirim link masuk 7 hari ke akun yang belum pernah masuk. Atau pengelola meminta link sendiri di halaman login. Link disimpan dan dicatat di audit lebih dulu; bila email gagal terkirim, skrip melaporkan jumlah yang gagal dan link tetap kedaluwarsa sendiri.
+
+> **Konsol Super Admin (B12).** Tenant baru juga bisa dibuat dari layar Tenant (`POST /api/platform/tenants`) dengan onboarding yang sama dalam mode `create`: slug atau id yang sudah ada ditolak 409 `TENANT_EXISTS` sebelum KMS dipanggil, pelaku Super Admin tercatat di audit tenant dan log audit platform, dan undangan dikirim setelah COMMIT. Skrip ini tetap memakai mode bawaan (aman dijalankan ulang).
 7. **Cek.** Masuk sebagai HR, pastikan menu DNA dan TNA tampil. Jejak audit tercatat di `audit_logs` dengan resource `tenant.onboarding`.
 
 ## Pengaman

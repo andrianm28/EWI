@@ -30,11 +30,8 @@ async function main(argv = process.argv.slice(2), env = process.env) {
   const { createProvider } = require('../src/core/crypto');
   const { onboardTenant } = require('../src/core/tenant/onboarding');
   const config = loadConfig(env); // aturan yang sama dengan API: produksi wajib KMS + SES
-  const { Client } = require('pg');
-  const db = new Client({ connectionString: config.databaseUrl });
-  await db.connect();
-  try {
-    await db.query(`SET search_path TO "${config.dbSchema}"`);
+  const { withOnboardingClient } = require('../src/core/tenant/client');
+  await withOnboardingClient(config, async (db) => {
     const result = await onboardTenant({
       db, provider: createProvider(config.encryption), spec, production: config.nodeEnv === 'production', dryRun,
     });
@@ -42,9 +39,7 @@ async function main(argv = process.argv.slice(2), env = process.env) {
     for (const r of result.report) console.log(`  ${r.status.padEnd(10)} ${r.step.padEnd(11)} ${r.detail}`);
     if (invite) await sendInvites({ db, config, tenantId: result.tenantId, tenantName: result.name, emails: result.users.map((u) => u.email) });
     else if (!dryRun) console.log('Akun pengelola bisa meminta link masuk di halaman login, atau jalankan ulang dengan --kirim-undangan.');
-  } finally {
-    await db.end();
-  }
+  });
 }
 
 /** Kirim link undangan (7 hari, sekali pakai) ke akun pengelola yang belum pernah masuk. */
@@ -60,15 +55,10 @@ async function sendInvites({ db, config, tenantId, tenantName, emails }) {
     },
   };
   const links = createEmailLinkService({ stores, mailer: createMailer(config.mail), appBaseUrl: config.appBaseUrl });
-  const { rows } = await db.query(
-    `SELECT id, tenant_id AS "tenantId", email, name FROM users
-      WHERE tenant_id = $1 AND email = ANY($2) AND status <> 'disabled' AND last_login_at IS NULL ORDER BY email`, [tenantId, emails]);
-  for (const u of rows) await links.issue(u, 'invite', { tenantName });
-  if (rows.length) {
-    await db.query(`INSERT INTO audit_logs (tenant_id, action, resource, meta) VALUES ($1, 'create', 'invitation', $2::jsonb)`,
-      [tenantId, JSON.stringify({ via: 'scripts/onboard-tenant.js', count: rows.length, userIds: rows.map((u) => u.id) })]);
-  }
-  console.log(`Undangan terkirim ke ${rows.length} akun (lewat ${config.mail.provider}); yang sudah pernah masuk dilewati.`);
+  const { inviteAdmins } = require('../src/core/tenant/invite');
+  const r = await inviteAdmins({ query: (sql, params) => db.query(sql, params), links, tenantId, tenantName, emails,
+    actor: { userId: null, label: null, via: 'scripts/onboard-tenant.js' } });
+  console.log(`Undangan terkirim ke ${r.sent} akun (lewat ${config.mail.provider})${r.failed ? `, ${r.failed} gagal terkirim` : ''}; yang sudah pernah masuk dilewati.`);
 }
 
 if (require.main === module) main().catch((e) => { console.error(e.message); process.exit(1); });

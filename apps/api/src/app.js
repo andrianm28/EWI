@@ -5,10 +5,18 @@ const cors = require('cors');
 const { createTokenService } = require('./core/auth/tokens');
 const { requireAuth } = require('./core/auth/middleware');
 const { authRoutes } = require('./core/auth/routes');
+const { createSessionService, memorySessionStore } = require('./core/auth/sessions');
+const { sessionRoutes } = require('./core/auth/session-routes');
+const { createLoginPolicy } = require('./core/auth/policy');
+const { createRateLimiter } = require('./core/auth/rate-limit');
 const { createEmailLinkService, emailLinkRoutes, invitationRoutes } = require('./core/auth/email-link');
+const { createAttemptLog } = require('./core/auth/attempts');
 const { createMailer } = require('./integrations/mailer');
 const { tenantContext } = require('./core/tenant');
 const { createFlagService, FLAGS, requireFlag } = require('./core/flags');
+const { roleRoutes } = require('./core/rbac/role-routes');
+const { buildMenu } = require('./core/rbac/menu');
+const { VIEWS, describeRoles } = require('./core/rbac/roles');
 const { flagAdminRouter } = require('./core/flags/admin-routes');
 const { createAuditService, memoryAuditStore } = require('./core/audit');
 const { createEntitlementService } = require('./core/entitlement');
@@ -30,6 +38,14 @@ const { createCatalogService, elitementorAdapter, moodleAdapter } = require('./i
 const tenantAdmin = require('./modules/tenant-admin');
 const { createStorage } = require('./integrations/storage');
 const { createLdSync } = require('./modules/ld/sync');
+const { createPlatformService } = require('./modules/platform/service');
+const { createProvider } = require('./core/crypto');
+const { withOnboardingClient } = require('./core/tenant/client');
+const { createPlatformSettings } = require('./core/platform-settings');
+const { createSettingsView } = require('./modules/platform/settings-view');
+const { platformRouter } = require('./modules/platform/routes');
+const { createPlatformLog } = require('./core/platform-log');
+const { requireRole, ROLES } = require('./core/rbac');
 const SUBMODULE_MODULES = ['cca', 'dna', 'tna', 'ina', 'li', 'ld', 'lim'].map((k) => require(`./modules/${k}`));
 
 /**
@@ -37,16 +53,35 @@ const SUBMODULE_MODULES = ['cca', 'dna', 'tna', 'ina', 'li', 'ld', 'lim'].map((k
  * stores: { users, flags, audit, entitlements, projects, people, settings, dna, interviews, tna, projectsExtra }
  * ai / catalog / assignments / storage bisa diganti di test; default mengikuti config (AI_PROVIDER, PK-06; K-1 masih terbuka).
  */
-function createApp({ config, stores, ai, catalog, mailer, readiness, assignments, storage }) {
+function createApp({ config, stores, ai, catalog, mailer, rateLimits, readiness, assignments, storage }) {
   const app = express();
   const tokens = createTokenService(config.jwt);
   const flags = createFlagService(stores.flags);
   const entitlements = createEntitlementService(stores.entitlements);
-  const auth = requireAuth(tokens);
+  // PK-16: sesi yang bisa dicabut. Store sesi wajib di luar test; in-memory hanya untuk test tanpa DB.
+  if (!stores.authSessions && config.nodeEnv !== 'test') throw new Error('stores.authSessions wajib (PK-16)');
+  // B12: log audit platform dan konfigurasi platform dibuat di sini karena jalur login dan sesi memakainya
+  const platformLog = stores.platformLog ? createPlatformLog({ store: stores.platformLog }) : null;
+  const platformSettings = stores.platformSettings && platformLog ? createPlatformSettings({ store: stores.platformSettings, platformLog }) : null;
+  const sessions = createSessionService({
+    store: stores.authSessions || memorySessionStore(), tokens,
+    // B2: pindah tampilan hanya untuk tenant yang flag auth.multi_role-nya menyala
+    multiRole: (tenantId) => flags.isEnabled(tenantId, FLAGS.AUTH_MULTI_ROLE),
+    // B12 tahap 2: sesi diam hanya untuk tenant yang flag auth.session_idle-nya menyala
+    idle: platformSettings ? {
+      minutes: () => platformSettings.get('sessionIdleMinutes'),
+      enabled: (tenantId) => flags.isEnabled(tenantId, FLAGS.AUTH_SESSION_IDLE),
+    } : null,
+  });
+  const authConfig = config.auth;
+  const policy = createLoginPolicy(authConfig);
+  const auth = requireAuth(tokens, { sessions, policy });
+  const limits = rateLimits || defaultRateLimits();
   const settings = createSettingsService(stores.settings);
   // R2-2: store audit wajib di luar test; in-memory hanya untuk test yang tidak menyediakannya.
   if (!stores.audit && config.nodeEnv !== 'test') throw new Error('stores.audit wajib (R2-2)');
   const audit = createAuditService(stores.audit || memoryAuditStore());
+  const attempts = createAttemptLog(audit, { platformLog });
   const mail = mailer || createMailer(config.mail || {});
   const links = createEmailLinkService({ stores, mailer: mail, appBaseUrl: config.appBaseUrl });
   const deps = {
@@ -72,6 +107,7 @@ function createApp({ config, stores, ai, catalog, mailer, readiness, assignments
   deps.analysis = createAnalysisRunner({ stores, ai: deps.ai, aiConfig: deps.aiConfig });
   app.locals.analysis = deps.analysis;
 
+  if (config.trustProxy) app.set('trust proxy', config.trustProxy);
   app.use(helmet());
   app.use(cors({ origin: config.corsOrigin.length ? config.corsOrigin : false }));
   // Webhook EliteMentor butuh raw body untuk verifikasi HMAC, jadi dipasang sebelum express.json().
@@ -91,19 +127,43 @@ function createApp({ config, stores, ai, catalog, mailer, readiness, assignments
       ...(stores.cipher?.healthCheck ? { encryption: () => stores.cipher.healthCheck() } : {}),
     },
   })));
-  if (stores.loginLinks) app.use('/api/auth/email-link', emailLinkRoutes({ users: stores.users, links, tokens, audit }));
-  app.use('/api/auth', authRoutes({ users: stores.users, tokens, requireAuth: auth, audit, tenantPicker: config.loginTenantPicker }));
+  if (stores.loginLinks) app.use('/api/auth/email-link', emailLinkRoutes({ users: stores.users, links, sessions, policy, audit, limits, attempts }));
+  app.use('/api/auth', authRoutes({
+    users: stores.users, sessions, policy, audit, requireAuth: auth, limits, attempts, flags,
+    tenantPicker: config.loginTenantPicker, localLogin: authConfig.localLogin,
+  }));
+
+  // B12: konsol Super Admin, dipasang sebelum /api supaya auth tidak berjalan dua kali (ADR 0002)
+  if (stores.platform) {
+    const settingsView = createSettingsView({ platformSettings, store: stores.platform, encryption: config.encryption.provider, ai: config.ai });
+    const platform = createPlatformService({
+      db: stores.db, store: stores.platform, flags, entitlements, audit, platformLog, platformSettings, links,
+      provider: createProvider(config.encryption), production: config.nodeEnv === 'production',
+      onboardingClient: (fn) => withOnboardingClient(config, fn),
+    });
+    // requireRole(ETA_ADMIN): hanya peran aktif eta_admin (ADR 0002); peran lain 403 ROLE_FORBIDDEN
+    app.use('/api/platform', auth, tenantContext(), requireRole(ROLES.ETA_ADMIN),
+      requireFlag(flags, FLAGS.PLATFORM_CONSOLE, 'Konsol platform belum diaktifkan'), platformRouter({ service: platform, settings: settingsView, platformLog, limits }));
+  }
 
   const api = express.Router();
   api.use(auth, tenantContext());
   api.get('/me/access', async (req, res, next) => {
     try {
+      const [submodules, products, tenantFlags] = [await entitlements.submodules(req.tenantId), await entitlements.products(req.tenantId), await flags.all(req.tenantId)];
+      // B2: peran aktif, tampilan lain yang bisa dipilih, dan menu untuk tampilan ini.
       // products: dipakai web untuk menyembunyikan menu modul 2–5 yang butuh produk tertentu (mis. full_suite)
-      res.json({ submodules: await entitlements.submodules(req.tenantId), products: await entitlements.products(req.tenantId), flags: await flags.all(req.tenantId) });
+      const { role, view, roles } = req.user;
+      res.json({
+        submodules, products, flags: tenantFlags, role, view, home: VIEWS[view].home, roles: describeRoles(roles),
+        menu: buildMenu(view, { flags: tenantFlags, submodules }),
+      });
     } catch (e) { next(e); }
   });
   api.use('/projects', projects.router({ projects: stores.projects }));
   api.use('/admin', flagAdminRouter({ flags, audit }));
+  if (stores.userRoles) api.use('/users', roleRoutes({ userRoles: stores.userRoles, audit, flags }));
+  api.use('/sessions', sessionRoutes({ sessions, audit }));
   if (stores.people && stores.interviews) api.use('/employees', employeeRouter({ stores, flags, audit }));
   // B8: beranda karyawan. Bukan submodul; tiap bagian memeriksa modulnya sendiri (flag learner.home).
   if (stores.people && stores.dataRequests) api.use('/my', myRouter({ stores, flags, entitlements, settings, audit }));
@@ -127,4 +187,19 @@ function createApp({ config, stores, ai, catalog, mailer, readiness, assignments
   return app;
 }
 
-module.exports = { createApp };
+/** PK-16: batas laju bawaan rute login (per proses, jendela 15 menit). */
+function defaultRateLimits() {
+  const windowMs = 15 * 60 * 1000;
+  return {
+    passwordIp: createRateLimiter({ windowMs, max: 20 }),
+    passwordAccount: createRateLimiter({ windowMs, max: 5, message: 'Terlalu banyak percobaan gagal untuk akun ini. Coba lagi 15 menit lagi.' }),
+    linkIp: createRateLimiter({ windowMs, max: 10 }),
+    verifyIp: createRateLimiter({ windowMs, max: 20 }),
+    // Review egm: baris audit "ditolak karena batas" paling banyak satu per akun per jendela
+    auditOnce: createRateLimiter({ windowMs, max: 1 }),
+    // B12: kirim ulang undangan dari konsol Super Admin, per tenant
+    platformReinvite: createRateLimiter({ windowMs, max: 3, message: 'Undangan untuk tenant ini sudah dikirim 3 kali dalam 15 menit. Coba lagi nanti.' }),
+  };
+}
+
+module.exports = { createApp, defaultRateLimits };

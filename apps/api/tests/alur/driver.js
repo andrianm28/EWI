@@ -4,8 +4,8 @@
 // memperbaiki driver ini di PR yang sama, karena test alur dan QA malam ikut gerbang `npm test`.
 // Penyiapan tenant, pengguna, entitlement, dan flag memakai SQL; selebihnya lewat API (supertest).
 const request = require('supertest');
+const { sessionSigner } = require('../helpers');
 const { sign } = require('../../src/integrations/elitementor/webhook');
-const { createTokenService } = require('../../src/core/auth/tokens');
 const { currentConsentVersion } = require('../../src/core/consent');
 const { FLAGS } = require('../../src/core/flags');
 const { TENANT_LAIN, PERIODE } = require('./data');
@@ -57,10 +57,17 @@ async function tambahPengguna(db, tenantId, { nama, email, employeeId, peran, at
   return { id: row.id, tenantId, email, nama, employeeId, peran };
 }
 
-/** Header masuk untuk seorang pengguna. Saat sesi menggantikan token (PR #20), hanya fungsi ini yang berubah. */
-function pembuatMasuk(config) {
-  const tokens = createTokenService(config.jwt);
-  return (p) => ({ Authorization: `Bearer ${tokens.sign({ id: p.id, tenantId: p.tenantId, role: p.peran, email: p.email })}` });
+/**
+ * Header masuk untuk seorang pengguna. Sejak PK-16/B1 token hanya berlaku bila baris sesinya aktif, jadi tiap
+ * pengguna mendapat satu sesi sungguhan (disimpan per id) lewat store `authSessions`.
+ */
+function pembuatMasuk(config, authSessions) {
+  const tokens = sessionSigner(config, authSessions);
+  const cache = new Map();
+  return async (p) => {
+    if (!cache.has(p.id)) cache.set(p.id, await tokens.sign({ id: p.id, tenantId: p.tenantId, role: p.peran, email: p.email }));
+    return { Authorization: `Bearer ${cache.get(p.id)}` };
+  };
 }
 
 /** Menghapus tenant uji; audit_logs append-only, jadi lewat mode pemeliharaan (pola poc-dna-tna.test.js). Tabel lain ikut lewat ON DELETE CASCADE. */
@@ -76,14 +83,22 @@ const kodeGalat = (res) => (res.body && res.body.error && res.body.error.code) |
 
 /** Langkah alur lewat API saja (tanpa menulis store langsung). */
 function langkah(app, masuk) {
+  // Header masuk didapat secara async (sesi), jadi permintaan dibangun saat ditunggu; `.expect()` tetap bisa dirantai.
   const kirim = (method, path, siapa, body) => {
-    const r = request(app)[method](path).set(masuk(siapa));
-    return body === undefined ? r : r.send(body);
+    const harapan = [];
+    const jalan = async () => {
+      let r = request(app)[method](path).set(await masuk(siapa));
+      if (body !== undefined) r = r.send(body);
+      for (const h of harapan) r = r.expect(...h);
+      return r;
+    };
+    const permintaan = { expect: (...h) => { harapan.push(h); return permintaan; }, then: (ok, gagal) => jalan().then(ok, gagal) };
+    return permintaan;
   };
   const setuju = (karyawan, sid) => kirim('post', `/api/tna/sessions/${sid}/consent`, karyawan, { consentVersion: currentConsentVersion('tna') });
   /** Unggah lalu commit CSV lewat pengimpor bersama submodul (baris tanpa header). Mengembalikan hasil impor. */
   const imporCsv = async (siapa, submodul, jenis, header, baris) => {
-    const up = await request(app).post(`/api/${submodul}/imports/${jenis}?filename=${jenis}.csv`).set(masuk(siapa))
+    const up = await request(app).post(`/api/${submodul}/imports/${jenis}?filename=${jenis}.csv`).set(await masuk(siapa))
       .set('Content-Type', 'application/octet-stream').send(Buffer.from(`${[header, ...baris].join('\n')}\n`)).expect(201);
     return (await kirim('post', `/api/${submodul}/imports/batches/${up.body.data.id}/commit`, siapa, {}).expect(200)).body.data.result;
   };
@@ -118,7 +133,7 @@ function langkah(app, masuk) {
        * saran pemetaan, lalu simpan dengan `opsi`. Mengembalikan ringkasan batch ({ status, result }).
        */
       async impor(hr, jenis, baris, opsi = {}) {
-        const up = await request(app).post(`/api/dna/imports/${jenis}?filename=${jenis}.csv`).set(masuk(hr))
+        const up = await request(app).post(`/api/dna/imports/${jenis}?filename=${jenis}.csv`).set(await masuk(hr))
           .set('Content-Type', 'application/octet-stream').send(Buffer.from(`${baris.join('\n')}\n`)).expect(201);
         return (await kirim('post', `/api/dna/imports/batches/${up.body.data.id}/commit`, hr, { options: opsi }).expect(200)).body.data;
       },

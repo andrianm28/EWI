@@ -4,10 +4,9 @@ const request = require('supertest');
 const { createDb } = require('../../src/db');
 const { createStores } = require('../../src/db/stores');
 const { createApp } = require('../../src/app');
-const { createTokenService } = require('../../src/core/auth/tokens');
 const { createStubProvider } = require('../../src/ai/stub-provider');
 const { currentConsentVersion } = require('../../src/core/consent');
-const { makeConfig } = require('../helpers');
+const { makeConfig, sessionSigner } = require('../helpers');
 
 const run = process.env.DATABASE_URL ? describe : describe.skip;
 const USAGE = (operation) => [{ operation, provider: 'stub', model: 'stub', inputTokens: 0, outputTokens: 0, latencyMs: 0 }];
@@ -71,7 +70,7 @@ run('B6 ringkasan wawancara akar masalah (Postgres)', () => {
       { replacements: { t, email: `${key}@b6.test`, name: key, emp: `B6-${key}`, role, sup } },
     );
     u[key] = row.id;
-    tok[key] = tokens.sign({ id: row.id, tenantId: t, role, email: `${key}@b6.test` });
+    tok[key] = await tokens.sign({ id: row.id, tenantId: t, role, email: `${key}@b6.test` });
   }
   async function addRecord(who, name = 'Respons tiket') {
     const [[rec]] = await db.query(
@@ -95,7 +94,7 @@ run('B6 ringkasan wawancara akar masalah (Postgres)', () => {
     config = makeConfig();
     db = createDb({ databaseUrl: process.env.DATABASE_URL, dbSchema: process.env.DB_SCHEMA || 'ewi' });
     stores = createStores(db);
-    tokens = createTokenService(config.jwt);
+    tokens = sessionSigner(config, stores.authSessions);
     const mk = async (key) => {
       const [[t]] = await db.query(`INSERT INTO tenants (slug, name) VALUES (:slug, 'B6 uji') RETURNING id`, { replacements: { slug: `b6-${key}-${Date.now()}` } });
       await db.query(`INSERT INTO entitlements (tenant_id, product) VALUES (:t, 'full_suite')`, { replacements: { t: t.id } });

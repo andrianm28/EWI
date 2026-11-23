@@ -34,7 +34,8 @@ const view = computed({
   get: () => session.activeView as string,
   set: (v: string) => {
     session.setView(v as ViewKey)
-    router.push({ name: homeFor(session.activeView, session) })
+      .then(() => router.push({ name: homeFor(session.activeView, session) }))
+      .catch(() => { /* sesi berubah di tab lain atau dicabut: penangan 401 membawa ke login */ })
   },
 })
 

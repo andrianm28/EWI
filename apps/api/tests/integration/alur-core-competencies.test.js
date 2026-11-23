@@ -26,7 +26,8 @@ run('Alur Core Competencies berjenjang (HR, pimpinan, atasan, karyawan)', () => 
   beforeAll(async () => {
     db = createDb({ databaseUrl: process.env.DATABASE_URL, dbSchema: process.env.DB_SCHEMA || 'ewi' });
     const config = makeConfig();
-    a = langkah(createApp({ config, stores: createStores(db), ai: createStubProvider() }), pembuatMasuk(config));
+    const st = createStores(db);
+    a = langkah(createApp({ config, stores: st, ai: createStubProvider() }), pembuatMasuk(config, st.authSessions));
 
     const tenant = await siapkanTenant(db, { slug, flags: [FLAGS.MODULE_CCA, FLAGS.CCA_INTERVIEW] });
     tenantIds.push(tenant.id);

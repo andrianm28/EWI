@@ -4,9 +4,8 @@ const request = require('supertest');
 const { createDb } = require('../../src/db');
 const { createStores } = require('../../src/db/stores');
 const { createApp } = require('../../src/app');
-const { createTokenService } = require('../../src/core/auth/tokens');
 const { createCatalogService, memoryAdapter } = require('../../src/integrations/catalog');
-const { makeConfig } = require('../helpers');
+const { makeConfig, sessionSigner } = require('../helpers');
 const { createBedrockProvider } = require('../../src/ai/bedrock-provider');
 
 const run = process.env.DATABASE_URL ? describe : describe.skip;
@@ -29,7 +28,7 @@ run('POC DNA + TNA (Postgres)', () => {
     const catalog = createCatalogService({ elitementor: memoryAdapter('elitementor', [{ ref: 'prog-12', title: 'Membaca Kontrak Proyek', keywords: ['kontrak'] }]) });
     stores = createStores(db);
     app = createApp({ config, stores, catalog });
-    tokens = createTokenService(config.jwt);
+    tokens = sessionSigner(config, stores.authSessions);
 
     const slug = `poc-${Date.now()}`;
     [[tenant]] = await db.query(`INSERT INTO tenants (slug, name) VALUES (:slug, 'ELGOS uji') RETURNING id`, { replacements: { slug } });
@@ -41,7 +40,7 @@ run('POC DNA + TNA (Postgres)', () => {
         { replacements: { t: extra.tenant || tenant.id, email: `${key}@elgos.test`, name: key, emp: `E-${key}`, role, sup: extra.sup || null } },
       );
       u[key] = row.id;
-      tok[key] = tokens.sign({ id: row.id, tenantId: extra.tenant || tenant.id, role, email: `${key}@elgos.test` });
+      tok[key] = await tokens.sign({ id: row.id, tenantId: extra.tenant || tenant.id, role, email: `${key}@elgos.test` });
     };
     await add('hr', 'hr_admin');
     await add('eta', 'eta_admin');
@@ -335,7 +334,7 @@ run('POC DNA + TNA (Postgres)', () => {
       `INSERT INTO users (tenant_id, email, name, employee_id, role, status) VALUES (:t, 'sari@elgos.test', 'sari', 'E-sari', 'learner', 'active') RETURNING id`,
       { replacements: { t: tenant.id } },
     );
-    const sari = { Authorization: `Bearer ${tokens.sign({ id: row.id, tenantId: tenant.id, role: 'learner', email: 'sari@elgos.test' })}` };
+    const sari = { Authorization: `Bearer ${await tokens.sign({ id: row.id, tenantId: tenant.id, role: 'learner', email: 'sari@elgos.test' })}` };
     const [[p]] = await db.query(`INSERT INTO lna_projects (tenant_id, name) VALUES (:t, 'Sales tanpa DNA') RETURNING id`, { replacements: { t: tenant.id } });
     await request(app).post('/api/tna/performance/import').set(as('hr')).send({
       period: '2026-11', projectId: p.id, rows: [{ employeeId: 'E-sari', metricType: 'kpi', name: 'Closing deal', target: 10, actual: 4 }],
@@ -374,7 +373,7 @@ run('POC DNA + TNA (Postgres)', () => {
     expect(hrView.body.data.turns).toBeUndefined();
     expect(hrView.body.data.transcriptVisible).toBe(false);
     const [[owner]] = await db.query('SELECT interviewee_id AS id FROM lna_interview_sessions WHERE id = :id', { replacements: { id: s.id } });
-    const ownerTok = { Authorization: `Bearer ${tokens.sign({ id: owner.id, tenantId: tenant.id, role: 'learner', email: 'x@elgos.test' })}` };
+    const ownerTok = { Authorization: `Bearer ${await tokens.sign({ id: owner.id, tenantId: tenant.id, role: 'learner', email: 'x@elgos.test' })}` };
     await request(app).get(`/api/tna/sessions/${s.id}`).set(ownerTok).expect(200);
     const [tr] = (await auditRows('tna.interview_transcript')).filter((r) => r.userId === owner.id);
     expect(tr.meta).toMatchObject({ objectType: 'interview_session', objectIds: [s.id] });
@@ -450,7 +449,7 @@ run('POC DNA + TNA (Postgres)', () => {
       `INSERT INTO users (tenant_id, email, name, employee_id, role, status) VALUES (:t, 'tika@elgos.test', 'Tika Rahasia', 'E-tika', 'learner', 'active') RETURNING id`,
       { replacements: { t: tenant.id } },
     );
-    const tika = { Authorization: `Bearer ${tokens.sign({ id: row.id, tenantId: tenant.id, role: 'learner', email: 'tika@elgos.test' })}` };
+    const tika = { Authorization: `Bearer ${await tokens.sign({ id: row.id, tenantId: tenant.id, role: 'learner', email: 'tika@elgos.test' })}` };
     const [[p]] = await db.query(`INSERT INTO lna_projects (tenant_id, name) VALUES (:t, 'Uji Bedrock') RETURNING id`, { replacements: { t: tenant.id } });
     await request(app).post('/api/tna/performance/import').set(as('hr')).send({
       period: '2026-10', projectId: p.id, rows: [{ employeeId: 'E-tika', metricType: 'sla', name: 'Respons tiket', target: 85, actual: 72 }],

@@ -6,9 +6,8 @@ const request = require('supertest');
 const { createDb } = require('../../src/db');
 const { createStores } = require('../../src/db/stores');
 const { createApp } = require('../../src/app');
-const { createTokenService } = require('../../src/core/auth/tokens');
 const { runJob } = require('../../src/jobs');
-const { makeConfig, TEST_PASSWORD } = require('../helpers');
+const { makeConfig, TEST_PASSWORD, sessionSigner } = require('../helpers');
 
 const run = process.env.DATABASE_URL ? describe : describe.skip;
 const CONSENT = 'tna-consent-id-v1.0';
@@ -29,7 +28,7 @@ run('PK-15 privasi dan audit (Postgres)', () => {
     db = createDb({ databaseUrl: process.env.DATABASE_URL, dbSchema: process.env.DB_SCHEMA || 'ewi' });
     stores = createStores(db);
     app = createApp({ config, stores });
-    tokens = createTokenService(config.jwt);
+    tokens = sessionSigner(config, stores.authSessions);
     const slug = `pk15-${Date.now()}`;
     [[tenant]] = await db.query(`INSERT INTO tenants (slug, name) VALUES (:slug, 'PK15') RETURNING id, slug`, { replacements: { slug } });
     [[other]] = await db.query(`INSERT INTO tenants (slug, name) VALUES (:slug, 'Lain') RETURNING id, slug`, { replacements: { slug: `${slug}-x` } });
@@ -41,7 +40,7 @@ run('PK-15 privasi dan audit (Postgres)', () => {
         { replacements: { t, email: `${key}@pk15.test`, key, emp: `E-${key}`, role, hash } },
       );
       u[key] = row.id;
-      tok[key] = tokens.sign({ id: row.id, tenantId: t, role, email: `${key}@pk15.test` });
+      tok[key] = await tokens.sign({ id: row.id, tenantId: t, role, email: `${key}@pk15.test` });
     };
     await add('hr', 'hr_admin');
     await add('eta', 'eta_admin');

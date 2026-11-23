@@ -34,7 +34,7 @@ describe('PK-07 / PD-8 pemisahan user database', () => {
   it('SQL hak: tanpa DDL, audit_logs tanpa UPDATE/DELETE/TRUNCATE, sequelize_meta hanya baca', () => {
     const sql = grantSql({ schema: 'ewi', role: 'elgos_app', owner: 'elgos_owner' });
     expect(sql).toMatch(/GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA "ewi" TO "elgos_app"/);
-    expect(sql).toMatch(/REVOKE UPDATE, DELETE, TRUNCATE, REFERENCES, TRIGGER ON "ewi"\."audit_logs" FROM "elgos_app"/);
+    expect(sql).toMatch(/REVOKE UPDATE, DELETE, TRUNCATE, REFERENCES, TRIGGER ON "ewi"\."audit_logs", "ewi"\."platform_audit_logs" FROM "elgos_app"/);
     expect(sql).toMatch(/REVOKE INSERT, UPDATE, DELETE, TRUNCATE ON "ewi"\."sequelize_meta"/);
     expect(sql).not.toMatch(/GRANT[^;]*CREATE/);
     expect(sql).not.toMatch(/TRUNCATE ON ALL TABLES/);

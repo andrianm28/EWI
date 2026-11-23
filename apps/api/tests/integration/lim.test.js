@@ -5,8 +5,7 @@ const request = require('supertest');
 const { createDb } = require('../../src/db');
 const { createStores } = require('../../src/db/stores');
 const { createApp } = require('../../src/app');
-const { createTokenService } = require('../../src/core/auth/tokens');
-const { makeConfig } = require('../helpers');
+const { makeConfig, sessionSigner } = require('../helpers');
 
 const run = process.env.DATABASE_URL ? describe : describe.skip;
 const day = (offset) => new Date(Date.now() + 7 * 3600e3 + offset * 86400e3).toISOString().slice(0, 10);
@@ -35,7 +34,7 @@ run('B15 Learning Impact Measurement (Postgres)', () => {
     db = createDb({ databaseUrl: process.env.DATABASE_URL, dbSchema: process.env.DB_SCHEMA || 'ewi' });
     stores = createStores(db);
     app = createApp({ config, stores });
-    const tokens = createTokenService(config.jwt);
+    const tokens = sessionSigner(config, stores.authSessions);
     const slug = `lim-${Date.now()}`;
     [[tenant]] = await db.query(`INSERT INTO tenants (slug, name) VALUES (:slug, 'LIM uji') RETURNING id`, { replacements: { slug } });
     [[other]] = await db.query(`INSERT INTO tenants (slug, name) VALUES (:slug, 'Lain') RETURNING id`, { replacements: { slug: `${slug}-x` } });
@@ -45,7 +44,7 @@ run('B15 Learning Impact Measurement (Postgres)', () => {
       const [row] = await q(`INSERT INTO users (tenant_id, email, name, employee_id, role, status, supervisor_id, job_role_id)
         VALUES (:t, :email, :key, :emp, :r, 'active', :sup, :jobRole) RETURNING id`, { t, email: `${key}@lim.test`, key, emp: `E-${key}`, r, sup, jobRole });
       u[key] = row.id;
-      tok[key] = tokens.sign({ id: row.id, tenantId: t, role: r, email: `${key}@lim.test` });
+      tok[key] = await tokens.sign({ id: row.id, tenantId: t, role: r, email: `${key}@lim.test` });
     };
     await add('hr', 'hr_admin');
     await add('eta', 'eta_admin');

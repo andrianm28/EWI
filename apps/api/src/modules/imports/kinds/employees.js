@@ -4,6 +4,7 @@
 // PD-19 butir 7 (R-6): email adalah kunci masuk (link email), jadi perubahan email lewat impor dicatat di audit
 // beserta alamat lama dan baru. Pemberitahuan ke alamat lama menyusul (butuh mailer di alur impor).
 const v = require('../values');
+const { PRIVILEGED_ROLES } = require('../../../core/rbac/roles');
 
 const ROLE_CHOICES = {
   learner: ['karyawan', 'staf', 'staff', 'peserta'],
@@ -47,7 +48,7 @@ module.exports = {
     const byEmail = ctx.existing.find((u) => u.email === email);
     if (byId && byEmail && byId.id !== byEmail.id) return { error: 'ID Karyawan dan Email milik dua akun berbeda' };
     const current = byId || byEmail;
-    if (current && ['hr_admin', 'eta_admin'].includes(current.role)) return { error: 'Akun HR/Admin tidak bisa diubah lewat impor' };
+    if (current && (current.privileged || PRIVILEGED_ROLES.includes(current.role))) return { error: 'Akun HR/Admin tidak bisa diubah lewat impor' };
     const sup = v.text(row.supervisorEmployeeId);
     if (sup && sup === employeeId) return { error: 'Atasan tidak boleh dirinya sendiri' };
     if (sup && !ctx.fileIds.has(sup) && !ctx.existing.some((u) => u.employeeId === sup)) return { error: `ID Atasan ${sup} tidak ditemukan di file maupun organisasi` };

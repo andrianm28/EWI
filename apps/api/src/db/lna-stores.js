@@ -2,6 +2,7 @@
 // Store Postgres untuk DNA, TNA, dan wawancara (POC Desember). Setiap query memfilter tenant_id,
 // dan query data karyawan menerima `scope` dari visibleEmployeeScope() (RG-3).
 const { QueryTypes } = require('sequelize');
+const { PRIVILEGED_ROLES } = require('../core/rbac/roles');
 const { createLiStores } = require('./li-stores');
 const { createLdStores } = require('./ld-stores');
 const { createLimStores } = require('./lim-stores');
@@ -119,10 +120,13 @@ function createLnaStores(sequelize, { cipher } = {}) {
                    WHERE u.tenant_id = :tenantId AND u.id = :userId`, { tenantId, userId });
     },
     async resolve(tenantId, { employeeIds, emails }) {
-      return select(`SELECT id, email, employee_id AS "employeeId", role, job_role_id AS "jobRoleId", career_level_id AS "careerLevelId"
+      // privileged (B2): akun punya peran HR/Admin Tenant/Super Admin di user_roles, walau peran utamanya lain
+      return select(`SELECT id, email, employee_id AS "employeeId", role, job_role_id AS "jobRoleId", career_level_id AS "careerLevelId",
+                            EXISTS (SELECT 1 FROM user_roles ur WHERE ur.tenant_id = users.tenant_id AND ur.user_id = users.id
+                                       AND ur.role IN (:privileged)) AS privileged
                        FROM users
                       WHERE tenant_id = :tenantId AND (employee_id IN (:employeeIds) OR email IN (:emails))`,
-      { tenantId, employeeIds: employeeIds.length ? employeeIds : [''], emails: emails.length ? emails : [''] });
+      { tenantId, privileged: PRIVILEGED_ROLES, employeeIds: employeeIds.length ? employeeIds : [''], emails: emails.length ? emails : [''] });
     },
     /**
      * R3-3: buat/perbarui karyawan dari impor (satu transaksi), lalu tautkan atasan berdasarkan ID karyawan.
@@ -138,8 +142,10 @@ function createLnaStores(sequelize, { cipher } = {}) {
             await sequelize.query(
               `UPDATE users SET employee_id = :employeeId, name = :name, email = :email, role = :role,
                       job_role_id = :jobRoleId, career_level_id = :careerLevelId, updated_at = now()
-                WHERE tenant_id = :tenantId AND id = :id AND role NOT IN ('hr_admin','eta_admin')`,
-              { replacements: rep, transaction: t },
+                WHERE tenant_id = :tenantId AND id = :id
+                  AND NOT EXISTS (SELECT 1 FROM user_roles ur WHERE ur.tenant_id = users.tenant_id AND ur.user_id = users.id
+                                     AND ur.role IN (:privileged))`,
+              { replacements: { ...rep, privileged: PRIVILEGED_ROLES }, transaction: t },
             );
             updated += 1;
           } else {

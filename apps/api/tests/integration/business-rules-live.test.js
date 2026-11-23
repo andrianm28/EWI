@@ -4,12 +4,11 @@ const request = require('supertest');
 const { createDb } = require('../../src/db');
 const { createStores } = require('../../src/db/stores');
 const { createApp } = require('../../src/app');
-const { createTokenService } = require('../../src/core/auth/tokens');
 const { createCatalogService, memoryAdapter } = require('../../src/integrations/catalog');
 const { memoryMailer } = require('../../src/integrations/mailer');
 const { runInterviewReminders } = require('../../src/jobs/interview-reminders');
 const { main: runJob } = require('../../scripts/run-job');
-const { makeConfig } = require('../helpers');
+const { makeConfig, sessionSigner } = require('../helpers');
 
 const run = process.env.DATABASE_URL ? describe : describe.skip;
 const DAY = 24 * 60 * 60 * 1000;
@@ -32,7 +31,7 @@ run('Aturan bisnis wajib live (Postgres)', () => {
     stores = createStores(db);
     const catalog = createCatalogService({ elitementor: memoryAdapter('elitementor', []) });
     app = createApp({ config, stores, catalog });
-    tokens = createTokenService(config.jwt);
+    tokens = sessionSigner(config, stores.authSessions);
     [[tenant]] = await db.query(`INSERT INTO tenants (slug, name) VALUES (:slug, 'ELGOS aturan') RETURNING id`, { replacements: { slug: `rules-${Date.now()}` } });
     const add = async (key, role, sup = null) => {
       const [[row]] = await db.query(
@@ -41,7 +40,7 @@ run('Aturan bisnis wajib live (Postgres)', () => {
         { replacements: { t: tenant.id, email: `${key}@rules.test`, name: key, emp: `R-${key}`, role, sup } },
       );
       u[key] = row.id;
-      tok[key] = tokens.sign({ id: row.id, tenantId: tenant.id, role, email: `${key}@rules.test` });
+      tok[key] = await tokens.sign({ id: row.id, tenantId: tenant.id, role, email: `${key}@rules.test` });
     };
     await add('hr', 'hr_admin');
     await add('spv', 'supervisor');

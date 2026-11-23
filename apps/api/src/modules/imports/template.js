@@ -38,4 +38,4 @@ async function templateXlsx(kind) {
   return Buffer.from(await wb.xlsx.writeBuffer());
 }
 
-module.exports = { templateCsv, templateXlsx };
+module.exports = { templateCsv, templateXlsx, csvCell };

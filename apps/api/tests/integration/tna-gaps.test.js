@@ -4,11 +4,10 @@ const request = require('supertest');
 const { createDb } = require('../../src/db');
 const { createStores } = require('../../src/db/stores');
 const { createApp } = require('../../src/app');
-const { createTokenService } = require('../../src/core/auth/tokens');
 const { createCatalogService, memoryAdapter } = require('../../src/integrations/catalog');
 const { memoryMailer } = require('../../src/integrations/mailer');
 const { runInterviewReminders } = require('../../src/jobs/interview-reminders');
-const { makeConfig } = require('../helpers');
+const { makeConfig, sessionSigner } = require('../helpers');
 
 const run = process.env.DATABASE_URL ? describe : describe.skip;
 const DAY = 24 * 60 * 60 * 1000;
@@ -49,7 +48,7 @@ run('B5 Training Needs: gap dan penugasan (Postgres)', () => {
       { replacements: { t: t.id, email, name: key, emp: `G-${key}`, role, status, sup, jobRoleId } },
     );
     u[key] = row.id;
-    tok[key] = tokens.sign({ id: row.id, tenantId: t.id, role, email });
+    tok[key] = await tokens.sign({ id: row.id, tenantId: t.id, role, email });
   }
   async function addCompetency(t, name, requiredScore, approvedBy) {
     const [[row]] = await db.query(
@@ -69,7 +68,7 @@ run('B5 Training Needs: gap dan penugasan (Postgres)', () => {
     db = createDb({ databaseUrl: process.env.DATABASE_URL, dbSchema: process.env.DB_SCHEMA || 'ewi' });
     stores = createStores(db);
     app = createApp({ config, stores, catalog: createCatalogService({ elitementor: memoryAdapter('elitementor', []) }) });
-    tokens = createTokenService(config.jwt);
+    tokens = sessionSigner(config, stores.authSessions);
     T.main = await makeTenant('utama');
     T.other = await makeTenant('lain');
     const t = T.main;

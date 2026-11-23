@@ -3,9 +3,8 @@ const request = require('supertest');
 const { createDb } = require('../../src/db');
 const { createStores } = require('../../src/db/stores');
 const { createApp } = require('../../src/app');
-const { createTokenService } = require('../../src/core/auth/tokens');
 const { memoryMailer } = require('../../src/integrations/mailer');
-const { makeConfig } = require('../helpers');
+const { makeConfig, sessionSigner } = require('../helpers');
 
 const run = process.env.DATABASE_URL ? describe : describe.skip;
 const BASE = '/api/tenant-admin';
@@ -29,7 +28,7 @@ run('Admin Tenant B11 (Postgres)', () => {
       `INSERT INTO users (tenant_id, email, name, employee_id, role, status) VALUES (:t, :email, :name, :emp, :role, :status) RETURNING id`,
       { replacements: { t: tenantId, email: `${key}@b11.test`, name: key, emp: extra.emp || null, role, status: extra.status || 'active' } });
     id[key] = row.id;
-    tok[key] = tokens.sign({ id: row.id, tenantId, role, email: `${key}@b11.test` });
+    tok[key] = await tokens.sign({ id: row.id, tenantId, role, email: `${key}@b11.test` });
     return row.id;
   }
 
@@ -42,7 +41,7 @@ run('Admin Tenant B11 (Postgres)', () => {
     mailer = memoryMailer();
     stores = createStores(db);
     app = createApp({ config, stores, mailer });
-    tokens = createTokenService(config.jwt);
+    tokens = sessionSigner(config, stores.authSessions);
     slugA = `b11-${Date.now()}`;
     [[A]] = await db.query(`INSERT INTO tenants (slug, name, elitementor_organization_id) VALUES (:slug, 'Tenant A', 77) RETURNING id`, { replacements: { slug: slugA } });
     [[B]] = await db.query(`INSERT INTO tenants (slug, name) VALUES (:slug, 'Tenant B') RETURNING id`, { replacements: { slug: `${slugA}-b` } });
@@ -54,7 +53,7 @@ run('Admin Tenant B11 (Postgres)', () => {
     await addUser(B.id, 'adminB', 'hr_admin');
     await addUser(B.id, 'stafB', 'learner');
     // token yang mengaku tenant_admin padahal di DB masih karyawan: gerbang membaca peran dari DB
-    tok.fakeAdmin = tokens.sign({ id: id.staf, tenantId: A.id, role: 'tenant_admin', email: 'staf@b11.test' });
+    tok.fakeAdmin = await tokens.sign({ id: id.staf, tenantId: A.id, role: 'tenant_admin', email: 'staf@b11.test' });
     await db.query(`INSERT INTO entitlements (tenant_id, product) VALUES (:a, 'dna'), (:b, 'full_suite')`, { replacements: { a: A.id, b: B.id } });
     await db.query(`INSERT INTO feature_flags (tenant_id, key, enabled) VALUES (:b, 'admin.tenant', true)`, { replacements: { b: B.id } });
     const [[jr]] = await db.query(`INSERT INTO lna_job_roles (tenant_id, name) VALUES (:b, 'Jabatan B') RETURNING id`, { replacements: { b: B.id } });
@@ -84,14 +83,16 @@ run('Admin Tenant B11 (Postgres)', () => {
       expect([who, res.status, res.body.error.code]).toEqual([who, 403, 'ROLE_FORBIDDEN']);
     }
     for (const who of ['admin', 'eta']) expect([who, (await get('/users', who)).status]).toEqual([who, 200]);
-    expect((await get('/users', 'fakeAdmin')).body.error.code).toBe('ROLE_FORBIDDEN');
+    // B2: sesi yang memakai peran di luar peran akunnya ditolak sejak autentikasi (401), bukan baru di gerbang peran
+    expect((await get('/users', 'fakeAdmin')).body.error.code).toBe('UNAUTHORIZED');
     // admin yang diturunkan atau dinonaktifkan kehilangan akses walau tokennya masih berlaku
     await addUser(A.id, 'eks', 'hr_admin');
     expect((await get('/users', 'eks')).status).toBe(200);
     await db.query(`UPDATE users SET status = 'disabled' WHERE id = :id`, { replacements: { id: id.eks } });
-    expect((await get('/users', 'eks')).status).toBe(403);
+    // PK-16/B2: sesi akun nonaktif atau yang kehilangan perannya ditutup sejak autentikasi (401)
+    expect((await get('/users', 'eks')).status).toBe(401);
     await db.query(`UPDATE users SET status = 'active', role = 'learner' WHERE id = :id`, { replacements: { id: id.eks } });
-    expect((await post('/users', { email: 'x@b11.test', name: 'X', role: 'hr_admin' }, 'eks')).status).toBe(403);
+    expect((await post('/users', { email: 'x@b11.test', name: 'X', role: 'hr_admin' }, 'eks')).status).toBe(401);
     await db.query('DELETE FROM users WHERE id = :id', { replacements: { id: id.eks } });
     expect((await request(app).get(`${BASE}/users`)).status).toBe(401);
   });
@@ -240,6 +241,8 @@ run('Admin Tenant B11 (Postgres)', () => {
     // jenis lain (karyawan, hasil DNA individu) tidak dibuka di layar admin
     expect((await upload('dna', 'employees', 'k.csv', ['ID Karyawan,Nama,Email', 'E-77,Nn,nn@b11.test'])).status).toBe(404);
     expect((await upload('dna', 'dna_results', 'h.csv', ['ID Karyawan,Kompetensi,Skor', 'E-2,X,3'])).status).toBe(404);
+    // B2: perubahan peran (learner -> supervisor di test sebelumnya) menutup sesi lama; staf masuk lagi sebagai supervisor
+    tok.staf = await tokens.sign({ id: id.staf, tenantId: A.id, role: 'supervisor', email: 'staf@b11.test' });
     expect((await get('/imports/dna/templates', 'staf')).status).toBe(403);
 
     const up = await upload('dna', 'dna_competencies', 'DACUM_Service Delivery_v2.1.csv', [

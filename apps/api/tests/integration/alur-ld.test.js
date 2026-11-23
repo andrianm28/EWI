@@ -26,7 +26,8 @@ run('Alur Learning Delivery (B14)', () => {
   beforeAll(async () => {
     db = createDb({ databaseUrl: process.env.DATABASE_URL, dbSchema: process.env.DB_SCHEMA || 'ewi' });
     const config = makeConfig({ ELITEMENTOR_WEBHOOK_SECRET: RAHASIA, APP_BASE_URL: 'https://elgos.test' });
-    a = langkah(createApp({ config, stores: createStores(db), mailer: memoryMailer(), storage: memoryStorage() }), pembuatMasuk(config));
+    let st;
+    a = langkah(createApp({ config, stores: (st = createStores(db)), mailer: memoryMailer(), storage: memoryStorage() }), pembuatMasuk(config, st.authSessions));
     tenant = await siapkanTenant(db, { slug, flags: [FLAGS.MODULE_DNA, FLAGS.MODULE_LD], organisasiEm: orgId });
     tenantIds.push(tenant.id);
     orang.hr = await tambahPengguna(db, tenant.id, { nama: 'HR Contoh', email: `hr@${slug}.test`, employeeId: 'E-HR', peran: 'hr_admin' });

@@ -102,4 +102,59 @@ run('onboarding tenant (Postgres)', () => {
     await expect(onboardTenant({ db, provider: other, spec: { ...uji, name: 'Tidak berubah' } })).rejects.toThrow(/EWI_LOCAL_MASTER_KEY/);
     expect(await one('SELECT name FROM tenants WHERE id = $1', [uji.id])).toEqual([{ name: 'Uji Internal 2' }]);
   });
+  describe('mode create (B12 konsol Super Admin)', () => {
+    const spy = () => {
+      const calls = [];
+      const p = localProvider(crypto.randomBytes(32));
+      return { calls, name: 'local', keyRef: p.keyRef, generateDataKey: (...a) => { calls.push('generate'); return p.generateDataKey(...a); },
+        decryptDataKey: (...a) => { calls.push('decrypt'); return p.decryptDataKey(...a); } };
+    };
+    const actor = { userId: null, label: 'Super Admin ELGOS', via: 'api/platform' };
+    const fresh = (key) => ({ id: crypto.randomUUID(), slug: `${key}-${sfx}`, name: `PT ${key}`, products: [],
+      users: [{ email: `admin-${key}-${sfx}@uji.test`, role: 'tenant_admin' }] });
+
+    it('slug atau id yang ada ditolak TENANT_EXISTS sebelum KMS; dryRun memberi exists', async () => {
+      const p = spy();
+      await expect(onboardTenant({ db, provider: p, mode: 'create', spec: { ...fresh('a'), slug: uji.slug } }))
+        .rejects.toMatchObject({ code: 'TENANT_EXISTS', status: 409 });
+      await expect(onboardTenant({ db, provider: p, mode: 'create', spec: { ...fresh('b'), id: uji.id } }))
+        .rejects.toMatchObject({ code: 'TENANT_EXISTS' });
+      expect(p.calls).toEqual([]);
+      const r = await onboardTenant({ db, provider: p, mode: 'create', dryRun: true, spec: { ...fresh('c'), slug: uji.slug } });
+      expect(r.exists).toBe(true);
+      expect(p.calls).toEqual([]);
+    });
+
+    it('balapan: insert bentrok (23505) menjadi TENANT_EXISTS', async () => {
+      const spec = fresh('balap');
+      const racing = { query: async (sql, params) => {
+        if (/^INSERT INTO tenants/.test(sql)) {
+          const e = new Error('duplicate key value violates unique constraint'); e.code = '23505'; throw e;
+        }
+        return db.query(sql, params);
+      } };
+      await expect(onboardTenant({ db: racing, provider, mode: 'create', spec })).rejects.toMatchObject({ code: 'TENANT_EXISTS' });
+      expect(await one('SELECT id FROM tenants WHERE id = $1', [spec.id])).toEqual([]);
+    });
+
+    it('beforeCommit gagal: semua ROLLBACK', async () => {
+      const spec = fresh('gagal');
+      await expect(onboardTenant({ db, provider, mode: 'create', spec, actor,
+        beforeCommit: async () => { throw new Error('log platform gagal'); } })).rejects.toThrow(/log platform gagal/);
+      expect(await one('SELECT id FROM tenants WHERE id = $1', [spec.id])).toEqual([]);
+    });
+
+    it('tenant_admin diterima, products kosong, pelaku tercatat, beforeCommit di dalam transaksi', async () => {
+      const spec = fresh('jadi');
+      let seen = null;
+      const r = await onboardTenant({ db, provider, mode: 'create', spec, actor: { ...actor, userId: null },
+        beforeCommit: async (c, res) => { seen = (await c.query('SELECT id FROM tenants WHERE id = $1', [res.tenantId])).rows.length; } });
+      expect(seen).toBe(1);
+      expect(r.exists).toBe(false);
+      expect(await one('SELECT role, status FROM users WHERE tenant_id = $1', [spec.id])).toEqual([{ role: 'tenant_admin', status: 'invited' }]);
+      expect(await one('SELECT product FROM entitlements WHERE tenant_id = $1', [spec.id])).toEqual([]);
+      const [a] = await one("SELECT meta FROM audit_logs WHERE tenant_id = $1 AND resource = 'tenant.onboarding'", [spec.id]);
+      expect(a.meta).toMatchObject({ actor: 'Super Admin ELGOS', via: 'api/platform' });
+    });
+  });
 });

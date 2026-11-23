@@ -4,8 +4,7 @@ const request = require('supertest');
 const { createDb } = require('../../src/db');
 const { createStores } = require('../../src/db/stores');
 const { createApp } = require('../../src/app');
-const { createTokenService } = require('../../src/core/auth/tokens');
-const { makeConfig } = require('../helpers');
+const { makeConfig, sessionSigner } = require('../helpers');
 
 const run = process.env.DATABASE_URL ? describe : describe.skip;
 
@@ -20,8 +19,9 @@ run('B4 Developmental Needs (Postgres)', () => {
   beforeAll(async () => {
     const config = makeConfig();
     db = createDb({ databaseUrl: process.env.DATABASE_URL, dbSchema: process.env.DB_SCHEMA || 'ewi' });
-    app = createApp({ config, stores: createStores(db) });
-    tokens = createTokenService(config.jwt);
+    const stores = createStores(db);
+    app = createApp({ config, stores });
+    tokens = sessionSigner(config, stores.authSessions);
     const slug = `b4-${Date.now()}`;
     [[tenant]] = await db.query(`INSERT INTO tenants (slug, name) VALUES (:slug, 'ELGOS B4') RETURNING id`, { replacements: { slug } });
     [[otherTenant]] = await db.query(`INSERT INTO tenants (slug, name) VALUES (:slug, 'Lain') RETURNING id`, { replacements: { slug: `${slug}-x` } });
@@ -31,7 +31,7 @@ run('B4 Developmental Needs (Postgres)', () => {
         { replacements: { t, email: `${key}@b4.test`, name: key, emp: `E-${key}`, role } },
       );
       u[key] = row.id;
-      tok[key] = tokens.sign({ id: row.id, tenantId: t, role, email: `${key}@b4.test` });
+      tok[key] = await tokens.sign({ id: row.id, tenantId: t, role, email: `${key}@b4.test` });
     };
     await add('hr', 'hr_admin');
     await add('spv', 'supervisor');

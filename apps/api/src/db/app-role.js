@@ -8,7 +8,7 @@
 // Dipakai migrasi 20261117000200 dan scripts/grant-app-role.js (aman diulang).
 
 const IDENT = /^[a-z_][a-z0-9_$-]{0,62}$/i;
-const AUDIT_TABLES = ['audit_logs'];
+const AUDIT_TABLES = ['audit_logs', 'platform_audit_logs'];
 
 function quoteIdent(name) {
   if (!IDENT.test(name || '')) throw new Error(`Nama role/schema tidak valid: ${name}`);
@@ -20,9 +20,9 @@ function appRoleFromEnv(env = process.env) {
   return env.DB_APP_ROLE || env.DB_USER || '';
 }
 
-function grantSql({ schema, role, owner }) {
+function grantSql({ schema, role, owner, auditTables = AUDIT_TABLES }) {
   const S = quoteIdent(schema); const R = quoteIdent(role); const O = quoteIdent(owner);
-  const audit = AUDIT_TABLES.map((t) => `${S}."${t}"`).join(', ');
+  const audit = auditTables.map((t) => `${S}."${t}"`).join(', ');
   return `
     REVOKE ALL ON SCHEMA ${S} FROM ${R};
     GRANT USAGE ON SCHEMA ${S} TO ${R};
@@ -64,7 +64,11 @@ async function applyAppRole({ query, schema, role, mode = 'grant', log = () => {
     throw new Error(`Role aplikasi "${role}" belum ada. Buat dulu (LOGIN, NOSUPERUSER, NOCREATEDB, NOCREATEROLE), lihat docs/ewi/database-role-dan-migrasi.md`);
   }
   if (exists[0].rolsuper) log(`PERINGATAN: role aplikasi "${role}" adalah superuser; hak tabel tidak berlaku untuk superuser (P1-7)`);
-  await query((mode === 'revoke' ? revokeSql : grantSql)({ schema, role, owner: current }));
+  // B12: tabel audit yang ditambah migrasi lebih baru belum ada saat migrasi lama dijalankan di database baru
+  const names = AUDIT_TABLES.map((t) => `'${t}'`).join(', ');
+  const auditTables = (await query(`SELECT table_name AS name FROM information_schema.tables WHERE table_schema = '${schema.replace(/'/g, "''")}' AND table_name IN (${names})`))
+    .map((r) => r.name);
+  await query((mode === 'revoke' ? revokeSql : grantSql)({ schema, role, owner: current, auditTables }));
   log(`hak role aplikasi "${role}" di schema "${schema}": ${mode === 'revoke' ? 'dicabut' : 'diterapkan'}`);
   return { skipped: false };
 }

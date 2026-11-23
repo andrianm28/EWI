@@ -18,8 +18,13 @@ describe('normalizeSpec', () => {
       .toThrow(/id harus UUID[\s\S]*slug wajib[\s\S]*name wajib[\s\S]*produk tidak dikenal: emas[\s\S]*flag tidak dikenal[\s\S]*role harus/);
   });
 
-  it('wajib minimal satu hr_admin', () => {
-    expect(() => normalizeSpec({ ...base(), users: [{ email: 'a@b.test', role: 'eta_admin' }] })).toThrow(/minimal satu hr_admin/);
+  it('wajib minimal satu tenant_admin atau hr_admin (B12)', () => {
+    expect(() => normalizeSpec({ ...base(), users: [{ email: 'a@b.test', role: 'eta_admin' }] })).toThrow(/minimal satu tenant_admin atau hr_admin/);
+    expect(normalizeSpec({ ...base(), users: [{ email: 'a@b.test', role: 'tenant_admin' }] }).users[0].role).toBe('tenant_admin');
+  });
+
+  it('products boleh kosong: modul dinyalakan terpisah lewat konsol Super Admin (B12)', () => {
+    expect(normalizeSpec({ ...base(), products: [] }).products).toEqual([]);
   });
 
   it('id wajib bila KMS', () => {

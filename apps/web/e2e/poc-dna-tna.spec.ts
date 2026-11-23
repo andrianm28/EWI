@@ -24,13 +24,14 @@ async function mockImports(page: Page) {
 
 async function loginAs(page: Page, role: string, id = 'u-1', extraFlags: Record<string, boolean> = {}) {
   await mockImports(page)
+  await page.route('**/api/auth/methods', (r) => r.fulfill({ json: { password: true, emailLink: true } }))
   await page.route('**/api/auth/login', (r) => r.fulfill({ json: { token: 't', user: { id, tenantId: 't-1', email: `${role}@demo.test`, role } } }))
   await page.route('**/api/me/access', (r) => r.fulfill({ json: { ...ACCESS, flags: { ...ACCESS.flags, ...extraFlags } } }))
   await page.route('**/api/auth/me', (r) => r.fulfill({ json: { user: { id, tenantId: 't-1', email: `${role}@demo.test`, role } } }))
   await page.goto('/login')
   await page.getByLabel('Organisasi').fill('demo')
   await page.getByLabel('Email').fill(`${role}@demo.test`)
-  await page.getByLabel('Password').fill(`pw-${Date.now()}`)
+  await page.getByLabel('Kata sandi').fill(`pw-${Date.now()}`)
   await page.getByRole('button', { name: 'Masuk' }).click()
   await expect(page.getByTestId('card-dna')).toBeVisible()
 }
@@ -305,7 +306,7 @@ test('karyawan: minta link masuk lalu masuk dari link email (R3-2)', async ({ pa
   await page.goto('/login')
   await page.getByLabel('Organisasi').fill('demo')
   await page.getByLabel('Email').fill('dimas@demo.test')
-  await page.getByRole('button', { name: 'Minta link lewat email' }).click()
+  await page.getByRole('button', { name: 'Kirim link masuk' }).click()
   await expect(page.getByRole('status')).toContainText('link masuk sudah dikirim')
   expect(requested).toEqual({ tenant: 'demo', email: 'dimas@demo.test' })
 

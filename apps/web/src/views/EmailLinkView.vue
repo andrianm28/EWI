@@ -30,6 +30,7 @@ async function enter() {
     loading.value = false
   }
 }
+
 </script>
 
 <template>

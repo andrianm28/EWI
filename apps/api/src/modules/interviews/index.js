@@ -5,7 +5,7 @@
 // terpisah (analysis.js, PK-14 / PD-13 ★A); hasil TNA berstatus draf sampai direview HR.
 const express = require('express');
 const { buildContext, aiContext, callAi } = require('./ai-calls');
-const { requireRole, ROLES } = require('../../core/rbac');
+const { requireRole, denyRoles, ROLES } = require('../../core/rbac');
 const { scopeFor, inScope } = require('../../core/rbac/scope');
 const { badRequest, forbidden, notFound, HttpError } = require('../../core/errors');
 const { currentConsentVersion, isAcceptedConsentVersion } = require('../../core/consent');
@@ -70,6 +70,10 @@ function interviewRouter({ submodule, stores, ai, aiConfig = {}, audit, analysis
   // tetap melihat status sesi, tetapi tidak percakapannya; mereka melihat temuan lewat /findings.
   const isInterviewee = (req, s) => s.intervieweeId === req.user.id;
 
+  // B2: lapis kedua di atas PO-6 (transkrip sudah TRANSCRIPT_PRIVATE untuk semua selain yang diwawancarai).
+  // Super Admin tetap melihat status sesi, tetapi tidak ikut dalam percakapan atau menutup sesi.
+  const noSuperAdmin = denyRoles([ROLES.ETA_ADMIN], 'INTERVIEW_CONTENT_PRIVATE', 'Isi wawancara tidak dibuka untuk Super Admin');
+
   r.get('/:id', wrap(async (req, res) => {
     const s = await loadVisible(req);
     // B6 (A11): kolom ringkasan mentah tidak pernah ikut; peran lain hanya melihat langkah dan status ringkasan
@@ -132,7 +136,7 @@ function interviewRouter({ submodule, stores, ai, aiConfig = {}, audit, analysis
     res.json({ data: row });
   }));
 
-  r.post('/:id/turns', wrap(async (req, res) => {
+  r.post('/:id/turns', noSuperAdmin, wrap(async (req, res) => {
     const s = await loadVisible(req);
     mustBeInterviewee(req, s);
     if (s.status !== 'in_progress') throw new HttpError(409, 'INVALID_STATE', 'Sesi belum dimulai atau sudah selesai');
@@ -155,9 +159,10 @@ function interviewRouter({ submodule, stores, ai, aiConfig = {}, audit, analysis
     res.json({ data: { question: turn, done: !q } });
   }));
 
-  r.post('/:id/complete', wrap(async (req, res) => {
+  r.post('/:id/complete', noSuperAdmin, wrap(async (req, res) => {
     const s = await loadVisible(req);
-    if (s.intervieweeId !== req.user.id && ![ROLES.HR_ADMIN, ROLES.ETA_ADMIN].includes(req.user.role)) {
+    // Super Admin sudah ditolak noSuperAdmin; selain karyawan sendiri hanya HR yang boleh menutup
+    if (s.intervieweeId !== req.user.id && req.user.role !== ROLES.HR_ADMIN) {
       throw forbidden('ROLE_FORBIDDEN', 'Peran Anda tidak bisa menutup sesi ini');
     }
     if (s.status !== 'in_progress') throw new HttpError(409, 'INVALID_STATE', 'Sesi belum dimulai atau sudah selesai');

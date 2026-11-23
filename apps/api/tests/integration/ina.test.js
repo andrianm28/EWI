@@ -3,9 +3,8 @@ const request = require('supertest');
 const { createDb } = require('../../src/db');
 const { createStores } = require('../../src/db/stores');
 const { createApp } = require('../../src/app');
-const { createTokenService } = require('../../src/core/auth/tokens');
 const { memoryMailer } = require('../../src/integrations/mailer');
-const { makeConfig } = require('../helpers');
+const { makeConfig, sessionSigner } = require('../helpers');
 
 const run = process.env.DATABASE_URL ? describe : describe.skip;
 const BASE = '/api/ina';
@@ -28,7 +27,7 @@ run('Improvement Needs B9 (Postgres)', () => {
       `INSERT INTO users (tenant_id, email, name, role, status, supervisor_id, job_role_id) VALUES (:t, :email, :name, :role, 'active', :sup, :jr) RETURNING id`,
       { replacements: { t: tenantId, email: `${key}@b9.test`, name: `Nama ${key}`, role, sup: extra.sup || null, jr: extra.jr || null } });
     id[key] = row.id;
-    tok[key] = tokens.sign({ id: row.id, tenantId, role, email: `${key}@b9.test` });
+    tok[key] = await tokens.sign({ id: row.id, tenantId, role, email: `${key}@b9.test` });
     return row.id;
   }
   async function addFinding(tenantId, key, { category = 'non_training', review = 'approved', userId, projectId }) {
@@ -44,7 +43,7 @@ run('Improvement Needs B9 (Postgres)', () => {
     db = createDb({ databaseUrl: process.env.DATABASE_URL, dbSchema: process.env.DB_SCHEMA || 'ewi' });
     stores = createStores(db);
     app = createApp({ config, stores, mailer: memoryMailer() });
-    tokens = createTokenService(config.jwt);
+    tokens = sessionSigner(config, stores.authSessions);
     const slug = `b9-${Date.now()}`;
     [[A]] = await db.query(`INSERT INTO tenants (slug, name) VALUES (:slug, 'Tenant A') RETURNING id`, { replacements: { slug } });
     [[B]] = await db.query(`INSERT INTO tenants (slug, name) VALUES (:slug, 'Tenant B') RETURNING id`, { replacements: { slug: `${slug}-b` } });

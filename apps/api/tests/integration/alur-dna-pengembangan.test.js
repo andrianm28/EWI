@@ -26,7 +26,8 @@ run('Alur Developmental Needs (HR, atasan, karyawan)', () => {
   beforeAll(async () => {
     db = createDb({ databaseUrl: process.env.DATABASE_URL, dbSchema: process.env.DB_SCHEMA || 'ewi' });
     const config = makeConfig();
-    a = langkah(createApp({ config, stores: createStores(db), ai: createStubProvider() }), pembuatMasuk(config));
+    let st;
+    a = langkah(createApp({ config, stores: (st = createStores(db)), ai: createStubProvider() }), pembuatMasuk(config, st.authSessions));
 
     const t = await siapkanTenant(db, { slug, flags: [FLAGS.MODULE_DNA, FLAGS.MODULE_TNA, FLAGS.DNA_DEVELOPMENT] });
     tenantIds.push(t.id);

@@ -59,6 +59,8 @@ async function loginAs(page: Page, o: Opts = {}): Promise<Sent[]> {
   const sent: Sent[] = []
   const ok = (r: Route, data: unknown, status = 200) => r.fulfill({ status, json: { data } })
   await page.route('**/api/auth/tenants', (r) => r.fulfill({ json: { data: [] } }))
+  // PK-16: form kata sandi hanya tampil bila API mengizinkan (dev/staging)
+  await page.route('**/api/auth/methods', (r) => r.fulfill({ json: { password: true, emailLink: true } }))
   await page.route('**/api/auth/login', (r) => r.fulfill({ json: { token: 't', user } }))
   await page.route('**/api/auth/me', (r) => r.fulfill({ json: { user } }))
   await page.route('**/api/me/access', (r) => r.fulfill({ json: { submodules: ['cca', 'dna', 'tna'], flags: { 'module.cca': true, 'module.dna': true, 'module.tna': true, 'cca.interview': o.interview ?? true } } }))
@@ -84,7 +86,7 @@ async function loginAs(page: Page, o: Opts = {}): Promise<Sent[]> {
   await page.goto('/login')
   await page.getByLabel('Organisasi').fill('demo')
   await page.getByLabel('Email').fill(user.email)
-  await page.getByLabel('Password').fill(`pw-${Date.now()}`)
+  await page.getByLabel('Kata sandi').fill(`pw-${Date.now()}`)
   await page.getByRole('button', { name: 'Masuk' }).click()
   await expect(page.getByRole('button', { name: 'Keluar' })).toBeVisible()
   return sent

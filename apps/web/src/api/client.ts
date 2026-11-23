@@ -6,12 +6,23 @@ export class ApiError extends Error {
   }
 }
 
+// PK-16: dipanggil saat API menolak token sesi (401), mis. sesi dicabut atau kedaluwarsa.
+// B12 tahap 2: kode galat ikut diteruskan (mis. SESSION_IDLE) supaya halaman login memberi pesan yang tepat.
+let onUnauthorized: ((code: string) => void) | null = null
+export function setUnauthorizedHandler(fn: ((code: string) => void) | null) {
+  onUnauthorized = fn
+}
+
 export async function api<T>(path: string, init: RequestInit = {}, token?: string | null): Promise<T> {
   const headers = new Headers(init.headers)
   headers.set('Content-Type', 'application/json')
   if (token) headers.set('Authorization', `Bearer ${token}`)
   const res = await fetch(`${BASE}${path}`, { ...init, headers })
+  if (res.status === 204) return undefined as T
   const body = await res.json().catch(() => ({}))
-  if (!res.ok) throw new ApiError(res.status, body?.error?.code ?? 'ERROR', body?.error?.message ?? 'Terjadi kesalahan')
+  if (!res.ok) {
+    if (res.status === 401 && token && onUnauthorized) onUnauthorized(body?.error?.code ?? 'UNAUTHORIZED')
+    throw new ApiError(res.status, body?.error?.code ?? 'ERROR', body?.error?.message ?? 'Terjadi kesalahan')
+  }
   return body as T
 }
