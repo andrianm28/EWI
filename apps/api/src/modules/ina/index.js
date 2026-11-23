@@ -109,7 +109,7 @@ module.exports = {
       const a = isUuid(req.params.id) ? await db.getAction(req.tenantId, req.params.id) : null;
       if (!a) throw notFound('Tindakan tidak ditemukan');
       if (access.level !== LEVELS.MANAGE) {
-        const visible = !a.involvesIndividual && a.ownerUserId && (access.scope.all || access.scope.userIds.includes(a.ownerUserId));
+        const visible = !a.involvesIndividual && (access.scope.all || (a.ownerUserId && access.scope.userIds.includes(a.ownerUserId)));
         if (!visible) throw notFound('Tindakan tidak ditemukan');
       }
       return { action: a, access };

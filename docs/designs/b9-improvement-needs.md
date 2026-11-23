@@ -1,6 +1,6 @@
 # B9 · Improvement Needs
 
-Status (19 Nov 2026): backend dan web sudah dibangun di PR #17 dan sesuai spek ini. egm-review penuh (tahap 5–9), review diff, dan triasenya ada di bagian 14 dan `docs/designs/egm-review/`. Yang tersisa: keputusan terbuka di bagian 10.
+Status (19 Nov 2026): backend dan web sudah dibangun di PR #17 dan sesuai spek ini. egm-review penuh (tahap 5–9), review diff, dan triasenya ada di bagian 14 dan `docs/designs/egm-review/`. Pembaruan 23 Nov: keputusan user atas eskalasi ada di bagian 15 (PR #36).
 
 Istilah: "Improvement Needs" (INA) mengikuti `CONTEXT.md`; "temuan non-pelatihan" adalah temuan TNA berkategori `non_training` yang menjadi sumber tindakan. Tanda ⚠️ = asumsi yang belum diputuskan, ⏳ = risiko yang diterima sementara; keduanya punya baris di bagian 10.
 
@@ -34,7 +34,7 @@ Data demo ("Karyawan A", "Engineer Service Delivery", kode ST-A2) tidak dibawa.
 - **PM-6** sudah dibangun di PR #12 (`claude/project-thread-7o13op`): tabel `lna_non_training_grants` dan store `tna.hasNonTrainingGrant / grantNonTraining / revokeNonTraining / nonTrainingGrants`. Paket ini **memakai izin yang sama**, bukan tabel baru: satu izin atasan berlaku untuk temuan non-pelatihan (TNA) dan tindakan perbaikannya (INA). PR #12 sudah ada di basis integrasi `claude/project-thread-scbrmb`.
 - **BI-1**: empat kategori BRD + "Lainnya" dengan sub-label. Empat kategori memakai istilah mockup: SOP, Alat, Sistem, Budaya.
 - **BI-4 + K-3**: pelacakan ringan (pemilik, tenggat, status). Status: Baru → Berjalan → Selesai / Ditolak. Status "Diminta" dari K-3 tidak dipakai di sini karena karyawan tidak mengajukan tindakan perbaikan (PM-8: permintaan dari karyawan ditahan).
-- **K-2** (keputusan grilling 12 Nov, berbeda dari **K2** di brief 19 Nov yang memetakan peran ke tampilan): Pimpinan punya akses baca ke dashboard INA. K1 (lebih baru) membatasi baris tindakan ke HR dan atasan yang diberi akses, jadi Pimpinan hanya menerima **angka ringkasan** (KPI), tanpa baris. `[⚠️ BELUM TERVERIFIKASI]` K2 menyebut lima tampilan tanpa Pimpinan; bila diputuskan Pimpinan tidak melihat apa pun, cukup satu baris di `access.js` (bagian 10).
+- **K-2** (keputusan grilling 12 Nov, berbeda dari **K2** di brief 19 Nov yang memetakan peran ke tampilan): Pimpinan punya akses baca ke dashboard INA. K1 (lebih baru) membatasi baris tindakan ke HR dan atasan yang diberi akses, jadi Pimpinan hanya menerima **angka ringkasan** (KPI), tanpa baris. Diputuskan user 23 Nov: Pimpinan hanya KPI (bagian 15).
 - **PO-6**: transkrip hanya untuk orang yang diwawancarai. HR hanya melihat ringkasan.
 - **R2-2**: baca data individu dan semua perubahan dicatat audit; gagal catat berarti request gagal (urutan tulis di 6.1).
 - **R2-3**: teks yang berasal dari wawancara dienkripsi per tenant.
@@ -61,7 +61,8 @@ Fungsi `inaAccess(req, stores)` di `src/modules/ina/access.js` mengembalikan `{ 
 
 | Peran aktif | level | Yang terlihat |
 | --- | --- | --- |
-| `hr_admin`, `eta_admin` | `manage` | Semua tindakan tenant; boleh buat, ubah, tugaskan verifikasi, kelola akses atasan |
+| `hr_admin` | `manage` | Semua tindakan tenant; boleh buat, ubah, tugaskan verifikasi, kelola akses atasan |
+| `eta_admin` | `read` (seluruh tenant) | Semua tindakan tenant kecuali yang bertanda individu (bagian 4.3), termasuk yang tanpa pemilik, dengan kolom level `read` (paragraf di bawah tabel); tidak bisa membuat, mengubah, menugaskan verifikasi, atau mengelola akses atasan (keputusan user 23 Nov) |
 | `pimpinan` | `summary` | Hanya `kpis` seluruh tenant; `data` selalu kosong; tidak ada rute satuan |
 | `supervisor` **dengan izin aktif** | `read` | Tindakan yang pemiliknya ada di `visibleEmployeeScope()` atasan itu (dirinya dan bawahan langsung). Tindakan tanpa pemilik tidak terlihat |
 | `supervisor` tanpa izin | – | 403 `NO_INA_ACCESS` |
@@ -69,7 +70,7 @@ Fungsi `inaAccess(req, stores)` di `src/modules/ina/access.js` mengembalikan `{ 
 
 Level `read` tidak menerima `findingId`, `competencyId`, `performanceRecordId`, `involvesIndividual`, dan `lastVerification.reportedStatus` (apa yang dilaporkan pemilik ke HR bukan untuk atasan).
 
-Pemilik tindakan (peran apa pun, termasuk `learner`) hanya menjangkau rute verifikasi miliknya (bagian 6.3) dan `GET /access/me`. Ia tidak membuka dashboard (keputusan terbuka di bagian 10).
+Pemilik tindakan (peran apa pun, termasuk `learner`) hanya menjangkau rute verifikasi miliknya (bagian 6.3) dan `GET /access/me`. Ia tidak membuka dashboard; daftar tindakan untuk pemilik ditunda sampai setelah 2 Des (keputusan user 23 Nov, bagian 15).
 
 Cakupan atasan memakai `scopeFor(req, stores.people)` → `visibleEmployeeScope()` (aturan 4), diterapkan di SQL pada `owner_user_id`. Catatan: daftar temuan non-pelatihan TNA (PR #12) hanya menampilkan bawahan, tidak dirinya; di sini atasan juga melihat tindakan yang ia miliki sendiri, karena ia yang harus mengerjakannya.
 
@@ -80,7 +81,7 @@ Kolom `involves_individual` (boolean, default `false`). Tindakan bertanda `true`
 | Peran | Daftar bawaan | Hitungan `meta.hiddenIndividual` | `?hidden=1` | `GET /actions/:id` tindakan bertanda |
 | --- | --- | --- | --- | --- |
 | manage | tanpa tindakan bertanda | ya | ya, untuk koreksi | ya |
-| read (atasan) | tanpa tindakan bertanda | tidak | 403 `ROLE_FORBIDDEN` | 404 |
+| read (atasan, Admin ETA) | tanpa tindakan bertanda | tidak | 403 `ROLE_FORBIDDEN` | 404 |
 | summary (pimpinan) | `data` kosong | tidak | 403 `ROLE_FORBIDDEN` | 403 (tidak punya rute satuan) |
 
 Saat tindakan dibuat **dari temuan** (`findingId`), `involvesIndividual` wajib dikirim eksplisit (`true`/`false`): temuan wawancara selalu berasal dari satu karyawan, jadi HR harus memutuskan dengan sadar. Judul tindakan selalu ditulis HR; judul temuan tidak diwarisi, supaya kalimat dari wawancara tidak ikut tampil ke atasan.
@@ -249,6 +250,7 @@ Rute di `routes.ts`: `ina` di `/ina` (meta `submodule: 'ina'`, `flag: 'ina.dashb
 - membuat dari temuan: hanya `non_training`; temuan jadi `planned`; kedua kali 409;
 - K1: atasan tanpa izin 403; setelah HR memberi izin hanya melihat tindakan milik dirinya dan bawahan langsung; setelah dicabut 403 lagi; grant dan revoke tercatat audit; izin yang sama terbaca oleh `stores.tna.hasNonTrainingGrant`;
 - pimpinan baca saja (POST/PATCH 403); karyawan 403;
+- Admin ETA (bagian 15): level `read` seluruh tenant, termasuk membuka tindakan tanpa pemilik; POST/PATCH, `/access`, `/owners` 403; `PUT`/`DELETE /api/tna/non-training-access/:id` 403 (`business-rules-live.test.js`);
 - `involves_individual`: tidak muncul di daftar dan KPI siapa pun; HR mendapat `hiddenIndividual`, atasan tidak;
 - isolasi tenant: HR tenant B tidak melihat/mengubah tindakan tenant A; `ownerUserId`/`findingId` tenant lain ditolak;
 - enkripsi: `title`, `detail`, `summary`, teks giliran tidak tersimpan sebagai teks polos di DB;
@@ -273,12 +275,12 @@ Rute di `routes.ts`: `ina` di `/ina` (meta `submodule: 'ina'`, `flag: 'ina.dashb
 
 | Tanda | Isi | Ditutup oleh |
 | --- | --- | --- |
-| ⚠️ | Pimpinan hanya menerima angka ringkasan (K-2 dibatasi K1) | Keputusan user / B2 |
+| ✓ | Pimpinan hanya menerima angka ringkasan (K-2 dibatasi K1) | Diputuskan user 23 Nov |
 | ⚠️ | "Menyangkut individu" ditandai manual oleh HR | Keputusan produk; B7 bisa mengisi otomatis |
 | ⏳ | Ringkasan verifikasi belum buatan LLM sampai provider Bedrock diberi dua method | Setelah PR #15 masuk, QA malam B18 |
 | ⏳ | Izin atasan dipakai bersama dengan daftar temuan non-pelatihan TNA; dua set rute, satu nama audit | Disengaja (K1 = PM-6); pisah bila user minta |
-| ⚠️ | Pemilik tindakan tidak punya tampilan daftar tindakannya sendiri; ia hanya menerima verifikasi | Keputusan produk (Pak Eji) |
-| ⚠️ | `eta_admin` mendapat level `manage` seperti HR | Keputusan produk; B12 |
+| ✓ | Pemilik tindakan tidak punya tampilan daftar tindakannya sendiri; ia hanya menerima verifikasi | Diputuskan user 23 Nov: ditunda setelah 2 Des |
+| ✓ | `eta_admin` hanya `read` seluruh tenant, HR klien yang mengelola | Diputuskan user 23 Nov |
 | ⏳ | Audit dicatat sesudah transaksi: audit gagal → 500 padahal data tersimpan | Diterima (pola repo); ubah layanan audit bersama bila perlu (review Andrian) |
 | ⏳ | Peran INA dibaca dari token; HR yang diturunkan tetap `manage` sampai token habis (maks. 8 jam) | Diterima; sama dengan modul lain |
 | ⏳ | KPI dan daftar dihitung dari maksimal 2.000 baris di JS | Agregasi SQL bila ada tenant mendekati batas |
@@ -346,3 +348,15 @@ Hasil utama:
 - **Spek:** status, istilah, alternatif yang ditolak (3.1), tabel peran × hasil (4.3), DDL final, `GET /owners`, alur B7, klaim tenant pada giliran (temuan Blocker CB9-1) dibetulkan, baris baru di bagian 10.
 - **Diteruskan ke user:** `eta_admin` level `manage`, pemilik tanpa tampilan daftar, level Pimpinan.
 - **Ditunda:** agregasi KPI di SQL, kedaluwarsa verifikasi, `/turns` saat `addTurn` gagal, rute izin digabung. Usul: `/mattpocock-skills:to-tickets` untuk butir ini.
+
+## 15. Keputusan user 23 Nov 2026 (kartu opsi)
+
+| # | Pertanyaan | Pilihan | Akibat |
+| --- | --- | --- | --- |
+| 1 | Apakah Admin ETA boleh mengelola Improvement Needs klien? | Tidak, hanya HR klien | `eta_admin` turun dari `manage` ke `read` seluruh tenant (`access.js`). Test: `unit/ina-domain.test.js` (akses) dan `integration/ina.test.js` (Admin ETA baca saja), merah lalu hijau |
+| 2 | Perlukah pemilik tindakan punya daftar tindakannya sendiri? | Tunda setelah 2 Des | Tidak ada perubahan; HR memperbarui status selama POC. Masuk backlog |
+| 3 | Apakah Pimpinan hanya melihat angka KPI? | Ya, hanya KPI | Sesuai kode (`summary`); penanda ⚠️ ditutup |
+
+Akibat ikutan (review diff PR #36): izin atasan di TNA (`PUT`/`DELETE /api/tna/non-training-access/:id`) adalah izin yang sama dengan panel akses INA, jadi rute itu kini hanya untuk `hr_admin` (sebelumnya `requireRole` meloloskan `eta_admin`). Detail tindakan untuk level `read` dengan cakupan seluruh tenant juga membuka tindakan tanpa pemilik, supaya daftar dan detail Admin ETA konsisten.
+
+Catatan: kartu 1 sempat menyebut pilihan itu "seperti sekarang di kode"; itu keliru, karena kode memberi `eta_admin` level `manage`. Yang diikuti adalah isi pilihannya: Admin ETA tidak membuat atau mengubah tindakan. Admin ETA tetap bisa membaca (bukan 403), sejalan dengan keputusan 19 Nov bahwa Super Admin melihat hasil karyawan.

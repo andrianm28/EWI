@@ -245,6 +245,9 @@ module.exports = {
     }));
 
     async function loadSupervisor(req) {
+      // Spek B9 §15 (keputusan user 23 Nov): izin ini juga membuka Improvement Needs,
+      // dan hanya HR klien yang mengelolanya; Admin ETA tidak.
+      if (req.user.role !== ROLES.HR_ADMIN) throw forbidden('ROLE_FORBIDDEN', 'Hanya HR klien yang mengatur akses atasan');
       const person = await stores.people.get(req.tenantId, req.params.supervisorId);
       if (!person || person.role !== ROLES.SUPERVISOR) throw notFound('Atasan tidak ditemukan');
       return person;

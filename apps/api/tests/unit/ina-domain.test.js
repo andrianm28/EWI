@@ -111,9 +111,9 @@ describe('INA akses (K1 = PM-6)', () => {
   });
   const req = (role) => ({ tenantId: 't-1', user: { id: 'u-1', role } });
 
-  it('HR dan Admin ETA mengelola; pimpinan hanya ringkasan; atasan hanya bila diberi akses', async () => {
+  it('hanya HR klien mengelola; Admin ETA baca saja seluruh tenant (spek B9 §15); pimpinan hanya ringkasan; atasan hanya bila diberi akses', async () => {
     expect(await inaAccess(req('hr_admin'), stores(false))).toEqual({ level: 'manage', scope: { all: true } });
-    expect((await inaAccess(req('eta_admin'), stores(false))).level).toBe('manage');
+    expect(await inaAccess(req('eta_admin'), stores(false))).toEqual({ level: 'read', scope: { all: true } });
     expect((await inaAccess(req('pimpinan'), stores(false))).level).toBe('summary');
     expect(await inaAccess(req('supervisor'), stores(false))).toEqual({ level: null, reason: 'NO_INA_ACCESS' });
     const spv = await inaAccess(req('supervisor'), stores(true));
