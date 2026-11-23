@@ -1,43 +1,10 @@
 import { test, expect, type Page } from '@playwright/test'
+import { DASHBOARD_HR as HR_DATA } from './support/dashboard'
 
 // B3 Dashboard utama (HR) dan Dashboard tim (atasan). Spek: docs/designs/b3-dashboard.md.
 // Seam yang diuji: layar /dashboard lewat browser, dengan GET /api/dashboard di-mock.
 const SUBMODULES = ['cca', 'dna', 'tna', 'ina']
 const BASE_FLAGS: Record<string, boolean> = { 'module.dna': true, 'module.tna': true, 'dashboard.main': true }
-
-const HR_DATA = {
-  scope: 'all',
-  people: 42,
-  kpis: {
-    employeesAnalyzed: 30,
-    competencyGaps: 12,
-    okrGaps: 7,
-    aiHrAgreement: { percent: 88, approved: 22, reviewed: 25, targetPercent: 85 },
-    analysisDays: { median: 9, sessions: 14, targetDays: 14 },
-  },
-  modules: [
-    { no: 1, key: 'lna', active: true, parts: [{ key: 'cca', active: false }, { key: 'dna', active: true }, { key: 'tna', active: true }, { key: 'ina', active: false }] },
-    { no: 2, key: 'li', active: false },
-    { no: 3, key: 'ld', active: false },
-    { no: 4, key: 'lim', active: false },
-    { no: 5, key: 'cp', active: true },
-  ],
-  pareto: {
-    rows: [
-      { key: 'c1', label: 'Root Cause Analysis', people: 9, score: 12, share: 0.5, cumulativeShare: 0.5, hot: true },
-      { key: 'c2', label: 'Ticket Life Cycle', people: 6, score: 7, share: 0.29, cumulativeShare: 0.79, hot: true },
-      { key: 'c3', label: 'Komunikasi pelanggan', people: 3, score: 5, share: 0.21, cumulativeShare: 1, hot: false },
-    ],
-    total: 3,
-    hotCount: 2,
-  },
-  actions: [
-    { key: 'review_pending', count: 4 },
-    { key: 'interviews_open', count: 2 },
-    { key: 'plan_needs_module', count: 1 },
-    { key: 'competencies_unapproved', count: 3 },
-  ],
-}
 
 interface Opts { role?: string; roles?: string[]; flags?: Record<string, boolean>; dashboard?: unknown; status?: number }
 

@@ -1,5 +1,5 @@
 import { test, expect, type Page } from '@playwright/test'
-import { loginSebagai, navigasi, semuaModulKecuali, SEMUA_MODUL, type Peran } from '../support/sesi'
+import { loginSebagai, navigasi, semuaModulDengan, SEMUA_MODUL, type Peran } from '../support/sesi'
 
 // B18 4.3 (docs/designs/b18-e2e-qa-malam.md): matriks menu per peran dari fungsi `N` di mockup Pak Eji.
 // Seam: menu "Navigasi utama" setelah masuk lewat loginSebagai. Layar di belakang tiap butir tidak diuji di sini;
@@ -54,7 +54,7 @@ test('menu karyawan sama dengan matriks mockup saat semua modul menyala', async 
 })
 
 test('HR, satu flag modul mati: butir modul itu hilang, butir lain tetap', async ({ page }) => {
-  await loginSebagai(page, 'hr', semuaModulKecuali({ 'module.tna': false }))
+  await loginSebagai(page, 'hr', semuaModulDengan({ 'module.tna': false }))
   await expect(await butirMenu(page)).toHaveText([
     'Dashboard utama', 'Core Competencies', 'Developmental Needs', 'Improvement Needs',
     'Library', 'Program & Course', 'Permintaan & pengembangan', 'Learning Delivery', 'Learning Impact Measurement', 'Career & Promotion', 'Permintaan data karyawan',
@@ -62,7 +62,7 @@ test('HR, satu flag modul mati: butir modul itu hilang, butir lain tetap', async
 })
 
 test('atasan, satu flag modul mati: Wawancara AI hilang, butir lain tetap', async ({ page }) => {
-  await loginSebagai(page, 'atasan', semuaModulKecuali({ 'module.cca': false }))
+  await loginSebagai(page, 'atasan', semuaModulDengan({ 'module.cca': false }))
   await expect(await butirMenu(page)).toHaveText(['Dashboard tim', 'Developmental Needs', 'Training Needs', 'Improvement Needs', 'Learning Impact Measurement', 'Career & Promotion'])
 })
 
