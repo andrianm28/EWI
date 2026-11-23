@@ -41,13 +41,13 @@ Tidak ditutup: RV-3 dan TD-6 (akses atasan), lihat Keputusan.
    - Audit `readIndividual` tetap hanya memuat baris yang dikirim. Tetap hanya HR; `tenant_id` dari `req.tenantId`; tidak ada migrasi. `GET /review` tetap tanpa flag, `/review/solutions` tetap di balik `tna.review_workspace`.
    - Kolom tambahan internal untuk pencocokan (`metricType`, `metricPeriod`, fokus sesi) tidak ikut di respons.
 4. **Pilihan awal temuan draf.** Mockup memilih saran AI sebelum HR menyentuh apa pun. Di aplikasi temuan draf belum diputus, jadi tidak ada tombol yang aktif; saran AI ditulis di baris meta: "· AI 90% · saran AI: Training Needs" (`suggestedClassification`). Menampilkan saran sebagai pilihan aktif akan terlihat seperti keputusan yang sudah tersimpan ("AI tidak memutuskan sendiri"). Temuan diputus: tombol sesuai `category`; temuan ditahan: "Perlu ditinjau HR".
-5. **Tombol klasifikasi** memakai `UiSegmented` dengan dua tambahan kecil di komponen bersama (reviewer Andrian): `variant="chips"` (tombol terpisah gaya `.rad` mockup: radius 8px, tinggi 32px, jarak 6px, pilihan aktif `secondary-container` + garis `primary`) dan `disabled` per opsi. Dinonaktifkan: "Perlu ditinjau HR" untuk temuan yang sudah diputus (API `409 ALREADY_REVIEWED`), dan ketiga tombol untuk temuan yang sudah ditindaklanjuti (punya rencana training di `solutions` atau `handedOffAt`; API `409 ALREADY_ACTIONED`). Pilihan disimpan langsung (`POST /findings/:id/classify`); selama permintaan berjalan tombol baris itu nonaktif; galat API tampil di `UiErrorSummary` dan pilihan kembali ke nilai server.
+5. **Tombol klasifikasi** memakai `UiSegmented` dengan dua tambahan kecil di komponen bersama (reviewer Andrian): `variant="chips"` (tombol terpisah gaya `.rad` mockup: radius 8px, tinggi 32px, jarak 6px, pilihan aktif `secondary-container` + garis `primary`) dan `disabled` per opsi. Dinonaktifkan: "Perlu ditinjau HR" untuk temuan yang sudah diputus (API `409 ALREADY_REVIEWED`), dan ketiga tombol untuk temuan yang sudah ditindaklanjuti (punya rencana training di `solutions` atau `handedOffAt`; API `409 ALREADY_ACTIONED`). Pilihan disimpan langsung (`POST /findings/:id/classify`); selama permintaan berjalan, dan selama solusi dijalankan, tombol baris itu tidak bisa dipilih (`pending` = `aria-disabled` + penjaga klik, bukan `disabled`, supaya fokus tetap di tombol yang diklik); temuan lain tetap bisa diklasifikasi bersamaan. Galat API tampil di `UiErrorSummary`; pada `409` data dimuat ulang supaya nilai server tampil. Bila simpan berhasil tetapi muat ulang gagal, pesannya "Klasifikasi tersimpan, tetapi data tidak bisa dimuat ulang." (sama untuk rencana dan serah ke Improvement Needs). Selama data pertama dimuat tampil muted "Memuat…" (`aria-busy`).
 6. **Nama karyawan** ditampilkan muted di baris meta temuan (mockup menggabungkan temuan per gap tanpa nama; di aplikasi temuan per orang, dan dua orang bisa punya teks sama). HR boleh melihat semua karyawan (RG-3). Tanpa transkrip (PO-6): layar hanya memakai `title`, tidak memuat `detail` maupun giliran.
 7. **Temuan ditolak** tidak ditampilkan di layar per gap; menolak dan mengubah teks tetap di antrean lama (fitur kelola di luar mockup dipindah ke tautan sekunder "Ubah teks atau tolak temuan di antrean tinjauan" di bawah kartu temuan).
 8. **Solusi pelatihan.** Data dari `GET /review/solutions` per gap.
    - Kotak modul: rencana terbaru yang punya course (`planItem.catalogItemRef/Title`), selain itu `recommendation` pertama. Kode = `ref`, nama = `title`, meta = "Level {Basic|Intermediate|Advanced} · {kompetensi}" (bagian yang kosong dilewati). Tanpa course: "Belum ada modul yang cocok di katalog. Rencana dibuat sebagai kebutuhan modul baru." `[⏳ DITERIMA]` mockup menulis sumber roadmap DACUM; API belum punya sumber itu.
    - `delivery.assignAvailable` benar: tombol "Tugaskan di EliteMentor" → untuk tiap temuan pelatihan gap ini: `POST /findings/:id/plan` bila belum ada rencana, lalu `POST /plan-items/:id/assign` bila belum `sent` (B7 alur 3). Catatan: "Satu klik. Bila klien tidak memakai EliteMentor, gap diekspor ke LMS klien." (frasa "masuk lewat SSO" dihapus: SSO EliteMentor di luar B7, flag `em.sso`). Semua `sent` → `UiNote success` mockup.
-   - Salah (termasuk tenant pilot `lms_export`): tombol "Buat rencana" (hanya plan), catatan "Organisasi Anda belajar di {label}. Buat rencana, lalu unduh daftar gap untuk diunggah ke sana."; setelah semua punya rencana: `UiNote success` "Rencana dibuat. Unduh daftar gap untuk {label}." + tombol outlined "Unduh daftar gap (CSV)" (`lna.downloadGapCsv`).
+   - Salah (termasuk tenant pilot `lms_export`): tombol "Buat rencana" (hanya plan), catatan "Organisasi Anda belajar di {label}. Buat rencana, lalu unduh daftar gap untuk diunggah ke sana."; setelah semua punya rencana: `UiNote success` "Rencana dibuat. Unduh daftar gap untuk {label}." + tombol outlined "Unduh daftar gap (CSV)" (`lna.downloadGapCsv`). `[⏳ DITERIMA]` CSV berisi seluruh rencana aktif tenant, bukan gap ini saja: `GET /plan-items/export.csv` belum punya filter gap, dan berkas yang diunggah ke LMS klien memang daftar lengkap. Filter gap di ekspor menjadi pekerjaan terpisah bila diminta.
    - Galat per temuan dikumpulkan ke `UiErrorSummary`; yang berhasil tetap tersimpan, data dimuat ulang.
 9. **Tindakan perbaikan.** Temuan non-pelatihan dari `solutions.improvement`. Tombol "Buat tindakan di Improvement Needs" → `POST /review/improvement-handoff` dengan temuan yang belum diteruskan. Hasil: `UiNote success` "{n} temuan diteruskan ke Improvement Needs." (spek B7 butir 6: tindakan dibuat modul B9, jadi bukan "tindakan perbaikan dibuat" seperti mockup). Semua sudah diteruskan sebelumnya → note yang sama dengan jumlah total. `inaEnabled` salah → tombol tidak tampil, muted "Modul Improvement Needs belum aktif untuk organisasi Anda."
 10. **Detail gap** (`TnaGapView.vue`): "Langsung ke tinjauan HR" menuju `review` dengan query gap + tab bila `routeOpen('review')`, selain itu antrean lama `tna-review` (perilaku sekarang). Tetap hanya HR.
@@ -62,6 +62,7 @@ API `apps/api/tests/integration/tinjauan-hr.test.js` (Postgres), blok baru "per 
 - [x] Gap OKR lewat baris kinerja temuan.
 - [x] Rujukan tidak valid → 400; kompetensi tenant lain → 404; atasan → 403.
 - [x] `GET /review/solutions?kind=…`: hanya temuan gap itu.
+- [x] Review independen: respons per gap tanpa `detail`, `originalDetail`, `summaryNote`; `projectId` bukan UUID → 400; nama gap OKR dirapikan dan maksimal 255; temuan dari persetujuan yang ditarik tidak ikut data, counts, dan solusi per gap; solusi dengan kompetensi tenant lain → 404, atasan → 403; join kompetensi dan kinerja dibatasi tenant.
 
 E2E `apps/web/e2e/b7-tinjauan.spec.ts` (mock `page.route` lewat `mockApi`, `loginSebagai`):
 - [x] Dari detail gap HR: "Langsung ke tinjauan HR" membuka `/tna/tinjauan?…`; breadcrumb, h1, subjudul dengan nama gap; judul top bar "Tinjauan HR"; tautan breadcrumb kembali ke `/tna?tab=kompetensi`.
@@ -75,6 +76,7 @@ E2E `apps/web/e2e/b7-tinjauan.spec.ts` (mock `page.route` lewat `mockApi`, `logi
 - [x] Respons tidak memuat/menampilkan `detail` (PO-6): teks rincian tidak muncul.
 - [x] Antrean lama: test `poc-dna-tna`, `shell`, `alur/batas-akses` tetap hijau; tidak ada kelas Tailwind di `AntreanView.vue` (test statis sederhana di e2e lewat cek kelas `el-card` pada item).
 - [x] Snapshot visual layar tinjauan HR 1440 (dibandingkan dengan `hr--review.png`).
+- [x] Review independen: alamat gap tidak lengkap/tidak valid menampilkan pesan; "Memuat…" selama solusi dimuat; tombol yang sedang disimpan tetap fokus dan klik ulang diabaikan, temuan lain tetap bisa diklasifikasi; klasifikasi terkunci selama solusi dijalankan; `409` klasifikasi menampilkan nilai server; simpan berhasil tetapi muat ulang gagal → pesan "tersimpan"; `409` penugasan satu temuan → "{judul}: …", temuan lain tetap dikirim.
 
 ## Checklist file
 
@@ -82,9 +84,9 @@ E2E `apps/web/e2e/b7-tinjauan.spec.ts` (mock `page.route` lewat `mockApi`, `logi
 - [x] `apps/api/src/modules/tna/index.js` (`GET /review` filter gap), `review-workspace.js` (`/review/solutions` filter gap, helper filter), `gaps.js` (ekspor helper kunci gap temuan bila perlu), `gap-routes.js` (parser rujukan gap dipindah agar bisa dipakai bersama)
 - [x] `apps/api/src/db/lna-stores.js` (kolom pencocokan di `REVIEW_COLS` dan `listReviewedForSolutions`)
 - [x] `apps/api/tests/integration/tinjauan-hr.test.js`
-- [x] `apps/web/src/screens/b7-tinjauan/routes.ts`, `TinjauanView.vue`, `AntreanView.vue`, `api.ts`, `b7.css`
+- [x] `apps/web/src/screens/b7-tinjauan/routes.ts`, `TinjauanView.vue`, `AntreanView.vue`, `b7.css` (tanpa `api.ts`: pemanggil API di `apps/web/src/api/lna.ts`)
 - [x] hapus `apps/web/src/screens/legacy-review/`, `apps/web/src/views/ReviewView.vue`
-- [x] `apps/web/src/ui/UiSegmented.vue` (`variant`, `disabled` per opsi)
+- [x] `apps/web/src/ui/UiSegmented.vue` (`variant`, `disabled` dan `pending` per opsi)
 - [x] `apps/web/src/screens/b5-tna/TnaGapView.vue` (tujuan tombol)
 - [x] `apps/web/src/api/lna.ts` (parameter gap)
 - [x] `apps/web/e2e/b7-tinjauan.spec.ts`, `apps/web/e2e/support/tinjauan.ts`
@@ -94,7 +96,7 @@ Reviewer wajib: Andrian (perubahan API, kode bersama `UiSegmented`, router paket
 
 ## Review spek (langkah 2)
 
-Subagent `egm:egm-design` dan `egm:egm-implementation-readiness` tidak tersedia di sesi ini (tool Agent tidak ada untuk subagent pelaksana). Pengganti: tinjauan mandiri dengan dua lensa yang sama sebelum test ditulis. `[⚠️ BELUM TERVERIFIKASI]` review independen egm diulang sesi induk.
+Subagent `egm:egm-design` dan `egm:egm-implementation-readiness` tidak tersedia di sesi ini (tool Agent tidak ada untuk subagent pelaksana). Pengganti: tinjauan mandiri dengan dua lensa yang sama sebelum test ditulis. Review independen dijalankan sesi induk (23 Nov); triase di [egm/b7-tinjauan-web-code-review.md](egm/b7-tinjauan-web-code-review.md#review-independen-sesi-induk-23-nov).
 
 | Temuan | Triase |
 | --- | --- |
