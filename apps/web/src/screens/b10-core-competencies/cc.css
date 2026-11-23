@@ -12,3 +12,7 @@
 .cc-meter .cc-row { margin-bottom: 6px; }
 .cc-small { font-size: 12px; }
 .cc-list { line-height: 26px; margin: 0; padding-left: 20px; }
+.cc-summary { display: grid; grid-template-columns: minmax(0, 160px) minmax(0, 1fr); gap: 8px 16px; margin: 0; }
+.cc-summary dt { font-weight: 600; }
+.cc-summary dd { margin: 0; }
+@media (max-width: 600px) { .cc-summary { grid-template-columns: minmax(0, 1fr); } .cc-summary dd { margin-bottom: 8px; } }
