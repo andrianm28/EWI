@@ -33,24 +33,44 @@ Layar masuk, langkah "periksa email", dan halaman tujuan tautan `/masuk` tampil 
 - Kolom organisasi, tombol SSO, kolom sandi (non-produksi), catatan sesi habis, dan ringkasan galat (K-L1) tidak berubah.
 - Galat token di `/masuk` memakai `UiErrorSummary` (judul "Ada masalah"), sama dengan formulir login.
 - Padding panel kiri tetap 48px di layar sempit seperti mockup (mockup tidak punya media query). `[⏳ DITERIMA]`
+- Di layar sempit formulir berada di bawah panel kepercayaan penuh (sekitar 600px pada lebar 400), jadi pengguna ponsel menggulir dulu. Itu perilaku mockup (L7 "tampilkan sesuai mockup"). `[⏳ DITERIMA]`
+- "Kembali" memindahkan fokus ke kolom email (tombol yang ditekan hilang bersama langkah 2); "Kirim link masuk" yang berhasil memindahkan fokus ke h1 langkah 2.
+- Tidak ada flag baru: perubahan tampilan paritas atas layar yang sudah ada, bukan fitur baru (sama dengan P2).
 - `LoginLayout` memegang panel kiri, `<main id="isi-login">`, dan baris meta; isi panel kanan lewat slot. Nama aksesibel tombol "Lanjutkan masuk" dipertahankan, jadi `loginSebagai` (`e2e/support/sesi.ts`) tidak berubah.
 
 ## Test (e2e, API di-mock)
 
 `e2e/login.spec.ts`:
 
-- [ ] L2: produksi, kirim link → heading "Periksa email Anda", teks memuat email, status memuat pesan server, tanpa kolom sandi/kode; "Kirim ulang" mengirim permintaan kedua dengan isi sama; "Kembali" → heading "Masuk ke ELGOS", email tetap terisi.
-- [ ] L2: kirim ulang ditolak server (429) → ringkasan galat di langkah 2.
-- [ ] L1: `/masuk#token=…` → panel "Tentang ELGOS" terlihat, heading "Masuk ke ELGOS", tombol "Lanjutkan masuk" ber-kelas `el-btn`, meta `.el-audit`, tidak ada kelas `slate`/`bg-white`.
-- [ ] L1: `/masuk` tanpa token → ringkasan galat "Link tidak lengkap…", tanpa tombol "Lanjutkan masuk", tautan "Ke halaman login".
-- [ ] L1: token ditolak (401) → ringkasan galat memuat pesan server.
-- [ ] L3–L6: h1 24px weight 400; logo r12 weight 700 15px; meta Roboto Mono 11px; `.lg-c` max 420px; di 1280 kedua panel berdampingan.
-- [ ] L7: lebar 400px → kalimat utama terlihat, panel kiri di atas panel kanan, tanpa gulir horizontal.
-- [ ] Tetap hijau: `login.spec.ts` lama, `gating.spec.ts`, semua spec yang memakai `loginSebagai`.
+- [x] L2: produksi, kirim link → heading "Periksa email Anda", teks memuat email, status memuat pesan server, tanpa kolom sandi/kode; "Kirim ulang" mengirim permintaan kedua dengan isi sama; "Kembali" → heading "Masuk ke ELGOS", email tetap terisi.
+- [x] L2: kirim ulang ditolak server (429) → ringkasan galat di langkah 2.
+- [x] L1: `/masuk#token=…` → panel "Tentang ELGOS" terlihat, heading "Masuk ke ELGOS", tombol "Lanjutkan masuk" ber-kelas `el-btn`, meta `.el-audit`, tidak ada kelas `slate`/`bg-white`.
+- [x] L1: `/masuk` tanpa token → ringkasan galat "Link tidak lengkap…", tanpa tombol "Lanjutkan masuk", tautan "Ke halaman login".
+- [x] L1: token ditolak (401) → ringkasan galat memuat pesan server.
+- [x] L3–L6: h1 24px weight 400; logo r12 weight 700 15px; meta Roboto Mono 11px; `.lg-c` max 420px; di 1280 kedua panel berdampingan.
+- [x] L7: lebar 400px → kalimat utama terlihat, panel kiri di atas panel kanan, tanpa gulir horizontal.
+- [x] Fokus: h1 langkah 2 setelah kirim; kolom email setelah "Kembali".
+- [x] Tetap hijau: `login.spec.ts` lama, `gating.spec.ts`, semua spec yang memakai `loginSebagai`.
 
 ## File
 
-- [ ] `apps/web/src/components/LoginLayout.vue` (baru)
-- [ ] `apps/web/src/views/LoginView.vue`
-- [ ] `apps/web/src/views/EmailLinkView.vue`
-- [ ] `apps/web/e2e/login.spec.ts`
+- [x] `apps/web/src/components/LoginLayout.vue` (baru)
+- [x] `apps/web/src/views/LoginView.vue`
+- [x] `apps/web/src/views/EmailLinkView.vue`
+- [x] `apps/web/e2e/login.spec.ts`
+
+## Review spek (langkah 2 SDLC)
+
+Tool Agent (subagent `egm:egm-design`, `egm:egm-implementation-readiness`) tidak tersedia di sesi subagent ini, jadi review spek dilakukan sendiri dengan dua lensa itu terhadap mockup baris 160–205 dan kode `LoginView`/`EmailLinkView`/`e2e/support/sesi.ts`. `[⚠️ BELUM TERVERIFIKASI]` oleh reviewer independen; sesi induk dapat menjalankan ulang.
+
+| # | Lensa | Temuan | Triase |
+| --- | --- | --- | --- |
+| R-1 | desain | Sub langkah 2 "Link dikirim ke {email}" (usulan gap) membocorkan keberadaan akun bila dibaca mutlak | **Perbaiki**: sub "Buka link masuk yang kami kirim ke {email}…" + pesan server di catatan status |
+| R-2 | desain | Fokus hilang saat isi panel kanan berganti | **Perbaiki**: fokus ke h1 langkah 2 dan ke email setelah Kembali |
+| R-3 | kesiapan | `gating.spec.ts` memeriksa `role=status` memuat "link masuk sudah dikirim" | **Perbaiki**: catatan status tetap ada di langkah 2 |
+| R-4 | kesiapan | `loginSebagai` bergantung pada nama "Lanjutkan masuk" | **Perbaiki**: nama dipertahankan, helper tidak diubah |
+| R-5 | desain | Padding 48px panel kiri di ponsel terasa besar | **Tolak dengan alasan**: mockup tanpa media query; ikut 1:1 |
+
+## Review diff
+
+Lihat [egm/p4-code-review.md](egm/p4-code-review.md). Drift: [egm/p4-drift.md](egm/p4-drift.md).

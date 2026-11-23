@@ -112,11 +112,13 @@ async function sendLink() {
   }
 }
 
-// Kembali ke formulir; isian organisasi dan email tetap
-function back() {
+// Kembali ke formulir; isian organisasi dan email tetap. Fokus ke email supaya tidak hilang bersama tombol Kembali.
+async function back() {
   errors.value = []
   linkNotice.value = ''
   step.value = 'form'
+  await nextTick()
+  document.getElementById('em')?.focus()
 }
 
 async function sso() {

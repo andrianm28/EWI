@@ -91,6 +91,7 @@ test('P4 L2: setelah kirim link, panel kanan berganti ke "Periksa email Anda" de
   await page.getByRole('button', { name: 'Kembali' }).click()
   await expect(page.getByRole('heading', { level: 1, name: 'Masuk ke ELGOS' })).toBeVisible()
   await expect(page.getByLabel('Email kerja')).toHaveValue('hr@demo.test')
+  await expect(page.getByLabel('Email kerja')).toBeFocused()
   await expect(page.getByLabel('Organisasi')).toHaveValue('demo')
 })
 
