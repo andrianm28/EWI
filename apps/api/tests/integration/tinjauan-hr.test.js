@@ -610,6 +610,36 @@ run('B7 tinjauan HR (Postgres)', () => {
       expect(solIds).not.toContain(wa);
     });
 
+    // Audit 39-2 (aturan CLAUDE.md 3): filter gap di GET /review ikut flag tna.review_workspace, pola sama dengan requireFlag
+    it('flag tna.review_workspace mati: filter gap 403 FEATURE_DISABLED, antrean lama tanpa filter tetap jalan', async () => {
+      await setFlag('tna.review_workspace', false);
+      try {
+        const res = await review({ kind: 'competency', competencyId: gapComp });
+        expect(res.status).toBe(403);
+        expect(res.body.error.code).toBe('FEATURE_DISABLED');
+        // rujukan tidak valid juga tidak diproses sebelum gerbang flag
+        expect((await review({ kind: 'lain' })).status).toBe(403);
+        expect((await review({ status: 'all' })).status).toBe(200);
+        expect((await review({ kind: '' })).status).toBe(200);
+      } finally { await setFlag('tna.review_workspace', true); }
+    });
+
+    // Audit 39-3: filter gap didorong ke query store, jadi baris di luar gap tidak dimuat maupun didekripsi
+    it('store reviewQueue dengan gap hanya memuat temuan kandidat gap itu, ber-tenant, tanpa temuan beku', async () => {
+      const statuses = ['draft', 'approved', 'edited', 'rejected'];
+      const comp = (await stores.tna.reviewQueue(tenant.id, { statuses, gap: { kind: 'competency', competencyId: gapComp } })).map((x) => x.id);
+      expect(comp).toEqual(expect.arrayContaining([g.a, g.b, g.e, g.r]));
+      expect(comp).not.toContain(g.other);
+      expect(comp).not.toContain(g.okr);
+      const okr = (await stores.tna.reviewQueue(tenant.id, { statuses, gap: { kind: 'okr', metricType: 'sla', metricKey: 'respons tiket b7', period: '2026-11' } })).map((x) => x.id);
+      expect(okr).toEqual([g.okr]);
+      expect(await stores.tna.reviewQueue(other.id, { statuses, gap: { kind: 'competency', competencyId: gapComp } })).toEqual([]);
+      const ws = await stores.interviews.create(tenant.id, { projectId, submodule: 'tna', intervieweeId: u.ani });
+      await db.query(`UPDATE lna_interview_sessions SET status = 'completed', ended_at = now(), consent_withdrawn_at = now() WHERE id = :id`, { replacements: { id: ws.id } });
+      const frozen = (await finding('ani', { title: 'Beku disetujui', competencyId: gapComp, sessionId: ws.id, reviewStatus: 'approved' })).id;
+      expect((await stores.tna.reviewQueue(tenant.id, { statuses, gap: { kind: 'competency', competencyId: gapComp } })).map((x) => x.id)).not.toContain(frozen);
+    });
+
     it('solusi per gap: hanya temuan gap itu', async () => {
       const q = new URLSearchParams({ kind: 'competency', competencyId: gapComp });
       const res = await request(app()).get(`/api/tna/review/solutions?${q}`).set(as('hr'));
