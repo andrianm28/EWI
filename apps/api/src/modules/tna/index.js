@@ -162,6 +162,12 @@ module.exports = {
       if (!statuses.every((x) => ['draft', ...Object.values(REVIEW_DECISIONS)].includes(x))) throw badRequest('status harus draft, approved, edited, rejected, reviewed, atau all');
       const projectId = projectIdOf(req);
       // Paritas B7 web: tinjauan per gap. Data dan counts dari temuan gap itu saja (aturan R6 papan gap).
+      // Audit PR 39 butir 39-2 (aturan CLAUDE.md 3): filter gap bagian dari fitur tinjauan baru, jadi di balik flag
+      // tna.review_workspace. Flag mati + parameter gap -> 403 FEATURE_DISABLED, sama dengan requireFlag di rute B7
+      // lain; antrean tanpa filter tetap jalan (pengaman wajib PK-14, tidak di balik flag).
+      if (req.query.kind !== undefined && req.query.kind !== '' && !(await flags.isEnabled(req.tenantId, FLAGS.TNA_REVIEW_WORKSPACE))) {
+        throw forbidden('FEATURE_DISABLED', 'Tinjauan HR versi baru belum diaktifkan untuk organisasi Anda');
+      }
       const gap = await gapFilterOf(req, stores);
       if (gap) return reviewForGap(req, res, gap, statuses, projectId);
       const [rows, counts, conf] = await Promise.all([
@@ -187,7 +193,7 @@ module.exports = {
 
     async function reviewForGap(req, res, gap, statuses, projectId) {
       const [all, conf] = await Promise.all([
-        stores.tna.reviewQueue(req.tenantId, { projectId, statuses: ['draft', ...Object.values(REVIEW_DECISIONS)] }),
+        stores.tna.reviewQueue(req.tenantId, { projectId, statuses: ['draft', ...Object.values(REVIEW_DECISIONS)], gap: gap.query }),
         settings.get(req.tenantId),
       ]);
       const now = new Date();

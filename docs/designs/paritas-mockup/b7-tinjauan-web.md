@@ -104,4 +104,4 @@ Subagent `egm:egm-design` dan `egm:egm-implementation-readiness` tidak tersedia 
 | Nama gap untuk subjudul: memanggil `/gaps/detail` akan mengaudit seluruh karyawan gap hanya untuk label | **Perbaiki**: `GET /review` mengembalikan `gap.label` |
 | Dashboard `review_pending` ikut terbuka ke `review` tanpa gap (layar kosong) | **Perbaiki**: keputusan 11 |
 | Saran AI dipilihkan seperti mockup | **Tolak**: menyesatkan (keputusan 4) |
-| Filter gap di `GET /review` tanpa flag baru (CLAUDE.md aturan 3) | **Tolak dengan alasan**: hanya mempersempit bacaan yang sudah ada, HR saja, tanpa perilaku tulis; rute web di balik `tna.review_workspace` |
+| Filter gap di `GET /review` tanpa flag baru (CLAUDE.md aturan 3) | ~~**Tolak dengan alasan**~~ **Diperbaiki (audit PR 39 butir 39-2, 23 Nov)**: filter gap ikut flag `tna.review_workspace`. Flag mati + parameter `kind` → 403 `FEATURE_DISABLED` (pola `requireFlag` rute B7 lain, dipilih karena klien bisa membedakan "fitur mati" dari "gap kosong"); antrean tanpa filter tetap jalan. `/review/solutions` sudah di balik flag per rute. Query store kini memakai predikat gap (butir 39-3), keanggotaan pasti tetap `findingsInGap` |

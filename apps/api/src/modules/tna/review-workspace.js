@@ -12,6 +12,7 @@ const { reviewDue, suggestedClassification, CLASSIFICATIONS, categoryFor } = req
 const { PLAN_STATUS_LABEL } = require('./plan-status');
 const { toCsv } = require('./csv');
 const { gapKeyOf, findingsInGap } = require('./gaps');
+const { metricKey } = require('./performance');
 const { parseGapQuery } = require('./assignment');
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -27,7 +28,8 @@ const withoutGapFields = (row) => Object.fromEntries(Object.entries(row).filter(
 
 /**
  * Paritas B7 web: filter gap opsional dari query (parameter sama dengan `/tna/gaps/detail`). Tanpa `kind` -> null
- * (perilaku lama). Kompetensi harus milik tenant ini (404). Return { key, label, keep(rows) }.
+ * (perilaku lama). Kompetensi harus milik tenant ini (404). Return { key, label, keep(rows), query } dengan `query`
+ * predikat gap untuk `stores.tna.reviewQueue` (audit PR 39 butir 39-3).
  */
 async function gapFilterOf(req, stores) {
   if (req.query.kind === undefined || req.query.kind === '') return null;
@@ -39,7 +41,10 @@ async function gapFilterOf(req, stores) {
     label = competency.name;
   }
   const key = gapKeyOf(gap);
-  return { key, label, keep: (rows) => findingsInGap(rows, key) };
+  const query = gap.kind === 'competency'
+    ? { kind: 'competency', competencyId: gap.competencyId }
+    : { kind: 'okr', metricType: gap.metricType, metricKey: metricKey(gap.name), period: gap.period };
+  return { key, label, keep: (rows) => findingsInGap(rows, key), query };
 }
 
 /** projectId opsional di query: harus satu UUID, selain itu 400 (bukan galat cast di database). */

@@ -878,12 +878,33 @@ function createLnaStores(sequelize, { cipher } = {}) {
                     FROM lna_findings f WHERE f.tenant_id = :tenantId AND f.id = :id`, { tenantId, id }), ['title']);
     },
     /** Antrean review HR (PM-3 ★A): semua kategori, termasuk non-training, dengan keyakinan dan jejak review. */
-    async reviewQueue(tenantId, { projectId, statuses = ['draft'] } = {}) {
+    /**
+     * `gap` opsional (audit PR 39 butir 39-3, tinjauan per gap): `{ kind: 'competency', competencyId }` atau
+     * `{ kind: 'okr', metricType, metricKey, period }` (metricKey = nama dinormalkan seperti `metricKey`). Predikat SQL
+     * memilih kandidat gap (kompetensi temuan, baris kinerja temuan, atau fokus sesinya), jadi temuan gap lain tidak
+     * dimuat dan didekripsi; keanggotaan pasti tetap diputus `findingsInGap` (aturan R6). Dengan `gap`, semua temuan
+     * dari sesi yang persetujuannya ditarik keluar (sama dengan agregat reviewCounts).
+     */
+    async reviewQueue(tenantId, { projectId, statuses = ['draft'], gap } = {}) {
       const rep = { tenantId, statuses };
       let sql = `SELECT ${REVIEW_COLS}
                    ${REVIEW_FROM}
                   WHERE f.tenant_id = :tenantId AND f.review_status IN (:statuses) AND ${NOT_WITHDRAWN_DRAFT}`;
       if (projectId) { sql += ' AND f.project_id = :projectId'; rep.projectId = projectId; }
+      if (gap) {
+        sql += ' AND s.consent_withdrawn_at IS NULL';
+        if (gap.kind === 'competency') {
+          sql += ` AND (f.competency_id = :gapCompetencyId OR (s.focus_kind = 'competency' AND s.focus_competency_id = :gapCompetencyId))`;
+          rep.gapCompetencyId = gap.competencyId;
+        } else {
+          // Nama target dinormalkan seperti metricKey (trim, spasi tunggal, huruf kecil) agar cocok dengan kunci gap
+          sql += ` AND ((pr.metric_type = :gapMetricType AND pr.period = :gapPeriod
+                         AND lower(regexp_replace(btrim(pr.name), '\\s+', ' ', 'g')) = :gapMetricKey)
+                     OR (s.focus_kind = 'okr' AND s.focus_metric_type = :gapMetricType AND s.focus_metric_key = :gapMetricKey
+                         AND s.focus_period = :gapPeriod))`;
+          Object.assign(rep, { gapMetricType: gap.metricType, gapMetricKey: gap.metricKey, gapPeriod: gap.period });
+        }
+      }
       return (await open(tenantId, await select(`${sql} ORDER BY f.created_at, f.finding_seq`, rep), REVIEW_ENC)).map(withSummaryState);
     },
     async reviewCounts(tenantId, { projectId } = {}) {
