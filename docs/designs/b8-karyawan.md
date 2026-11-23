@@ -196,6 +196,63 @@ Transisi sesi yang ada dibuat bersyarat supaya penarikan tidak tertimpa:
 7. `delete_data`: buat, 409 ganda, daftar sendiri lewat `GET /me/data-requests` walau `learner.home` mati, batalkan; milik orang lain 404; akun HR → `ADMIN_ACCOUNT`; `DELETE /employees/:id` mencatat `dataRequests` di audit.
 8. Migrasi naik-turun-naik dijalankan CI (`.github/workflows/ci.yml`).
 
+## Layar web (rute `my` dan `li`, PR lanjutan)
+
+Ditambahkan 23 Nov 2026 setelah e2e B18 menemukan layar ini belum ada: karyawan masih mendarat di Beranda lama, dan opsi "Karyawan (saya)" tidak pernah muncul untuk HR, atasan, dan Admin Tenant karena store sesi baru menawarkan tampilan tambahan setelah beranda tampilannya terpasang (`homeReady`, B0 §5.3).
+
+### Rute (`apps/web/src/screens/b8-karyawan/routes.ts`)
+
+| Nama | Path | Meta | Alasan gerbang |
+| --- | --- | --- | --- |
+| `my` | `/my` | `views: ['karyawan']`, `flag: 'learner.home'`, judul "Hasil saya" | Sama dengan API `/api/my` (flag `learner.home`). Tanpa `submodule`: halaman tetap berguna walau DNA atau TNA mati (bagiannya `null` dan disembunyikan) |
+| `li` | `/li` | `views: ['karyawan']`, `flag: 'learner.home'`, `submodule: 'tna'`, judul "Rencana belajar" | `/api/my/learning-plan` menjawab 403 bila TNA tidak aktif; tanpa `entitlement: 'full_suite'` karena API-nya tidak memeriksa produk itu |
+
+Akibat yang memang dituju, tanpa mengubah kode shell (B0): `VIEW_HOME.karyawan = 'my'`, jadi begitu `learner.home` menyala `homeFor('karyawan')` mengarah ke `my`, Beranda lama dan butir peralihan DNA/TNA hilang dari menu karyawan, dan `session.views` mulai menawarkan "Karyawan (saya)" untuk akun multi-tampilan (K2). Selama flag mati, perilaku lama tetap (karyawan di Beranda lama, tanpa opsi tambahan). Nama `li` adalah kunci menu karyawan "Rencana belajar" di `shell/menu.ts`; grup HR "Learning Intervention" juga berkunci `li` tetapi grup bukan rute, jadi tidak bentrok.
+
+### Layar "Hasil saya" (`MyResultsView.vue`, mockup `KARYAWAN: BERANDA`)
+
+Memanggil `GET /api/my/results` sekali saat dibuka. Urutan:
+
+1. Judul "Hasil saya" dan baris posisi: "Posisi: <jabatan> · <jenjang>. Skor Anda dibandingkan target kompetensi peran." Tanpa jabatan: "Jabatan Anda belum diatur HR."
+2. Undangan wawancara (`invitations`, disembunyikan bila `null` atau kosong): satu catatan per undangan dengan teks mockup ("Hasilnya dipakai untuk menyusun rencana belajar, bukan untuk penilaian kinerja"), tenggat WIB, dan tombol ke `iv-session`: "Mulai wawancara" bila `canStart`, "Lanjutkan wawancara" bila `canContinue`. Undangan `expired` tanpa `canContinue` tampil tanpa tombol dengan teks "Undangan sudah lewat tenggat. Hubungi HR untuk undangan baru."
+3. Tabel kompetensi (`competencies`, disembunyikan bila `null`): kolom `Kode | Kompetensi | Skor vs target | Status`. `code` kosong ditulis "—". Skor "<score> / <required>", belum dinilai "— / <required>". Status lewat `UiStatus` (ikon + teks): `met` Menguasai (success), `partial` Sebagian (warning), `gap` Belum (critical), `not_assessed` Belum dinilai (neutral). `items` kosong: "Kompetensi untuk jabatan Anda belum diatur."
+4. Kartu "Rencana belajar saya" (`plan`, disembunyikan bila `null`): `total` 0 memakai teks mockup ("Modul akan muncul di sini setelah HR menyetujui hasil wawancara"); selain itu jumlah per status (Belum dimulai / Sedang berjalan / Selesai) dan tombol "Lihat rencana belajar" ke `li` (hanya bila `routeOpen('li')`). Tombol mockup "Lihat contoh rekomendasi" adalah tombol demo, jadi tidak ditiru.
+5. Kartu "Wawancara selesai" (`interviews`, disembunyikan bila `null` atau kosong): tanggal selesai WIB, versi persetujuan, tanda "Persetujuan ditarik" bila `consentWithdrawnAt`, tautan "Baca transkrip" ke `iv-session` (layar B6 sudah menampilkan transkrip hanya untuk yang diwawancarai, PO-6 A). `transcriptPath` API tidak dipakai langsung.
+6. Kartu "Data saya" (selalu tampil, hak subjek data tanpa flag):
+   - "Unduh data saya": `GET privacy.exportPath` lewat `raw` (butuh token), disimpan sebagai `elgos-data-saya-<tanggal>.json`.
+   - "Tarik persetujuan wawancara": konfirmasi di halaman (bukan dialog browser) yang menjelaskan akibatnya (wawancara berjalan dihentikan, hasil dibekukan, data tetap tersimpan sampai HR menghapus, tidak bisa dibatalkan), lalu `POST /employees/me/data-requests { type: 'withdraw_consent' }`, lalu muat ulang hasil.
+   - "Minta hapus data": isian alasan opsional (maks 1000 karakter), lalu `POST { type: 'delete_data', reason }`. `409 ADMIN_ACCOUNT` dan `409 REQUEST_EXISTS` ditampilkan apa adanya lewat `UiErrorSummary`.
+   - Daftar `privacy.openRequests`: jenis, tanggal, tenggat (hanya `delete_data`), dan tombol "Batalkan" untuk `delete_data` (`DELETE /employees/me/data-requests/:id`).
+
+### Layar "Rencana belajar" (`LearningPlanView.vue`, mockup `MODUL 2` tampilan karyawan)
+
+Memanggil `GET /api/my/learning-plan`. Teks pengantar mockup dengan nama tempat belajar dari `delivery.label` (K4, bukan "EliteMentor" tetap). Kartu per rencana, grid tiga kolom yang turun ke satu kolom di layar sempit:
+
+- Chip: `level` bila ada, `mode` bila ada (API masih `null`, `[⏳ DITERIMA]` sampai B13/B14), status: `new` "Belum dimulai", `in_progress` "Sedang berjalan", `completed` "Selesai" atau "Selesai · skor <courseScore>".
+- Judul, `description` bila ada, "Alasan: <reason>" bila `reason` berbeda dari judul, tempat belajar (`where.label`), `code` monospace bila ada.
+- Tombol: `launchUrl` ada → tautan keluar (`target="_blank" rel="noopener noreferrer"`) "Belajar dengan <label>", atau "Buka <label>" bila selesai. `needsModule` → tanpa tombol, chip "Modul sedang disiapkan". `launchUrl` kosong tanpa `needsModule` → teks "Tautan belum tersedia".
+- Kosong: "Belum ada rencana belajar. Modul akan muncul di sini setelah HR menyetujui hasil wawancara Anda."
+- Catatan bawah mockup hanya bila `delivery.target = 'elitementor'`; selain itu "Pelatihan dipelajari di <label>."
+
+### Fungsi murni (`apps/web/src/screens/b8-karyawan/view.ts`)
+
+Label dan pilihan tombol di atas (`statusTone`, `planStatusLabel`, `launchLabel`, `inviteAction`) dipisah dari komponen supaya bisa dibaca sekali dan dipakai kedua layar. Repo web belum punya runner unit test; fungsi ini diuji lewat e2e.
+
+### Test web
+
+`apps/web/e2e/b8-karyawan.spec.ts` (API di-mock lewat `support/`):
+
+1. Karyawan dengan `learner.home` menyala mendarat di "Hasil saya" dari `/`; menu berisi Hasil saya, Wawancara akar masalah, Rencana belajar, tanpa Beranda dan DNA/TNA peralihan; status kompetensi dan skor tampil; tombol "Mulai wawancara" membuka sesi.
+2. Flag mati → Beranda lama tetap, tanpa butir Hasil saya.
+3. HR dengan flag menyala melihat opsi "Karyawan (saya)", memilihnya, dan mendarat di "Hasil saya".
+4. Bagian `null` (DNA atau TNA mati) tersembunyi; TNA mati → butir Rencana belajar tidak ada dan `/li` kembali ke Hasil saya.
+5. Rencana belajar: label status dan skor, tautan keluar dengan `rel`, modul sedang disiapkan, tempat belajar LMS, kosong.
+6. Data saya: tarik persetujuan butuh konfirmasi lalu mengirim `withdraw_consent`; minta hapus mengirim alasan; batalkan mengirim `DELETE`; galat 409 tampil.
+
+`apps/web/e2e/alur/menu-peran.spec.ts` (milik thread integrasi B18): baris karyawan dari `test.fixme` menjadi `test`.
+
+Di luar PR ini: layar HR untuk antrean permintaan data (`GET/POST /employees/data-requests`) belum ada di mockup maupun brief; dicatat sebagai tindak lanjut di PR.
+
 ## Daftar perubahan file
 
 - [x] `docs/designs/b8-karyawan.md`, laporan `docs/designs/egm/b8/`
@@ -211,7 +268,9 @@ Transisi sesi yang ada dibuat bersyarat supaya penarikan tidak tertimpa:
 - [x] `apps/api/src/app.js` (pasang `/api/my`, teruskan `entitlements`)
 - [x] `apps/api/tests/unit/my-results.test.js`, `apps/api/tests/integration/my-karyawan.test.js`
 - [x] `apps/web/src/api/lna.ts` (flag dan tipe)
-- [ ] `apps/web/src/screens/b8-karyawan/` (rute `my`, `li`), helper login e2e, e2e
+- [ ] `apps/web/src/screens/b8-karyawan/` (`routes.ts`, `view.ts`, `MyResultsView.vue`, `LearningPlanView.vue`, `b8.css`)
+- [ ] `apps/web/e2e/b8-karyawan.spec.ts`
+- [ ] `apps/web/e2e/alur/menu-peran.spec.ts` (baris karyawan aktif)
 
 Catatan triase awal dipindahkan ke `docs/designs/egm/b8/triase-awal.md`; hasil egm-resolve di `docs/designs/egm/b8/goldfish_review_report.md`.
 
