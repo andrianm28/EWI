@@ -35,6 +35,8 @@ const FLAGS = Object.freeze({
   AUTH_SSO: 'auth.sso',
   // B2: satu akun memakai beberapa peran dan berpindah tampilan di bilah atas
   AUTH_MULTI_ROLE: 'auth.multi_role',
+  // B12 tahap 2: sesi berakhir setelah diam sessionIdleMinutes (konfigurasi platform). Default mati.
+  AUTH_SESSION_IDLE: 'auth.session_idle',
   // B12 (19 Nov): konsol Super Admin (tenant, modul tenant, konfigurasi platform); dibaca di tenant tempat Super Admin login
   PLATFORM_CONSOLE: 'platform.console',
   // B7 (19 Nov): tinjauan HR versi mockup Pak Eji: klasifikasi tiga tombol, solusi pelatihan, penugasan, ekspor gap,

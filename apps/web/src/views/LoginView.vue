@@ -23,7 +23,11 @@ const tenants = ref<{ slug: string; name: string }[]>([])
 // Bila API tidak bisa ditanya, anggap link email saja (tanpa sandi, tanpa SSO)
 const passwordEnabled = ref(false)
 const ssoEnabled = ref(false)
-const expired = computed(() => route.query.alasan === 'sesi-habis')
+const expired = computed(() => route.query.alasan === 'sesi-habis' || route.query.alasan === 'sesi-diam')
+// B12 tahap 2: tanpa angka menit, karena pengguna biasa tidak bisa membaca konfigurasi platform
+const expiredText = computed(() => (route.query.alasan === 'sesi-diam'
+  ? 'Sesi Anda berakhir karena tidak aktif. Silakan masuk lagi.'
+  : 'Sesi Anda sudah berakhir. Silakan masuk lagi.'))
 
 interface Methods { password?: boolean; emailLink?: boolean; sso?: boolean }
 // Kata sandi ditentukan lingkungan (tanpa organisasi); SSO ditentukan flag organisasi, jadi ditanya terpisah
@@ -133,7 +137,7 @@ async function sso() {
         <form novalidate @submit.prevent="submit">
           <h1 class="lg-h1">Masuk ke ELGOS</h1>
           <p class="lg-sub">Gunakan akun kerja yang didaftarkan oleh admin perusahaan Anda.</p>
-          <p v-if="expired" data-testid="session-expired"><UiNote tone="warning">Sesi Anda sudah berakhir. Silakan masuk lagi.</UiNote></p>
+          <p v-if="expired" data-testid="session-expired"><UiNote tone="warning">{{ expiredText }}</UiNote></p>
           <UiErrorSummary :errors="errors" />
 
           <UiField id="org" v-slot="{ attrs }" label="Organisasi" :error="fieldError('org')">

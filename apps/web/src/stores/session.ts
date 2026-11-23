@@ -67,8 +67,31 @@ export const useSessionStore = defineStore('session', () => {
   const user = ref<SessionUser | null>(null)
   const access = ref<Access | null>(null)
   // PK-16: dipanggil saat sesi berakhir (kedaluwarsa atau dicabut); dipasang di main.ts untuk pindah ke halaman login
-  let onExpired: (() => void) | null = null
+  let onExpired: ((reason?: string) => void) | null = null
   let timer: ReturnType<typeof setTimeout> | null = null
+
+  // B12 tahap 2: tanda aktivitas. Interaksi (ketik, klik/sentuh, gulir) menandai pengguna masih ada; setiap 5 menit
+  // satu heartbeat dikirim hanya bila ada interaksi sejak heartbeat terakhir. Sesi yang benar-benar diam tetap habis.
+  const HEARTBEAT_MS = 5 * 60 * 1000
+  let interacted = false
+  let heartbeat: ReturnType<typeof setInterval> | null = null
+  const markActive = () => { interacted = true }
+  function startHeartbeat() {
+    if (heartbeat || typeof window === 'undefined') return
+    for (const ev of ['keydown', 'pointerdown', 'scroll'] as const) window.addEventListener(ev, markActive, { passive: true, capture: true })
+    heartbeat = setInterval(() => {
+      if (!interacted || !token.value) return
+      interacted = false
+      api('/sessions/heartbeat', { method: 'POST' }, token.value).catch(() => { /* 401 ditangani client.ts */ })
+    }, HEARTBEAT_MS)
+  }
+  function stopHeartbeat() {
+    if (!heartbeat) return
+    clearInterval(heartbeat)
+    heartbeat = null
+    interacted = false
+    for (const ev of ['keydown', 'pointerdown', 'scroll'] as const) window.removeEventListener(ev, markActive, { capture: true })
+  }
 
   const isAuthenticated = computed(() => !!token.value)
 
@@ -90,6 +113,7 @@ export const useSessionStore = defineStore('session', () => {
     user.value = res.user
     try { sessionStorage.setItem(STORAGE_KEY, res.token) } catch { /* abaikan */ }
     scheduleExpiry()
+    startHeartbeat()
   }
 
   // B1: tanpa verifikasi dua langkah (keputusan 19 Nov); faktor yang lolos langsung menerbitkan sesi
@@ -170,6 +194,7 @@ export const useSessionStore = defineStore('session', () => {
   /** Hapus sesi di browser saja (tanpa memanggil API). */
   function clear() {
     if (timer) { clearTimeout(timer); timer = null }
+    stopHeartbeat()
     token.value = null
     user.value = null
     access.value = null
@@ -187,15 +212,15 @@ export const useSessionStore = defineStore('session', () => {
   }
 
   /** Sesi berakhir di luar kendali user (kedaluwarsa atau dicabut). */
-  function expire() {
+  function expire(reason?: string) {
     if (!token.value) return
     clear()
-    onExpired?.()
+    onExpired?.(reason)
   }
 
-  function setExpiredHandler(fn: (() => void) | null) { onExpired = fn }
+  function setExpiredHandler(fn: ((reason?: string) => void) | null) { onExpired = fn }
 
-  if (token.value) scheduleExpiry()
+  if (token.value) { scheduleExpiry(); startHeartbeat() }
 
   return { token, user, role, roles, views, activeView, setView, homeReady, access, isAuthenticated, canOpen, hasFlag, login, loginWithEmailLink, loadAccess, logout, clear, expire, setExpiredHandler }
 })

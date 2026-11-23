@@ -18,11 +18,11 @@ const app = createApp(App).use(createPinia()).use(router)
 
 // PK-16: sesi habis atau dicabut -> kembali ke halaman login dengan pesan, lalu ke halaman semula setelah masuk
 const session = useSessionStore()
-session.setExpiredHandler(() => {
+session.setExpiredHandler((reason) => {
   const current = router.currentRoute.value
   if (current.meta.public) return
-  router.push({ name: 'login', query: { alasan: 'sesi-habis', ke: current.fullPath } })
+  router.push({ name: 'login', query: { alasan: reason === 'SESSION_IDLE' ? 'sesi-diam' : 'sesi-habis', ke: current.fullPath } })
 })
-setUnauthorizedHandler(() => session.expire())
+setUnauthorizedHandler((code) => session.expire(code))
 
 app.mount('#app')

@@ -111,6 +111,16 @@ test('sesi dicabut di server: kembali ke login dengan pesan, lalu ke halaman sem
   await expect(page).toHaveURL(/\/tna$/)
 })
 
+test('B12 tahap 2: 401 SESSION_IDLE mengarahkan ke login dengan pesan sesi diam', async ({ page }) => {
+  await mockApi(page, { submodules: ['dna', 'tna'], flags: { 'module.dna': true, 'module.tna': true } })
+  await login(page)
+  await expect(page.getByTestId('card-tna')).toBeVisible()
+  await page.route(/\/api\/(dna|tna)\//, (route) => route.fulfill({ status: 401, json: { error: { code: 'SESSION_IDLE', message: 'Sesi berakhir karena tidak aktif. Silakan masuk lagi.' } } }))
+  await page.getByTestId('card-tna').getByRole('link', { name: 'Buka' }).click()
+  await expect(page).toHaveURL(/\/login\?alasan=sesi-diam&ke=(%2F|\/)tna$/)
+  await expect(page.getByTestId('session-expired')).toHaveText('Sesi Anda berakhir karena tidak aktif. Silakan masuk lagi.')
+})
+
 test('sesi kedaluwarsa (exp JWT lewat) saat halaman terbuka: diarahkan ke login', async ({ page }) => {
   const b64 = (o: object) => Buffer.from(JSON.stringify(o)).toString('base64url')
   const token = `${b64({ alg: 'HS256' })}.${b64({ exp: Math.floor(Date.now() / 1000) + 2 })}.sig`

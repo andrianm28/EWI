@@ -60,10 +60,18 @@ function createApp({ config, stores, ai, catalog, mailer, rateLimits, readiness,
   const entitlements = createEntitlementService(stores.entitlements);
   // PK-16: sesi yang bisa dicabut. Store sesi wajib di luar test; in-memory hanya untuk test tanpa DB.
   if (!stores.authSessions && config.nodeEnv !== 'test') throw new Error('stores.authSessions wajib (PK-16)');
+  // B12: log audit platform dan konfigurasi platform dibuat di sini karena jalur login dan sesi memakainya
+  const platformLog = stores.platformLog ? createPlatformLog({ store: stores.platformLog }) : null;
+  const platformSettings = stores.platformSettings && platformLog ? createPlatformSettings({ store: stores.platformSettings, platformLog }) : null;
   const sessions = createSessionService({
     store: stores.authSessions || memorySessionStore(), tokens,
     // B2: pindah tampilan hanya untuk tenant yang flag auth.multi_role-nya menyala
     multiRole: (tenantId) => flags.isEnabled(tenantId, FLAGS.AUTH_MULTI_ROLE),
+    // B12 tahap 2: sesi diam hanya untuk tenant yang flag auth.session_idle-nya menyala
+    idle: platformSettings ? {
+      minutes: () => platformSettings.get('sessionIdleMinutes'),
+      enabled: (tenantId) => flags.isEnabled(tenantId, FLAGS.AUTH_SESSION_IDLE),
+    } : null,
   });
   const authConfig = config.auth;
   const policy = createLoginPolicy(authConfig);
@@ -73,8 +81,6 @@ function createApp({ config, stores, ai, catalog, mailer, rateLimits, readiness,
   // R2-2: store audit wajib di luar test; in-memory hanya untuk test yang tidak menyediakannya.
   if (!stores.audit && config.nodeEnv !== 'test') throw new Error('stores.audit wajib (R2-2)');
   const audit = createAuditService(stores.audit || memoryAuditStore());
-  // B12: log audit platform dibuat di sini karena jalur login menaikkan hitungan percobaan tanpa tenant
-  const platformLog = stores.platformLog ? createPlatformLog({ store: stores.platformLog }) : null;
   const attempts = createAttemptLog(audit, { platformLog });
   const mail = mailer || createMailer(config.mail || {});
   const links = createEmailLinkService({ stores, mailer: mail, appBaseUrl: config.appBaseUrl });
@@ -129,7 +135,6 @@ function createApp({ config, stores, ai, catalog, mailer, rateLimits, readiness,
 
   // B12: konsol Super Admin, dipasang sebelum /api supaya auth tidak berjalan dua kali (ADR 0002)
   if (stores.platform) {
-    const platformSettings = createPlatformSettings({ store: stores.platformSettings, platformLog });
     const settingsView = createSettingsView({ platformSettings, store: stores.platform, encryption: config.encryption.provider, ai: config.ai });
     const platform = createPlatformService({
       db: stores.db, store: stores.platform, flags, entitlements, audit, platformLog, platformSettings, links,

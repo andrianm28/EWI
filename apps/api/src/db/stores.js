@@ -54,7 +54,7 @@ function authSessionStore(q) {
       if (!UUID_RE.test(String(id))) return null;
       const [row] = await q(
         `SELECT s.id, s.tenant_id AS "tenantId", s.user_id AS "userId", s.active_role AS "activeRole",
-                s.role_version AS "roleVersion", s.expires_at AS "expiresAt", u.role AS "primaryRole",
+                s.role_version AS "roleVersion", s.expires_at AS "expiresAt", s.last_seen_at AS "lastSeenAt", u.role AS "primaryRole",
                 ARRAY(SELECT ur.role FROM user_roles ur WHERE ur.user_id = u.id AND ur.tenant_id = u.tenant_id ORDER BY ur.role) AS roles
            FROM auth_sessions s JOIN users u ON u.id = s.user_id AND u.tenant_id = s.tenant_id
            JOIN tenants t ON t.id = s.tenant_id
@@ -63,6 +63,12 @@ function authSessionStore(q) {
         { id },
       );
       return row || null;
+    },
+    /** B12 tahap 2: perbarui jam diam, paling sering sekali per 60 detik per sesi. */
+    async touch(id) {
+      if (!UUID_RE.test(String(id))) return;
+      await q(`UPDATE auth_sessions SET last_seen_at = now() WHERE id = :id AND last_seen_at < now() - interval '60 seconds'`,
+        { id }, QueryTypes.UPDATE);
     },
     /** B2: ganti peran aktif; versi naik agar token lama tidak berlaku. Gagal bila sesi berubah di tempat lain. */
     async setActiveRole(id, role, expectedVersion) {

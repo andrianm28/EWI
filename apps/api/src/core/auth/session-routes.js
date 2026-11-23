@@ -8,6 +8,10 @@ const wrap = (fn) => (req, res, next) => Promise.resolve(fn(req, res, next)).cat
 function sessionRoutes({ sessions, audit }) {
   const r = express.Router();
 
+  // B12 tahap 2: tanda aktivitas dari web (paling sering sekali per 5 menit saat ada interaksi). Jam diam sudah
+  // disentuh oleh requireAuth; rute ini hanya memberi request yang berarti "pengguna masih di sini".
+  r.post('/heartbeat', (_req, res) => res.status(204).end());
+
   r.get('/mine', wrap(async (req, res) => {
     const rows = await sessions.listActiveForUser(req.tenantId, req.user.id);
     res.json({ data: rows.map((s) => ({ ...s, current: s.id === req.user.sid })) });

@@ -19,7 +19,7 @@ const MODULES = [
 ]
 const SETTINGS = {
   editable: { sessionIdleMinutes: 30, aiHrAgreementTarget: 85 },
-  display: { encryption: 'local', aiModel: { provider: 'bedrock', model: 'model-uji' }, ssoTenants: 0, idleEnforcedTenants: 0, idleEnforcement: 'not_yet' },
+  display: { encryption: 'local', aiModel: { provider: 'bedrock', model: 'model-uji' }, ssoTenants: 0, idleEnforcedTenants: 1, idleEnforcement: 'per_tenant' },
   encryptionProvider: 'local',
 }
 
@@ -133,7 +133,7 @@ test('4. Konfigurasi platform: menurunkan batas sesi meminta konfirmasi, galat r
   await nav(page).getByRole('link', { name: 'Konfigurasi platform' }).click()
   await expect(page).toHaveURL(/\/platform$/)
   await expect(page.getByText('Tidak dipakai (login lewat link email, PD-10)')).toBeVisible()
-  await expect(page.getByText('Belum ditegakkan (sesi berlaku 8 jam)')).toBeVisible()
+  await expect(page.getByText('30 menit tanpa aktivitas, di 1 tenant')).toBeVisible()
   const idle = page.getByLabel('Batas waktu sesi (menit)')
   await idle.fill('3')
   await page.getByRole('button', { name: 'Simpan konfigurasi' }).click()

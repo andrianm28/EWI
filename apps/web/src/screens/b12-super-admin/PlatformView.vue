@@ -143,7 +143,7 @@ async function downloadCsv() {
         <h2 class="el-h3">Ubah konfigurasi</h2>
         <form novalidate @submit.prevent="save()">
           <div class="el-grid el-grid-2">
-            <UiField id="pf-sesi" v-slot="{ attrs }" label="Batas waktu sesi (menit)" hint="5–480 menit tanpa aktivitas. Ditegakkan setelah tahap sesi diam aktif.">
+            <UiField id="pf-sesi" v-slot="{ attrs }" label="Batas waktu sesi (menit)" hint="5–480 menit tanpa aktivitas. Ditegakkan di tenant yang flag sesi diamnya menyala.">
               <input v-bind="attrs" v-model="form.sessionIdleMinutes" class="el-input" type="text" inputmode="numeric" autocomplete="off" />
             </UiField>
             <UiField id="pf-target" v-slot="{ attrs }" label="Target kesepakatan AI–HR (%)" hint="50–100. Dipakai kartu kesepakatan di bawah.">

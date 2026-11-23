@@ -17,8 +17,12 @@ const { switchableRoles } = require('../rbac/roles');
  *   listActiveForUser(tenantId, userId) -> [...]
  * }
  * multiRole(tenantId) -> bool: flag auth.multi_role (B2). Mati = akun hanya memakai peran utamanya.
+ * idle (B12 tahap 2): { minutes() -> number, enabled(tenantId) -> bool }. Sesi yang diam lebih lama dari batas
+ *   dicabut (alasan 'idle') bila flag auth.session_idle tenant menyala. store.touch(id) memperbarui jam diam.
  */
-function createSessionService({ store, tokens, multiRole = async () => false }) {
+const TOUCH_MS = 60 * 1000;
+
+function createSessionService({ store, tokens, multiRole = async () => false, idle = null, now = () => new Date() }) {
   /** Peran yang boleh dipakai akun ini sekarang. */
   async function allowedRoles(s) {
     const primary = s.primaryRole || s.activeRole;
@@ -28,11 +32,21 @@ function createSessionService({ store, tokens, multiRole = async () => false }) 
   /**
    * Periksa token terhadap sesi. Return { ok:true, roles, primaryRole } atau { ok:false, code? }.
    * B2: klaim role harus sama dengan peran aktif sesi, versi peran harus sama, dan peran itu masih dimiliki akun.
+   * B12: activity = true hanya dari middleware (request API sungguhan): memeriksa sesi diam dan menyentuh jam diam.
    */
-  async function check(claims) {
+  async function check(claims, { activity = false } = {}) {
     if (!claims || !claims.sid) return { ok: false };
     const s = await store.findActive(claims.sid);
     if (!s || String(s.userId) !== String(claims.id) || String(s.tenantId) !== String(claims.tenantId)) return { ok: false };
+    if (activity && idle && s.lastSeenAt) {
+      const quiet = now().getTime() - new Date(s.lastSeenAt).getTime();
+      // flag hanya dibaca saat batas terlewati, supaya request biasa tidak menambah query
+      if (quiet > (await idle.minutes()) * 60 * 1000 && (await idle.enabled(s.tenantId))) {
+        await store.revoke(s.id, { reason: 'idle' });
+        return { ok: false, code: 'SESSION_IDLE' };
+      }
+      if (quiet >= TOUCH_MS) await store.touch(s.id).catch(() => {});
+    }
     if ((s.roleVersion || 0) !== (claims.rv || 0)) return { ok: false, code: 'ROLE_VIEW_CHANGED' };
     const active = s.activeRole || s.primaryRole;
     const roles = await allowedRoles({ ...s, activeRole: active });
@@ -81,7 +95,11 @@ function memorySessionStore({ now = () => new Date(), accountOf } = {}) {
   return {
     rows,
     inactiveUsers,
-    async create(s) { rows.set(s.id, { ...s, createdAt: now(), revokedAt: null, roleVersion: 0, firstRole: s.activeRole }); },
+    async create(s) { rows.set(s.id, { ...s, createdAt: now(), lastSeenAt: now(), revokedAt: null, roleVersion: 0, firstRole: s.activeRole }); },
+    async touch(id) {
+      const s = rows.get(id);
+      if (s && now() - s.lastSeenAt >= TOUCH_MS) s.lastSeenAt = now();
+    },
     async findActive(id) {
       const s = rows.get(id);
       if (!s || !live(s)) return null;

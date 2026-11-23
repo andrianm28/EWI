@@ -7,8 +7,9 @@ export class ApiError extends Error {
 }
 
 // PK-16: dipanggil saat API menolak token sesi (401), mis. sesi dicabut atau kedaluwarsa.
-let onUnauthorized: (() => void) | null = null
-export function setUnauthorizedHandler(fn: (() => void) | null) {
+// B12 tahap 2: kode galat ikut diteruskan (mis. SESSION_IDLE) supaya halaman login memberi pesan yang tepat.
+let onUnauthorized: ((code: string) => void) | null = null
+export function setUnauthorizedHandler(fn: ((code: string) => void) | null) {
   onUnauthorized = fn
 }
 
@@ -20,7 +21,7 @@ export async function api<T>(path: string, init: RequestInit = {}, token?: strin
   if (res.status === 204) return undefined as T
   const body = await res.json().catch(() => ({}))
   if (!res.ok) {
-    if (res.status === 401 && token && onUnauthorized) onUnauthorized()
+    if (res.status === 401 && token && onUnauthorized) onUnauthorized(body?.error?.code ?? 'UNAUTHORIZED')
     throw new ApiError(res.status, body?.error?.code ?? 'ERROR', body?.error?.message ?? 'Terjadi kesalahan')
   }
   return body as T

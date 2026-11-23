@@ -286,7 +286,7 @@ run('B12 Super Admin (Postgres)', () => {
       expect(res.status).toBe(200);
       expect(res.body.data).toMatchObject({
         editable: { sessionIdleMinutes: expect.any(Number), aiHrAgreementTarget: expect.any(Number) },
-        display: { encryption: 'local', aiModel: { provider: 'stub' }, ssoTenants: expect.any(Number), idleEnforcement: 'not_yet' },
+        display: { encryption: 'local', aiModel: { provider: 'stub' }, ssoTenants: expect.any(Number), idleEnforcedTenants: expect.any(Number), idleEnforcement: 'per_tenant' },
         encryptionProvider: 'local',
       });
       const original = res.body.data.editable;
