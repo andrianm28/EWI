@@ -36,7 +36,7 @@ api ──HTTPS──> AWS ap-southeast-1: KMS (GenerateDataKey/Decrypt, kunci p
 | push ke `main` | CI → image `ghcr.io/andrianm28/ewi-{api,web}:<sha>` → deploy **staging** |
 | Actions > Deploy > Run workflow (dari `main`) | `prod` + `image_tag` SHA 40 karakter yang ada di `main` → environment `prod` berpenyetuju |
 | Actions > Terraform > Run workflow (dari `main`) | apply lewat environment `infra` berpenyetuju |
-| dev | per worktree lewat `dev.sh` di etavm2 (user `elgos-dev`); `deploy-dev.yml` (PR #5) untuk dev-elgos di etavm1 sampai dipindah |
+| dev | per worktree lewat `dev.sh` di etavm2 (user `elgos-dev`); `deploy-dev.yml` hanya CI + image GHCR; job deploy etavm1 dihapus 23 Nov (aturan: jangan pernah etavm1) |
 
 Alur lengkap, pengaman, dan aturan migrasi: [alur-rilis.md](alur-rilis.md).
 

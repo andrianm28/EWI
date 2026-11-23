@@ -1,2 +1,2 @@
 self-hosted-runner:
-  labels: [etavm1, ewi-dev]
+  labels: [etavm2, elgos]
