@@ -5,6 +5,9 @@ const { CCA_STANCES } = require('../../ai/prompts');
 
 const MIN_RESPONDENTS = 5;
 const HOT_GAP = 20;
+// keputusan user 23 Nov (D1): angka karyawan hanya bergeser setiap 5 penyelesaian baru dari orang berbeda, supaya
+// selisih dua tampilan tidak menunjuk satu orang
+const EMPLOYEE_BATCH = 5;
 
 function respondentBand(n) {
   if (n < MIN_RESPONDENTS) return `<${MIN_RESPONDENTS}`;
@@ -24,6 +27,18 @@ function latestResponses(responses) {
   return [...latest.values()];
 }
 
+// jawaban karyawan dihitung hanya setelah masuk batch (settled, ditandai saat konfirmasi oleh batchToSettle)
+const counted = (r) => r.tier !== 'employee' || r.settled;
+
+/**
+ * Penyelesaian karyawan yang menunggu batch: [{ id, assigneeId }]. Batch dibentuk bila yang menunggu berasal dari
+ * paling sedikit `batchSize` orang berbeda (putaran ulang satu orang tidak mengisi batch sendirian); semua ikut.
+ */
+function batchToSettle(pending, batchSize) {
+  const people = new Set(pending.map((x) => x.assigneeId));
+  return people.size >= batchSize ? pending.map((x) => x.id) : [];
+}
+
 function score(responses, tier, requirementId) {
   const [full, partial, none] = CCA_STANCES[tier];
   let n = 0; let points = 0;
@@ -40,10 +55,11 @@ function score(responses, tier, requirementId) {
 
 /**
  * requirements: [{ id }] (tervalidasi, sumber aktif).
- * responses: [{ assigneeId, tier, completedAt, stances: { [requirementId]: stance } }] (penugasan completed).
+ * responses: [{ assigneeId, tier, completedAt, settled, stances: { [requirementId]: stance } }] (penugasan completed).
+ * Karyawan hanya dihitung bila `settled` (D-7, keputusan user 23 Nov).
  */
 function synthesize(requirements, responses) {
-  const latest = latestResponses(responses);
+  const latest = latestResponses(responses.filter(counted));
   return requirements.map((req) => {
     const leader = score(latest, 'leader', req.id);
     const employee = score(latest, 'employee', req.id);
@@ -61,4 +77,4 @@ function synthesize(requirements, responses) {
   });
 }
 
-module.exports = { MIN_RESPONDENTS, HOT_GAP, respondentBand, synthesize };
+module.exports = { MIN_RESPONDENTS, HOT_GAP, EMPLOYEE_BATCH, respondentBand, synthesize, batchToSettle };
