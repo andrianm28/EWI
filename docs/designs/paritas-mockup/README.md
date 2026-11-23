@@ -57,7 +57,7 @@ Layar yang belum ada (Asisten, Tinjauan per gap, wawancara ulang LIM) dikerjakan
 
 ## Status 23 Nov 2026 (akhir P8)
 
-Semua tahap P1–P7 plus layar B17 (Asisten) dan B7 (Tinjauan per gap) ada di PR #39, masing-masing dengan review egm independen dan triase. P8 ([p8-keputusan-r1-r22.md](p8-keputusan-r1-r22.md), branch `paritas-p8`) menerapkan keputusan R1–R22. Hitungan baris gap (termasuk baris "bukan gap"); "Diputuskan" = gap ditutup oleh keputusan produk (perilaku aplikasi dipertahankan), tanpa ubah tampilan:
+Semua tahap P1–P7 plus layar B17 (Asisten) dan B7 (Tinjauan per gap) ada di PR #39, masing-masing dengan review egm independen dan triase. P8 ([p8-keputusan-r1-r22.md](p8-keputusan-r1-r22.md), branch `paritas-p8`) menerapkan keputusan R1–R22, lalu triase dua review independen, dua keputusan user 23 Nov (Wawancara untuk Anda di `/tna`, Asisten tanpa tampilan Super Admin), dan temuan audit PR 39 (39-1, 39-2, 39-3, 39-5), digabung dengan `claude/project-thread-scbrmb` `10c91a6` ([egm/p8-code-review.md](egm/p8-code-review.md)). Hitungan baris tidak berubah oleh triase (catatan ditambahkan di baris terkait). Hitungan baris gap (termasuk baris "bukan gap"); "Diputuskan" = gap ditutup oleh keputusan produk (perilaku aplikasi dipertahankan), tanpa ubah tampilan:
 
 | File | Baris | Ditutup | Diputuskan | Sebagian | Terbuka |
 | --- | --- | --- | --- | --- | --- |
