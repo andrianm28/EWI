@@ -84,7 +84,7 @@ const okrCols: UiColumn[] = [
   { key: 'status', label: 'Status wawancara' },
   { key: 'classification', label: 'Klasifikasi' },
 ]
-const detailLink = (row: Record<string, unknown>) => ({ name: 'tna-gap', query: { ...gapRefOf(row as CompetencyGap | OkrGap), tab: tab.value } })
+const detailLink = (row: CompetencyGap | OkrGap) => ({ name: 'tna-gap', query: { ...gapRefOf(row), tab: tab.value } })
 const ivTo = computed(() => (routeOpen('iv', session.activeView, session) ? { name: 'iv' } : null))
 </script>
 

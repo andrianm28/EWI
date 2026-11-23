@@ -5,21 +5,19 @@ import type { RouteLocationRaw } from 'vue-router'
 import UiButton from './UiButton.vue'
 import UiChip from './UiChip.vue'
 
-withDefaults(defineProps<{
+defineProps<{
   title: string
   action?: string
   to?: RouteLocationRaw | null
-  chip?: string
-  headingLevel?: 2 | 3
-}>(), { chip: 'Pilot', headingLevel: 2 })
+}>()
 </script>
 
 <template>
   <div class="el-card el-card--tonal el-agent">
     <div class="el-agent__text">
       <div class="el-agent__head">
-        <component :is="`h${headingLevel}`" class="el-agent__title">Agen AI · {{ title }}</component>
-        <UiChip tone="review">{{ chip }}</UiChip>
+        <h2 class="el-agent__title">Agen AI · {{ title }}</h2>
+        <UiChip tone="review">Pilot</UiChip>
       </div>
       <div class="el-muted el-agent__body"><slot /></div>
     </div>

@@ -80,7 +80,7 @@ Semua komponen: Vue 3 `<script setup lang="ts">`, tanpa pustaka komponen pihak k
 | `UiAuditLine` | Carbon metadata | slot atau `items: string[]` digabung " · " | monospasi 11px |
 | `UiKpiCard` | `.kpi` | `label`, `value`, `note?` | label huruf besar kecil, nilai 32px |
 | `UiCard` | `.card` | `tonal?`, `as?` | |
-| `UiAgentCard` | `.card.t` "Agen AI · …" | `title` (tanpa awalan), `action?`, `to?: RouteLocationRaw \| null`, `chip?` (default "Pilot"), `headingLevel?` (default 2); slot = teks | judul berupa heading; tombol tonal kecil hanya dirender bila `action` dan `to` ada, pemanggil memeriksa `routeOpen()`/flag |
+| `UiAgentCard` | `.card.t` "Agen AI · …" | `title` (tanpa awalan), `action?`, `to?: RouteLocationRaw \| null`; slot = teks | judul berupa `h2` 14px/500, chip "Pilot" (`UiChip tone="review"`); tombol tonal kecil hanya dirender bila `action` dan `to` ada, pemanggil memeriksa `routeOpen()`/flag |
 | `UiBreadcrumb` | `.bc` | `items: {label, to?}[]` | `<nav aria-label="Lokasi">` + `<ol>`; pemisah "›" `aria-hidden`; butir terakhir `aria-current="page"`; induk dengan `to` menjadi tautan bergaris bawah warna primary. Teks butir mengikuti `.bc` mockup |
 | `UiNote` | `.note` | `tone` = `info`\|`warning`\|`critical`\|`success` | `role="note"`; untuk galat pakai `UiErrorSummary` |
 | `UiProgressBar` | `.bar` | `value` 0–100, `tone?`, `label` | `role="progressbar"` + `aria-valuenow` |

@@ -34,10 +34,10 @@ Acuan domain: B0 (`docs/designs/b0-fondasi-ui.md` bagian 4 dan 5.3), B4, B5 bagi
 </UiAgentCard>
 ```
 
-- Props: `title` (tanpa awalan; komponen menulis "Agen AI · {title}"), `action?` (label tombol), `to?: RouteLocationRaw | null`, `chip?` (default "Pilot"), `headingLevel?` (default 2).
+- Props: `title` (tanpa awalan; komponen menulis "Agen AI · {title}"), `action?` (label tombol), `to?: RouteLocationRaw | null`. Chip selalu "Pilot" dan judul selalu `h2` (semua kartu mockup sama; prop tambahan dihapus saat review, Speculative Generality).
 - Tampilan = `.card.t` mockup: `UiCard tonal`, baris flex `justify-content: space-between`, kiri judul tebal + `UiChip tone="review"` + teks muted (slot default, `margin-top: 4px`), kanan `UiButton variant="tonal" size="sm"`. Margin bawah 16px. Di bawah 600px tombol turun ke bawah teks (`flex-wrap`).
 - Tombol hanya dirender bila `action` dan `to` ada. Pemanggil menentukan `to` dengan `routeOpen()` atau flag, sehingga tidak ada tombol ke layar yang tertutup.
-- Judul memakai elemen heading (`h2` bawaan) bergaya 14px/500 supaya pembaca layar bisa melompat ke kartu; `data-testid` diteruskan lewat atribut.
+- Judul memakai elemen heading `h2` bergaya 14px/500 supaya pembaca layar bisa melompat ke kartu; `data-testid` diteruskan lewat atribut.
 
 ### `UiBreadcrumb`
 
@@ -68,7 +68,7 @@ Acuan domain: B0 (`docs/designs/b0-fondasi-ui.md` bagian 4 dan 5.3), B4, B5 bagi
 ## Test (e2e, API di-mock)
 
 - [x] `e2e/ui-kit.spec.ts`: `UiAgentCard` (judul "Agen AI · …", chip Pilot, tombol tonal bila `to`; tanpa `to` tidak ada tombol); `UiBreadcrumb` (`navigation "Lokasi"`, induk tautan, butir terakhir `aria-current`, 12px); tabel klik baris (klik sel non-tautan berpindah, Tab memfokus tautan lalu Enter berpindah, sort tetap). Snapshot `ui-kit-*` diperbarui.
-- [x] `e2e/paritas.spec.ts` (P3): kartu Agen AI di `/cc` (VM dan Values), `/dna`, `/tna`, `/ina` dengan judul dan copy mockup; tombol CC muncul hanya dengan flag `cca.interview`, tombol TNA ke `/iv`; DNA tanpa tombol. Breadcrumb di LD dan CP. Setiap breadcrumb di layar tersentuh memakai `nav "Lokasi"` 12px.
+- [x] Per layar, di spec modulnya (mock API sudah ada di sana, bukan `paritas.spec.ts`): kartu Agen AI di `core-competencies.spec.ts` (VM, Values, tanpa flag `cca.interview` tanpa tombol), `b4-dna.spec.ts` (tanpa tombol), `tna-gap.spec.ts` (tombol ke `/iv`), `improvement-needs.spec.ts`; breadcrumb `nav "Lokasi"` 12px di `ld.spec.ts`, `b16-cp.spec.ts`, `li.spec.ts` (Library, Program, Permintaan), CC, DNA, TNA, Detail gap, INA.
 - [x] `e2e/tna-gap.spec.ts`: kolom Kode tampil; klik sel Target pada baris membuka Detail gap; tautan nama tetap bisa difokus.
 - [x] `e2e/dashboard.spec.ts`: baris Pareto kompetensi adalah tautan ke `/tna/gap?kind=competency&competencyId=…` bila flag papan menyala; tanpa flag tidak ada tautan.
 - [x] `e2e/core-competencies.spec.ts`: klik baris persyaratan membuka panel ubah untuk baris itu.
