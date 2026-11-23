@@ -277,8 +277,10 @@ function langkah(app, masuk) {
       async cabutAkses(hr, atasan) {
         return (await kirim('delete', `/api/ina/access/${atasan.id}`, hr).expect(200)).body.data;
       },
+      /** Respons mentah: daftar atasan beserta status izinnya. */
+      daftarAkses: (hr) => kirim('get', '/api/ina/access', hr),
     },
-    /** B11 Admin Tenant. */
+    /** B11 Admin Tenant. Respons mentah, supaya alur bisa memeriksa penolakan per peran (403 untuk bukan admin). */
     adminTenant: {
       ubahPengguna: (admin, pengguna, perubahan) => kirim('patch', `/api/tenant-admin/users/${pengguna.id}`, admin, perubahan),
     },

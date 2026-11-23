@@ -267,7 +267,7 @@ Rute di `routes.ts`: `ina` di `/ina` (meta `submodule: 'ina'`, `flag: 'ina.dashb
 - [x] `apps/api/tests/unit/ina-domain.test.js`
 - [x] `apps/api/tests/integration/ina.test.js`
 - [x] `apps/web/src/screens/b9-ina/*` (layar, `ShellExtra.vue`, `routes.ts`), `apps/web/src/api/ina.ts`, `apps/web/e2e/improvement-needs.spec.ts`; `screens/legacy-ina` dihapus
-- [x] Baris alur "Akses atasan ke perbaikan" (B18 tabel 3.3): `apps/api/tests/integration/alur-ina.test.js` dengan langkah `ina.*` dan `adminTenant.*` di `apps/api/tests/alur/driver.js`
+- [x] Baris alur "Akses atasan ke perbaikan" (B18 tabel 3.3): `apps/api/tests/integration/alur-ina.test.js` dengan langkah `ina.*` dan `adminTenant.*` di `apps/api/tests/alur/driver.js`. Alur mencakup daftar tindakan (dirinya, bawahan langsung, bukan tim lain, bukan tindakan tanpa pemilik); temuan non-pelatihan TNA dan audit izin tetap diuji di `tests/integration/ina.test.js`
 
 ## 10. Asumsi dan risiko yang tersisa
 
