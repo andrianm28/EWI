@@ -1,28 +1,14 @@
 name: Deploy dev
 
-# Lingkungan dev publik https://dev-elgos.eliteacademy.id (dev-ewi redirect ke sini) di etavm1 (di luar AWS, keputusan user 11 Nov 2026).
-#
-# Alur: PR fitur -> merge ke branch `dev` -> workflow ini:
-#   1. gate CI penuh (ci.yml: lint, migrasi naik-turun-naik, jest, build, e2e, terraform validate)
-#   2. build image api + web, push ke GHCR (tag = SHA commit)
-#   3. job di runner self-hosted etavm1 (tanpa port masuk; runner menarik job dari GitHub):
-#      backup DB -> pull image -> migrasi -> ganti container -> health check -> seed (bila perlu)
-#      -> sinkron mockup. Gagal di tahap mana pun = rollback ke image sebelumnya (+ restore DB bila
-#      migrasi sudah jalan).
-# `main` tetap untuk staging dan prod di etavm2 (deploy.yml). Detail dan setup VM: deploy/dev-public/README.md.
+# DIUBAH 23 Nov 2026 (audit PR): etavm1 tidak boleh dipakai lagi (aturan project: dev, staging, prod hanya
+# di VPS etavm2). Job deploy ke runner self-hosted etavm1 dihapus. Push ke `dev` kini hanya menjalankan
+# gate CI penuh dan membangun image api + web ke GHCR (tag = SHA commit dan `dev`). Deploy dev ke etavm2
+# ditambahkan oleh thread infra bila dibutuhkan; sampai itu ada, dev berjalan per worktree di etavm2
+# (deploy/dev-worktree, docs/infra/vps-etavm2.md). Spek: docs/designs/audit-23nov-etavm1.md.
 on:
   push:
     branches: [dev]
   workflow_dispatch:
-    inputs:
-      seed:
-        description: Jalankan seed data demo (mereset data demo ke kondisi awal)
-        type: boolean
-        default: false
-      rollback_to:
-        description: SHA image di GHCR untuk rollback manual (kosong = deploy commit terpilih)
-        required: false
-        default: ''
 
 concurrency:
   group: deploy-dev
@@ -39,7 +25,6 @@ env:
 
 jobs:
   ci:
-    if: inputs.rollback_to == ''
     uses: ./.github/workflows/ci.yml
 
   images:
@@ -71,32 +56,3 @@ jobs:
           tags: ${{ env.IMAGE_PREFIX }}-web:${{ github.sha }},${{ env.IMAGE_PREFIX }}-web:dev
           cache-from: type=gha,scope=web
           cache-to: type=gha,scope=web,mode=max
-
-  deploy:
-    needs: [images]
-    # always(): tetap jalan saat rollback manual (ci + images di-skip), tapi tidak bila gagal
-    if: always() && (needs.images.result == 'success' || (inputs.rollback_to != '' && needs.images.result == 'skipped'))
-    runs-on: [self-hosted, etavm1, ewi-dev]
-    timeout-minutes: 20
-    environment:
-      name: dev
-      url: ${{ vars.DEV_PUBLIC_URL || 'https://dev-elgos.eliteacademy.id' }}
-    permissions:
-      contents: read
-      packages: read
-    env:
-      TAG: ${{ inputs.rollback_to || github.sha }}
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          ref: ${{ inputs.rollback_to || github.sha }}
-      - name: Login GHCR
-        run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login "$REGISTRY" -u "${{ github.actor }}" --password-stdin
-      - name: Deploy ke etavm1
-        env:
-          EWI_DEV_DIR: /srv/ewi-dev
-          SEED: ${{ inputs.seed && 'force' || 'auto' }}
-        run: deploy/dev-public/deploy.sh "$TAG"
-      - name: Logout GHCR
-        if: always()
-        run: docker logout "$REGISTRY"

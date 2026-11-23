@@ -302,11 +302,15 @@ run('Improvement Needs B9 (Postgres)', () => {
     expect((await post(`/verifications/${vid}/consent`, { consentVersion: 'v1.0' }, 'lain')).status).toBe(404);
     expect((await post(`/verifications/${vid}/turns`, { text: 'halo' }, 'staf')).body.error.code).toBe('INVALID_STATE'); // belum setuju
     expect((await post(`/verifications/${vid}/consent`, {}, 'staf')).status).toBe(400);
-    const consent = await post(`/verifications/${vid}/consent`, { consentVersion: 'v1.0' }, 'staf');
+    // Audit 23 Nov: versi persetujuan dicek ke registry (sama seperti TNA/CCA/LIM)
+    const stale = await post(`/verifications/${vid}/consent`, { consentVersion: 'v1.0' }, 'staf');
+    expect(stale.status).toBe(400);
+    expect(stale.body.error.code).toBe('CONSENT_VERSION_INVALID');
+    const consent = await post(`/verifications/${vid}/consent`, { consentVersion: 'ina-verifikasi-v1.0' }, 'staf');
     expect(consent.status).toBe(200);
     expect(consent.body.data).toMatchObject({ status: 'in_progress', done: false });
     expect(consent.body.data.question).toContain('Perbarui SOP eskalasi');
-    expect((await post(`/verifications/${vid}/consent`, { consentVersion: 'v1.0' }, 'staf')).body.error.code).toBe('INVALID_STATE');
+    expect((await post(`/verifications/${vid}/consent`, { consentVersion: 'ina-verifikasi-v1.0' }, 'staf')).body.error.code).toBe('INVALID_STATE');
     expect((await post(`/verifications/${vid}/complete`, {}, 'staf')).body.error.code).toBe('INVALID_STATE'); // belum ada jawaban
     expect((await post(`/verifications/${vid}/turns`, { text: '' }, 'staf')).status).toBe(400);
 
@@ -351,7 +355,7 @@ run('Improvement Needs B9 (Postgres)', () => {
     const raw = await sql('SELECT t.text, v.summary, v.consent_version FROM ina_verification_turns t JOIN ina_verifications v ON v.id = t.verification_id WHERE v.id = :vid', { vid });
     expect(raw).toHaveLength(6);
     expect(JSON.stringify(raw)).not.toMatch(/JAWABAN-RAHASIA|terhambat|Terkendala/);
-    expect(raw[0].consent_version).toBe('v1.0');
+    expect(raw[0].consent_version).toBe('ina-verifikasi-v1.0');
     const log = await audits('ina.verification');
     expect(log.map((x) => x.meta.event || x.action)).toEqual(['create', 'consent', 'completed']);
     expect(JSON.stringify(log)).not.toContain('JAWABAN-RAHASIA');
@@ -361,14 +365,14 @@ run('Improvement Needs B9 (Postgres)', () => {
   it('verifikasi: selesai lebih awal, tarik diri menghapus percakapan, batal oleh HR, dan batal otomatis', async () => {
     // selesai lebih awal setelah satu jawaban
     const v2 = (await post(`/actions/${id.aSop}/verifications`, {})).body.data.id;
-    await post(`/verifications/${v2}/consent`, { consentVersion: 'v1.0' }, 'staf');
+    await post(`/verifications/${v2}/consent`, { consentVersion: 'ina-verifikasi-v1.0' }, 'staf');
     await post(`/verifications/${v2}/turns`, { text: 'Sudah selesai kemarin' }, 'staf');
     const done = await post(`/verifications/${v2}/complete`, {}, 'staf');
     expect(done.body.data).toMatchObject({ status: 'completed', reportedStatus: 'done', done: true });
 
     // tarik diri: percakapan dihapus
     const v3 = (await post(`/actions/${id.aSop}/verifications`, {})).body.data.id;
-    await post(`/verifications/${v3}/consent`, { consentVersion: 'v1.0' }, 'staf');
+    await post(`/verifications/${v3}/consent`, { consentVersion: 'ina-verifikasi-v1.0' }, 'staf');
     await post(`/verifications/${v3}/turns`, { text: 'jawaban yang ditarik' }, 'staf');
     expect((await post(`/verifications/${v3}/withdraw`, {}, 'hr')).status).toBe(404);
     expect((await post(`/verifications/${v3}/withdraw`, {}, 'staf')).body.data.status).toBe('withdrawn');
@@ -384,7 +388,7 @@ run('Improvement Needs B9 (Postgres)', () => {
     const v4 = (await post(`/actions/${id.aSop}/verifications`, {})).body.data.id;
     expect((await post(`/verifications/${v4}/cancel`, {}, 'staf')).status).toBe(403);
     expect((await post(`/verifications/${v4}/cancel`, {})).body.data.status).toBe('cancelled');
-    expect((await post(`/verifications/${v4}/consent`, { consentVersion: 'v1.0' }, 'staf')).body.error.code).toBe('INVALID_STATE');
+    expect((await post(`/verifications/${v4}/consent`, { consentVersion: 'ina-verifikasi-v1.0' }, 'staf')).body.error.code).toBe('INVALID_STATE');
     expect((await get('/verifications/mine', 'staf')).body.data.map((v) => v.id)).not.toContain(v4);
 
     // ganti pemilik atau menutup tindakan membatalkan verifikasi terbuka
