@@ -5,7 +5,7 @@ import { useRouter } from 'vue-router'
 import AppShell from '@/components/AppShell.vue'
 import './li.css'
 import { ApiError } from '@/api/client'
-import { UiBreadcrumb, UiButton, UiCard, UiChip, UiNote, UiStatus } from '@/ui'
+import { UiBreadcrumb, UiButton, UiCard, UiChip, UiNote } from '@/ui'
 import { li, type CatalogItem, type RequestStatus, type Requests, type VendorRequest } from './api'
 import { DRAFT_LABEL, NEXT_REQUEST, REQUEST_LABEL, priorityLabel } from './labels'
 
@@ -42,17 +42,17 @@ async function develop(moduleId: string) {
   <AppShell>
     <UiBreadcrumb :items="[{ label: 'Learning Intervention' }, { label: 'Permintaan & pengembangan' }]" />
     <h1 class="el-h1">Permintaan &amp; pengembangan modul</h1>
-    <p class="el-muted">Dua jalur untuk memiliki modul: meminta dari {{ vendor }}, atau mengembangkan sendiri bersama ELGOS berdasarkan tujuan pembelajaran dari DACUM Tool 1 dan 2.</p>
+    <p class="el-muted">Dua jalur untuk memiliki modul: meminta dari {{ vendor }}, atau mengembangkan sendiri dengan bantuan agen ELGOS berdasarkan tujuan pembelajaran dari DACUM Tool 1 dan 2.</p>
     <UiNote v-if="error" tone="critical" data-testid="galat">{{ error }}</UiNote>
 
     <div v-if="res" class="li-split li-gap">
       <UiCard as="section" aria-label="Permintaan ke vendor">
-        <h2 class="el-h3">Diminta ke {{ vendor }} <span class="el-muted">· {{ active.length }}</span></h2>
+        <div class="li-row li-req__head"><h2 class="el-h3">Diminta ke {{ vendor }}</h2><UiChip tone="review" data-testid="jumlah-permintaan">{{ active.length }}</UiChip></div>
         <p v-if="!active.length" class="el-muted">Belum ada permintaan. Mulai dari Library atau Program &amp; Course.</p>
         <div v-for="r in active" :key="r.id" class="li-req" :data-testid="`permintaan-${r.moduleCode}`">
           <div class="li-row">
             <span><span class="el-mono">{{ r.moduleCode }}</span> <b>{{ r.moduleName }}</b></span>
-            <UiStatus :tone="r.status === 'installed' ? 'success' : 'info'">{{ REQUEST_LABEL[r.status] }}</UiStatus>
+            <UiChip :tone="r.status === 'installed' ? 'success' : r.status === 'requested' ? 'review' : 'training'">{{ REQUEST_LABEL[r.status] }}</UiChip>
           </div>
           <label v-if="r.status === 'delivered' && catalog.length" class="el-label li-gap">Course di katalog (opsional)
             <select v-model="course[r.id]" class="el-input"><option value="">Belum ada</option><option v-for="c in catalog" :key="c.id" :value="c.id">{{ c.title }}</option></select>
@@ -66,7 +66,7 @@ async function develop(moduleId: string) {
       </UiCard>
 
       <UiCard as="section" aria-label="Pengembangan bersama ELGOS">
-        <h2 class="el-h3">Dikembangkan dengan ELGOS <span class="el-muted">· {{ res.data.drafts.length }} draf</span></h2>
+        <div class="li-row li-req__head"><h2 class="el-h3">Dikembangkan dengan ELGOS</h2><UiChip tone="training" data-testid="jumlah-draf">{{ res.data.drafts.length }} draf</UiChip></div>
         <p v-if="!res.data.drafts.length" class="el-muted">Belum ada draf. Pilih modul di Library lalu "Kembangkan dengan ELGOS".</p>
         <div v-for="d in res.data.drafts" :key="d.id" class="li-req li-row" :data-testid="`draf-${d.moduleCode}`">
           <span><span class="el-mono">{{ d.moduleCode }}</span> <b>{{ d.moduleName }}</b><br><span class="el-muted li-small">{{ DRAFT_LABEL[d.status] }}</span></span>
@@ -75,8 +75,8 @@ async function develop(moduleId: string) {
         <h3 class="el-h3 li-gap">Disarankan dikembangkan sendiri</h3>
         <p class="el-muted li-small">Modul spesifik proses perusahaan yang belum punya sumber ({{ res.data.candidates.length }} modul).</p>
         <div v-for="c in res.data.candidates" :key="c.id" class="li-req li-row">
-          <span><span class="el-mono">{{ c.code }}</span> {{ c.name }} <UiChip v-if="c.priority" tone="review" icon="flag">{{ priorityLabel(c) }}</UiChip></span>
-          <UiButton variant="outlined" size="sm" :disabled="busy" @click="develop(c.id)">Kembangkan</UiButton>
+          <span><span class="el-mono">{{ c.code }}</span> {{ c.name }} <UiChip v-if="c.priority" tone="critical">{{ priorityLabel(c) }}</UiChip></span>
+          <UiButton variant="text" size="sm" :disabled="busy" @click="develop(c.id)">Kembangkan</UiButton>
         </div>
       </UiCard>
     </div>
@@ -86,4 +86,6 @@ async function develop(moduleId: string) {
 <style>
 .li-req { padding: 12px 0; border-bottom: 1px solid var(--el-outline-variant); }
 .li-req .li-actions { margin-top: 8px; }
+.li-req__head { flex-wrap: nowrap; }
+.li-req__head .el-h3 { margin: 0; }
 </style>
