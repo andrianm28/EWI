@@ -251,7 +251,7 @@ pause
 
 # ── 4 ─────────────────────────────────────────────────────────────────────
 stage "Region Jakarta (PD-2b)"
-say "ap-southeast-3 adalah region opt-in; diaktifkan dulu agar Bedrock Jakarta bisa dicek."
+say "ap-southeast-3 adalah region opt-in; diaktifkan agar ketersediaan Bedrock Jakarta bisa dicek (QA dan aplikasi memakai Singapura, keputusan 23 Nov)."
 ST=$(aws account get-region-opt-status --profile elgos-admin --region-name ap-southeast-3 --query RegionOptStatus --output text || echo UNKNOWN)
 if [[ "$ST" != ENABLED && "$ST" != ENABLED_BY_DEFAULT ]]; then
   aws account enable-region --profile elgos-admin --region-name ap-southeast-3 || warn "enable-region gagal"
@@ -277,7 +277,7 @@ pause
 
 # ── 6 ─────────────────────────────────────────────────────────────────────
 stage "Akses model Claude di Bedrock"
-ask QA_BEDROCK_REGION "Region QA (ap-southeast-3 Jakarta; ap-southeast-1 bila Claude tidak ada di Jakarta):"
+ask QA_BEDROCK_REGION "Region QA (keputusan 23 Nov: ap-southeast-1 Singapura):"
 open_url "https://${QA_BEDROCK_REGION}.console.aws.amazon.com/bedrock/home?region=${QA_BEDROCK_REGION}#/model-catalog"
 step "Masuk konsol sebagai akun ELGOS (switch role ke OrganizationAccountAccessRole, akun $ELGOS_ACCOUNT_ID)."
 step "Buka model Claude yang dipakai aplikasi; bila diminta, isi formulir use case Anthropic (sekali per akun)."
@@ -288,7 +288,7 @@ aws bedrock list-inference-profiles --profile elgos-admin --region "$QA_BEDROCK_
   --query "inferenceProfileSummaries[?contains(inferenceProfileId,'anthropic')].inferenceProfileId" --output table || true
 note "ON_DEMAND = bisa dipanggil langsung. Bila hanya INFERENCE_PROFILE, isi juga ID profil (mis. apac.anthropic...)."
 note "Profil apac. memproses data di region APAC lain: catat untuk keputusan residensi data (PD-2)."
-ask QA_BEDROCK_MODEL_ID "ID model dasar (anthropic....):"
+ask QA_BEDROCK_MODEL_ID "ID model dasar (keputusan 23 Nov: anthropic.claude-sonnet-5):"
 ask QA_INFERENCE_PROFILE_ID "ID inference profile (kosong bila ON_DEMAND):"
 write_env QA_BEDROCK_REGION "$QA_BEDROCK_REGION"
 write_env QA_BEDROCK_MODEL_ID "$QA_BEDROCK_MODEL_ID"
