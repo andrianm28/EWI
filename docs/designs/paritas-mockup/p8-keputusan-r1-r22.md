@@ -73,6 +73,7 @@ Keputusan: daftar pertanyaan, tanpa LLM, tidak disimpan. Sudah sesuai (`Synthesi
 Keputusan: "Insight" dan "templat ELGOS", bukan "Insight AI"/"Agen ELGOS" untuk keluaran aturan/templat.
 - PK-3/LI-28: `b13-li/DraftView.vue` intro mengikuti kalimat mockup M:840 dengan subjek jujur: "Templat ELGOS menyusun draf dari tujuan pembelajaran di DACUM Tool 1 (job function) dan Tool 2 (KSA), dengan prinsip instructional design. Anda meninjau tiap tahap sebelum lanjut."
 - PK-3/LI-34: baris audit mengikuti susunan M:879: "Templat ELGOS · sumber: DACUM Tool 1 dan Tool 2 · draf perlu persetujuan SME sebelum dipakai".
+- PK-3 (intro Permintaan, M:811): "…dengan bantuan agen ELGOS…" → "…dengan bantuan templat ELGOS…" (`b13-li/RequestsView.vue`).
 - PK-5/LD-3: LD sudah "Insight" + "bukan oleh AI". LIM-3 milik B15.
 - "Agen ELGOS (POC)" di sesi wawancara visi & nilai tetap (LLM sungguhan).
 
@@ -143,8 +144,8 @@ Diputuskan thread B15. Layar LIM tidak disentuh.
 - `apps/web/src/ui/UiDialog.vue` (baru), `ui/format.ts` (baru), `ui/index.ts`
 - `apps/web/src/api/ai.ts` (baru), `api/cca.ts`
 - `apps/web/src/screens/b5-tna/{TnaGapView,TnaScreen}.vue`, `labels.ts`, `tna.css`
-- `apps/web/src/screens/b10-core-competencies/{AssignmentsHr,InterviewAssignmentView,InterviewSession,CoreCompetenciesView,ProgramForm}.vue`
-- `apps/web/src/screens/b6-iv/{PercakapanWawancara,IvSessionView,IvListView}.vue`, `iv.css`
+- `apps/web/src/screens/b10-core-competencies/{AssignmentsHr,InterviewAssignmentView,InterviewSession,CoreCompetenciesView,ProgramForm,ProgramSection}.vue`, `AssignDueDialog.vue` (baru), `cc.css`
+- `apps/web/src/screens/b6-iv/{PercakapanWawancara,IvSessionView,IvListView}.vue`, `crumbs.ts` (baru), `iv.css`
 - `apps/web/src/screens/b8-karyawan/{MyResultsView.vue,view.ts,b8.css}`
 - `apps/web/src/screens/b11-admin/UsersView.vue`, `b12-super-admin/{TenantsView,PlatformView}.vue`
 - `apps/web/src/screens/b13-li/{DraftView,LibraryView,RequestsView}.vue`, `li.css`

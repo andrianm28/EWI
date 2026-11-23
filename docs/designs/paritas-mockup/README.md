@@ -51,45 +51,48 @@ Yang sudah sama: 27 token warna `:root`, menu kelima peran (fungsi `N`) kecuali 
 | P5 | LNA: tabel CC/INA kembali ke kolom mockup, sintesis CCA berupa daftar tema, Pengelolaan TNA dipindah | CC-3, AH-6, TN-2, IN-7 |
 | P6 | LI: filter chip, baris modul, wizard dua kolom | LI-5, LI-7, LI-27 |
 | P7 | LD, LIM, CP, karyawan, admin, super: copy dan komponen bobot sedang/rendah | sisanya |
+| P8 | Menerapkan keputusan R1–R22 ([p8-keputusan-r1-r22.md](p8-keputusan-r1-r22.md)) | lihat tabel R |
 
 Layar yang belum ada (Asisten, Tinjauan per gap, wawancara ulang LIM) dikerjakan pemilik paketnya. Thread paritas memeriksa hasilnya dengan katalog yang sama.
 
-## Status 23 Nov 2026 (akhir P7)
+## Status 23 Nov 2026 (akhir P8)
 
-Semua tahap P1–P7 plus layar B17 (Asisten) dan B7 (Tinjauan per gap) ada di PR #39, masing-masing dengan review egm independen dan triase. Hitungan baris gap (termasuk baris "bukan gap"):
+Semua tahap P1–P7 plus layar B17 (Asisten) dan B7 (Tinjauan per gap) ada di PR #39, masing-masing dengan review egm independen dan triase. P8 ([p8-keputusan-r1-r22.md](p8-keputusan-r1-r22.md), branch `paritas-p8`) menerapkan keputusan R1–R22. Hitungan baris gap (termasuk baris "bukan gap"); "Diputuskan" = gap ditutup oleh keputusan produk (perilaku aplikasi dipertahankan), tanpa ubah tampilan:
 
-| File | Baris | Ditutup | Sebagian | Terbuka |
+| File | Baris | Ditutup | Diputuskan | Sebagian | Terbuka |
+| --- | --- | --- | --- | --- | --- |
+| gaps-shell.md | 21 | 14 | 1 | 0 | 6 |
+| gaps-lna.md | 83 | 48 | 10 | 6 | 19 |
+| gaps-modul.md | 73 | 47 | 8 | 8 | 10 (7 di antaranya LIM, milik thread B15) |
+| gaps-peran.md | 52 | 36 | 2 | 2 | 12 (1 tidak dikerjakan, 2 bukan gap) |
+
+Yang tersisa menunggu data API baru, paket lain (B6 untuk pilihan jawaban AI wawancara akar masalah), atau milik thread lain (LIM, termasuk dua gap tinggi LIM-6 dan LIM-8). Keputusan user 23 Nov: tampilan 1:1, keputusan spek paket tetap.
+
+### Keputusan R1–R22
+
+User memilih "Terapkan semua rekomendasi" (23 Nov 2026). Semua butir **Diterapkan** di P8; kolom terakhir menyebut hasilnya.
+
+| # | Topik | Gap | Rekomendasi | Status 23 Nov |
 | --- | --- | --- | --- | --- |
-| gaps-shell.md | 21 | 14 | 0 | 7 |
-| gaps-lna.md | 83 | 41 | 7 | 35 |
-| gaps-modul.md | 73 | 43 | 14 | 16 (10 di antaranya LIM, milik thread B15) |
-| gaps-peran.md | 52 | 30 | 1 | 21 (2 bukan gap) |
-
-Yang tersisa hampir semuanya menunggu keputusan produk, data API baru, atau milik thread lain (LIM, termasuk dua gap tinggi LIM-6 dan LIM-8). Keputusan user 23 Nov: tampilan 1:1, keputusan spek paket tetap.
-
-### Keputusan yang masih terbuka dan rekomendasi
-
-| # | Topik | Gap | Rekomendasi |
-| --- | --- | --- | --- |
-| R1 | Akses atasan ke Tinjauan HR dan tombol "Langsung ke tinjauan HR" | RV-3, TD-6, TN-13 | Tetap HR saja (spek B7, PM-5/PM-6) |
-| R2 | Penugasan wawancara menggantikan "Mulai wawancara akar masalah" | TD-5, AH-2, AH-3, AA-4 | CTA satu baris seperti mockup; form penugasan dibuka di dialog |
-| R3 | Label status: chip terisi mockup vs ikon + teks `UiStatus` | K-3, PK-10, X-2, T1 | Chip terisi lewat `UiChip` per layar (sudah di LI, LD); `UiStatus` global tetap untuk aksesibilitas |
-| R4 | Skala skor dan format angka | TN-8, DN-10, CV-11 | Skor 0–100 tanpa "%"; desimal koma (locale id) |
-| R5 | Copy khusus Elitery ("nilai 5C", "Sumber: elitery.com", Scheer IMC) | CC-2, CV-3, AH-5, LIM-1 | Teks netral tenant; sumber dari data tenant |
-| R6 | Baris "Belum diwawancarai" dan kolom Orang/Status di tabel gap | TN-4, TN-7, TN-11 | Pertahankan (HR memindai status wawancara) |
-| R7 | Pratinjau sesi HR: chat simulasi vs daftar pertanyaan | AH-8 | Daftar pertanyaan (tanpa biaya LLM, tidak disimpan) |
-| R8 | "Insight AI" dan "Agen ELGOS" untuk hasil berbasis aturan/templat | PK-3, PK-5 | Label jujur: "Insight", "templat ELGOS" |
-| R9 | Catatan UU PDP dokumentasi | PK-6 | Pertahankan "hanya bisa dibuka oleh HR" (sesuai perilaku) |
-| R10 | Cakupan atasan CP | PK-8 | Bawahan langsung (RG-3) |
-| R11 | Label tier | PK-9 | "Advanced" di semua layar |
-| R12 | EliteMentor di dalam shell | K-1 | Deep link (aturan arsitektur 1) |
-| R13 | Pilihan jawaban di wawancara akar masalah | K-2 | Samakan gaya input saja; pilihan jawaban AI menunggu paket B6 |
-| R14 | Galat persetujuan | K-4 | `UiErrorSummary` standar |
-| R15 | Breadcrumb karyawan "Training Needs ›" | K-5 | Ikuti mockup tanpa tautan bila menu tidak ada (sudah di sesi IV) |
-| R16 | "Lihat contoh rekomendasi" | K-6 | Hilangkan sampai ada halaman contoh |
-| R17 | Teks undangan Hasil saya | K-7 | Ikuti fokus wawancara (KPI belum tercapai) |
-| R18 | ID model di konfigurasi platform | K-8 | Label produk "ELGOS-AI (POC)" untuk tenant; ID penyedia hanya untuk Super Admin |
-| R19 | Peran saat mengundang | K-9 | Pertahankan perilaku aplikasi |
-| R20 | Kalimat "ELGOS tidak mengirim apa pun ke vendor" | PK-1 | Pindah ke petunjuk kecil di bawah tombol |
-| R21 | Wizard: baca saja vs sunting | PK-4 | Sunting tetap, dengan simpan otomatis (K-P6-5) |
-| R22 | Atasan di tab Pengukuran AI (LIM) | PK-7 | Diputuskan thread B15 |
+| R1 | Akses atasan ke Tinjauan HR dan tombol "Langsung ke tinjauan HR" | RV-3, TD-6, TN-13 | Tetap HR saja (spek B7, PM-5/PM-6) | Diterapkan (keputusan saja; sudah sesuai) |
+| R2 | Penugasan wawancara menggantikan "Mulai wawancara akar masalah" | TD-5, AH-2, AH-3, AA-4 | CTA satu baris seperti mockup; form penugasan dibuka di dialog | Diterapkan: CTA satu baris, `UiDialog` penugasan TNA, dialog tenggat B10 |
+| R3 | Label status: chip terisi mockup vs ikon + teks `UiStatus` | K-3, PK-10, X-2, T1 | Chip terisi lewat `UiChip` per layar (sudah di LI, LD); `UiStatus` global tetap untuk aksesibilitas | Diterapkan: `UiChip` di Pengguna dan Tenant, titik di Hasil saya |
+| R4 | Skala skor dan format angka | TN-8, DN-10, CV-11 | Skor 0–100 tanpa "%"; desimal koma (locale id) | Diterapkan: `formatNumber`/`formatScore` (id-ID), selisih OKR merah |
+| R5 | Copy khusus Elitery ("nilai 5C", "Sumber: elitery.com", Scheer IMC) | CC-2, CV-3, AH-5, LIM-1 | Teks netral tenant; sumber dari data tenant | Diterapkan: "nilai 5C" sisa diganti; LIM-1 ke B15 |
+| R6 | Baris "Belum diwawancarai" dan kolom Orang/Status di tabel gap | TN-4, TN-7, TN-11 | Pertahankan (HR memindai status wawancara) | Diterapkan (keputusan saja) |
+| R7 | Pratinjau sesi HR: chat simulasi vs daftar pertanyaan | AH-8 | Daftar pertanyaan (tanpa biaya LLM, tidak disimpan) | Diterapkan (sudah sesuai) |
+| R8 | "Insight AI" dan "Agen ELGOS" untuk hasil berbasis aturan/templat | PK-3, PK-5 | Label jujur: "Insight", "templat ELGOS" | Diterapkan: "templat ELGOS" di Draf dan Permintaan; LIM-3 ke B15 |
+| R9 | Catatan UU PDP dokumentasi | PK-6 | Pertahankan "hanya bisa dibuka oleh HR" (sesuai perilaku) | Diterapkan (keputusan saja) |
+| R10 | Cakupan atasan CP | PK-8 | Bawahan langsung (RG-3) | Diterapkan (keputusan saja) |
+| R11 | Label tier | PK-9 | "Advanced" di semua layar | Diterapkan (sudah sesuai) |
+| R12 | EliteMentor di dalam shell | K-1 | Deep link (aturan arsitektur 1) | Diterapkan (sudah sesuai) |
+| R13 | Pilihan jawaban di wawancara akar masalah | K-2 | Samakan gaya input saja; pilihan jawaban AI menunggu paket B6 | Diterapkan: input satu baris di IV; pilihan jawaban AIV bergaya `.ac` |
+| R14 | Galat persetujuan | K-4 | `UiErrorSummary` standar | Diterapkan (sudah sesuai) |
+| R15 | Breadcrumb karyawan "Training Needs ›" | K-5 | Ikuti mockup tanpa tautan bila menu tidak ada (sudah di sesi IV) | Diterapkan: breadcrumb daftar IV; tautan mengikuti menu |
+| R16 | "Lihat contoh rekomendasi" | K-6 | Hilangkan sampai ada halaman contoh | Diterapkan (sudah sesuai) |
+| R17 | Teks undangan Hasil saya | K-7 | Ikuti fokus wawancara (KPI belum tercapai) | Diterapkan: undangan berfokus KPI |
+| R18 | ID model di konfigurasi platform | K-8 | Label produk "ELGOS-AI (POC)" untuk tenant; ID penyedia hanya untuk Super Admin | Diterapkan: kartu model Konfigurasi platform |
+| R19 | Peran saat mengundang | K-9 | Pertahankan perilaku aplikasi | Diterapkan (keputusan saja) |
+| R20 | Kalimat "ELGOS tidak mengirim apa pun ke vendor" | PK-1 | Pindah ke petunjuk kecil di bawah tombol | Diterapkan: petunjuk di bawah tombol "Minta ke" dan daftar permintaan |
+| R21 | Wizard: baca saja vs sunting | PK-4 | Sunting tetap, dengan simpan otomatis (K-P6-5) | Diterapkan (keputusan saja) |
+| R22 | Atasan di tab Pengukuran AI (LIM) | PK-7 | Diputuskan thread B15 | Diterapkan (keputusan diserahkan ke B15) |
