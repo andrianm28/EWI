@@ -84,7 +84,7 @@ Paket ini **tidak** mengubah `core/rbac/roles.js` dan tidak mengubah CHECK `user
 ### 4.3 Batas dalam tenant
 
 - Semua query memfilter `tenant_id = req.tenantId`. Id dari URL atau body (user, jabatan, atasan, batch) selalu dicari ulang dalam tenant itu. Id di URL yang tidak ketemu → 404; id di body (`jobRoleId`, `careerLevelId`, `supervisorId`) yang tidak ketemu → 400 dengan nama isiannya.
-- Tidak seorang pun (termasuk `eta_admin`) bisa memberi peran `eta_admin` atau mengubah akun `eta_admin` lewat layar ini (403 `ROLE_FORBIDDEN`); itu urusan Super Admin (B12). Akun `eta_admin` tetap tampil di daftar, sehingga `meta.total` menghitung semua akun yang bisa masuk ke tenant. Keputusan: admin klien tidak bisa menghapus akun ETA dari tenantnya dan melihat alamat emailnya.
+- Tidak seorang pun (termasuk `eta_admin`) bisa memberi peran `eta_admin` atau mengubah akun `eta_admin` lewat layar ini (403 `ROLE_FORBIDDEN`); itu urusan Super Admin (B12). Akun `eta_admin` tetap tampil di daftar, sehingga `meta.total` menghitung semua akun yang bisa masuk ke tenant. Keputusan user 23 Nov: akun ETA tampil di daftar dengan label "Dikelola ETA" dan emailnya, terkunci (admin klien tidak bisa mengubah atau menghapusnya).
 - Admin tenant tidak bisa mengubah peran atau status akunnya sendiri (409 `SELF_CHANGE`). Karena pelaku harus admin aktif dan tidak bisa menurunkan dirinya, satu perubahan oleh admin tenant tidak pernah menghabiskan pengelola aktif. Pengecualian: dua admin yang saling menonaktifkan pada saat bersamaan, dan perubahan oleh `eta_admin` (bagian 10).
 - Memberi peran `hr_admin` (yang melihat semua karyawan) adalah fungsi layar ini; setiap pemberian tercatat audit dengan `from`/`to`.
 - Mengganti peran akun `supervisor` ke peran lain mencabut izin temuan di luar pelatihan (PM-6) miliknya, dicatat audit `delete` resource `tna.non_training_access` dengan `via: 'tenant-admin'`, `reason: 'role_changed'`. Dijadikan atasan lagi tidak memulihkan izin itu.
@@ -268,7 +268,7 @@ E2E `apps/web/e2e/admin-tenant.spec.ts` (4 test) dengan API mock.
 | ⏳ | Token akun yang dinonaktifkan masih berlaku sampai kedaluwarsa | PK-16/B1 (sesi) |
 | ⚠️ | Bentuk berkas DACUM asli belum dilihat | Data Mas Abdan 26 Nov, B4 |
 | ⚠️ | "Terkonfigurasi" EliteMentor belum uji panggil | Kontrak FR-EM |
-| ⏳ | Selama peralihan setiap `hr_admin` adalah admin tenant penuh (termasuk menonaktifkan pengelola hasil onboarding) | B2; perlu tanda tangan Pak Eji/Andrian bila peralihan melewati 2 Des |
+| ⏳ | Selama peralihan setiap `hr_admin` adalah admin tenant penuh (termasuk menonaktifkan pengelola hasil onboarding) | Diterima user 23 Nov, juga bila B2 lewat 2 Des; setiap perubahan tercatat di audit |
 | ⏳ | Prasyarat B2: pengelola hasil onboarding dimigrasi ke `tenant_admin` sebelum `hr_admin` dicabut | PR B2 |
 | ⏳ | `hr_admin` yang diturunkan tetap memakai hak HR di modul lain sampai token habis (8 jam) | PK-16/B1 |
 | ⏳ | Dua admin saling menonaktifkan bersamaan bisa meninggalkan tenant tanpa pengelola | Pemulihan lewat Super Admin (B12); kunci baris bila B2 menambah aturan admin terakhir |
@@ -337,3 +337,12 @@ Hasil utama:
 - **Spek:** status, tabel istilah, alternatif yang ditolak (3.1), prasyarat keluar dari peralihan `hr_admin` saat B2, 400 vs 404 untuk id, batas validasi, data individu admin, menu sebelum B2, berkas test yang benar, baris baru di bagian 10.
 - **Diteruskan ke user:** risiko `hr_admin` sebagai admin penuh bila B2 lewat 2 Des; akun ETA tampil dan tidak bisa dihapus admin klien.
 - **Ditunda:** outbox audit, daftar izin sementara, cek DB di middleware auth bersama, indeks nama jabatan tanpa beda huruf. Usul: `/mattpocock-skills:to-tickets`.
+
+## 15. Keputusan user 23 Nov 2026 (kartu opsi)
+
+| # | Pertanyaan | Pilihan | Akibat |
+| --- | --- | --- | --- |
+| 4 | Jika B2 lewat 2 Des, apakah semua HR admin jadi admin tenant penuh? | Ya, sementara, dengan audit | Tidak ada perubahan kode; risiko di bagian 4.2 dan 10 diterima |
+| 5 | Apakah admin klien melihat akun ETA di daftar pengguna? | Tampil, berlabel ETA, terkunci | Sesuai kode (`UsersView.vue` "Dikelola ETA", API 403 `ROLE_FORBIDDEN` untuk ubahan) |
+
+Pertanyaan 1–3 (Improvement Needs) dicatat di `b9-improvement-needs.md` bagian 15.

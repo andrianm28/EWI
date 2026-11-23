@@ -224,6 +224,18 @@ run('Improvement Needs B9 (Postgres)', () => {
     await request(app).put(`${BASE}/access/${id.spv}`).set(as('hr'));
   });
 
+  it('keputusan user 23 Nov: Admin ETA hanya membaca seluruh tindakan, tidak membuat atau mengubah', async () => {
+    await addUser(A.id, 'eta', 'eta_admin');
+    const list = await get('/actions', 'eta');
+    expect(list.status).toBe(200);
+    expect(list.body.meta.level).toBe('read');
+    expect(list.body.data.length).toBe(list.body.kpis.total);
+    expect((await post('/actions', { title: 'Judul sah', category: 'sop' }, 'eta')).status).toBe(403);
+    expect((await patch(`/actions/${id.aSop}`, { status: 'in_progress' }, 'eta')).status).toBe(403);
+    expect((await get('/access', 'eta')).status).toBe(403);
+    expect((await get('/owners', 'eta')).status).toBe(403);
+  });
+
   it('pimpinan hanya angka ringkasan; karyawan ditolak', async () => {
     const res = await get('/actions', 'pim');
     expect(res.status).toBe(200);

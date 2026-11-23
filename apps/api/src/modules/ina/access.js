@@ -2,6 +2,7 @@
 // B9: satu-satunya tempat aturan "siapa melihat apa" di Improvement Needs.
 // K1 (= PM-6): HR melihat secara bawaan; atasan langsung hanya bila HR memberinya akses (bisa dicabut, diaudit).
 // K-2: pimpinan hanya melihat angka ringkasan, tanpa baris tindakan.
+// Keputusan user 23 Nov: hanya HR klien yang mengelola; Admin ETA (Super Admin) membaca seluruh tenant.
 const { ROLES } = require('../../core/rbac');
 const { scopeFor } = require('../../core/rbac/scope');
 const { forbidden } = require('../../core/errors');
@@ -14,7 +15,8 @@ const LEVELS = Object.freeze({ MANAGE: 'manage', READ: 'read', SUMMARY: 'summary
  */
 async function inaAccess(req, stores) {
   const { role, id } = req.user;
-  if (role === ROLES.HR_ADMIN || role === ROLES.ETA_ADMIN) return { level: LEVELS.MANAGE, scope: { all: true } };
+  if (role === ROLES.HR_ADMIN) return { level: LEVELS.MANAGE, scope: { all: true } };
+  if (role === ROLES.ETA_ADMIN) return { level: LEVELS.READ, scope: { all: true } };
   if (role === ROLES.PIMPINAN) return { level: LEVELS.SUMMARY, scope: { all: true } };
   if (role === ROLES.SUPERVISOR) {
     if (!(await stores.tna.hasNonTrainingGrant(req.tenantId, id))) return { level: null, reason: 'NO_INA_ACCESS' };

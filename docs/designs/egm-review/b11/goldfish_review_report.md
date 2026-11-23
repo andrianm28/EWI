@@ -1,4 +1,4 @@
-Status: resolved (19 Nov 2026). Fixes applied in PR #17; escalations wait for the user.
+Status: resolved (19 Nov 2026). Fixes applied in PR #17; escalations wait for the user. Escalations answered by the user on 23 Nov (see spec §15).
 
 # Goldfish Annotated Review Report
 
