@@ -198,7 +198,7 @@ Transisi sesi yang ada dibuat bersyarat supaya penarikan tidak tertimpa:
 
 ## Layar web (rute `my` dan `li`, PR lanjutan)
 
-Ditambahkan 23 Nov 2026. E2E B18 (thread integrasi, `docs/designs/b18-e2e-qa-malam.md`) menemukan rute `my` belum ada, sehingga dua hal yang memang dirancang di B0 tidak pernah terjadi: karyawan tetap mendarat di Beranda lama (rute `home`, `views/HomeView.vue`), dan akun multi-tampilan (HR, atasan, Admin Tenant; default K2 di brief bangun penuh) tidak pernah ditawari tampilan karyawan. Store sesi menawarkan tampilan tambahan hanya bila layar berandanya terbuka (`homeReady`, B0 §5.1). Tidak ada perubahan store atau shell yang dibutuhkan; yang kurang hanya rutenya. Review spek egm (empat lensa) dan triasenya: `docs/designs/egm/b8-web/`.
+Ditambahkan 23 Nov 2026. E2E B18 (thread integrasi, `docs/designs/b18-e2e-qa-malam.md`) menemukan rute `my` belum ada, sehingga dua hal yang memang dirancang di B0 tidak pernah terjadi: karyawan tetap mendarat di Beranda lama (rute `home`, `views/HomeView.vue`), dan akun multi-tampilan (HR, atasan, Admin Tenant; default K2 di brief bangun penuh) tidak pernah ditawari tampilan karyawan. Store sesi menawarkan tampilan tambahan hanya bila layar berandanya terbuka (`homeReady`, B0 §5.1). Tidak ada perubahan store atau shell yang dibutuhkan; yang kurang hanya rutenya. Review spek egm (empat lensa), review diff (code-review dua sumbu + egm codebase-details), triase keduanya, dan laporan drift: `docs/designs/egm/b8-web/`.
 
 ### Rute (`apps/web/src/screens/b8-karyawan/routes.ts`)
 
@@ -223,7 +223,7 @@ Memanggil `GET /api/my/results` dan `GET /api/employees/me/data-requests` saat d
 4. Kartu "Rencana belajar saya" (`plan`, disembunyikan bila `null`): `total` 0 → "Modul akan muncul di sini setelah HR menyetujui hasil wawancara." Selain itu baris "Belum dimulai: n · Sedang berjalan: n · Selesai: n" (status bernilai 0 dilewati) dan tombol "Lihat rencana belajar" ke `li` bila `routeOpen('li', session.activeView)`.
 5. Kartu "Data saya" (hak subjek data; API-nya tanpa flag):
    - Tombol "Unduh data saya" → `GET /employees/<id sesi>/export` lewat helper bersama `downloadFile` (`api/imports.ts`), berkas `elgos-data-saya-<YYYY-MM-DD>.json`. Teks: "Berkas berisi transkrip wawancara Anda. Jangan simpan di perangkat bersama."
-   - "Tarik persetujuan wawancara" hanya tampil bila ada undangan terbuka atau wawancara (`interviews`) yang `consentWithdrawnAt`-nya kosong. Menekannya membuka panel konfirmasi di halaman (fokus pindah ke panel): "Wawancara yang sedang berjalan dihentikan dan hasilnya tidak diproses lagi. Data tetap tersimpan sampai HR menghapusnya. Persetujuan yang sudah ditarik tidak bisa dipulihkan; HR bisa mengundang Anda lagi." Tombol "Ya, tarik persetujuan" dan "Batal". Sukses: `role="status"` "Persetujuan ditarik. <n> wawancara dihentikan." (`sessions` dari respons), lalu data dimuat ulang.
+   - "Tarik persetujuan wawancara" hanya tampil bila ada undangan di `invitations` atau wawancara (`interviews`) yang `consentWithdrawnAt`-nya kosong, atau bila `/my/results` gagal dimuat (hak ini tidak boleh hilang karena galat; API idempoten). Batal atau sukses mengembalikan fokus ke tombol pemicu atau pesan hasil. Menekannya membuka panel konfirmasi di halaman (fokus pindah ke panel): "Wawancara yang sedang berjalan dihentikan dan hasilnya tidak diproses lagi. Data tetap tersimpan sampai HR menghapusnya. Persetujuan yang sudah ditarik tidak bisa dipulihkan; HR bisa mengundang Anda lagi." Tombol "Ya, tarik persetujuan" dan "Batal". Sukses: `role="status"` "Persetujuan ditarik. <n> wawancara dihentikan." (`sessions` dari respons), lalu data dimuat ulang.
    - "Minta hapus data": isian "Alasan (opsional)" `maxlength` 1000 dengan penghitung, tombol "Kirim permintaan hapus". Sukses: "Permintaan hapus terkirim. HR memprosesnya paling lambat <tenggat> WIB." Disembunyikan bila sudah ada `delete_data` terbuka. Akun dengan peran `hr_admin` atau `eta_admin` (`session.roles`, peran akun, bukan tampilan) tidak melihat isian ini, melainkan "Akun HR atau Admin ETA dihapus lewat Admin ETA."
    - Daftar permintaan sendiri (semua status, dari `/me/data-requests`): jenis ("Tarik persetujuan wawancara" / "Hapus data"), tanggal, status (Terbuka / Selesai / Dibatalkan), tenggat untuk `delete_data` terbuka, dan tombol "Batalkan" untuk `delete_data` terbuka.
    - Semua tombol aksi nonaktif saat permintaan berjalan. Galat aksi (400, 409) tampil di `UiErrorSummary` kartu dengan pesan API.
@@ -246,9 +246,21 @@ Memanggil `GET /api/my/learning-plan` (memuat dan galat sama dengan Hasil saya).
 
 Label dan pilihan tombol ada di `apps/web/src/screens/b8-karyawan/view.ts`.
 
+### Layar HR: Permintaan data (`DataRequestsHrView.vue`, rute `dsr`)
+
+Tidak ada di mockup. Ditambahkan atas keputusan user 23 Nov (kartu keputusan: "Bangun layar HR minimal di PR ini") setelah review zoom out menemukan permintaan hapus bertenggat 3×24 jam tanpa layar HR akan lewat tenggat tanpa terlihat.
+
+- Rute `dsr`, path `/permintaan-data`, `views: ['hr']`, `roles: ['hr_admin', 'eta_admin']` (sama dengan `requireRole(HR_ADMIN)` di API, Admin ETA ikut lolos). Tanpa flag, sama dengan API-nya. Butir menu HR "Permintaan data karyawan" (ikon `policy`) setelah Career & Promotion.
+- Filter `UiSegmented` "Status permintaan": Terbuka (bawaan), Selesai, Dibatalkan, Semua → `GET /employees/data-requests?status=`.
+- Kartu per permintaan: nama, jenis, diajukan, tenggat (`delete_data` terbuka), "Lewat tenggat" (`UiStatus` critical) bila `overdue`, alasan, "Ditutup <nama> · <waktu>" untuk yang selesai.
+- Permintaan milik HR sendiri: tanpa tombol, "Permintaan Anda sendiri diproses HR lain atau Admin ETA." (`CANNOT_FULFILL_OWN`).
+- `withdraw_consent` terbuka: "Tutup" (`fulfill` tanpa `erase`) dan "Tutup dan hapus data wawancara" lewat panel konfirmasi ("tidak bisa dibatalkan", "Ya, hapus data wawancara") → `fulfill { erase: true }`, pesan jumlah giliran, temuan, dan rencana yang dihapus.
+- `delete_data` terbuka: "Hapus akun dan data karyawan" lewat panel konfirmasi ("Ya, hapus akun <nama>") → `DELETE /employees/:userId` (pemenuhan yang sudah ada; audit mencatat permintaannya).
+- Pesan hasil di `role="status"`, galat API di `UiErrorSummary`, tombol nonaktif saat sibuk.
+
 ### Test web
 
-`apps/web/e2e/b8-karyawan.spec.ts` (API di-mock lewat `support/`; `loginSebagai` sudah menerima `flags`, jadi helper login tidak diubah, dan test lama tidak terpengaruh karena flag default mati):
+`apps/web/e2e/b8-karyawan.spec.ts` (API di-mock lewat `support/`; data Hasil saya bersama di `support/hasil-saya.ts`, dipakai juga jalur 3 B18; `loginSebagai` sudah menerima `flags`, jadi helper login tidak diubah). Preset `SEMUA_MODUL` di `support/sesi.ts` kini menyalakan `learner.home`, sehingga spec B18 yang memakainya melihat beranda karyawan `/my`; spec lain tetap memakai flag default mati:
 
 1. Karyawan dengan `learner.home` mendarat di Hasil saya; status dan skor kompetensi.
 2. Menu karyawan persis: Hasil saya, Wawancara visi & nilai, Wawancara akar masalah, Rencana belajar; undangan membuka sesi; undangan berjalan dan undangan lewat.
@@ -259,13 +271,16 @@ Label dan pilihan tombol ada di `apps/web/src/screens/b8-karyawan/view.ts`.
 7. Galat muat dan "Coba lagi".
 8. Rencana belajar: label status/skor/"Tidak lulus", tautan keluar dan `rel`, modul disiapkan, LMS, kosong.
 9. Data saya: unduh memanggil `/employees/<id>/export`; tarik persetujuan lewat konfirmasi; minta hapus dengan alasan; batalkan; galat 409; HR tidak melihat isian hapus.
-10. B6: sesi selesai menampilkan transkrip read-only; sesi ditarik menampilkan teks penarikan.
+10. B6 (`iv.spec.ts`): sesi selesai menampilkan transkrip read-only; sesi dibatalkan atau selesai yang persetujuannya ditarik menyebut penarikan.
+11. Layar HR (`permintaan-data.spec.ts`): antrean, lewat tenggat, permintaan sendiri tanpa tombol, tutup dengan/tanpa hapus, hapus akun, filter.
 
-`apps/web/e2e/alur/menu-peran.spec.ts` (milik thread integrasi B18, belum ada di scbrmb saat spek ini ditulis): baris karyawan dari `test.fixme` menjadi `test` setelah berkas itu masuk.
+E2E B18 (milik thread integrasi, diaktifkan di PR ini atas permintaannya): baris karyawan `menu-peran.spec.ts`, jalur 1 (HR, atasan, Admin Tenant ganti ke "Karyawan (saya)" dan kembali) dan langkah awal jalur 3 dari Hasil saya di `jalur-utama.spec.ts`, beranda karyawan `/my` di `batas-akses.spec.ts`; HR di menu dan `shell.spec.ts` kini memuat "Permintaan data karyawan".
 
 ### Perubahan API kecil
 
-`POST /api/employees/me/data-requests` `delete_data` memeriksa **peran akun** (`req.user.roles`), bukan peran aktif: dengan B2 HR yang berganti ke tampilan karyawan memakai peran aktif `learner` dan sebelumnya lolos dari `409 ADMIN_ACCOUNT`, padahal permintaannya tidak pernah bisa dipenuhi (`DELETE /employees/:userId` menolak akun HR). `scripts/seed-dev.js` menyalakan `learner.home` di tenant dev.
+- `POST /api/employees/me/data-requests` `delete_data` memeriksa **peran utama akun** (`req.user.primaryRole`, = `users.role`), bukan peran aktif: dengan B2 HR yang berganti ke tampilan karyawan memakai peran aktif `learner` dan sebelumnya lolos dari `409 ADMIN_ACCOUNT`, padahal permintaannya tidak pernah bisa dipenuhi (`DELETE /employees/:userId` menolak akun ber-`person.role` HR/Admin ETA). Web memakai aturan yang sama (`isAdminAccount(session.user)`, `primaryRole` dari `/auth/me`).
+- `consentWithdrawnAt` sesi wawancara hanya dikirim ke yang diwawancarai dan HR (`sessionView({ withdrawal })` untuk `GET /:id`, `listView` untuk `GET /`). Atasan dan Super Admin tidak melihatnya: persetujuan harus bebas dari tekanan atasan (UU PDP). Sebelumnya daftar sesi mengirim kolom ini mentah ke atasan.
+- `scripts/seed-dev.js` menyalakan `learner.home` di tenant dev; tenant POC/produksi dinyalakan lewat konfigurasi flag.
 
 ## Daftar perubahan file
 
@@ -282,13 +297,14 @@ Label dan pilihan tombol ada di `apps/web/src/screens/b8-karyawan/view.ts`.
 - [x] `apps/api/src/app.js` (pasang `/api/my`, teruskan `entitlements`)
 - [x] `apps/api/tests/unit/my-results.test.js`, `apps/api/tests/integration/my-karyawan.test.js`
 - [x] `apps/web/src/api/lna.ts` (flag dan tipe)
-- [ ] `apps/web/src/screens/b8-karyawan/` (`routes.ts`, `view.ts`, `MyResultsView.vue`, `LearningPlanView.vue`, `b8.css`)
-- [ ] `apps/web/src/screens/b6-iv/IvSessionView.vue`, `apps/web/src/screens/b6-iv/api.ts` (transkrip read-only, `consentWithdrawnAt`)
-- [ ] `apps/web/src/api/imports.ts` (`downloadFile`), `apps/web/src/api/lna.ts` (`myDataRequests`)
-- [ ] `apps/api/src/modules/employees/index.js` (peran akun untuk `ADMIN_ACCOUNT`) + test integrasi
-- [ ] `apps/api/scripts/seed-dev.js` (`learner.home`)
-- [ ] `apps/web/e2e/b8-karyawan.spec.ts` (tambah test B6 di `apps/web/e2e/iv.spec.ts`)
-- [ ] `apps/web/e2e/alur/menu-peran.spec.ts` (baris karyawan aktif; menunggu berkas dari thread integrasi)
+- [x] `apps/web/src/screens/b8-karyawan/` (`routes.ts`, `view.ts`, `gate.ts`, `MyResultsView.vue`, `DataSaya.vue`, `LearningPlanView.vue`, `DataRequestsHrView.vue`, `b8.css`), `apps/web/src/shell/menu.ts` (butir `dsr`), `apps/web/src/stores/session.ts` (`primaryRole`)
+- [x] `apps/web/src/screens/b6-iv/IvSessionView.vue`, `apps/web/src/screens/b6-iv/api.ts` (transkrip read-only, `consentWithdrawnAt`, status daftar)
+- [x] `apps/web/src/api/imports.ts` (`downloadFile`, dipakai juga unduh template dan CSV gap), `apps/web/src/api/lna.ts` (`myDataRequests`, `deleteEmployee`)
+- [x] `apps/api/src/modules/employees/index.js` (peran utama akun untuk `ADMIN_ACCOUNT`) + test integrasi
+- [x] `apps/api/src/modules/interviews/summary.js`, `apps/api/src/modules/interviews/index.js` (`consentWithdrawnAt` hanya HR dan yang diwawancarai) + test unit
+- [x] `apps/api/scripts/seed-dev.js` (`learner.home`)
+- [x] `apps/web/e2e/b8-karyawan.spec.ts`, `apps/web/e2e/permintaan-data.spec.ts`, `apps/web/e2e/iv.spec.ts`, `apps/web/e2e/support/hasil-saya.ts`, `apps/web/e2e/support/wawancara.ts` (`withdrawnAt`)
+- [x] E2E B18: `alur/menu-peran.spec.ts`, `alur/jalur-utama.spec.ts`, `alur/batas-akses.spec.ts`, `support/sesi.ts` (`learner.home` di `SEMUA_MODUL`), `shell.spec.ts`; `docs/designs/b18-e2e-qa-malam.md` bagian 10
 
 Catatan triase awal dipindahkan ke `docs/designs/egm/b8/triase-awal.md`; hasil egm-resolve di `docs/designs/egm/b8/goldfish_review_report.md`.
 
