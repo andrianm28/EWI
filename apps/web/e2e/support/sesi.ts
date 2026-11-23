@@ -77,7 +77,7 @@ export const SEMUA_MODUL: OpsiSesi = {
   flags: {
     'module.cca': true, 'module.dna': true, 'module.tna': true, 'module.ina': true,
     'module.li': true, 'module.ld': true, 'module.lim': true,
-    'dashboard.main': true, 'ina.dashboard': true, 'promotion.recommendation': true, 'tna.gap_board': true,
+    'dashboard.main': true, 'ina.dashboard': true, 'learner.home': true, 'promotion.recommendation': true, 'tna.gap_board': true,
     'admin.tenant': true, 'platform.console': true,
   },
 }

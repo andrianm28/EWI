@@ -12,8 +12,8 @@ import { loginSebagai, semuaModulKecuali, SEMUA_MODUL, type Peran } from '../sup
 // - flag mati untuk Learning Intervention, Career & Promotion, Dashboard, Admin Tenant, Super Admin, dan produk
 //   full_suite: li.spec.ts, b16-cp.spec.ts, dashboard.spec.ts, admin-tenant.spec.ts, super-admin.spec.ts, shell.spec.ts
 
-/** Beranda karyawan masih Beranda lama sampai layar B8 "Hasil saya" (rute `my`) dibangun. */
-const BERANDA: Record<Peran, string> = { karyawan: '/', atasan: '/dashboard', hr: '/dashboard', admin: '/admin/pengguna', super: '/tenants' }
+/** Beranda tiap tampilan saat semua modul menyala; karyawan mendarat di "Hasil saya" (B8, flag learner.home di SEMUA_MODUL). */
+const BERANDA: Record<Peran, string> = { karyawan: '/my', atasan: '/dashboard', hr: '/dashboard', admin: '/admin/pengguna', super: '/tenants' }
 
 const LAYAR_HR_SAJA = ['/cc', '/lib', '/prog', '/req', '/ld', '/m/tna/review']
 const LAYAR_HR_ATASAN = ['/dashboard', '/lim', '/cp', '/ina', '/tna/gap']

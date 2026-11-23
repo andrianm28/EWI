@@ -45,10 +45,9 @@ for (const baris of MATRIKS) {
   })
 }
 
-// Layar "Hasil saya" (rute `my`) dan "Rencana belajar" (rute `li`) dari spek B8 belum dibangun di web
-// (B8 bagian "Bukan tujuan": dibangun di PR lanjutan di atas B0). Tanpa keduanya karyawan masih mendarat di
-// Beranda lama dengan butir peralihan Developmental Needs dan Training Needs. PR layar B8 mengaktifkan test ini.
-test.fixme('menu karyawan sama dengan matriks mockup saat semua modul menyala', async ({ page }) => {
+// Beranda karyawan B8: "Hasil saya" (rute `my`) dan "Rencana belajar" (rute `li`) di balik flag learner.home (ada di SEMUA_MODUL).
+// Butir peralihan Developmental Needs dan Training Needs hilang begitu layar beranda karyawan terbuka.
+test('menu karyawan sama dengan matriks mockup saat semua modul menyala', async ({ page }) => {
   await loginSebagai(page, 'karyawan', SEMUA_MODUL)
   await expect(await butirMenu(page)).toHaveText(['Hasil saya', 'Wawancara visi & nilai', 'Wawancara akar masalah', 'Rencana belajar'])
   await expect(grup(page)).toHaveCount(0)
