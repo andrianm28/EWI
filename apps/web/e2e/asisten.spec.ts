@@ -183,3 +183,31 @@ test('snapshot: panel terbuka dengan percakapan (karyawan)', async ({ page }) =>
   await expect(panel(page).getByRole('button', { name: 'Buka Rencana belajar' })).toBeVisible()
   await expect(panel(page)).toHaveScreenshot('asisten-panel-karyawan.png')
 })
+
+test('keluar lalu masuk lagi: panel tertutup dan percakapan lama hilang', async ({ page }) => {
+  await mockAsisten(page)
+  await mockApi(page, (req) => (cocok(req, 'POST /auth/logout') ? { status: 200, json: {} } : undefined))
+  const user = await masuk(page, 'hr')
+  // Masuk lagi lewat formulir di aplikasi yang sama (tanpa muat ulang), supaya store Pinia tetap hidup
+  await mockApi(page, (req) => {
+    if (cocok(req, 'GET /auth/tenants')) return { json: { data: [] } }
+    if (cocok(req, 'GET /auth/methods')) return { json: { password: true, emailLink: true } }
+    if (cocok(req, 'POST /auth/login')) return { json: { token: 'token-hr-2', user } }
+    return undefined
+  })
+  await fab(page).click()
+  await panel(page).getByRole('button', { name: 'Gap terbesar apa?' }).click()
+  await expect(panel(page).locator('.b17-msg--me')).toHaveCount(1)
+  await page.getByRole('button', { name: 'Keluar' }).click()
+  await expect(page.getByRole('heading', { name: 'Masuk ke ELGOS' })).toBeVisible()
+  await expect(fab(page)).toHaveCount(0)
+
+  await page.getByLabel('Organisasi').fill('contoh')
+  await page.getByLabel('Email').fill(user.email)
+  await page.getByLabel('Kata sandi').fill('x')
+  await page.getByRole('button', { name: 'Masuk', exact: true }).click()
+  await expect(fab(page)).toBeVisible()
+  await expect(panel(page)).toHaveCount(0)
+  await fab(page).click()
+  await expect(panel(page).locator('.b17-msg--me')).toHaveCount(0)
+})

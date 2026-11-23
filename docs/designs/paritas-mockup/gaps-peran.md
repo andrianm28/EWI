@@ -10,7 +10,7 @@ Bobot: tinggi = bagian/fitur yang terlihat di mockup tidak ada; sedang = beda ko
 
 | ID | Layar/state | Jenis | Mockup | Aplikasi | File:baris | Bobot | Usulan perbaikan |
 |---|---|---|---|---|---|---|---|
-| X-1 | Semua layar kecuali EliteMentor | hilang | FAB `smart_toy` kanan bawah membuka panel "Asisten ELGOS" (header primer, chip saran per peran, input "Tanya apa saja", catatan "Hanya menjawab dari data yang boleh Anda lihat sebagai {peran}. Jawaban dicatat di log audit.") | Tidak ada. API (`api/assistant.ts`) dan flag `assistant` sudah ada, tetapi belum ada `screens/*/ShellExtra.vue` | `components/AppShell.vue:30-34`, `api/assistant.ts:1` | tinggi | Buat `screens/b17-asisten/ShellExtra.vue` (FAB + panel dialog) di balik flag `assistant`; sembunyikan di layar login |
+| X-1 | Semua layar kecuali EliteMentor | hilang | FAB `smart_toy` kanan bawah membuka panel "Asisten ELGOS" (header primer, chip saran per peran, input "Tanya apa saja", catatan "Hanya menjawab dari data yang boleh Anda lihat sebagai {peran}. Jawaban dicatat di log audit.") | Tidak ada. API (`api/assistant.ts`) dan flag `assistant` sudah ada, tetapi belum ada `screens/*/ShellExtra.vue` | `components/AppShell.vue:30-34`, `api/assistant.ts:1` | tinggi | **Ditutup** ([b17-asisten-web.md](b17-asisten-web.md)): `screens/b17-asisten/ShellExtra.vue`, flag `assistant`, tidak di login; Admin Tenant ditunda |
 
 ## Karyawan: Hasil saya (`/my`)
 

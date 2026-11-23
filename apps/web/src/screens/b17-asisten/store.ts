@@ -25,9 +25,13 @@ export const useAsistenStore = defineStore('b17-asisten', () => {
   // Kunci {user.id}|{tampilan}: berubah saat ganti tampilan, keluar, atau akun lain
   let key = ''
 
-  /** Kosongkan percakapan bila kunci berubah. Respons yang masih berjalan untuk kunci lama dibuang. */
+  /**
+   * Kosongkan percakapan bila kunci berubah. Respons yang masih berjalan untuk kunci lama dibuang.
+   * Ganti tampilan membiarkan panel terbuka (mockup); keluar atau akun lain menutupnya.
+   */
   function bind(next: string) {
     if (next === key) return
+    if (next.split('|')[0] !== key.split('|')[0]) open.value = false
     key = next
     turns.value = []
     intro.value = null
@@ -46,20 +50,24 @@ export const useAsistenStore = defineStore('b17-asisten', () => {
     }
   }
 
+  function push(turn: Turn) {
+    turns.value = [...turns.value, turn].slice(-MAX_TURNS)
+  }
+
   async function ask(question: string, view: AssistantView) {
     const q = question.trim()
     if (!q || pending.value) return
     const k = key
-    turns.value = [...turns.value, { who: 'me' as const, text: q }].slice(-MAX_TURNS)
+    push({ who: 'me', text: q })
     draft.value = ''
     pending.value = true
     try {
       const res = await assistant.ask(q, view)
       if (k !== key) return
-      turns.value = [...turns.value, { who: 'ai' as const, text: res.data.answer, action: res.data.action }].slice(-MAX_TURNS)
+      push({ who: 'ai', text: res.data.answer, action: res.data.action })
     } catch (e) {
       if (k !== key) return
-      turns.value = [...turns.value, { who: 'ai' as const, text: e instanceof ApiError ? e.message : FALLBACK_ERROR }].slice(-MAX_TURNS)
+      push({ who: 'ai', text: e instanceof ApiError ? e.message : FALLBACK_ERROR })
       // Draf dikembalikan supaya bisa dikirim ulang (kecuali pengguna sudah mengetik yang baru)
       if (!draft.value) draft.value = q
     } finally {

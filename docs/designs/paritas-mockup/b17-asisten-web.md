@@ -31,15 +31,16 @@ Referensi foto: `node catalog.cjs` dengan `{ asOpen: true }` untuk hr, atasan, k
 4. **Teks dari API**: `roleLabel`, salam, saran, dan catatan kaki diambil dari `GET /api/assistant?view={tampilan aktif}`; selama intro dimuat (atau gagal), dipakai teks mockup dengan label tampilan B0 (`VIEW_LABEL`). Saran mockup yang topiknya belum punya fakta (promosi, impor) memang tidak dikirim API (B17).
 5. **Tampilan yang dikirim** = `session.activeView` (salah satu dari empat di atas), baik di `GET` maupun `POST /ask`.
 6. **Tombol "Buka"** hanya bila `routeOpen(action.page, activeView)` lolos (kontrak B17). Label tombol = "Buka " + `action.label` dari API. Klik menavigasi; panel tetap terbuka seperti mockup.
-7. **State bertahan saat pindah halaman** (B0 5.3: `ShellExtra` dipasang ulang tiap halaman): `open`, `turns`, `draft`, `intro`, `pending` di store Pinia. Store diberi kunci `{user.id}|{tampilan}`; bila kunci berubah (ganti tampilan, keluar, akun lain) percakapan dan intro dikosongkan (mockup mengosongkan `asTurns` saat ganti peran). Riwayat dibatasi 40 gelembung terakhir.
+7. **State bertahan saat pindah halaman** (B0 5.3: `ShellExtra` dipasang ulang tiap halaman): `open`, `turns`, `draft`, `intro`, `pending` di store Pinia. Store diberi kunci `{user.id}|{tampilan}`; bila kunci berubah (ganti tampilan, keluar, akun lain) percakapan, intro, dan draf dikosongkan (mockup mengosongkan `asTurns` saat ganti peran). Ganti tampilan membiarkan panel terbuka (mockup); keluar atau akun lain menutupnya. Riwayat dibatasi 40 gelembung terakhir.
 8. **Fokus**: buka → fokus ke input pertanyaan. Tutup (tombol Tutup atau Esc saat fokus di dalam panel) → fokus kembali ke FAB. Esc ditangani di panel dan tidak diteruskan ke penangan Esc drawer di `AppShell`. Setelah tombol "Buka" menavigasi, panel yang dipasang ulang mengembalikan fokus ke input supaya fokus tidak jatuh ke `body`. Panel non-modal, jadi tidak ada perangkap fokus.
 9. **Menunggu jawaban** (tambahan, mockup sinkron): gelembung `ai` "Sedang menyiapkan jawaban…"; Kirim dan chip nonaktif selama menunggu. Input tetap bisa diketik.
-10. **Galat**: `ask` gagal → gelembung `ai` berisi pesan API (`RATE_LIMITED`, `AI_UNAVAILABLE`, `AI_BAD_OUTPUT`) atau "Asisten sedang tidak bisa menjawab. Coba lagi nanti." bila bukan galat API. Draf dikembalikan ke input supaya bisa dikirim ulang. Intro gagal → salam dan catatan mockup tetap tampil, chip kosong.
+10. **Galat**: `ask` gagal → gelembung `ai` berisi pesan API (`RATE_LIMITED`, `AI_UNAVAILABLE`, `AI_BAD_OUTPUT`) atau "Asisten sedang tidak bisa menjawab. Coba lagi nanti." bila bukan galat API. Draf dikembalikan ke input supaya bisa dikirim ulang, kecuali pengguna sudah mengetik pertanyaan baru selama menunggu. Intro gagal → salam dan catatan mockup tetap tampil, chip kosong.
 11. **Teks polos**: jawaban ditampilkan lewat interpolasi `{{ }}` (kontrak B17), tanpa `v-html`.
 12. Input dibatasi `maxlength="500"` (batas API); kiriman kosong setelah di-trim diabaikan. Enter mengirim (form submit).
 13. Token `--el-*` saja; mode gelap ikut token. Kelas berawalan `b17-`.
 14. **Respons basi dibuang**: intro dan jawaban yang tiba setelah kunci store berubah (ganti tampilan atau keluar di tengah permintaan) tidak ditulis ke percakapan baru.
 15. Tombol "Buka" adalah `UiButton` biasa yang memanggil `router.push` (bukan `RouterLink`), supaya penanda "kembalikan fokus ke input" dipasang sebelum navigasi.
+16. Isi panel menggulir ke gelembung terakhir saat ada gelembung baru (tinggi panel tetap 560px).
 
 ## Review spek (langkah 2)
 
@@ -66,13 +67,16 @@ Tool `Agent` tidak tersedia di sesi subagent yang membangun tahap ini, jadi `egm
 8. Galat 429 → pesan API tampil di gelembung, draf kembali ke input.
 9. Ganti tampilan (HR → Karyawan) → percakapan dikosongkan, label "Karyawan".
 10. Snapshot visual panel terbuka dengan percakapan (karyawan, 1440×900).
+11. Keluar lalu masuk lagi lewat formulir (tanpa muat ulang) → panel tertutup, percakapan lama hilang (triase review P-1).
 
 ## Checklist file
 
-- [ ] `apps/web/src/screens/b17-asisten/ShellExtra.vue` (baru)
-- [ ] `apps/web/src/screens/b17-asisten/store.ts` (baru)
-- [ ] `apps/web/src/api/assistant.ts` (tipe `AssistantView` + `super`, komentar kunci halaman)
-- [ ] `apps/web/e2e/asisten.spec.ts` (baru) + snapshot
-- [ ] `docs/designs/b17-asisten-elgos.md` (letak layar, butir checklist web)
-- [ ] `docs/designs/paritas-mockup/gaps-shell.md` S1, `gaps-peran.md` X-1 (status ditutup)
-- [ ] `docs/designs/paritas-mockup/egm/b17-asisten-web-code-review.md`, `egm/b17-asisten-web-drift.md`
+- [x] `apps/web/src/screens/b17-asisten/ShellExtra.vue` (baru)
+- [x] `apps/web/src/screens/b17-asisten/store.ts` (baru)
+- [x] `apps/web/src/api/assistant.ts` (tipe `AssistantView` + `super`, komentar kunci halaman)
+- [x] `apps/web/e2e/asisten.spec.ts` (baru) + snapshot
+- [x] `docs/designs/b17-asisten-elgos.md` (letak layar, butir checklist web)
+- [x] `docs/designs/paritas-mockup/gaps-shell.md` S1, `gaps-peran.md` X-1 (status ditutup)
+- [x] `docs/designs/paritas-mockup/egm/b17-asisten-web-code-review.md`, `egm/b17-asisten-web-drift.md`
+
+Review diff dan triase: [egm/b17-asisten-web-code-review.md](egm/b17-asisten-web-code-review.md). Drift: [egm/b17-asisten-web-drift.md](egm/b17-asisten-web-drift.md).
