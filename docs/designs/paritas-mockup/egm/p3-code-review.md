@@ -37,3 +37,25 @@ Catatan proses: sesi subagent P3 tidak punya tool Agent, jadi dua sumbu skill da
 | G-4 | ringan | Snapshot `ui-kit-*` berubah | **Perbaiki**: diperbarui, gambar terang dan gelap diperiksa. Snapshot dashboard tidak berubah (flag papan gap mati di test snapshot) |
 
 Ringkasan: Standards 7 butir (terberat S-1, diperbaiki), Spec 5 + lingkup (terberat P-4, diterima dengan catatan), goldfish 4 (terberat G-1, diperbaiki).
+
+## Review independen (sesi induk, 23 Nov)
+
+Reviewer `egm:egm-codebase-details` (C) dan `egm:egm-implementation-readiness` (R) dijalankan terpisah atas P3. Test merah dibuat dulu (Ctrl/klik tengah, Ubah/Batal ↔ `?ubah`, nama aksesibel Pareto), lalu diperbaiki.
+
+| # | Bobot | Temuan | Triase |
+| --- | --- | --- | --- |
+| C-1 / R-6 | sedang | Ctrl/Cmd/Shift-klik di sel non-tautan berpindah di tab yang sama; klik tengah tidak berbuat apa-apa | **Perbaiki**: tab baru lewat `router.resolve`, `@auxclick`; test |
+| C-2 | sedang | Tombol Ubah dan Tambah tidak memperbarui `?ubah`; Batal bisa meninggalkan `?ubah` basi sehingga klik baris berikutnya tidak membuka apa pun | **Perbaiki**: Ubah menavigasi ke `?ubah=<id>`; Batal/Tambah selalu menghapus; test (K-P3-10) |
+| C-3 | rendah | Seleksi teks di mana pun di halaman menghalangi klik baris | **Perbaiki**: hanya seleksi di baris itu (tanpa test e2e, K-P3-9) |
+| C-4 | rendah | Daftar elemen interaktif kurang lengkap; kontrol di sel tautan bersarang di dalam tautan | **Perbaiki**: daftar diperluas; komentar melarang kontrol di sel `rowLinkKey` |
+| C-5 | rendah | Nama aksesibel tautan Pareto memuat seluruh isi kartu | **Perbaiki**: `aria-label` "{label}, {n} orang"; test |
+| C-6 | rendah | Kartu Agen AI LIM belum memakai `UiAgentCard` | **Tunda**: LIM milik thread B15 |
+| R-1 | besar | Klaim T2/X-3 lebih luas dari kenyataan: breadcrumb B7 dan AA-1 | **Perbaiki**: klaim dipersempit (K-P3-7); B7 dipindah setelah triase B7; AA-1 ke P5 |
+| R-2 | besar | Status gap di gaps-*.md belum diperbarui | **Perbaiki**: status Ditutup/Sebagian/Terbuka per baris |
+| R-3 | nit | Breadcrumb sesi IV tidak sama dengan mockup | **Perbaiki**: "Training Needs › Wawancara akar masalah"; test di `iv.spec.ts` |
+| R-4 | nit | Kartu INA tersembunyi saat galat muat tanpa keputusan | **Perbaiki**: K-P3-8 |
+| R-5 | nit | Jalur tanpa test | **Perbaiki sebagian**: INA flag mati, tombol di baris bertautan tidak menavigasi. Tidak ditambah: baris `rowTo` null (belum ada pemakai), tab Values, Breadcrumb Draf |
+| R-7 | nit | `?ubah` tak dikenal tertinggal; isian belum disimpan tertimpa | **Perbaiki** bagian pertama; bagian kedua `[⏳ DITERIMA]` |
+| R-8 | nit | Test integrasi API tidak memeriksa `code`; Draf tanpa test breadcrumb | **Tunda**: test unit `tna-gaps` sudah memeriksa `code` |
+
+Hasil: e2e 275 lulus, lint dan `vue-tsc` bersih.

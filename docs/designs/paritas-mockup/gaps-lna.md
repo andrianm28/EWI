@@ -13,7 +13,7 @@ Pola berulang (dihitung sekali per layar di bawah):
 
 | ID | Layar/state | Jenis | Mockup | Aplikasi | File:baris | Bobot | Usulan perbaikan |
 |---|---|---|---|---|---|---|---|
-| CC-1 | VM | hilang | Kartu P1 "Agen AI · Wawancara pimpinan dan karyawan" + "Buka wawancara AI" (ke tab aiv) | Tidak ada | screens/b10-core-competencies/RequirementsTab.vue:80-83 | tinggi | Tambah komponen `UiAgentCard` bersama (judul, chip Pilot, teks, tombol tonal sm); di VM tombol ke `?tab=aiv`, tampil hanya bila flag `cca.interview` |
+| CC-1 | VM | hilang | Kartu P1 "Agen AI · Wawancara pimpinan dan karyawan" + "Buka wawancara AI" (ke tab aiv) | Tidak ada | screens/b10-core-competencies/RequirementsTab.vue:80-83 | tinggi | Tambah komponen `UiAgentCard` bersama (judul, chip Pilot, teks, tombol tonal sm); di VM tombol ke `?tab=aiv`, tampil hanya bila flag `cca.interview` · **Ditutup** ([p3-komponen-bersama.md](p3-komponen-bersama.md)): `UiAgentCard`; tombol hanya bila flag `cca.interview` menyala |
 | CC-2 | VM | copy | Subjudul diakhiri "Sumber: elitery.com/about-us." | Tanpa sumber di subjudul; "Sumber: …" per kartu (12px) | RequirementsTab.vue:81, 112 | rendah | Biarkan sumber per kartu (data per tenant) atau pindahkan ke subjudul; perlu keputusan kecil |
 | CC-3 | VM tabel | komponen | 5 kolom: Persyaratan, Target, Aktual, Gap, Klasifikasi; baris klik → Detail gap | 7 kolom (+Validasi, +Tindakan Ubah/Validasi/Tolak); baris tidak bisa diklik; di 1280px tabel melebar dan kolom nama terpotong/terscroll | RequirementsTab.vue:27-35, 116-140 | tinggi | Kembalikan 5 kolom; pindahkan validasi/ubah ke panel detail baris (klik baris) atau menu ikon satu kolom sempit; status "Menunggu validasi" jadi chip kecil di sel nama |
 | CC-4 | VM kartu sumber | komponen | "KESIAPAN KARYAWAN" + angka rata kanan tanpa bingkai (`.kpi` tanpa `.card`) | `UiKpiCard` berbingkai | RequirementsTab.vue:114 | sedang | Varian `UiKpiCard plain` (tanpa border, rata kanan) |
@@ -26,7 +26,7 @@ Pola berulang (dihitung sekali per layar di bawah):
 
 | ID | Layar/state | Jenis | Mockup | Aplikasi | File:baris | Bobot | Usulan perbaikan |
 |---|---|---|---|---|---|---|---|
-| CV-1 | Values | hilang | Subjudul "Hasil program 5C … Sumber: …" lalu kartu P1 "Agen AI · Wawancara nilai" | Langsung judul program | screens/b10-core-competencies/CoreCompetenciesView.vue:38-42 | tinggi | Tambah subjudul + `UiAgentCard` di atas `ProgramSection` |
+| CV-1 | Values | hilang | Subjudul "Hasil program 5C … Sumber: …" lalu kartu P1 "Agen AI · Wawancara nilai" | Langsung judul program | screens/b10-core-competencies/CoreCompetenciesView.vue:38-42 | tinggi | Tambah subjudul + `UiAgentCard` di atas `ProgramSection` · **Sebagian** ([p3-komponen-bersama.md](p3-komponen-bersama.md)): kartu Agen AI ada; subjudul program ditunda (teks khusus satu klien) |
 | CV-2 | Program, skor per nilai | token | Bar hijau (`ok`) bila ≥ 92, merah bila < 92 | Bar primer semua | ProgramSection.vue:122 | sedang | Tone ok/critical sesuai ambang |
 | CV-3 | Program | copy | "Skor karakter 5C (peserta yang selesai)", KPI "RATA-RATA SKOR 5C", kolom "Skor 5C" | "Skor per nilai …", "Rata-rata skor nilai", "Skor nilai" | ProgramSection.vue:45, 72, 119 | rendah | Generik per tenant disengaja; boleh pakai nama program (mis. "Skor karakter {nama}") |
 | CV-4 | Program, tabel komponen dan divisi | layout | `card` > h3 judul > tabel | Judul jadi caption di dalam bingkai tabel; bingkai tabel bersarang di kartu (dobel border) | ProgramSection.vue:127-133 | sedang | h3 di kartu, `UiDataTable caption-hidden` tanpa bingkai luar |
@@ -56,7 +56,7 @@ Pola berulang (dihitung sekali per layar di bawah):
 
 | ID | Layar/state | Jenis | Mockup | Aplikasi | File:baris | Bobot | Usulan perbaikan |
 |---|---|---|---|---|---|---|---|
-| AA-1 | Header | nav | Breadcrumb "Learning Needs Analysis › Wawancara AI" | Tidak ada | InterviewAssignmentView.vue:68-71 | sedang | Tambah breadcrumb (P3) |
+| AA-1 | Header | nav | Breadcrumb "Learning Needs Analysis › Wawancara AI" | Tidak ada | InterviewAssignmentView.vue:68-71 | sedang | Tambah breadcrumb (P3) · **Terbuka**: tidak masuk P3 (pindah ke P5) |
 | AA-2 | Kartu wawancara pimpinan | layout | Teks kiri, tombol primer "Mulai wawancara" kanan satu baris; judul h3 | Tombol di bawah teks; judul h2 (20px) | InterviewAssignmentView.vue:85-94 | sedang | Flex `space-between`, judul `el-h3` |
 | AA-3 | Chip status pimpinan | copy | Status ditugaskan = "Perlu wawancara" | "Ditugaskan" | InterviewAssignmentView.vue:86 (STATUS_LABEL di api/cca.ts:157) | sedang | Label khusus kartu peserta: assigned → "Perlu wawancara" |
 | AA-4 | Tabel tim, toolbar | komponen | Tidak ada "Tugaskan semua" / tanggal | Field tanggal + "Tugaskan semua" | InterviewAssignmentView.vue:100-103 | rendah | Sama dengan AH-2 (dialog tenggat) |
@@ -69,8 +69,8 @@ Catatan: file `screens/b4-dna/DevelopmentNeedsView.vue`.
 
 | ID | Layar/state | Jenis | Mockup | Aplikasi | File:baris | Bobot | Usulan perbaikan |
 |---|---|---|---|---|---|---|---|
-| DN-1 | Semua tab | hilang | Kartu P1 "Agen AI · Validasi kamus kompetensi" + "Buka wawancara AI" | Tidak ada | DevelopmentNeedsView.vue:115 | tinggi | `UiAgentCard` (tombol ke `/aiv` atau flag baru, default mati) |
-| DN-2 | Header | token | Breadcrumb 12px | 14px `el-muted` | DevelopmentNeedsView.vue:113 | rendah | Komponen `UiBreadcrumb` bersama (P3) |
+| DN-1 | Semua tab | hilang | Kartu P1 "Agen AI · Validasi kamus kompetensi" + "Buka wawancara AI" | Tidak ada | DevelopmentNeedsView.vue:115 | tinggi | `UiAgentCard` (tombol ke `/aiv` atau flag baru, default mati) · **Sebagian** ([p3-komponen-bersama.md](p3-komponen-bersama.md), K-P3-2): kartu ada tanpa tombol, karena tujuan mockup (`aiv`) fitur lain |
+| DN-2 | Header | token | Breadcrumb 12px | 14px `el-muted` | DevelopmentNeedsView.vue:113 | rendah | Komponen `UiBreadcrumb` bersama (P3) · **Ditutup** ([p3-komponen-bersama.md](p3-komponen-bersama.md)): `UiBreadcrumb` |
 | DN-3 | Tab | copy | "Kurikulum Basic · Intermediate · Advanced", "Kebutuhan pengembangan pegawai" | "Kurikulum BIA", "Kebutuhan pegawai" | DevelopmentNeedsView.vue:13-16 | sedang | Pakai label mockup |
 | DN-4 | Pemilih jabatan | copy | Note "Jabatan lain akan muncul di pilihan di atas setelah kamusnya dibuat lewat DACUM." | "Jabatan lain bisa dipilih setelah kamusnya dibuat lewat DACUM." | DevelopmentNeedsView.vue:138-141 | rendah | Copy mockup |
 | DN-5 | Ringkasan KPI | copy | KPI ke-4 note "dua lainnya belum dibuat" | Tanpa note | DevelopmentNeedsView.vue:149 | rendah | Note dinamis "{n} lainnya belum dibuat" |
@@ -92,13 +92,13 @@ Catatan: file `screens/b5-tna/TnaScreen.vue`.
 
 | ID | Layar/state | Jenis | Mockup | Aplikasi | File:baris | Bobot | Usulan perbaikan |
 |---|---|---|---|---|---|---|---|
-| TN-1 | Semua tab | hilang | Kartu P1 "Agen AI · Wawancara akar masalah" + "Contoh wawancara" (sebelum subjudul) | Tidak ada | TnaScreen.vue:90-93 | tinggi | `UiAgentCard`; tombol ke contoh sesi/IV |
+| TN-1 | Semua tab | hilang | Kartu P1 "Agen AI · Wawancara akar masalah" + "Contoh wawancara" (sebelum subjudul) | Tidak ada | TnaScreen.vue:90-93 | tinggi | `UiAgentCard`; tombol ke contoh sesi/IV · **Ditutup** ([p3-komponen-bersama.md](p3-komponen-bersama.md)): tombol ke `/iv` bila rute terbuka |
 | TN-2 | Seluruh halaman | layout/token | Hanya papan gap (3 tab) | Di bawah papan ada "Pengelolaan TNA" POC lama: 4 kotak statistik, impor, form jadwal, daftar kebutuhan training, gaya Tailwind (`border`, `bg-slate-900`, `text-blue-700`) di luar token ELGOS | TnaScreen.vue:157; TnaPengelolaan.vue:125-180 | tinggi | Sembunyikan Pengelolaan saat `tna.gap_board` menyala (pindah ke B11 `cfg`/tab tersendiri), atau migrasikan ke komponen `Ui*` |
 | TN-3 | Ringkasan KPI | copy | Notes: "terhadap Job Competency Model", "key result di bawah target", nilai "2" + "dari 10 gap", "dari total gap kompetensi" | "di bawah target jabatan", "periode X", "2 / 10" + "gap dengan wawancara selesai", "dari total gap" | TnaScreen.vue:48-56 | sedang | Copy mockup; value "2" dan note "dari {total} gap" |
 | TN-4 | Ringkasan, klasifikasi | komponen | 3 baris: Training Needs, Improvement Needs, Perlu ditinjau HR | +baris ke-4 "Belum diwawancarai" | TnaScreen.vue:62 | rendah | Perlu keputusan; mockup menyembunyikan pending |
 | TN-5 | Ringkasan, alur | hilang | Tombol tonal "Lihat gap kompetensi" | Tidak ada | TnaScreen.vue:113-119 | sedang | Tambah tombol → tab kompetensi |
 | TN-6 | Ringkasan | komponen | Tidak ada | Note warning "N kompetensi menunggu pengesahan HR …" | TnaScreen.vue:101-103 | rendah | Tambahan sah; catat |
-| TN-7 | Gap kompetensi, tabel | komponen | Kolom: Kode, Kompetensi, Target, Aktual, Gap, Klasifikasi; baris klik (P2) | Tanpa Kode; +Orang, +Status wawancara; nama sebagai tautan | TnaScreen.vue:66-74, 125-135 | tinggi | Tambah kolom Kode; Orang/Status pindah ke detail gap; baris klik |
+| TN-7 | Gap kompetensi, tabel | komponen | Kolom: Kode, Kompetensi, Target, Aktual, Gap, Klasifikasi; baris klik (P2) | Tanpa Kode; +Orang, +Status wawancara; nama sebagai tautan | TnaScreen.vue:66-74, 125-135 | tinggi | Tambah kolom Kode; Orang/Status pindah ke detail gap; baris klik · **Sebagian** ([p3-komponen-bersama.md](p3-komponen-bersama.md), K-P3-3): kolom Kode pertama dan baris bisa diklik; kolom Orang/Status tetap karena HR memindai keduanya |
 | TN-8 | Gap kompetensi, nilai | copy | Target/Aktual skor 0-100 tanpa "%" | "85%" | TnaScreen.vue:127-128 | rendah | Hilangkan "%" atau tetapkan satuan; perlu keputusan skala |
 | TN-9 | Gap kompetensi, bar | token | Merah hanya bila gap ≥ 20; lebar relatif gap terbesar | Selalu merah; lebar = gapPct | TnaScreen.vue:130 | sedang | Aturan `hot` dan skala mockup |
 | TN-10 | Gap kompetensi, note | copy | "… skor pegawai terhadap **Job Competency Model** jabatan {Jabatan} (DACUM Tool 1). Klik baris untuk membuka detail dan memulai wawancara akar masalah." | "… target kompetensi jabatan. Buka gap untuk melihat detail dan menugaskan wawancara …" | TnaScreen.vue:124 | rendah | Copy mockup (kata "menugaskan" boleh tetap, lihat TD-5) |
@@ -131,9 +131,9 @@ Catatan: file `screens/b9-ina/ImprovementNeedsView.vue`.
 
 | ID | Layar/state | Jenis | Mockup | Aplikasi | File:baris | Bobot | Usulan perbaikan |
 |---|---|---|---|---|---|---|---|
-| IN-1 | Header | nav | Breadcrumb "Learning Needs Analysis › Improvement Needs" | Tidak ada | ImprovementNeedsView.vue:186 | sedang | Tambah breadcrumb (P3) |
-| IN-2 | Urutan | layout | h1 → kartu Agen AI → subjudul → KPI | h1 → subjudul → kartu Agen AI → KPI | ImprovementNeedsView.vue:186-219 | rendah | Pindahkan kartu ke atas subjudul |
-| IN-3 | Kartu Agen AI | komponen/copy | Satu baris: judul + Pilot + teks "AI menanyai pemilik tindakan perbaikan (atasan atau karyawan pada jabatan terkait) …" + tombol "Buka wawancara AI" | Teks lain, tanpa tombol, berisi tabel verifikasi atau "Belum ada verifikasi …"; hanya tampil bila flag AI menyala | ImprovementNeedsView.vue:196-217 | sedang | Kartu ringkas sesuai mockup; tabel verifikasi pindah ke bagian sendiri di bawah daftar |
+| IN-1 | Header | nav | Breadcrumb "Learning Needs Analysis › Improvement Needs" | Tidak ada | ImprovementNeedsView.vue:186 | sedang | Tambah breadcrumb (P3) · **Ditutup** ([p3-komponen-bersama.md](p3-komponen-bersama.md)) |
+| IN-2 | Urutan | layout | h1 → kartu Agen AI → subjudul → KPI | h1 → subjudul → kartu Agen AI → KPI | ImprovementNeedsView.vue:186-219 | rendah | Pindahkan kartu ke atas subjudul · **Ditutup** ([p3-komponen-bersama.md](p3-komponen-bersama.md)) |
+| IN-3 | Kartu Agen AI | komponen/copy | Satu baris: judul + Pilot + teks "AI menanyai pemilik tindakan perbaikan (atasan atau karyawan pada jabatan terkait) …" + tombol "Buka wawancara AI" | Teks lain, tanpa tombol, berisi tabel verifikasi atau "Belum ada verifikasi …"; hanya tampil bila flag AI menyala | ImprovementNeedsView.vue:196-217 | sedang | Kartu ringkas sesuai mockup; tabel verifikasi pindah ke bagian sendiri di bawah daftar · **Ditutup** ([p3-komponen-bersama.md](p3-komponen-bersama.md)): tabel verifikasi pindah ke kartu "Verifikasi AI"; kartu disembunyikan saat data gagal dimuat |
 | IN-4 | Subjudul | copy | "Masalah non-pelatihan (SOP, alat, sistem, budaya) yang berjalan bersamaan dengan Training Needs agar solusi tepat sasaran." | "Tindakan perbaikan untuk masalah di luar pelatihan: …" | ImprovementNeedsView.vue:187 | rendah | Copy mockup |
 | IN-5 | KPI | copy | Notes: "total tercatat", "klik status untuk ubah", "perbaikan proses", "perlu dukungan manajemen" | Hanya kartu 1 ber-note ("N lewat tenggat") | ImprovementNeedsView.vue:220-223 | rendah | Tambah note; "lewat tenggat" boleh tetap di kartu 1 |
 | IN-6 | Judul tabel | layout | h2 "Tindakan perbaikan" di luar tabel (margin-top 24) | Caption kecil di dalam bingkai, di bawah toolbar | ImprovementNeedsView.vue:272-276 | sedang | h2 di luar; tabel `caption-hidden`; tombol toolbar ke kanan h2 |

@@ -28,6 +28,7 @@ function openFromQuery() {
   const id = typeof route.query.ubah === 'string' ? route.query.ubah : ''
   const g = id ? data.value?.groups.find((x) => x.rows.some((r) => r.id === id)) : undefined
   if (g && editor.id !== id) edit(g, g.rows.find((r) => r.id === id)!)
+  else if (id && data.value && !g) dropUbah() // id tidak dikenal (mis. baris sudah dihapus)
 }
 watch(data, openFromQuery)
 watch(() => route.query.ubah, (id, old) => { if (id) openFromQuery(); else if (old && editor.id === old) closeEditor() })
@@ -71,14 +72,17 @@ const saveSource = () => run(async () => {
 
 const editor = reactive({ sourceId: '', id: '', name: '', definition: '', target: '', actual: '' })
 const num = (s: string) => (String(s).trim() === '' ? null : Number(String(s).replace(',', '.')))
-function addTo(g: OverviewGroup) { Object.assign(editor, { sourceId: g.id, id: '', name: '', definition: '', target: '80', actual: '' }) }
+function addTo(g: OverviewGroup) { Object.assign(editor, { sourceId: g.id, id: '', name: '', definition: '', target: '80', actual: '' }); dropUbah() }
 function edit(g: OverviewGroup, r: OverviewRow) {
   Object.assign(editor, { sourceId: g.id, id: r.id, name: r.name, definition: r.definition ?? '', target: String(r.targetScore), actual: r.actualScore === null ? '' : String(r.actualScore) })
 }
+function dropUbah() {
+  if (route.query.ubah === undefined) return
+  const query = { ...route.query }; delete query.ubah; void router.replace({ query })
+}
 const closeEditor = () => {
-  const linked = !!editor.id && route.query.ubah === editor.id
   editor.sourceId = ''; editor.id = ''
-  if (linked) { const query = { ...route.query }; delete query.ubah; void router.replace({ query }) }
+  dropUbah()
 }
 const saveRow = () => run(async () => {
   const target = num(editor.target)
@@ -150,7 +154,7 @@ const setStatus = (r: OverviewRow, status: 'validated' | 'rejected') =>
           <template #cell-status="{ row }">{{ row.status === 'validated' ? 'Tervalidasi' : 'Menunggu validasi HR' }}</template>
           <template #cell-aksi="{ row }">
             <div class="cc-actions">
-              <UiButton variant="text" size="sm" @click="edit(g, asRow(row))">Ubah<span class="el-sr-only"> {{ row.name }}</span></UiButton>
+              <UiButton variant="text" size="sm" @click="router.push(editTo(row))">Ubah<span class="el-sr-only"> {{ row.name }}</span></UiButton>
               <UiButton v-if="row.status !== 'validated'" variant="text" size="sm" @click="setStatus(asRow(row), 'validated')">Validasi<span class="el-sr-only"> {{ row.name }}</span></UiButton>
               <UiButton variant="text" size="sm" @click="setStatus(asRow(row), 'rejected')">Tolak<span class="el-sr-only"> {{ row.name }}</span></UiButton>
             </div>

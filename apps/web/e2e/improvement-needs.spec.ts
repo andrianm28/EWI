@@ -211,3 +211,12 @@ test('alamat lama /m/ina diarahkan ke layar baru; flag dashboard mati menutup la
   await page.goto('/m/ina')
   await expect(page).toHaveURL(/\/$/)
 })
+
+test('P3 review: flag ina.ai_verification mati: kartu Agen AI dan kartu Verifikasi AI tidak ada', async ({ page }) => {
+  await page.route(/\/api\/ina\//, (r) => r.fulfill({ json: { data: [] } }))
+  await login(page, 'hr_admin', { ...FLAGS, 'ina.ai_verification': false })
+  await nav(page).getByRole('link', { name: 'Improvement Needs' }).click()
+  await expect(page.getByRole('heading', { level: 1, name: 'Improvement Needs' })).toBeVisible()
+  await expect(page.getByTestId('ina-ai')).toHaveCount(0)
+  await expect(page.getByTestId('ina-verifikasi')).toHaveCount(0)
+})

@@ -7,6 +7,7 @@ import AppShell from '@/components/AppShell.vue'
 import { ApiError } from '@/api/client'
 import { UiAuditLine, UiBreadcrumb, UiButton, UiCard, UiChip, UiErrorSummary, UiField, UiNote, UiStatus, UiStepper } from '@/ui'
 import { useSessionStore } from '@/stores/session'
+import { routeOpen } from '@/router'
 import PercakapanWawancara from './PercakapanWawancara.vue'
 import PersetujuanTna from './PersetujuanTna.vue'
 import { TNA_CONSENT_VERSION } from '@/content/consent'
@@ -16,6 +17,11 @@ import './iv.css'
 import '../b5-tna/tna.css'
 
 const session = useSessionStore()
+// Paritas P3 (mockup baris 549): "Training Needs › Wawancara akar masalah"; induk jadi tautan bila /tna terbuka
+const crumbs = computed(() => [
+  { label: 'Training Needs', to: routeOpen('tna', session.activeView) ? { name: 'tna' } : undefined },
+  { label: 'Wawancara akar masalah' },
+])
 const route = useRoute()
 const router = useRouter()
 const id = computed(() => route.params.id as string)
@@ -123,7 +129,7 @@ const audit = computed(() => {
 
 <template>
   <AppShell>
-    <UiBreadcrumb :items="[{ label: 'Wawancara akar masalah', to: { name: 'iv' } }, { label: 'Sesi' }]" />
+    <UiBreadcrumb :items="crumbs" />
     <h1 class="tna-h1">Wawancara akar masalah</h1>
     <p v-if="s?.focusLabel" class="el-muted">Topik: {{ s.focusLabel }}</p>
     <UiErrorSummary :errors="errors" />

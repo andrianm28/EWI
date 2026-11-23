@@ -38,6 +38,8 @@ test('persetujuan tanpa centang menampilkan ringkasan galat', async ({ page }) =
   await setup(page, { flags: SUMMARY_ON })
   await page.goto('/iv/s1')
   await expect(page.getByText('Topik: Analisis insiden')).toBeVisible()
+  // review P3: teks breadcrumb sama dengan mockup
+  await expect(page.getByRole('navigation', { name: 'Lokasi' })).toHaveText(/Training Needs\s*›\s*Wawancara akar masalah/)
   await page.getByRole('button', { name: 'Lanjut ke wawancara' }).click()
   await expect(page.getByRole('alert')).toContainText('Centang persetujuan untuk melanjutkan')
   // Ringkasan galat mengambil fokus supaya dibacakan; tautannya membawa ke kotak centang

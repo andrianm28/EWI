@@ -64,12 +64,22 @@ const sorted = computed(() => {
 const router = useRouter()
 const linkKey = computed(() => props.rowLinkKey ?? props.columns[0]?.key)
 const targetOf = (row: Row) => props.rowTo?.(row) ?? null
-const INTERACTIVE = 'a, button, input, select, textarea, label, summary, [role="button"]'
+// Klik pada kontrol lain di dalam baris tidak mengikuti tautan baris. Jangan menaruh kontrol interaktif di sel
+// `rowLinkKey`: isi sel itu dibungkus RouterLink, jadi kontrol di sana bersarang di dalam tautan.
+const INTERACTIVE = 'a, button, input, select, textarea, label, summary, details, [contenteditable], [role="button"], [role="link"], [role="checkbox"], [role="switch"], [role="menuitem"], [tabindex]:not([tabindex="-1"])'
 function onRowClick(e: MouseEvent, row: Row) {
   const to = targetOf(row)
-  if (!to || e.defaultPrevented || e.button !== 0) return
+  if (!to || e.defaultPrevented || (e.button !== 0 && e.button !== 1)) return
   if ((e.target as Element | null)?.closest(INTERACTIVE)) return
-  if (window.getSelection()?.toString()) return // pengguna sedang menyeleksi teks
+  // Pengguna sedang menyeleksi teks di baris ini (seleksi di tempat lain tidak menghalangi)
+  const sel = window.getSelection()
+  if (sel?.toString() && sel.anchorNode && (e.currentTarget as Node).contains(sel.anchorNode)) return
+  // Klik tengah atau dengan pengubah: perilaku peramban untuk tautan, yaitu tab baru
+  if (e.button === 1 || e.ctrlKey || e.metaKey || e.shiftKey) {
+    e.preventDefault()
+    window.open(router.resolve(to).href, '_blank', 'noopener')
+    return
+  }
   void router.push(to)
 }
 
@@ -97,7 +107,7 @@ const sortIcon = (col: Column) => (sort.value?.key === col.key ? (sort.value.dir
           </tr>
         </thead>
         <tbody>
-          <tr v-for="row in sorted" :key="String(row[rowKey])" :class="{ 'is-link': targetOf(row) }" @click="onRowClick($event, row)">
+          <tr v-for="row in sorted" :key="String(row[rowKey])" :class="{ 'is-link': targetOf(row) }" @click="onRowClick($event, row)" @auxclick="onRowClick($event, row)">
             <td v-for="c in columns" :key="c.key" :class="{ 'is-right': c.align === 'right', 'el-mono': c.mono }">
               <RouterLink v-if="c.key === linkKey && targetOf(row)" :to="targetOf(row)!" class="el-table__link">
                 <slot :name="`cell-${c.key}`" :row="row" :value="row[c.key]">{{ row[c.key] ?? '–' }}</slot>

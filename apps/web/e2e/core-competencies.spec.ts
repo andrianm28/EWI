@@ -114,6 +114,8 @@ test('HR: tab Vision & Mission menampilkan kesiapan, gap, dan status validasi; H
   await cloud.getByRole('button', { name: 'Validasi Arsitektur public cloud' }).click()
   await expect(panel.getByRole('status')).toContainText('divalidasi')
   expect(sent).toContainEqual({ method: 'PATCH', path: '/requirements/r-1', body: { status: 'validated' } })
+  // review P3: tombol di dalam baris bertautan tidak ikut mengikuti tautan baris
+  await expect(page).not.toHaveURL(/ubah=/)
 
   await vision.getByRole('button', { name: 'Tambah persyaratan kompetensi' }).click()
   await vision.getByLabel('Nama').fill('Keamanan cloud')
@@ -239,4 +241,19 @@ test('P3 CC-3 (klik baris): klik baris persyaratan membuka panel ubah baris itu'
   await vision.getByRole('button', { name: 'Batal' }).click()
   await expect(page).not.toHaveURL(/ubah=/)
   await expect(vision.getByLabel('Nama')).toHaveCount(0)
+})
+
+test('P3 review: tombol Ubah dan Batal menjaga ?ubah selaras dengan panel', async ({ page }) => {
+  await loginAs(page)
+  await page.goto('/cc')
+  const vision = page.getByTestId('cc-sumber-vision')
+  await vision.getByRole('row', { name: /Arsitektur public cloud/ }).getByRole('cell').nth(1).click()
+  await expect(page).toHaveURL(/ubah=r-1/)
+  await vision.getByRole('row', { name: /Tata kelola layanan/ }).getByRole('button', { name: /^Ubah/ }).click()
+  await expect(page).toHaveURL(/ubah=r-2/)
+  await expect(vision.getByLabel('Nama')).toHaveValue('Tata kelola layanan')
+  await vision.getByRole('button', { name: 'Batal' }).click()
+  await expect(page).not.toHaveURL(/ubah=/)
+  await vision.getByRole('row', { name: /Arsitektur public cloud/ }).getByRole('cell').nth(1).click()
+  await expect(vision.getByLabel('Nama')).toHaveValue('Arsitektur public cloud')
 })

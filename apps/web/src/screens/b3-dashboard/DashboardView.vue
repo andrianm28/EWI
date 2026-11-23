@@ -147,6 +147,7 @@ const modules = computed(() => (data.value?.modules ?? []).flatMap((m) => {
             <p class="el-muted dash-note">{{ paretoNote }}</p>
             <component
               :is="paretoTo(r) ? RouterLink : 'div'" v-for="r in data.pareto.rows" :key="r.key" :to="paretoTo(r)" data-testid="pareto-baris"
+              :aria-label="paretoTo(r) ? `${r.label}, ${r.people} orang` : undefined"
               :class="['dash-pareto', { 'dash-pareto--link': paretoTo(r) }]"
             >
               <div class="dash-row">

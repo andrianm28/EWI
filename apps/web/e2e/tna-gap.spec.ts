@@ -153,6 +153,18 @@ test('P3 TN-7: kolom Kode pertama; klik di mana pun pada baris membuka detail ga
   await expect(page).toHaveURL(/\/tna\/gap\?/)
 })
 
+test('P3 review: Ctrl-klik atau klik tengah di sel non-tautan membuka tab baru, halaman ini tetap', async ({ page, context }) => {
+  await setup(page, { flags: BOARD })
+  await page.goto('/tna?tab=kompetensi')
+  const sel = page.getByRole('table', { name: 'Gap kompetensi' }).getByRole('row', { name: /Analisis insiden/ }).getByRole('cell', { name: '75%' })
+  const [tabCtrl] = await Promise.all([context.waitForEvent('page'), sel.click({ modifiers: ['ControlOrMeta'] })])
+  await expect.poll(() => tabCtrl.url()).toMatch(/\/tna\/gap\?/)
+  await expect(page).toHaveURL(/tab=kompetensi/)
+  const [tabTengah] = await Promise.all([context.waitForEvent('page'), sel.click({ button: 'middle' })])
+  await expect.poll(() => tabTengah.url()).toMatch(/\/tna\/gap\?/)
+  await expect(page).toHaveURL(/tab=kompetensi/)
+})
+
 test('P3: baris gap OKR juga bisa diklik', async ({ page }) => {
   await setup(page, { flags: BOARD })
   await page.goto('/tna?tab=okr')
