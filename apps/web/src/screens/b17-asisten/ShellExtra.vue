@@ -1,6 +1,6 @@
 <script setup lang="ts">
 // B17 Asisten ELGOS: FAB + panel chat di semua layar ber-shell (mockup Pak Eji, `.fab`/`.asst`).
-// Dipasang AppShell lewat glob (B0 5.3). Gerbang: flag `assistant` dan tampilan karyawan/atasan/hr/super.
+// Dipasang AppShell lewat glob (B0 5.3). Gerbang: flag `assistant` dan tampilan karyawan/atasan/hr (bukan super, keputusan user 23 Nov).
 // Spek: docs/designs/paritas-mockup/b17-asisten-web.md, docs/designs/b17-asisten-elgos.md
 import { computed, nextTick, onMounted, ref, useId, watch } from 'vue'
 import { useRouter } from 'vue-router'
@@ -12,7 +12,8 @@ import { VIEW_LABEL } from '@/shell/views'
 import type { AssistantView } from '@/api/assistant'
 import { useAsistenStore } from './store'
 
-const ASSISTANT_VIEWS: readonly AssistantView[] = ['karyawan', 'atasan', 'hr', 'super']
+// Keputusan user 23 Nov: tidak di tampilan Super Admin; eta_admin memakainya dari tampilan HR tenant
+const ASSISTANT_VIEWS: readonly AssistantView[] = ['karyawan', 'atasan', 'hr']
 
 const session = useSessionStore()
 const store = useAsistenStore()

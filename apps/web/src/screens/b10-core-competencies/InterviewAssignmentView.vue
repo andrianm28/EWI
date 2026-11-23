@@ -8,6 +8,7 @@ import AppShell from '@/components/AppShell.vue'
 import { useSessionStore } from '@/stores/session'
 import { UiBreadcrumb, UiButton, UiCard, UiChip, UiDataTable, UiErrorSummary, UiNote, type UiColumn } from '@/ui'
 import AssignDueDialog from './AssignDueDialog.vue'
+import { focusIfLost } from './focus'
 import InterviewFlow from './InterviewFlow.vue'
 import InterviewSession from './InterviewSession.vue'
 import './cc.css'
@@ -21,6 +22,10 @@ const notice = ref('')
 /** P8 R2 (AA-4): anggota tim yang akan ditugaskan; tenggatnya dipilih di dialog. */
 const pending = ref<TeamRow[] | null>(null)
 const busy = ref(false)
+/** Galat penugasan dari API, tampil di dialog selama dialog terbuka (triase P8 #2). */
+const dialogErrors = ref<{ message: string }[]>([])
+const noticeEl = ref<HTMLElement | null>(null)
+function openDialog(rows: TeamRow[]) { dialogErrors.value = []; pending.value = rows }
 
 async function load() {
   try { data.value = await cca.assignments() } catch (e) {
@@ -55,13 +60,16 @@ const open = (s: AssignmentStatus) => s === 'none' || s === 'cancelled'
 const unassigned = computed(() => (leader.value?.team ?? []).filter((m) => open(m.status)))
 
 async function assign(rows: TeamRow[], dueDate: string) {
-  errors.value = []; notice.value = ''; busy.value = true; pending.value = null
+  // Dialog tetap terbuka sampai berhasil (tombol Tugaskan nonaktif selama `busy`); galat tampil di dialog
+  errors.value = []; dialogErrors.value = []; notice.value = ''; busy.value = true
   try {
     const res = await cca.assign(rows.map((r) => r.userId), dueDate)
+    pending.value = null
     await load()
     const left = res.skipped.length + res.rejected.length
     notice.value = `${res.assigned.length} anggota tim ditugaskan${left ? `, ${left} dilewati` : ''}.`
-  } catch (e) { errors.value = [{ message: (e as Error).message }] } finally { busy.value = false }
+    await focusIfLost(() => noticeEl.value)
+  } catch (e) { dialogErrors.value = [{ message: (e as Error).message }] } finally { busy.value = false }
 }
 </script>
 
@@ -79,7 +87,7 @@ async function assign(rows: TeamRow[], dueDate: string) {
         <template v-else>AI mewawancarai Anda tentang pemahaman visi, misi, dan nilai perusahaan. Ditugaskan oleh atasan Anda.</template>
       </p>
       <UiErrorSummary v-if="errors.length" :errors="errors" />
-      <p v-if="notice" role="status" class="el-muted">{{ notice }}</p>
+      <p v-if="notice" ref="noticeEl" role="status" tabindex="-1" class="el-muted">{{ notice }}</p>
       <p v-if="loading" class="el-muted">Memuat…</p>
       <UiNote v-else-if="disabled" tone="warning">Wawancara AI Core Competencies belum diaktifkan untuk organisasi Anda.</UiNote>
 
@@ -106,7 +114,7 @@ async function assign(rows: TeamRow[], dueDate: string) {
             <!-- P8 R2 (AA-4): tanpa field tanggal di toolbar; "Tugaskan semua" dipertahankan di header kartu -->
             <div class="cc-row cc-cardhead">
               <h3 class="el-h3">Teruskan wawancara ke tim Anda</h3>
-              <UiButton v-if="leader.canAssign" size="sm" :disabled="busy || !unassigned.length" @click="pending = unassigned">Tugaskan semua</UiButton>
+              <UiButton v-if="leader.canAssign" size="sm" :disabled="busy || !unassigned.length" @click="openDialog(unassigned)">Tugaskan semua</UiButton>
             </div>
             <p class="el-muted cc-cardsub">Karyawan diwawancarai AI untuk menilai gap terhadap hasil wawancara Anda. Penugasan dari Anda, hasilnya masuk ke HR.</p>
             <UiNote v-if="!leader.canAssign" tone="warning" style="margin: 12px 0">Selesaikan wawancara pimpinan Anda dulu sebelum menugaskan anggota tim.</UiNote>
@@ -114,14 +122,14 @@ async function assign(rows: TeamRow[], dueDate: string) {
               <template #cell-jobRoleName="{ row }">{{ row.jobRoleName ?? '-' }}</template>
               <template #cell-status="{ row }"><UiChip :tone="TONE[asRow(row).status]">{{ STATUS_LABEL[asRow(row).status] }}</UiChip></template>
               <template #cell-aksi="{ row }">
-                <UiButton v-if="open(asRow(row).status)" variant="tonal" size="sm" :disabled="busy || !leader.canAssign" @click="pending = [asRow(row)]">Tugaskan<span class="el-sr-only"> {{ row.name }}</span></UiButton>
+                <UiButton v-if="open(asRow(row).status)" variant="tonal" size="sm" :disabled="busy || !leader.canAssign" @click="openDialog([asRow(row)])">Tugaskan<span class="el-sr-only"> {{ row.name }}</span></UiButton>
                 <span v-else class="el-muted">{{ row.status === 'completed' ? 'Selesai' : 'Menunggu karyawan' }}</span>
               </template>
             </UiDataTable>
             <UiNote style="margin-top: 12px">Atasan hanya melihat status tim. Isi jawaban karyawan diringkas dan tidak ditampilkan per orang.</UiNote>
           </UiCard>
           <AssignDueDialog
-            :open="!!pending" title="Tugaskan wawancara tim" :busy="busy"
+            :open="!!pending" title="Tugaskan wawancara tim" :busy="busy" :errors="dialogErrors"
             :who="pending?.length === 1 ? pending[0]!.name : `${pending?.length ?? 0} anggota tim`"
             @close="pending = null" @confirm="assign(pending ?? [], $event)"
           />

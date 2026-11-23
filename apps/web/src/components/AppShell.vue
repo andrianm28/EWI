@@ -59,6 +59,6 @@ const extras = Object.entries(import.meta.glob<{ default: Component }>('@/screen
 .el-app__scrim { display: none; }
 @media (max-width: 900px) {
   .el-app__content { padding: 16px; }
-  .el-app__scrim { display: block; position: fixed; inset: 0; background: rgb(0 0 0 / 0.4); z-index: 30; }
+  .el-app__scrim { display: block; position: fixed; inset: 0; background: var(--el-scrim); z-index: 30; }
 }
 </style>

@@ -1,6 +1,8 @@
 // Menu per tampilan, terjemahan fungsi `N` di mockup Pak Eji. Aturan tampil: docs/designs/b0-fondasi-ui.md bagian 5.2.
 // `key` adalah nama rute. Butir baru muncul begitu sebuah paket mendaftarkan rute dengan nama itu.
 import { reactive } from 'vue'
+import { routeOpen } from '@/router'
+import type { useSessionStore } from '@/stores/session'
 import type { IconName } from '@/ui/icons'
 import type { SubmoduleKey } from '@/modules'
 import type { ViewKey } from './views'
@@ -69,6 +71,25 @@ export interface MenuContext {
   homeReady: boolean
   flags: Record<string, boolean>
   canOpen: (key: SubmoduleKey) => boolean
+}
+
+type Session = ReturnType<typeof useSessionStore>
+
+/** Konteks menu tampilan aktif sesi; dipakai drawer dan breadcrumb supaya aturan tampil satu sumber. */
+export function menuContext(session: Session): MenuContext {
+  const view = session.activeView
+  return {
+    view,
+    routeOpen: (name) => routeOpen(name, view, session),
+    homeReady: session.homeReady(view),
+    flags: session.access?.flags ?? {},
+    canOpen: session.canOpen,
+  }
+}
+
+/** Butir menu `key` tampil untuk konteks ini (salah satu entri MENU dengan kunci itu, termasuk butir peralihan). */
+export function menuShows(key: string, ctx: MenuContext): boolean {
+  return MENU.some((item) => item.key === key && isVisible(item, ctx))
 }
 
 export type MenuEntry =

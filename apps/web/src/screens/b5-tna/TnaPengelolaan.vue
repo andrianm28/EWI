@@ -5,6 +5,7 @@
 // HR wajib memilih siapa yang diwawancarai karena BT-29 belum diputuskan (tidak ada pilihan bawaan).
 import { computed, onMounted, ref } from 'vue'
 import ImportPanel from '@/components/ImportPanel.vue'
+import TnaMySessions from './TnaMySessions.vue'
 import { UiButton, UiCard, UiDataTable, UiField, UiKpiCard, UiNote, type UiColumn } from '@/ui'
 import {
   lna, COURSE_STATUS_LABEL, PLAN_STATUS_LABEL, PLAN_NEXT, FLAG_TRAINING_REQUEST, FLAG_NON_TRAINING_HR, formatWib,
@@ -31,7 +32,6 @@ const isHr = computed(() => ['hr_admin', 'eta_admin'].includes(session.role))
 const isLearner = computed(() => session.role === 'learner')
 // R-1: saat penugasan dari papan gap menyala, jadwal massal lama disembunyikan (penugasan lewat detail gap)
 const assignmentOn = computed(() => session.hasFlag('tna.interview_assignment'))
-const mySessions = computed(() => sessions.value.filter((s) => s.intervieweeId === session.user?.id && s.status !== 'completed'))
 // PM-8 B: BT-31 ditunda, tombol permintaan training hanya tampil bila flag dinyalakan
 const canRequestTraining = computed(() => isLearner.value && session.hasFlag(FLAG_TRAINING_REQUEST))
 // PM-6: temuan di luar pelatihan untuk HR; atasan hanya bila HR memberinya akses
@@ -146,15 +146,7 @@ const target = (f: Finding) => (f.metricName ? `${f.metricName}: target ${f.targ
     </UiNote>
     <p v-else-if="isHr"><RouterLink to="/m/tna/review" class="tna-a">Riwayat review hasil AI</RouterLink></p>
 
-    <UiCard v-if="mySessions.length" tonal data-testid="tna-my-sessions">
-      <h2 class="tna-h2">Wawancara untuk Anda</h2>
-      <p class="el-muted">Sekitar 30 menit, membahas target yang belum tercapai.</p>
-      <div v-for="s in mySessions" :key="s.id" class="tna-session">
-        <p v-if="s.status === 'scheduled' && isExpired(s)" class="tna-crit">Undangan sudah berakhir. Minta HR memperpanjang undangan Anda.</p>
-        <UiButton v-else size="sm" :to="`/iv/${s.id}`">{{ s.status === 'scheduled' ? 'Mulai wawancara' : 'Lanjutkan wawancara' }}</UiButton>
-        <p v-if="s.inviteExpiresAt && !isExpired(s)" class="el-muted tna-small">Undangan berlaku sampai {{ formatWib(s.inviteExpiresAt) }} WIB.</p>
-      </div>
-    </UiCard>
+    <TnaMySessions :sessions="sessions" />
 
     <div v-if="dash" class="el-grid el-grid-4" data-testid="tna-stats">
       <UiKpiCard label="Target merah" :value="dash.redTargets" />

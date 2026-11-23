@@ -10,7 +10,7 @@ import { UiBreadcrumb, UiButton, UiCard, UiChip, UiDataTable, UiDialog, UiErrorS
 import { useSessionStore } from '@/stores/session'
 import { routeOpen } from '@/router'
 import { HR_ROLES, gaps, gapRefFromQuery, type DetailEmployee, type GapDetail, type Project } from './api'
-import { CLASSIFICATION_LABEL, CLASSIFICATION_TONE, num } from './labels'
+import { CLASSIFICATION_LABEL, CLASSIFICATION_TONE, gapScore, num } from './labels'
 import './tna.css'
 
 const session = useSessionStore()
@@ -30,8 +30,10 @@ const error = ref('')
 const formErrors = ref<{ message: string; fieldId?: string }[]>([])
 const fieldError = (fieldId: string) => formErrors.value.find((e) => e.fieldId === fieldId)?.message
 // Galat umum tampil di dialog selama dialog terbuka (latar modal tidak terbaca), selain itu di halaman
+// Galat muat (detail, data penugasan) disimpan terpisah supaya tidak terhapus saat dialog dibuka (triase P8 #6)
+const loadError = ref('')
 const generalErrors = computed(() => (error.value ? [{ message: error.value }] : []))
-const pageErrors = computed(() => (assignOpen.value ? [] : generalErrors.value))
+const pageErrors = computed(() => [...(loadError.value ? [{ message: loadError.value }] : []), ...(assignOpen.value ? [] : generalErrors.value)])
 const dialogErrors = computed(() => [...formErrors.value, ...generalErrors.value])
 /** P8 R2 (TD-5): formulir penugasan di dialog, dibuka dari CTA satu baris. */
 const assignOpen = ref(false)
@@ -40,8 +42,8 @@ const notice = ref('')
 const busy = ref(false)
 
 async function load() {
-  if (!ref_.value) { error.value = 'Alamat gap tidak lengkap. Buka gap dari daftar Training Needs.'; return }
-  try { d.value = (await gaps.detail(ref_.value)).data } catch (e) { error.value = e instanceof ApiError ? e.message : 'Detail gap tidak bisa dimuat' }
+  if (!ref_.value) { loadError.value = 'Alamat gap tidak lengkap. Buka gap dari daftar Training Needs.'; return }
+  try { d.value = (await gaps.detail(ref_.value)).data } catch (e) { loadError.value = e instanceof ApiError ? e.message : 'Detail gap tidak bisa dimuat' }
 }
 
 // Formulir penugasan
@@ -69,10 +71,10 @@ async function loadForm() {
       jobRoles.value = r.data
       jobRoleId.value = r.defaults?.jobRoleId ?? ''
     }
-  } catch (e) { error.value = e instanceof ApiError ? e.message : 'Data penugasan tidak bisa dimuat' }
+  } catch (e) { loadError.value = e instanceof ApiError ? e.message : 'Data penugasan tidak bisa dimuat' }
 }
 onMounted(() => Promise.all([load(), loadForm()]))
-watch(() => route.fullPath, () => { d.value = null; error.value = ''; formErrors.value = []; notice.value = ''; load() })
+watch(() => route.fullPath, () => { d.value = null; error.value = ''; loadError.value = ''; formErrors.value = []; notice.value = ''; load() })
 
 /** R10 mode affected: kompetensi gap > 0 atau OKR belum tercapai, bukan diri sendiri, tanpa sesi terbuka di proyek terpilih. */
 const hasOpenHere = (e: DetailEmployee) => !!e.session?.open && (!projectId.value || e.session.projectId === projectId.value)
@@ -135,7 +137,7 @@ const kpis = computed(() => {
   const g = d.value
   if (!g) return []
   // P8 R4 (TN-8): skor 0-100 tanpa "%"
-  if (g.kind === 'competency') return [{ l: 'TARGET', v: formatScore(g.targetPct) }, { l: 'AKTUAL', v: formatScore(g.actualPct) }, { l: 'GAP', v: `−${formatScore(g.gapPct)}` }]
+  if (g.kind === 'competency') return [{ l: 'TARGET', v: formatScore(g.targetPct) }, { l: 'AKTUAL', v: formatScore(g.actualPct) }, { l: 'GAP', v: gapScore(g.gapPct) }]
   return [{ l: 'TARGET', v: num(g.target, g.unit) }, { l: 'AKTUAL', v: num(g.actual, g.unit) }, { l: 'GAP', v: num(g.diff, g.unit) }]
 })
 const SESSION_LABEL: Record<string, string> = { scheduled: 'Ditugaskan', in_progress: 'Berjalan', completed: 'Selesai' }

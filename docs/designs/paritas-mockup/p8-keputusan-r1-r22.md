@@ -47,7 +47,7 @@ e2e: sel Status Pengguna dan Tenant berisi `.el-chip` "Aktif" tanpa ikon `UiStat
 ### R4 · Skor 0–100 tanpa "%", desimal koma (TN-8, DN-10, CV-11)
 Keputusan: skor (target/aktual/gap) 0–100 tanpa "%", desimal koma `id-ID`, satu formatter bersama. Persentase sungguhan (kesiapan, kontribusi, progres) tetap ber-"%".
 
-- Formatter baru `src/ui/format.ts`: `formatNumber(n)` (`Intl.NumberFormat('id-ID', { maximumFractionDigits: 2 })`) dan `formatScore(n, kosong = '–')`. Dipakai `api/cca.ts` `fmt`, `screens/b5-tna/labels.ts` `num`, `screens/b8-karyawan/view.ts` `formatNumber`.
+- Formatter baru `src/ui/format.ts`: `formatNumber(n)` (`Intl.NumberFormat('id-ID', { maximumFractionDigits: 2 })`) dan `formatScore(n, kosong = '–')`. Akibat locale: titik pemisah ribuan (1250 → "1.250") dan pembulatan ke paling banyak dua angka di belakang koma (93,456 → "93,46"). Triase review independen: NaN/Infinity menjadi "–", `-0` menjadi "0", tanda negatif selalu `−` (U+2212); gap ditampilkan lewat `gapScore` (tanda dari nilai, bukan awalan tetap). Dipakai `api/cca.ts` `fmt`, `screens/b5-tna/labels.ts` `num`, `screens/b8-karyawan/view.ts` `formatNumber`.
 - TN-8: `TnaScreen.vue` kolom Target/Aktual "75", bukan "75%"; `TnaGapView.vue` KPI TARGET/AKTUAL/GAP tanpa "%" ("75", "56", "−19"), nilai karyawan memakai formatter.
 - OKR: `num` memakai koma ("22,5 menit", bukan "22.50 menit").
 - CV-11: `fmt` sudah koma; kini lewat formatter bersama. DN-10: kamus DNA memakai level 0–4 (spek B4, bukan skor) dan tombol "Sahkan kamus" disengaja; Diputuskan (R4).
@@ -86,7 +86,7 @@ Pertahankan "hanya bisa dibuka oleh HR" (sesuai perilaku). Tanpa kode.
 Bawahan langsung (RG-3). Tanpa kode.
 
 ### R11 · Label tier (PK-9)
-"Advanced" di semua layar. Sudah sesuai (tidak ada "Advance" di web maupun API). Tanpa kode.
+UI hanya "Advanced"; impor menormalkan alias "Advance" (`apps/api/src/modules/imports/kinds/common.js`). Sudah sesuai. Tanpa kode.
 
 ### R12 · EliteMentor di dalam shell (K-1)
 Deep link (aturan arsitektur 1). Sudah sesuai: Rencana belajar membuka `launchUrl` di tab baru. Layar EliteMentor mockup tidak dibangun. Tanpa kode.
@@ -149,6 +149,8 @@ Diputuskan thread B15. Layar LIM tidak disentuh.
 - `apps/web/src/screens/b8-karyawan/{MyResultsView.vue,view.ts,b8.css}`
 - `apps/web/src/screens/b11-admin/UsersView.vue`, `b12-super-admin/{TenantsView,PlatformView}.vue`
 - `apps/web/src/screens/b13-li/{DraftView,LibraryView,RequestsView}.vue`, `li.css`
+- Di luar butir R, ikut tersentuh: `e2e/core-competencies.spec.ts` assert POST tidak stabil diganti `expect.poll` (bukan perubahan perilaku); warna kartu CTA `.tna-cta` memakai `--el-primary-container`/`--el-on-primary-container` (gaya kartu `--pc` mockup)
+- Triase review independen: `shell/menu.ts` (`menuContext`, `menuShows`), `components/AppDrawer.vue`, `b10-core-competencies/focus.ts` (baru), `ui/UiDialog.vue` (fokus awal, Tab berputar, `--el-scrim`), `style.css` (`--el-scrim`), `components/AppShell.vue`, `b5-tna/TnaMySessions.vue` (baru, keputusan user 23 Nov), `b17-asisten/ShellExtra.vue` (keputusan user 23 Nov), `b6-iv/api.ts`
 - Test e2e berawalan "P8" di `apps/web/e2e/{tna-gap,core-competencies,cca-wawancara,iv,b8-karyawan,admin-tenant,super-admin,li}.spec.ts`, plus test lama yang bergantung pada formulir/teks lama
 
 ## Review spek (mandiri) dan triase

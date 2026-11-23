@@ -2,9 +2,8 @@
 // Navigation drawer accordion (Material 3). Isi menu dari src/shell/menu.ts sesuai tampilan aktif.
 import { computed, nextTick, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
-import { routeOpen } from '@/router'
 import { useSessionStore } from '@/stores/session'
-import { buildMenu, openGroups } from '@/shell/menu'
+import { buildMenu, menuContext, openGroups } from '@/shell/menu'
 import { theme, toggleTheme } from '@/shell/theme'
 import { UiIcon } from '@/ui'
 
@@ -14,13 +13,7 @@ const emit = defineEmits<{ close: [] }>()
 const session = useSessionStore()
 const route = useRoute()
 
-const menu = computed(() => buildMenu({
-  view: session.activeView,
-  routeOpen: (name) => routeOpen(name, session.activeView, session),
-  homeReady: session.homeReady(session.activeView),
-  flags: session.access?.flags ?? {},
-  canOpen: session.canOpen,
-}))
+const menu = computed(() => buildMenu(menuContext(session)))
 
 // Rute sesi wawancara lama (/m/:key/sessions/:id) menyalakan butir submodulnya
 const activeKey = computed(() => route.meta.menuKey ?? (route.name === 'interview' ? String(route.params.key) : String(route.name ?? '')))

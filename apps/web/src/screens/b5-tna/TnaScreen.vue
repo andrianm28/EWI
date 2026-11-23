@@ -9,11 +9,12 @@ import { ApiError } from '@/api/client'
 import { UiAgentCard, UiBreadcrumb, UiButton, UiCard, UiChip, UiDataTable, UiErrorSummary, UiKpiCard, UiNote, UiProgressBar, UiTabs, formatScore, type UiColumn } from '@/ui'
 import { routeOpen } from '@/router'
 import { useSessionStore } from '@/stores/session'
-import { lna } from '@/api/lna'
+import { lna, type Session } from '@/api/lna'
+import TnaMySessions from './TnaMySessions.vue'
 import TnaPengelolaan from './TnaPengelolaan.vue'
 import { useShowBoard } from './board'
 import { HR_ROLES, gaps, gapRefOf, type CompetencyGap, type GapSummary, type OkrGap } from './api'
-import { CLASSIFICATION_LABEL, CLASSIFICATION_TONE, interviewStatus, num, pct } from './labels'
+import { CLASSIFICATION_LABEL, CLASSIFICATION_TONE, gapScore, interviewStatus, num, pct } from './labels'
 import './tna.css'
 
 const session = useSessionStore()
@@ -52,7 +53,13 @@ async function loadBoard() {
     if (!period.value && s.data.period) period.value = s.data.period
   } catch (e) { error.value = e instanceof ApiError ? e.message : 'Papan gap tidak bisa dimuat' }
 }
-onMounted(() => { void loadBoard(); void loadReviewPending() })
+// Keputusan user 23 Nov: sesi wawancara milik pengguna tetap terjangkau di /tna saat papan menyala (atasan, K-P5-4 dicabut)
+const mySessions = ref<Session[]>([])
+async function loadMySessions() {
+  if (!showBoard.value) return
+  try { mySessions.value = (await lna.sessions('tna')).data } catch { /* kartu opsional; menu Wawancara akar masalah tetap ada */ }
+}
+onMounted(() => { void loadBoard(); void loadReviewPending(); void loadMySessions() })
 watch(period, (v, old) => { if (old) loadBoard() })
 
 const kpis = computed(() => {
@@ -155,7 +162,7 @@ const ivTo = computed(() => (routeOpen('iv', session.activeView, session) ? { na
           <template #cell-targetPct="{ row }">{{ formatScore(row.targetPct) }}</template>
           <template #cell-actualPct="{ row }">{{ formatScore(row.actualPct) }}</template>
           <template #cell-gapPct="{ row }">
-            <div class="tna-row"><UiProgressBar :value="gapWidth(row.gapPct)" :tone="row.gapPct >= 20 ? 'critical' : 'primary'" :label="`Gap ${row.name}`" class="tna-bar" /><span class="el-mono">−{{ formatScore(row.gapPct) }}</span></div>
+            <div class="tna-row"><UiProgressBar :value="gapWidth(row.gapPct)" :tone="row.gapPct >= 20 ? 'critical' : 'primary'" :label="`Gap ${row.name}`" class="tna-bar" /><span class="el-mono">{{ gapScore(row.gapPct) }}</span></div>
           </template>
           <template #cell-people="{ row }">{{ row.peopleWithGap }} dari {{ row.assessed }}</template>
           <template #cell-status="{ row }">{{ interviewStatus(row) }}</template>
@@ -183,6 +190,8 @@ const ivTo = computed(() => (routeOpen('iv', session.activeView, session) ? { na
       </div>
       <!-- TN-2: fitur kelola lama tetap terjangkau lewat rute sekunder -->
       <div class="tna-gap"><UiButton variant="outlined" size="sm" :to="{ name: 'tna-kelola' }">Kelola TNA</UiButton></div>
+      <!-- Keputusan user 23 Nov: sesi wawancara pengguna sendiri (mis. atasan) tetap di /tna, di bawah papan agar tata letak mockup sama -->
+      <TnaMySessions :sessions="mySessions" class="tna-gap" />
     </template>
 
     <TnaPengelolaan v-else />

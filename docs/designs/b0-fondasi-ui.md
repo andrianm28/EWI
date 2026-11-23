@@ -53,6 +53,7 @@ Didefinisikan di `apps/web/src/style.css` sebagai variabel CSS pada `:root`, lal
 | `--el-success` / container | #1B6E3F / #C6F0D3 | #8BD8A5 / #0B5229 |
 | `--el-warning` / container | #7A4F00 / #FFE2A8 | #F3BF5B / #5C3B00 |
 | `--el-critical` / container | #B3261E / #F9DEDC | #FFB4AB / #8C1D18 |
+| `--el-scrim` | hitam 40% | hitam 40% |
 
 - Mode gelap tidak ada di mockup. Nilainya diturunkan dengan pola peran warna Material 3. `[⚠️ BELUM TERVERIFIKASI]` belum dilihat Pak Eji atau Desty; bila ditolak, cukup ubah nilai di satu blok CSS.
 - Pemilihan tema: atribut `data-theme="light|dark"` di `<html>`. Tanpa pilihan pengguna, mengikuti `prefers-color-scheme`. Pilihan pengguna (butir "Mode gelap" di kaki drawer; dipindah dari top bar oleh paritas P2 agar top bar sama dengan mockup) disimpan di `localStorage` kunci `elgos.theme`; akses storage dibungkus try/catch.
@@ -85,8 +86,11 @@ Semua komponen: Vue 3 `<script setup lang="ts">`, tanpa pustaka komponen pihak k
 | `UiNote` | `.note` | `tone` = `info`\|`warning`\|`critical`\|`success` | `role="note"`; untuk galat pakai `UiErrorSummary` |
 | `UiProgressBar` | `.bar` | `value` 0–100, `tone?`, `label` | `role="progressbar"` + `aria-valuenow` |
 | `UiField` | `.lbl` + `.inp` | `id`, `label`, `hint?`, `error?`; slot menerima `{ attrs }` untuk di-`v-bind` ke input | label tertaut `for`; petunjuk dan galat tertaut `aria-describedby`; `aria-invalid` saat galat |
+| `UiDialog` | - (paritas P8, formulir sekunder) | `open`, `title`; emit `close`; slot isi (dirender hanya saat terbuka) | `<dialog>` bawaan dengan `showModal()`: latar inert, Esc menutup (emit `close`), judul `<h2>` tertaut `aria-labelledby`, tombol ikon "Tutup". Fokus awal di field pertama (tanpa field: perilaku bawaan), Tab berputar di dalam dialog, fokus kembali ke tombol pembuka saat ditutup. Latar `--el-scrim`. Ringkasan galat formulir diletakkan di dalam dialog |
 
-Formulir: input, select, dan textarea memakai kelas `el-input`; kotak centang memakai `el-check`; label mandiri memakai `el-label`. Kelas bantu lain: `el-h1`–`el-h3`, `el-muted`, `el-mono`, `el-grid` + `el-grid-2/3/4`, `el-pill`, `el-sr-only`. Saklar (`.sw2` mockup) dan dialog belum disediakan; paket pertama yang membutuhkannya menambahkannya ke `src/ui/` (ditunda, lihat bagian 11).
+Formulir: input, select, dan textarea memakai kelas `el-input`; kotak centang memakai `el-check`; label mandiri memakai `el-label`. Kelas bantu lain: `el-h1`–`el-h3`, `el-muted`, `el-mono`, `el-grid` + `el-grid-2/3/4`, `el-pill`, `el-sr-only`. Saklar (`.sw2` mockup) belum disediakan; paket pertama yang membutuhkannya menambahkannya ke `src/ui/` (ditunda, lihat bagian 11). Dialog: `UiDialog` (paritas P8).
+
+Format angka (`src/ui/format.ts`, paritas P8 R4): `formatNumber(n)` memakai locale id-ID (titik pemisah ribuan, koma desimal, dibulatkan ke paling banyak dua angka di belakang koma), tanda minus `−` (U+2212), `-0` menjadi `0`, NaN/Infinity menjadi "–". `formatScore(n, empty = '–')` untuk skor 0–100 tanpa satuan; nilai kosong menjadi `empty`. Layar tidak membuat format angka sendiri.
 
 `v-model:sort` bertipe `{ key, dir: 'asc' | 'desc' } | null`; klik header berputar naik → turun → tanpa urutan. Nilai kosong selalu di bawah. Pengurutan `UiDataTable` dilakukan di sisi klien atas `rows` yang diberikan (angka dibanding sebagai angka, lainnya dengan `localeCompare(…, 'id', { numeric: true, sensitivity: 'base' })`: deret angka di dalam teks dibanding sebagai angka, huruf besar-kecil diabaikan; kunci urut yang tidak cocok dengan kolom mana pun berarti tanpa urutan). Data berhalaman dari server bukan cakupan B0; pemakai yang butuh itu mematikan `sortable` dan mengurutkan sendiri.
 

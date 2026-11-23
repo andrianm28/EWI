@@ -5,6 +5,7 @@ import { computed, onMounted, ref } from 'vue'
 import { cca, fmtDate, STATUS_LABEL, type Assignments, type AssignmentStatus, type LeaderRow } from '@/api/cca'
 import { UiButton, UiCard, UiChip, UiDataTable, UiErrorSummary, UiKpiCard, type UiColumn } from '@/ui'
 import AssignDueDialog from './AssignDueDialog.vue'
+import { focusIfLost } from './focus'
 import InterviewFlow from './InterviewFlow.vue'
 import SynthesisCard from './SynthesisCard.vue'
 
@@ -16,6 +17,10 @@ const notice = ref('')
 /** P8 R2 (AH-2): pimpinan yang akan ditugaskan; tenggatnya dipilih di dialog. */
 const pending = ref<LeaderRow[] | null>(null)
 const busy = ref(false)
+/** Galat penugasan dari API, tampil di dialog selama dialog terbuka (triase P8 #2). */
+const dialogErrors = ref<{ message: string }[]>([])
+const noticeEl = ref<HTMLElement | null>(null)
+function openDialog(rows: LeaderRow[]) { dialogErrors.value = []; pending.value = rows }
 const themes = ref<number | null>(null)
 
 async function load() {
@@ -52,12 +57,18 @@ async function run(fn: () => Promise<string>) {
   errors.value = []; notice.value = ''; busy.value = true
   try { const msg = await fn(); await load(); notice.value = msg } catch (e) { errors.value = [{ message: (e as Error).message }] } finally { busy.value = false }
 }
-const assign = (rows: LeaderRow[], dueDate: string) => run(async () => {
-  pending.value = null
-  const res = await cca.assign(rows.map((r) => r.userId), dueDate)
-  const left = res.skipped.length + res.rejected.length
-  return `${res.assigned.length} pimpinan ditugaskan${left ? `, ${left} dilewati` : ''}.`
-})
+// Dialog tetap terbuka sampai berhasil (tombol Tugaskan nonaktif selama `busy`); galat tampil di dialog
+async function assign(rows: LeaderRow[], dueDate: string) {
+  errors.value = []; dialogErrors.value = []; notice.value = ''; busy.value = true
+  try {
+    const res = await cca.assign(rows.map((r) => r.userId), dueDate)
+    pending.value = null
+    await load()
+    const left = res.skipped.length + res.rejected.length
+    notice.value = `${res.assigned.length} pimpinan ditugaskan${left ? `, ${left} dilewati` : ''}.`
+    await focusIfLost(() => noticeEl.value)
+  } catch (e) { dialogErrors.value = [{ message: (e as Error).message }] } finally { busy.value = false }
+}
 const cancel = (row: LeaderRow) => run(async () => { await cca.cancelAssignment(row.assignmentId!); return `Penugasan ${row.name} dibatalkan.` })
 </script>
 
@@ -66,7 +77,7 @@ const cancel = (row: LeaderRow) => run(async () => { await cca.cancelAssignment(
     <p class="el-muted">AI mewawancarai pimpinan tentang visi, misi, dan nilai, lalu mewawancarai karyawan untuk menilai gap terhadap hasil pimpinan. HR menugaskan ke atasan, atasan ke karyawan.</p>
     <InterviewFlow :active="1" />
     <UiErrorSummary v-if="errors.length" :errors="errors" />
-    <p v-if="notice" role="status" class="el-muted">{{ notice }}</p>
+    <p v-if="notice" ref="noticeEl" role="status" tabindex="-1" class="el-muted">{{ notice }}</p>
     <p v-if="loading" class="el-muted">Memuat…</p>
     <template v-else-if="data">
       <div class="el-grid el-grid-4">
@@ -76,7 +87,7 @@ const cancel = (row: LeaderRow) => run(async () => { await cca.cancelAssignment(
         <!-- P8 R2 (AH-2): "Tugaskan semua" di kanan header kartu -->
         <div class="cc-row cc-cardhead">
           <h3 class="el-h3">Penugasan ke pimpinan dan atasan</h3>
-          <UiButton size="sm" :disabled="busy || !unassigned.length" @click="pending = unassigned">Tugaskan semua</UiButton>
+          <UiButton size="sm" :disabled="busy || !unassigned.length" @click="openDialog(unassigned)">Tugaskan semua</UiButton>
         </div>
         <p class="el-muted cc-cardsub">Topik: visi, misi, dan nilai korporasi. Atasan yang selesai bisa meneruskan wawancara ke anggota timnya.</p>
         <UiDataTable :columns="COLUMNS" :rows="data.leaders" row-key="userId" caption="Pimpinan dan atasan yang bisa ditugaskan" caption-hidden empty-text="Belum ada pengguna berperan atasan atau pimpinan. Impor data karyawan dulu.">
@@ -85,18 +96,19 @@ const cancel = (row: LeaderRow) => run(async () => { await cca.cancelAssignment(
           <!-- P8 R2 (AH-3): tenggat jadi teks kecil di sel Status -->
           <template #cell-status="{ row }">
             <UiChip :tone="TONE[asRow(row).status]">{{ STATUS_LABEL[asRow(row).status] }}</UiChip>
-            <div v-if="asRow(row).dueDate" class="el-muted cc-small">Batas {{ fmtDate(asRow(row).dueDate, 'short') }}</div>
+            <!-- triase P8 #10: tenggat hanya untuk penugasan yang masih berjalan -->
+            <div v-if="asRow(row).dueDate && (asRow(row).status === 'assigned' || asRow(row).status === 'in_progress')" class="el-muted cc-small">Batas {{ fmtDate(asRow(row).dueDate, 'short') }}</div>
           </template>
           <template #cell-team="{ row }">{{ row.teamDone }} dari {{ row.teamTotal }}</template>
           <template #cell-aksi="{ row }">
-            <UiButton v-if="row.status === 'none' || row.status === 'cancelled'" variant="tonal" size="sm" :disabled="busy" @click="pending = [asRow(row)]">Tugaskan<span class="el-sr-only"> {{ row.name }}</span></UiButton>
+            <UiButton v-if="row.status === 'none' || row.status === 'cancelled'" variant="tonal" size="sm" :disabled="busy" @click="openDialog([asRow(row)])">Tugaskan<span class="el-sr-only"> {{ row.name }}</span></UiButton>
             <UiButton v-else-if="row.status === 'assigned'" variant="text" size="sm" :disabled="busy" @click="cancel(asRow(row))">Batalkan<span class="el-sr-only"> penugasan {{ row.name }}</span></UiButton>
             <span v-else class="el-muted">{{ row.status === 'completed' ? 'Selesai' : 'Sedang berjalan' }}</span>
           </template>
         </UiDataTable>
       </UiCard>
       <AssignDueDialog
-        :open="!!pending" title="Tugaskan wawancara pimpinan" :busy="busy"
+        :open="!!pending" title="Tugaskan wawancara pimpinan" :busy="busy" :errors="dialogErrors"
         :who="pending?.length === 1 ? pending[0]!.name : `${pending?.length ?? 0} pimpinan`"
         @close="pending = null" @confirm="assign(pending ?? [], $event)"
       />
