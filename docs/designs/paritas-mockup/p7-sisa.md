@@ -22,7 +22,7 @@ Acuan domain: [b14-learning-delivery.md](../b14-learning-delivery.md), [b16-care
 | LD-9 | Daftar offline = kartu outlined (`.ld-mod`, terpilih garis `--el-primary`); chip "Akan datang" `review`, "Selesai" `success`, "Berjalan" `training` |
 | LD-10 | Placeholder input tambah ("Judul pelatihan", "Vendor atau penyedia", "Tempat"); label tetap (aksesibilitas) |
 | LD-11 | "Tandai materi siap" pindah ke baris kelengkapan Materi; form ubah jadwal dibuka tombol "Ubah" di baris Jadwal; "Tandai selesai" dan "Batalkan pelatihan" pindah ke `<details>` "Kelola pelatihan" di bawah kartu |
-| LD-12 | Kelengkapan data: tiap baris chip "Lengkap"/"Kurang"/"Menunggu"/"Opsional" + judul + detail dari data detail (jadwal "8 Des 2026 · tempat", peserta "{n} peserta", kehadiran "{x} dari {n} sudah dicatat, hadir {h}", asesmen = label status, dokumentasi "{n} foto atau video", materi "Materi siap"/"Materi belum ditandai siap") + tombol kanan (Ubah, Tandai siap, Tambah, Tandai semua hadir, Atur di bawah, Unggah) |
+| LD-12 | Kelengkapan data: tiap baris chip "Lengkap"/"Kurang"/"Menunggu"/"Opsional" + judul + detail dari data detail (jadwal "8 Des 2026 · tempat", peserta "{n} peserta", kehadiran "{x} dari {n} sudah dicatat, hadir {h}", asesmen = label status, dokumentasi "{n} foto atau video", materi "Materi siap"/"Materi belum ditandai siap") + tombol kanan (Ubah, Tandai siap, Tambah, Tandai semua hadir, Atur di bawah, Unggah). Triase: judul "Materi pelatihan", peserta "Ubah" + sub "dari jabatan …" (bila satu jabatan), dokumentasi "Tambah" seperti mockup; materi tetap "Tandai siap" (API: flag `materialsReady`) |
 | LD-13 | Peserta memakai `UiDataTable` (Peserta / Kehadiran / Skor bila asesmen / Tindakan); status `UiChip`; satu tombol tonal "Tandai hadir" (atau "Tandai tidak hadir" bila sudah hadir). Tambah per jabatan/karyawan dan hapus peserta pindah ke `<details>` "Ubah daftar peserta" |
 | LD-14 | Asesmen kartu outlined: chip status + teks "Pilih cara menjalankan asesmen. Disarankan lewat EliteMentor atau LMS agar skor langsung masuk ke ELGOS tanpa input ulang." (status none) + tombol kanan "Jalankan lewat EliteMentor", "Input skor dari vendor"; field kode asesmen muncul setelah memilih EliteMentor |
 | LD-15 (sebagian) | "{n} berkas foto atau video terunggah" + tombol tonal "Unggah foto atau video" (input file tersembunyi, jenis dari MIME: image→photo, video→video, lain→material); catatan PDP mono 11px. Kalimat "hanya bisa dibuka oleh HR" tetap (PK-6, sesuai perilaku) |
@@ -41,7 +41,7 @@ Acuan domain: [b14-learning-delivery.md](../b14-learning-delivery.md), [b16-care
 | CP-6 | `on_track` → chip `review`; sub per status: "Perlu lulus {tier}", "Program dan OKR terpenuhi; menunggu keputusan", "OKR saat ini {n}%", nama jenjang (tertinggi) |
 | CP-7 (sebagian) | Label "Pencapaian OKR (syarat ≥ {min}%)", nilai "{n}% · terpenuhi/belum"; footer "Promosi memerlukan dua syarat: lulus program jenjang berikutnya dan OKR ≥ {min}%. AI hanya menyusun ringkasan dan tidak merekomendasikan keputusan." Wawancara ulang tetap "Belum tersedia" (LIM-8) |
 | CP-8 | Catatan keputusan copy mockup (HR / atasan) |
-| CP-9 (sebagian) | Syarat "Program dan OKR terpenuhi" / "OKR {n}% < {min}%" / "OKR belum ada". Sub departemen menunggu API |
+| CP-9 (sebagian) | Syarat "Program dan OKR terpenuhi" / "OKR {n}% < {min}%" / "OKR belum ada". Sub departemen menunggu API. Footer mockup "Data karyawan G sampai O adalah data indikatif" sengaja tidak dibawa (catatan data contoh prototipe) |
 | CP-10 | Input catatan pindah ke `<details>` "Tambah catatan" di sel tindakan; tombol tonal tetap terlihat |
 
 ### Core Competencies, Values ([gaps-lna.md](gaps-lna.md))
@@ -50,7 +50,7 @@ Acuan domain: [b14-learning-delivery.md](../b14-learning-delivery.md), [b16-care
 | --- | --- |
 | CV-2 | Bar skor per nilai `success` bila ≥ ambang, `critical` bila di bawah; ambang = band tertinggi program atau nilai lulus, mana yang lebih besar (K-P7-4) |
 | CV-4 | Tabel komponen dan divisi: h3 di kartu, `UiDataTable caption-hidden`, bingkai tabel dalam kartu dihapus (`.cc-flat`) |
-| CV-5 | Butir rekomendasi kotak `.mod` (`cc-mod`); tombol "Wawancarai karyawan yang belum selesai" (ke rute `cc-wawancara`, hanya bila flag `cca.interview`/rute terbuka) |
+| CV-5 | Butir rekomendasi kotak `.mod` (`cc-mod`); tombol "Wawancarai karyawan yang belum selesai" (ke `/cc?tab=aiv`, tab Wawancara AI; hanya bila flag `cca.interview` menyala) |
 
 ### Peran ([gaps-peran.md](gaps-peran.md))
 
@@ -74,14 +74,13 @@ Acuan domain: [b14-learning-delivery.md](../b14-learning-delivery.md), [b16-care
 | AIV-6 | Saat sesi karyawan terbuka, kartu penugasan diganti kartu sesi mandiri |
 | AIV-7 | `UiAuditLine` "Agen ELGOS (POC) · log audit: {n} jawaban" di sesi chat |
 | AIV-9 | Ringkasan/terkirim: h2 "Ringkasan AI", catatan muted, baris `.mod` (tema kecil abu, jawaban tebal), note success "**Terkirim.** Hasil diringkas ke HR dan atasan hanya melihat status selesai." + tombol "Kembali ke penugasan" (menutup sesi) |
-| ADM-1 | `AdminNav` dihapus dari tiga layar (file dihapus) |
+| ADM-1 | `AdminNav` dihapus dari tiga layar. Triase: HR/Super Admin yang membuka /admin/* lewat alamat mendapat baris tautan ringkas `AdminLinks.vue` (tidak tampil di tampilan admin; menu laci tetap 1:1 mockup) |
 | ADM-2 | Pemberitahuan sukses = `UiNote tone="success"` dalam pembungkus `role="status"` (Users, Jobs, Tenants, Platform) |
 | ADM-3 | "Undang pengguna" ikon `person_add`, rata kanan toolbar |
 | ADM-4 | Email mono 12px |
 | ADM-5 | Nama `white-space: nowrap` |
 | JOB-2 | Jumlah "—" bila kamus belum tersedia; rata kiri |
 | JOB-3 (sebagian) | Sumber kosong "Belum ada lokakarya DACUM", muted; sumber terisi tetap "DACUM · berkas" |
-| CFG-2 (sebagian) | "EliteMentor: tersambung (…)" huruf kecil; "deep link" tidak disebut karena API tidak mengirim statusnya |
 | TEN-1 | Subjudul mockup + kalimat transkrip |
 | TEN-2 | Catatan KPI "dari {n} tenant terdaftar", "seluruh tenant", "dapat diaktifkan per tenant" |
 | TEN-5 | Modul aktif "{aktif} / {tersedia}" |
@@ -101,6 +100,7 @@ Acuan domain: [b14-learning-delivery.md](../b14-learning-delivery.md), [b16-care
 
 | Gap | Alasan |
 | --- | --- |
+| CFG-2 | Triase: dikembalikan ke "Terkonfigurasi". B11 §7/§13 mewajibkan label itu karena belum ada uji koneksi langsung; "deep link" tidak dikirim API |
 | LD-4 | API hanya punya dua jenis aksi (`remind`, `open_training`); label sudah dipetakan. Label lain butuh jenis aksi baru di API |
 | LD-3 judul, LD-15 copy PDP, CP-1 atasan, CP-5 label | PK-5, PK-6, PK-8, PK-9 (perlu keputusan) |
 | CP-4/CP-9 departemen | Butuh field departemen di API karier (bukan perubahan aditif sepele: tabel karyawan belum punya kolom departemen) |
@@ -114,8 +114,8 @@ Acuan domain: [b14-learning-delivery.md](../b14-learning-delivery.md), [b16-care
 
 - K-P7-1: Chip mode offline memakai tone `improvement` (teal tersier) sebagai padanan `c-no` mockup, sama di LD dan Rencana belajar.
 - K-P7-2: Fitur kelola LD (tanggal online, selesai/batal, tambah/hapus peserta) dipertahankan di `<details>` sekunder; tidak ada fungsi yang dibuang.
-- K-P7-4: Mockup memakai ambang 92 tetap untuk bar skor nilai; API tidak punya "target skor nilai". Ambang diambil dari konfigurasi program: `max(passScore, min band)` (band tertinggi, mis. Strong Culture Alignment).
-- K-P7-3: Baris CP dipilih lewat tombol nama (bukan `<tr>` klik) agar tetap bisa dijangkau keyboard; sorotan baris memakai `:has()` pada tombol `aria-pressed`.
+- K-P7-4: Mockup memakai ambang 92 tetap untuk bar skor nilai; API tidak punya "target skor nilai". Ambang diambil dari konfigurasi program: `max(passScore, min band)` (band tertinggi, mis. Strong Culture Alignment). Triase: skala dicek di API (`apps/api/src/modules/cca/program-report.js`): `passScore`, `bands[].min`, dan skor nilai (impor `cca-program-results` dan isian agregat) semuanya divalidasi 0–100, jadi ambang sebanding. Band dihitung dari skor akhir, bukan skor per nilai, jadi ambang ini pendekatan yang tercatat. Skor kosong (`avgCompleted` null) memakai bar primer, bukan hijau/merah.
+- K-P7-3: Baris CP dipilih lewat tombol nama (bukan `<tr>` klik) agar tetap bisa dijangkau keyboard; sorotan baris memakai `:has()` pada tombol. Triase: `aria-current="true"` menggantikan `aria-pressed` (memilih satu baris, bukan sakelar).
 
 ## Test (e2e, API mock)
 

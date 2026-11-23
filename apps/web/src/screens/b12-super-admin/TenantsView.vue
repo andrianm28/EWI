@@ -12,6 +12,7 @@ const encryption = ref<'local' | 'kms'>('local')
 const loading = ref(true)
 const loadError = ref('')
 const notice = ref('')
+const noticeTone = ref<'success' | 'warning'>('success')
 const errors = ref<{ message: string; fieldId?: string }[]>([])
 const sort = ref<UiSortState | null>(null)
 const fail = (e: unknown) => (e instanceof ApiError ? e.message : 'Terjadi kesalahan. Coba lagi.')
@@ -43,7 +44,7 @@ const asTenant = (row: Record<string, unknown>) => row as unknown as PlatformTen
 
 async function act(fn: () => Promise<string>) {
   errors.value = []
-  notice.value = ''
+  notice.value = ''; noticeTone.value = 'success'
   try { notice.value = await fn(); await load() } catch (e) { errors.value = [{ message: fail(e) }] }
 }
 const reinvite = (t: PlatformTenant) => act(async () => { await platform.reinvite(t.id); return `Undangan dikirim ulang ke admin ${t.name}.` })
@@ -91,6 +92,7 @@ async function create() {
   try {
     const res = await platform.createTenant(input())
     formOpen.value = false
+    noticeTone.value = res.data.invitation === 'sent' ? 'success' : 'warning'
     notice.value = res.data.invitation === 'sent'
       ? `Tenant ${res.data.tenant.name} dibuat. Undangan dikirim ke ${form.adminEmail.trim()} (berlaku 7 hari).`
       : `Tenant ${res.data.tenant.name} dibuat, tetapi email undangan gagal terkirim. Kirim ulang dari tabel.`
@@ -141,7 +143,7 @@ const accessLabel = (m: TenantModule) => (m.entitled === null ? 'Tidak perlu lan
         <UiKpiCard label="Modul tersedia" :value="list.kpis.modulesAvailable" note="dapat diaktifkan per tenant" />
       </div>
 
-      <div v-if="notice" class="sa__notice sa__section" role="status"><UiNote tone="success">{{ notice }}</UiNote></div>
+      <div v-if="notice" class="sa__notice sa__section" role="status"><UiNote :tone="noticeTone">{{ notice }}</UiNote></div>
       <UiErrorSummary v-if="!formOpen" :errors="errors" />
 
       <UiCard v-if="formOpen" class="sa__section" data-testid="tn-form">

@@ -2,6 +2,7 @@
 // B11 · Jabatan & kamus kompetensi. Tiap jabatan punya kamus kompetensinya sendiri; kamus diisi lewat layar impor.
 import { computed, onMounted, reactive, ref } from 'vue'
 import AppShell from '@/components/AppShell.vue'
+import AdminLinks from './AdminLinks.vue'
 import { ApiError } from '@/api/client'
 import { tenantAdmin, SOURCE_LABEL, type Competency, type JobRole } from '@/api/tenantAdmin'
 import { UiButton, UiCard, UiChip, UiDataTable, UiErrorSummary, UiField, UiNote, type UiColumn, type UiSortState } from '@/ui'
@@ -82,6 +83,7 @@ async function openDictionary(j: JobRole) {
 
 <template>
   <AppShell>
+    <AdminLinks current="jobs" />
     <h1 class="el-h1">Jabatan &amp; kamus kompetensi</h1>
     <p class="el-muted adm__lead">Setiap jabatan memiliki kamus kompetensi dan kurikulum Basic · Intermediate · Advanced sendiri.</p>
 

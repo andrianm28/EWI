@@ -21,7 +21,7 @@ function submit() {
 <template>
   <div class="iv-chat-head">
     <h2 class="iv-h2">Percakapan</h2>
-    <UiChip v-if="questionLimit">Pertanyaan {{ turns.filter((t) => t.speaker === 'ai').length }} dari {{ questionLimit }}</UiChip>
+    <UiChip v-if="questionLimit">Pertanyaan {{ Math.min(turns.filter((t) => t.speaker === 'ai').length, questionLimit) }} dari {{ questionLimit }}</UiChip>
   </div>
   <div class="iv-chat" role="log" aria-live="polite" aria-label="Percakapan wawancara">
     <div v-for="(t, i) in turns" :key="i" :class="['iv-msg', t.speaker === 'ai' ? 'iv-msg--ai' : 'iv-msg--me']" :data-testid="`turn-${t.speaker}`">

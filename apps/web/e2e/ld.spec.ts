@@ -271,6 +271,12 @@ test('triase P7: asesmen lewat EliteMentor, ubah peserta, tandai selesai dan bat
   await expect.poll(() => calls.filter((c) => c.method === 'PATCH').map((c) => c.body)).toContainEqual({ status: 'done', sessionsDone: 1 })
   await d.getByRole('button', { name: 'Batalkan pelatihan' }).click()
   await expect.poll(() => calls.filter((c) => c.method === 'PATCH').map((c) => c.body)).toContainEqual({ status: 'cancelled' })
+  // LD-12 copy mockup: judul Materi pelatihan, Ubah untuk peserta, Tambah untuk dokumentasi, sub jabatan
+  const rows = d.getByRole('list', { name: 'Kelengkapan data' })
+  await expect(rows.getByRole('listitem').filter({ hasText: 'Materi pelatihan' })).toHaveCount(1)
+  await expect(rows.getByRole('listitem').filter({ hasText: 'Daftar peserta' })).toContainText('2 peserta dari jabatan Engineer')
+  await expect(rows.getByRole('button', { name: 'Ubah Daftar peserta' })).toBeVisible()
+  await expect(rows.getByRole('button', { name: 'Tambah Dokumentasi' })).toBeVisible()
   // materi PDF diakui di copy unggah
   await expect(d).toContainText('Materi pelatihan (PDF) juga bisa diunggah')
 })

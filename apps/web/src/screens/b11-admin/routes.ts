@@ -1,7 +1,8 @@
 // B11 Admin Tenant. Spek: docs/designs/b11-admin-tenant.md.
-// SEMENTARA sampai B2 masuk: tampilan `hr` ikut diizinkan, karena pengelola tenant masih berperan hr_admin dan
-// API memperlakukannya sebagai Admin Tenant. Butir menu baru muncul untuk tampilan `admin` (peran tenant_admin);
-// sebelum itu HR membuka layar ini lewat alamatnya. Setelah B2, hapus 'hr' dari daftar di bawah.
+// Tampilan `hr` dan `super` masih diizinkan karena sebagian tenant dikelola akun hr_admin, yang oleh API diperlakukan
+// sebagai Admin Tenant. Menu laci hanya memuat ketiga layar ini untuk tampilan `admin` (1:1 mockup); HR dan Super Admin
+// membukanya lewat alamat, lalu berpindah antar layar lewat AdminLinks.vue. Setelah semua tenant memakai peran
+// tenant_admin, hapus 'hr' dari daftar di bawah dan AdminLinks.vue.
 import type { RouteRecordRaw } from 'vue-router'
 import type { ViewKey } from '@/shell/views'
 

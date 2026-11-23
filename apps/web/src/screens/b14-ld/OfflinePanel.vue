@@ -111,7 +111,14 @@ const STATE_CHIP = {
 } as const
 async function openEdit() { editOpen.value = true; await nextTick(); document.getElementById('ld-ubah-judul')?.focus() }
 async function openPeople() { peopleOpen.value = true; await nextTick(); document.getElementById('ld-tambah-jabatan')?.focus() }
+async function openEm() { emPicked.value = true; await nextTick(); document.getElementById('ld-kode-asesmen')?.focus() }
 function toAssessment() { assessmentEl.value?.scrollIntoView({ block: 'start' }); assessmentEl.value?.focus() }
+/** Sub jabatan mockup ("dari jabatan …") hanya bila semua peserta satu jabatan. */
+function roleSub(list: Participant[]) {
+  const roles = new Set(list.map((p) => p.jobRoleName ?? ''))
+  const [only] = [...roles]
+  return list.length && roles.size === 1 && only ? ` dari jabatan ${only}` : ''
+}
 const readinessRows = computed<ReadinessRow[]>(() => {
   const t = d.value
   if (!t) return []
@@ -121,10 +128,10 @@ const readinessRows = computed<ReadinessRow[]>(() => {
   const info: Record<CheckKey, Omit<ReadinessRow, 'key' | 'chip'>> = {
     schedule: { detail: `${tanggal(t.startsOn)} · ${t.venue ?? 'tempat belum diisi'}`, action: 'Ubah', disabled: closed.value, run: openEdit },
     materials: { detail: t.materialsReady ? 'Materi siap' : 'Materi belum ditandai siap', action: 'Tandai siap', disabled: closed.value || t.materialsReady || busy.value, run: () => patch({ materialsReady: true }, 'Materi ditandai siap.') },
-    participants: { detail: `${n} peserta`, action: 'Tambah', disabled: closed.value, run: openPeople },
+    participants: { detail: `${n} peserta${roleSub(t.participantList)}`, action: 'Ubah', disabled: closed.value, run: openPeople },
     attendance: { detail: `${recorded} dari ${n} sudah dicatat, hadir ${present}`, action: 'Tandai semua hadir', disabled: closed.value || !n || busy.value, run: allPresent },
     assessment: { detail: ASSESSMENT[t.assessmentStatus].label, action: 'Atur di bawah', disabled: false, run: toAssessment },
-    documentation: { detail: `${mediaCount.value} foto atau video`, action: 'Unggah', disabled: !t.storageReady || busy.value, run: () => fileInput.value?.click() },
+    documentation: { detail: `${mediaCount.value} foto atau video`, action: 'Tambah', disabled: !t.storageReady || busy.value, run: () => fileInput.value?.click() },
   }
   return t.readiness.map((c) => ({
     key: c.key, chip: STATE_CHIP[c.state === 'missing' && c.optional ? 'optional' : c.state], ...info[c.key],
@@ -256,13 +263,13 @@ const asP = (r: Record<string, unknown>) => r as unknown as Participant
             <p class="el-muted ld-small ld-mt6">{{ ASSESSMENT[d.assessmentStatus].text }}</p>
           </div>
           <div class="ld-chips">
-            <UiButton variant="tonal" size="sm" :disabled="busy || !options?.webhookSync" @click="emPicked = true">Jalankan lewat EliteMentor</UiButton>
+            <UiButton variant="tonal" size="sm" :disabled="busy || !options?.webhookSync" :aria-expanded="showRef ? 'true' : 'false'" aria-controls="ld-form-em" @click="openEm">Jalankan lewat EliteMentor</UiButton>
             <UiButton variant="tonal" size="sm" :disabled="busy" @click="setMode('vendor_manual')">Input skor dari vendor</UiButton>
             <UiButton v-if="d.assessmentMode !== 'none'" variant="text" size="sm" :disabled="busy" @click="setMode('none')">Tanpa asesmen</UiButton>
           </div>
         </div>
         <p v-if="!options?.webhookSync" class="el-muted ld-xs ld-mt6">Sinkron skor dari EliteMentor belum diaktifkan. Pakai input skor dari vendor.</p>
-        <form v-if="showRef" class="ld-add ld-gap-s" @submit.prevent="setMode('elitementor')">
+        <form v-if="showRef" id="ld-form-em" class="ld-add ld-gap-s" @submit.prevent="setMode('elitementor')">
           <UiField id="ld-kode-asesmen" v-slot="{ attrs }" label="Kode asesmen di EliteMentor" hint="Skor masuk otomatis setelah peserta mengerjakan asesmen di EliteMentor.">
             <input v-bind="attrs" v-model="assessmentRef" class="el-input" type="text">
           </UiField>
@@ -276,6 +283,7 @@ const asP = (r: Record<string, unknown>) => r as unknown as Participant
         <span class="el-muted">{{ mediaCount }} berkas foto atau video terunggah</span>
         <UiButton variant="tonal" size="sm" :disabled="busy || !d.storageReady" @click="fileInput?.click()">Unggah foto atau video</UiButton>
       </div>
+      <p class="el-muted ld-xs ld-mt6">Materi pelatihan (PDF) juga bisa diunggah lewat tombol yang sama; tercatat sebagai Materi dan tidak dihitung sebagai foto atau video.</p>
       <label class="el-sr-only" for="ld-berkas">Pilih berkas foto atau video</label>
       <input id="ld-berkas" ref="fileInput" class="el-sr-only" tabindex="-1" type="file" accept="image/jpeg,image/png,image/webp,video/mp4,application/pdf" :disabled="busy || !d.storageReady" @change="upload">
       <ul v-if="d.documents.length" class="ld-list" aria-label="Berkas dokumentasi">
