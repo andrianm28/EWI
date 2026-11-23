@@ -6,6 +6,8 @@ const express = require('express');
 const { requireRole, ROLES } = require('../../core/rbac');
 const { badRequest, notFound } = require('../../core/errors');
 const { importRouter } = require('../imports');
+const { FLAGS, requireFlag } = require('../../core/flags');
+const { mountMine, mountHrResult } = require('./reinterview');
 const { todayJakarta } = require('../ld/domain');
 const lim = require('./domain');
 
@@ -89,8 +91,11 @@ async function planFields(body, { stores, tenantId, create }) {
 module.exports = {
   key: 'lim',
   title: 'Learning Impact Measurement',
-  router({ stores, audit } = {}) {
+  router({ stores, audit, flags, ai, aiConfig } = {}) {
     const r = express.Router();
+    // B15 tahap 3: wawancara ulang AI. Rute karyawan dipasang sebelum pembatas peran HR/atasan (spek 12.3).
+    const reinterview = requireFlag(flags, FLAGS.LIM_REINTERVIEW, 'Wawancara ulang AI belum diaktifkan untuk organisasi Anda');
+    mountMine(r, { stores, ai, aiConfig, audit, gate: reinterview });
     r.use(requireRole(...HR_ROLES, ...LEADER_ROLES));
     const hr = requireRole(ROLES.HR_ADMIN);
     const idParam = (req, _res, next) => (UUID.test(req.params.id) ? next() : next(notFound()));
@@ -324,9 +329,10 @@ module.exports = {
     }
     r.get('/plans/:id/queue', hr, idParam, wrap(async (req, res) => {
       const plan = await loadPlan(req);
-      const { queue } = await queueOf(req, plan);
+      const [{ queue }, index] = await Promise.all([queueOf(req, plan), stores.lim.reinterviewIndex(req.tenantId, plan.id)]);
       await audit.readIndividual(req, 'lim.measurement', { employeeIds: queue.map((x) => x.userId), objectType: 'lim_plan_queue', objectIds: [plan.id] });
-      res.json({ data: queue });
+      // tahap 3: hasil bisa dibuka bila ada minimal satu wawancara selesai (triase 12.7 #5)
+      res.json({ data: queue.map((x) => ({ ...x, reinterviewId: index.latestCompleted.get(x.userId) || null, canView: index.latestCompleted.has(x.userId) })) });
     }));
     r.post('/plans/:id/queue/schedule', hr, idParam, wrap(async (req, res) => {
       const plan = await loadPlan(req);
@@ -335,13 +341,15 @@ module.exports = {
       if (date === undefined) throw badRequest('date wajib diisi (atau null untuk membatalkan)');
       const err = lim.checkScheduleDate(date, todayJakarta());
       if (err) throw badRequest(err);
-      const { queue } = await queueOf(req, plan);
+      const [{ queue }, index] = await Promise.all([queueOf(req, plan), stores.lim.reinterviewIndex(req.tenantId, plan.id)]);
       const byUser = new Map(queue.map((x) => [x.userId, x]));
       const scheduled = []; const skipped = []; const rejected = [];
       for (const userId of [...new Set(userIds.map(String))]) {
         const entry = byUser.get(userId);
         if (!entry) { rejected.push({ userId, message: 'Karyawan belum punya skor post dari Learning Delivery di rencana ini' }); continue; }
         if (entry.status === 'done') { skipped.push({ userId, reason: 'done' }); continue; }
+        // wawancara ulang sedang berjalan: jadwalnya tidak diubah sampai selesai (triase 12.7 #2)
+        if (index.inProgress.has(userId)) { skipped.push({ userId, reason: 'in_progress' }); continue; }
         if (date !== null && !entry.postCompletedOn) { rejected.push({ userId, message: 'Tanggal selesai belajar belum diketahui' }); continue; }
         await stores.lim.schedule(req.tenantId, plan.id, userId, entry.competencies.map((c) => c.competencyId), date, req.user.id);
         scheduled.push(userId);
@@ -349,6 +357,8 @@ module.exports = {
       if (scheduled.length) await audit.record(req, 'update', 'lim.measurement', { planId: plan.id, employeeIds: scheduled, reinterviewOn: date });
       res.json({ data: { scheduled, skipped, rejected } });
     }));
+
+    mountHrResult(r, { stores, audit, gate: reinterview, hr, idParam, loadPlan, planData, decorateInd, buildChain: lim.buildChain });
 
     r.use('/imports', importRouter({ submodule: 'lim', stores, audit }));
     return r;
