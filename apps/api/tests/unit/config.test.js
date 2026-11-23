@@ -49,11 +49,17 @@ describe('loadConfig', () => {
       expect(() => loadConfig({ ...prod, AI_PROVIDER: 'stub' })).toThrow(/AI_PROVIDER=stub tidak boleh di produksi/);
       expect(() => loadConfig(prod)).toThrow(/BEDROCK_MODEL_ID wajib/);
       const cfg = loadConfig({ ...prod, BEDROCK_MODEL_ID: 'anthropic.model-uji' });
-      expect(cfg.ai).toMatchObject({ provider: 'bedrock', region: 'ap-southeast-3', modelId: 'anthropic.model-uji', maxQuestions: 8, processing: 'in-region:ap-southeast-3' });
+      expect(cfg.ai).toMatchObject({ provider: 'bedrock', region: 'ap-southeast-1', modelId: 'anthropic.model-uji', maxQuestions: 8, processing: 'in-region:ap-southeast-1' });
+    });
+    it('PD-2b terjawab 23 Nov: tanpa BEDROCK_REGION, model terpilih diproses in-region Singapura', () => {
+      const cfg = loadConfig({ ...prod, BEDROCK_MODEL_ID: 'anthropic.claude-sonnet-5' });
+      expect(cfg.ai).toMatchObject({ region: 'ap-southeast-1', modelId: 'anthropic.claude-sonnet-5', processing: 'in-region:ap-southeast-1', allowCrossRegion: false });
     });
     it('PD-2b: Jakarta lalu Singapura in-region, atau profil apac.; profil di luar APAC ditolak kecuali diizinkan', () => {
       const t = { ...base, NODE_ENV: 'test', AI_PROVIDER: 'bedrock' };
-      expect(loadConfig({ ...t, BEDROCK_MODEL_ID: 'm' }).ai.region).toBe('ap-southeast-3');
+      expect(loadConfig({ ...t, BEDROCK_MODEL_ID: 'm' }).ai.region).toBe('ap-southeast-1');
+      // Jakarta tetap diterima bila diisi eksplisit (mis. kelak Claude tersedia in-region di sana)
+      expect(loadConfig({ ...t, BEDROCK_MODEL_ID: 'm', BEDROCK_REGION: 'ap-southeast-3' }).ai.processing).toBe('in-region:ap-southeast-3');
       expect(loadConfig({ ...t, BEDROCK_MODEL_ID: 'm', BEDROCK_REGION: 'ap-southeast-1' }).ai.processing).toBe('in-region:ap-southeast-1');
       expect(loadConfig({ ...t, BEDROCK_MODEL_ID: 'apac.anthropic.x', BEDROCK_REGION: 'ap-southeast-1' }).ai.processing).toBe('cross-region:apac');
       expect(() => loadConfig({ ...t, BEDROCK_MODEL_ID: 'm', BEDROCK_REGION: 'us-east-1' })).toThrow(/ap-southeast-3, ap-southeast-1/);
