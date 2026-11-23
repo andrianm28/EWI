@@ -66,7 +66,8 @@ describe('loadConfig', () => {
       expect(() => loadConfig({ ...t, BEDROCK_MODEL_ID: 'm', BEDROCK_REGION: 'us-east-1' })).toThrow(/ap-southeast-3, ap-southeast-1/);
       // Profil global. dipilih user 23 Nov (Sonnet 5.5 tidak tersedia in-region di Singapura); daftar region tetap berlaku
       expect(loadConfig({ ...t, BEDROCK_MODEL_ID: 'arn:aws:bedrock:ap-southeast-1:1:inference-profile/global.anthropic.x' }).ai.processing).toBe('cross-region:global');
-      expect(() => loadConfig({ ...t, BEDROCK_MODEL_ID: 'global.anthropic.x', BEDROCK_REGION: 'us-east-1' })).toThrow(/BEDROCK_REGION harus/);
+      // Hanya galat region; penjaga profil tidak ikut menolak
+      expect(() => loadConfig({ ...t, BEDROCK_MODEL_ID: 'global.anthropic.x', BEDROCK_REGION: 'us-east-1' })).toThrow(/tidak valid:\n- BEDROCK_REGION harus[^\n]*$/);
       for (const id of ['us.anthropic.x', 'arn:aws:bedrock:ap-southeast-1:1:inference-profile/eu.anthropic.x']) {
         expect(() => loadConfig({ ...t, BEDROCK_MODEL_ID: id })).toThrow(/profil lintas region/);
       }

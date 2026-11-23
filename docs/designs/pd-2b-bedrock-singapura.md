@@ -70,7 +70,8 @@ Thread infra menyelaraskan butir-butir ini di PR #3 head `9e5dfb5` (23 Nov), yan
 Diserahkan ke legal (PK-17, Fasha): `docs/ewi/ai-teks.md` mewajibkan lokasi teks dan suara yang akhirnya dipakai ditulis
 di DPIA dan teks persetujuan. Teks persetujuan (`apps/web/src/content/consent.ts`, `apps/api/src/core/consent`) sekarang
 tidak menyebut lokasi sama sekali. Menambah lokasi berarti versi persetujuan baru, dan semua versi masih draf yang
-menunggu legal, jadi spek ini tidak mengubahnya. DPIA dan teks persetujuan perlu menulis Singapura untuk AI teks.
+menunggu legal, jadi spek ini tidak mengubahnya. DPIA dan teks persetujuan perlu menulis Singapura untuk AI teks (diganti di bagian 7: profil global, region tujuan
+bisa di luar Indonesia dan APAC).
 
 ## 4. Test
 
@@ -157,7 +158,9 @@ dengan ID profil bila ada.
   akan lolos boot tanpa peringatan.
 - Variabel itu harus dipasang di `deploy/` (milik thread infra) dan di setiap lingkungan. Bila lupa, staging atau
   produksi gagal boot pada hari rilis.
-- Keputusan user hanya menyebut `global.`. Menulisnya di kode membuat pilihan itu terlihat di review dan di test.
+- Keputusan user (Sonnet 5.5 lewat Singapura) hanya bisa dipenuhi dengan profil `global.`, karena Sonnet 5.5 tidak
+  tersedia in-region atau lewat `apac.` di Singapura. Profil lain tidak ikut dibuka. Menulisnya di kode membuat pilihan
+  itu terlihat di review dan di test. Andrian bisa meminta opt-in eksplisit saat review PR #8.
 
 Yang tetap dijaga: `BEDROCK_REGION` harus ada di `AI_ALLOWED_REGIONS` juga untuk profil `global.` (endpoint tetap
 Singapura atau Jakarta), dan `processing` tercetak `cross-region:global` saat boot untuk log dan DPIA.
@@ -183,6 +186,9 @@ Singapura atau Jakarta), dan `processing` tercetak `cross-region:global` saat bo
 
 ### Risiko
 
+- ARN profil tidak diperiksa region-nya: `arn:aws:bedrock:us-east-1:...:inference-profile/global.x` lolos boot bila
+  `BEDROCK_REGION` diizinkan. Endpoint tetap `BEDROCK_REGION` dan IAM aplikasi membatasi profil ke region stack, jadi
+  risikonya kecil; perilaku ini sudah ada untuk `apac.` sebelum revisi.
 - Lingkungan yang memakai profil `global.` tanpa sadar kini boot tanpa peringatan. Lokasi pemrosesan tetap tercetak
   saat boot (`server.js`).
 - Model yang tersedia lewat profil bisa berubah tanpa rilis. Uji asap `ai-smoke.js` (`docs/ewi/ai-teks.md` langkah 3)

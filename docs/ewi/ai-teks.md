@@ -85,6 +85,8 @@ Berkas deploy (`deploy/`, `infra/`) milik thread infra; variabel di atas dan izi
    a. Jakarta in-region: `aws bedrock list-foundation-models --region ap-southeast-3 --by-provider anthropic --query "modelSummaries[?contains(inferenceTypesSupported, 'ON_DEMAND')].modelId"`.
    b. Singapura in-region: perintah yang sama dengan `--region ap-southeast-1`.
    c. Profil APAC: `aws bedrock list-inference-profiles --region ap-southeast-3 --query "inferenceProfileSummaries[?starts_with(inferenceProfileId, 'apac.anthropic')].inferenceProfileId"` (ulangi untuk ap-southeast-1).
+   d. Profil global (dipakai sejak 23 Nov, keputusan user): perintah c dengan `'global.anthropic'` dan `--region ap-southeast-1`.
+      Region tujuan profil ini bisa di mana pun, jadi pilihan ini butuh keputusan user dan catatan DPIA.
    Pakai model Claude terbaru yang memenuhi spek. Bila a dan b sama-sama ada, bandingkan latensi dari etavm2 dengan
    uji asap di kedua region dan ambil yang lebih cepat. Bila tidak ada satu pun, bawa ke user.
 3. Isi `BEDROCK_REGION`, `BEDROCK_MODEL_ID`, dan kredensial, lalu jalankan dari root repo:
