@@ -16,7 +16,7 @@ const ASSISTANT_VIEWS: readonly AssistantView[] = ['karyawan', 'atasan', 'hr', '
 
 const session = useSessionStore()
 const store = useAsistenStore()
-const { open, turns, draft, intro, pending } = storeToRefs(store)
+const { open, turns, draft, intro, pending, unavailable } = storeToRefs(store)
 const router = useRouter()
 const titleId = useId()
 
@@ -24,12 +24,14 @@ const view = computed<AssistantView | null>(() => {
   const v = session.activeView as AssistantView
   return ASSISTANT_VIEWS.includes(v) ? v : null
 })
-const enabled = computed(() => !!session.user && session.hasFlag('assistant') && view.value !== null)
+const allowed = computed(() => !!session.user && session.hasFlag('assistant') && view.value !== null)
+const enabled = computed(() => allowed.value && !unavailable.value)
 
-// Percakapan milik satu akun dan satu tampilan (mockup mengosongkan asTurns saat ganti peran)
-watch(() => `${session.user?.id ?? ''}|${view.value ?? ''}`, (k) => {
+// Percakapan milik satu akun (tenant + pengguna) dan satu tampilan (mockup mengosongkan asTurns saat ganti peran).
+// Salam dimuat lebih dulu supaya tampilan yang ditolak server (403 VIEW_FORBIDDEN) tidak pernah menampilkan tombol.
+watch(() => `${session.user?.tenantId ?? ''}|${session.user?.id ?? ''}|${view.value ?? ''}`, (k) => {
   store.bind(k)
-  if (open.value && enabled.value) store.loadIntro(view.value!)
+  if (allowed.value) store.loadIntro(view.value!)
 }, { immediate: true })
 
 const roleLabel = computed(() => intro.value?.roleLabel ?? (view.value ? VIEW_LABEL[view.value] : ''))
@@ -105,7 +107,7 @@ onMounted(async () => {
       </div>
       <div ref="bodyEl" class="b17-asst__bd" role="log" aria-live="polite">
         <div class="b17-msg b17-msg--ai"><small>Asisten ELGOS</small>{{ greeting }}</div>
-        <div v-for="(t, i) in turns" :key="i" :class="['b17-msg', `b17-msg--${t.who}`]">
+        <div v-for="t in turns" :key="t.id" :class="['b17-msg', `b17-msg--${t.who}`]">
           <small>{{ t.who === 'me' ? 'Anda' : 'Asisten ELGOS' }}</small>{{ t.text }}
           <div v-if="t.action && canGo(t.action.page)" class="b17-msg__act">
             <UiButton variant="tonal" size="sm" @click="go(t.action.page)">Buka {{ t.action.label }}</UiButton>

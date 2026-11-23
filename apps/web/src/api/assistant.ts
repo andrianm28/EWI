@@ -26,6 +26,6 @@ function call<T>(path: string, init: RequestInit = {}) {
 export const assistant = {
   intro: (view?: AssistantView) => call<{ data: AssistantIntro }>(`/assistant${view ? `?view=${view}` : ''}`),
   /** 429 RATE_LIMITED bila lebih dari 20 pertanyaan dalam 10 menit. */
-  ask: (question: string, view?: AssistantView) =>
-    call<{ data: AssistantAnswer }>('/assistant/ask', { method: 'POST', body: JSON.stringify({ question, view }) }),
+  ask: (question: string, view?: AssistantView, signal?: AbortSignal) =>
+    call<{ data: AssistantAnswer }>('/assistant/ask', { method: 'POST', body: JSON.stringify({ question, view }), signal }),
 }

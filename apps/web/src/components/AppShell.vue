@@ -44,7 +44,10 @@ const extras = Object.entries(import.meta.glob<{ default: Component }>('@/screen
       <AppTopBar :drawer-open="drawerOpen" @toggle-drawer="drawerOpen = !drawerOpen" />
       <main id="isi" class="el-app__content" tabindex="-1"><slot /></main>
     </div>
-    <component :is="x.component" v-for="x in extras" :key="x.path" />
+    <!-- Tambahan shell (mis. Asisten ELGOS) melayang di atas scrim; disembunyikan selama drawer melayang terbuka -->
+    <div v-show="!(drawerOpen && narrow)" :inert="drawerOpen && narrow">
+      <component :is="x.component" v-for="x in extras" :key="x.path" />
+    </div>
   </div>
 </template>
 

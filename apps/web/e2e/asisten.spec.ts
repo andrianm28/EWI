@@ -16,7 +16,8 @@ const SARAN: Record<string, string[]> = {
 }
 
 interface OpsiAsisten {
-  jawab?: (req: PermintaanApi) => { status?: number; json: unknown }
+  jawab?: (req: PermintaanApi) => { status?: number; json: unknown } | Promise<{ status?: number; json: unknown }>
+  intro?: (req: PermintaanApi) => { status?: number; json: unknown } | undefined
 }
 
 /** Me-mock GET /assistant dan POST /assistant/ask; mengembalikan daftar permintaan yang diterima. */
@@ -25,6 +26,8 @@ async function mockAsisten(page: Page, o: OpsiAsisten = {}) {
   await mockApi(page, (req) => {
     if (cocok(req, 'GET /assistant')) {
       diterima.push(req)
+      const ganti = o.intro?.(req)
+      if (ganti) return ganti
       const view = req.query.get('view') ?? 'karyawan'
       const roleLabel = LABEL[view] ?? 'Karyawan'
       return responsData({
@@ -210,4 +213,104 @@ test('keluar lalu masuk lagi: panel tertutup dan percakapan lama hilang', async 
   await expect(panel(page)).toHaveCount(0)
   await fab(page).click()
   await expect(panel(page).locator('.b17-msg--me')).toHaveCount(0)
+})
+
+// Review independen egm (B17): state galat, menunggu, dan batas tampilan
+test('review: server menolak tampilan (403 VIEW_FORBIDDEN): tombol asisten disembunyikan', async ({ page }) => {
+  await mockAsisten(page, { intro: () => ({ status: 403, json: { error: { code: 'VIEW_FORBIDDEN', message: 'Tampilan ini tidak tersedia untuk peran Anda' } } }) })
+  await masuk(page, 'karyawan')
+  await expect(page.getByRole('button', { name: 'Keluar' })).toBeVisible()
+  await expect(fab(page)).toHaveCount(0)
+})
+
+test('review: salam gagal dimuat (500): salam dan catatan bawaan tampil tanpa chip', async ({ page }) => {
+  await mockAsisten(page, { intro: () => ({ status: 500, json: {} }) })
+  await masuk(page, 'karyawan')
+  await fab(page).click()
+  await expect(panel(page).getByText('Halo, saya Asisten ELGOS. Tanyakan apa pun tentang urusan Anda sebagai Karyawan di sini.')).toBeVisible()
+  await expect(panel(page).locator('.b17-chip')).toHaveCount(0)
+})
+
+test('review: selama menunggu ada gelembung "Sedang menyiapkan jawaban…" dan Kirim nonaktif', async ({ page }) => {
+  let lepas: () => void = () => {}
+  const tunggu = new Promise<void>((r) => { lepas = r })
+  await mockAsisten(page, { jawab: async () => { await tunggu; return responsData({ answer: 'Selesai.', action: null, outcome: 'answered' }) } })
+  await masuk(page, 'karyawan')
+  await fab(page).click()
+  const input = panel(page).getByRole('textbox', { name: 'Pertanyaan' })
+  await input.fill('Apa rencana belajar saya?')
+  await input.press('Enter')
+  await expect(panel(page).getByText('Sedang menyiapkan jawaban…')).toBeVisible()
+  await expect(panel(page).getByRole('button', { name: 'Kirim' })).toBeDisabled()
+  lepas()
+  await expect(panel(page).getByText('Selesai.')).toBeVisible()
+  await expect(panel(page).getByText('Sedang menyiapkan jawaban…')).toHaveCount(0)
+})
+
+for (const [nama, respons] of [
+  ['503 AI_UNAVAILABLE', { status: 503, json: { error: { code: 'AI_UNAVAILABLE', message: 'Asisten sedang tidak tersedia.' } } }],
+] as const) {
+  test(`review: galat ${nama} menampilkan pesan API`, async ({ page }) => {
+    await mockAsisten(page, { jawab: () => respons })
+    await masuk(page, 'karyawan')
+    await fab(page).click()
+    await panel(page).getByRole('textbox', { name: 'Pertanyaan' }).fill('Halo')
+    await panel(page).getByRole('button', { name: 'Kirim' }).click()
+    await expect(panel(page).getByText('Asisten sedang tidak tersedia.')).toBeVisible()
+  })
+}
+
+test('review: 502 tanpa badan JSON (proxy) dan jaringan putus memakai pesan cadangan', async ({ page }) => {
+  await mockAsisten(page)
+  await masuk(page, 'karyawan')
+  let n = 0
+  await page.route('**/api/assistant/ask', (r) => {
+    n += 1
+    return n === 1 ? r.fulfill({ status: 502, contentType: 'text/html', body: '<html>Bad gateway</html>' }) : r.abort('failed')
+  })
+  await fab(page).click()
+  const input = panel(page).getByRole('textbox', { name: 'Pertanyaan' })
+  await input.fill('Satu')
+  await input.press('Enter')
+  await expect(panel(page).getByText('Asisten sedang tidak bisa menjawab. Coba lagi nanti.')).toHaveCount(1)
+  await expect(input).toHaveValue('Satu')
+  await input.fill('Dua')
+  await input.press('Enter')
+  await expect(panel(page).getByText('Asisten sedang tidak bisa menjawab. Coba lagi nanti.')).toHaveCount(2)
+})
+
+test('review: isian kosong atau spasi saja tidak dikirim', async ({ page }) => {
+  const diterima = await mockAsisten(page)
+  await masuk(page, 'karyawan')
+  await fab(page).click()
+  const input = panel(page).getByRole('textbox', { name: 'Pertanyaan' })
+  await input.fill('   ')
+  await input.press('Enter')
+  await expect(input).toHaveAttribute('maxlength', '500')
+  expect(diterima.filter((r) => r.method === 'POST')).toHaveLength(0)
+})
+
+test('review: permintaan yang menggantung dihentikan setelah 30 detik dengan pesan cadangan', async ({ page }) => {
+  await page.clock.install()
+  await mockAsisten(page)
+  await masuk(page, 'karyawan')
+  await page.route('**/api/assistant/ask', () => { /* tidak pernah dijawab */ })
+  await fab(page).click()
+  const input = panel(page).getByRole('textbox', { name: 'Pertanyaan' })
+  await input.fill('Halo')
+  await input.press('Enter')
+  await expect(panel(page).getByText('Sedang menyiapkan jawaban…')).toBeVisible()
+  await page.clock.fastForward(31_000)
+  await expect(panel(page).getByText('Asisten sedang tidak bisa menjawab. Coba lagi nanti.')).toBeVisible()
+  await expect(panel(page).getByRole('button', { name: 'Kirim' })).toBeEnabled()
+})
+
+test('review: layar sempit dengan drawer terbuka: tombol asisten tidak tampil di atas scrim', async ({ page }) => {
+  await page.setViewportSize({ width: 600, height: 900 })
+  await mockAsisten(page)
+  await masuk(page, 'karyawan')
+  await expect(fab(page)).toBeVisible()
+  await page.locator('#tombol-menu').click()
+  await expect(page.getByTestId('scrim')).toBeVisible()
+  await expect(fab(page)).toBeHidden()
 })

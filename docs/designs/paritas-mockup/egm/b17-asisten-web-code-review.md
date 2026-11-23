@@ -31,3 +31,24 @@ Catatan proses: tool `Agent` tidak tersedia di sesi subagent ini, jadi kedua sum
 | --- | --- | --- | --- |
 | G-1 | rendah | `e2e/ui-kit.spec.ts` token test memeriksa host `localhost:4174` secara harfiah, jadi merah saat e2e dijalankan di port lain (config sementara worktree) | **Tunda**: bukan dari diff ini; di CI port 4174 lulus |
 | G-2 | rendah | Snapshot `asisten-panel-karyawan.png` hanya mode terang | **Terima**: token sama dengan komponen lain yang sudah punya snapshot gelap |
+
+## Review independen (sesi induk, 23 Nov)
+
+Reviewer `egm:egm-codebase-details` (C) dan `egm:egm-implementation-readiness` (R) dijalankan terpisah atas diff B17 (titik tetap 54596dd). Test merah dibuat dulu (4 merah: C-1, R-1, R-3, C-6), lalu diperbaiki.
+
+| # | Bobot | Temuan | Triase |
+| --- | --- | --- | --- |
+| C-1 | sedang | Tampilan klien (`activeView`, B2) bisa ditolak server (aturan tampilan dari `req.user.role`): salam gagal diam-diam dan tiap jawaban "Tampilan ini tidak tersedia" | **Perbaiki**: salam dimuat saat tampilan aktif; 403 `VIEW_FORBIDDEN` (salam atau tanya) → `unavailable`, tombol disembunyikan; test |
+| C-2 | sedang | `:key="i"` + pemangkasan 40 giliran membuat `role="log"` membacakan ulang riwayat | **Perbaiki**: `Turn.id` stabil |
+| C-3 / R-6 | rendah | `loadIntro` tanpa penjaga permintaan berjalan | **Perbaiki**: promise berjalan dipakai ulang |
+| C-4 / R-4 | rendah | Pengosongan saat keluar bergantung pada watcher komponen | **Perbaiki**: `$onAction` aksi `clear` sesi |
+| C-5 | rendah | Tenant tidak ada di kunci | **Perbaiki**: kunci `{tenant}|{user}|{tampilan}` |
+| C-6 / R-5 | rendah | FAB/panel di atas scrim dan bisa difokus saat drawer melayang | **Perbaiki**: pembungkus `v-show` + `inert` di `AppShell`; test lebar 600 |
+| C-7 | nit | Tombol Tutup bisa `UiButton` | **Tolak dengan alasan**: tombol ikon bulat 40px mockup tidak ada di varian `UiButton`; dicatat di keputusan spek |
+| R-1 | besar | Tanpa batas waktu: `pending` bisa menggantung selamanya | **Perbaiki**: `AbortController` 30 detik; test `page.clock` |
+| R-2 | besar | Jalur tanpa test: menunggu, 503, jaringan putus, salam gagal, isian kosong | **Perbaiki**: 6 test baru. Batas 40 giliran dan buang jawaban basi tetap tanpa test e2e (web tidak punya runner unit); jalur buang basi sudah diuji lewat ganti tampilan |
+| R-3 | kecil | 5xx non-JSON memakai "Terjadi kesalahan", bukan pesan cadangan | **Perbaiki**: `errorText` (pesan API hanya bila kode bukan `ERROR`); test 502 HTML |
+| R-7 | nit | Alasan tombol non-`Ui*` hanya di laporan review | **Perbaiki**: dicatat di keputusan spek |
+| R-8 | nit | Review spek dikerjakan mandiri | **Ditutup**: review independen ini |
+
+G-1 (port 4174): seluruh e2e dijalankan ulang di port 4174 setelah merge; `ui-kit.spec.ts` hijau.
