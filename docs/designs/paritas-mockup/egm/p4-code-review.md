@@ -32,8 +32,26 @@ Catatan proses: skill meminta dua sub-agent paralel (Standards, Spec) dan brief 
 | # | Bobot | Temuan | Triase |
 | --- | --- | --- | --- |
 | G-1 | sedang | Test `ui-kit` "token … font Roboto" gagal di config port sementara (4179) karena memeriksa URL `http://localhost:4174` secara harfiah | **Bukan regresi**: artefak config port sementara (brief: port override). Semua URL yang dilaporkan adalah aset aplikasi sendiri di `localhost:4179`, bukan pihak ketiga. Tidak diubah (di luar lingkup) |
-| G-2 | ringan | `api` lama di `sendLink` mengosongkan `linkNotice` dulu, sehingga `role=status` dilepas lalu dipasang lagi saat kirim ulang | Diterima: memicu pengumuman ulang pembaca layar, yang diinginkan |
+| G-2 | ringan | `sendLink` mengosongkan `linkNotice` dulu, sehingga `role=status` dilepas lalu dipasang lagi saat kirim ulang | **Dikoreksi** setelah review independen (I-1): wilayah status yang baru dipasang sering tidak diumumkan; kini selalu terpasang |
 | G-3 | ringan | Tidak ada snapshot visual login | Tunda: test token CSS (L3–L6) dan tata letak (L7) cukup; foto manual dibandingkan dengan `login--cred`/`login--otp` mockup |
 | G-4 | ringan | Mode gelap: panel kiri memakai `--el-primary`/`--el-on-primary` seperti sebelumnya | Tidak berubah dari B1 |
 
 Ringkasan: Standards 7 butir (terberat S-4 aksesibilitas fokus, diperbaiki), Spec 4 (terberat P-2, spek diperbarui), goldfish 4 (G-1 bukan regresi).
+
+## Review independen (sesi induk, 23 Nov)
+
+Reviewer `egm:egm-codebase-details` dan `egm:egm-implementation-readiness` dijalankan terpisah atas diff P4.
+
+| # | Temuan | Triase |
+| --- | --- | --- |
+| I-1 | Kirim ulang yang berhasil tidak memberi umpan balik: pesan server sama persis, dan wilayah `role=status` dilepas-pasang sehingga sering tidak diumumkan | **Perbaiki**: wilayah status selalu terpasang; kirim ulang berhasil diawali "Link baru sudah diminta."; test |
+| I-2 | Sub "Buka link masuk yang kami kirim ke {email}" tetap menyatakan link pasti terkirim (bertentangan dengan keputusan spek) dan catatan bernada sukses | **Perbaiki**: "Bila {email} terdaftar, link masuk dikirim ke alamat itu."; nada `info`; test |
+| I-3 | `<UiNote>` (div) dibungkus `<p>`: HTML tidak valid | **Perbaiki**: pembungkus `<div>` (catatan sesi habis dan status) |
+| I-4 | Klik ganda bisa memicu dua permintaan (`sendLink`, `enter`) | **Perbaiki**: `if (loading.value) return` |
+| I-5 | Setelah token ditolak, "Lanjutkan masuk" tetap tampil padahal token sekali pakai | **Perbaiki**: tombol disembunyikan saat ada galat; test |
+| I-6 | Tidak ada test bahwa `#token` dihapus dari address bar | **Perbaiki**: test baru |
+| I-7 | Jalur non-produksi "Minta link lewat email" juga membuka langkah 2, tidak tercatat | **Perbaiki**: dicatat di keputusan spek |
+| I-8 | Tidak ada jeda tunggu kirim ulang | **Tolak dengan alasan** `[⏳ DITERIMA]`: batas server 3/15 menit + galat di ringkasan |
+| I-9 | Teks kepercayaan perlu rujukan K3 | **Perbaiki**: rujukan di keputusan spek; teks tidak berubah |
+
+Hasil: 12 test `login.spec.ts` hijau setelah perbaikan.

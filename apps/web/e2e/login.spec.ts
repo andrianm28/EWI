@@ -84,9 +84,12 @@ test('P4 L2: setelah kirim link, panel kanan berganti ke "Periksa email Anda" de
   await expect(page.getByLabel('Kode verifikasi')).toHaveCount(0)
   await expect(page.getByText('Sesi dienkripsi · percobaan masuk dicatat di log audit tenant')).toBeVisible()
 
+  await expect(page.locator('#isi-login')).toContainText('Bila hr@demo.test terdaftar')
   await page.getByRole('button', { name: 'Kirim ulang' }).click()
   await expect.poll(() => kiriman.length).toBe(2)
   expect(kiriman[1]).toEqual({ tenant: 'demo', email: 'hr@demo.test' })
+  // review P4: kirim ulang yang berhasil memberi umpan balik baru di wilayah status yang selalu terpasang
+  await expect(page.getByRole('status')).toContainText('Link baru sudah diminta.')
 
   await page.getByRole('button', { name: 'Kembali' }).click()
   await expect(page.getByRole('heading', { level: 1, name: 'Masuk ke ELGOS' })).toBeVisible()
@@ -141,6 +144,15 @@ test('P4 L1: token ditolak server, pesan tampil di ringkasan galat', async ({ pa
   const alert = page.getByRole('alert')
   await expect(alert).toContainText('Ada masalah')
   await expect(alert).toContainText('Link masuk tidak valid atau sudah dipakai')
+  // review P4: token sekali pakai sudah ditolak, tombol lanjut tidak ditawarkan lagi
+  await expect(page.getByRole('button', { name: 'Lanjutkan masuk' })).toHaveCount(0)
+})
+
+test('P4 L1 (review): token dihapus dari address bar sebelum tombol ditekan', async ({ page }) => {
+  await mockBase(page)
+  await page.goto('/masuk#token=abcdefghijklmnopqrstuvwxyz0123')
+  await expect(page.getByRole('button', { name: 'Lanjutkan masuk' })).toBeVisible()
+  expect(new URL(page.url()).hash).toBe('')
 })
 
 test('P4 L3-L6: token judul, logo, meta, dan ukuran panel mengikuti mockup', async ({ page }) => {

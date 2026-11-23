@@ -23,6 +23,7 @@ onMounted(() => {
 })
 
 async function enter() {
+  if (loading.value) return
   error.value = ''
   loading.value = true
   try {
@@ -43,7 +44,7 @@ async function enter() {
     <p v-if="token && !error" class="lg-sub">Tekan tombol di bawah untuk melanjutkan.</p>
     <UiErrorSummary :errors="errors" />
     <div class="lg-row">
-      <UiButton v-if="token" :disabled="loading" @click="enter">{{ loading ? 'Memproses…' : 'Lanjutkan masuk' }}</UiButton>
+      <UiButton v-if="token && !error" :disabled="loading" @click="enter">{{ loading ? 'Memproses…' : 'Lanjutkan masuk' }}</UiButton>
       <UiButton variant="text" to="/login">Ke halaman login</UiButton>
     </div>
   </LoginLayout>

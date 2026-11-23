@@ -93,12 +93,14 @@ async function submit() {
 
 // R3-2 / PD-10: masuk lewat link email sekali pakai; satu-satunya cara masuk di produksi
 async function sendLink() {
+  if (loading.value) return
+  const resend = step.value === 'sent'
   linkNotice.value = ''
   if (!requireFields(false)) return
   loading.value = true
   try {
     const res = await api<{ message: string }>('/auth/email-link', { method: 'POST', body: JSON.stringify({ tenant: tenant.value.trim(), email: email.value.trim() }) })
-    linkNotice.value = res.message
+    linkNotice.value = resend ? `Link baru sudah diminta. ${res.message}` : res.message
     sentTo.value = email.value.trim()
     if (step.value !== 'sent') {
       step.value = 'sent'
@@ -138,7 +140,7 @@ async function sso() {
     <form v-if="step === 'form'" novalidate @submit.prevent="submit">
       <h1 class="lg-h1">Masuk ke ELGOS</h1>
       <p class="lg-sub">Gunakan akun kerja yang didaftarkan oleh admin perusahaan Anda.</p>
-      <p v-if="expired" data-testid="session-expired"><UiNote tone="warning">{{ expiredText }}</UiNote></p>
+      <div v-if="expired" data-testid="session-expired"><UiNote tone="warning">{{ expiredText }}</UiNote></div>
       <UiErrorSummary :errors="errors" />
 
       <UiField id="org" v-slot="{ attrs }" label="Organisasi" :error="fieldError('org')">
@@ -165,9 +167,9 @@ async function sso() {
 
     <section v-else aria-labelledby="lg-sent-h">
       <h1 id="lg-sent-h" ref="stepHeading" class="lg-h1" tabindex="-1">Periksa email Anda</h1>
-      <p class="lg-sub">Buka link masuk yang kami kirim ke {{ sentTo }}. Link berlaku 15 menit dan hanya bisa dipakai sekali.</p>
+      <p class="lg-sub">Bila {{ sentTo }} terdaftar, link masuk dikirim ke alamat itu. Link berlaku 15 menit dan hanya bisa dipakai sekali.</p>
       <UiErrorSummary :errors="errors" />
-      <p v-if="linkNotice" role="status"><UiNote tone="success">{{ linkNotice }}</UiNote></p>
+      <div role="status" data-testid="link-notice"><UiNote v-if="linkNotice" tone="info">{{ linkNotice }}</UiNote></div>
       <div class="lg-row">
         <UiButton :disabled="loading" @click="sendLink">{{ loading ? 'Memproses…' : 'Kirim ulang' }}</UiButton>
         <UiButton variant="text" :disabled="loading" @click="back">Kembali</UiButton>
