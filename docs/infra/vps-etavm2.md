@@ -163,6 +163,9 @@ endpoint ap-southeast-1** (`BEDROCK_MODEL_ID=global.anthropic.claude-sonnet-5-5`
 AWS mana pun; DPIA/consent diperbarui thread legal. Harga Pricing API 23 Nov: global US$2/US$10 per juta token
 input/output (Sonnet 5 in-region US$2,20/US$11). IAM: role QA dan user aplikasi mengizinkan model dasar di semua
 region hanya bila dipanggil lewat inference profile di akun ini (`bedrock:InferenceProfileArn`).
+Urutan rollout: pasang `BEDROCK_MODEL_ID=global.anthropic.claude-sonnet-5-5` di `/srv/elgos-*/.env` **setelah**
+image yang memuat commit aplikasi 1d77cab (env.js menerima profil `global.`) terpasang; image lama menolak
+profil itu saat boot.
 
 Langkah tangan admin (akun, region, bootstrap, akses model, variabel repo, apply) dibungkus wizard
 `bash infra/setup-akun-elgos.sh` (23 Nov dijalankan di etavm2 dengan `aws login --remote`). Variabel repo hasilnya: `QA_MALAM_ROLE_ARN`,
