@@ -1,4 +1,4 @@
-import { cocok, responsData as data, type Penangan, type Terkirim } from './api'
+import { cocok, responsData as data, type Penangan, type ResponsApi, type Terkirim } from './api'
 import { ID_KOMPETENSI } from './tna-gap'
 
 // Paritas B7 web: mock tinjauan temuan AI per gap (docs/designs/paritas-mockup/b7-tinjauan-web.md).
@@ -15,7 +15,7 @@ export const T_PELATIHAN = 'f0000000-0000-4000-8000-000000000003'
 export const RINCIAN_RAHASIA = 'RINCIAN-RAHASIA'
 
 type Kategori = 'training' | 'non_training'
-interface Temuan {
+export interface Temuan {
   id: string; userId: string; userName: string; title: string; category: Kategori; confidence: number
   reviewStatus: 'draft' | 'approved' | 'edited' | 'rejected'; held: boolean; handedOffAt: string | null
 }
@@ -40,7 +40,19 @@ export interface OpsiTinjauan {
   temuan?: Temuan[]
   /** Rekomendasi katalog untuk temuan pelatihan tanpa rencana (bawaan ST-A2). null = perlu modul baru. */
   rekomendasi?: { source: string; ref: string; title: string; url: string | null; programTier: string | null } | null
+  /**
+   * Jawaban galat: dipanggil dengan path yang dicatat di `terkirim` (mis. `assign plan-3`, `classify <id>`,
+   * `GET /tna/review`) dan daftar temuan milik mock (boleh diubah, mis. HR lain sudah memutus). Kembalikan
+   * respons untuk menggantikan jawaban normal (state tidak berubah), atau undefined (boleh setelah menunggu,
+   * untuk menguji keadaan sedang menyimpan).
+   */
+  galat?: (path: string, temuan: Temuan[]) => ResponsApi | undefined | Promise<ResponsApi | undefined>
+  /** Tunda jawaban GET solusi (ms) untuk menguji status memuat. */
+  tundaSolusiMs?: number
 }
+
+/** Respons galat berbentuk amplop API ELGOS. */
+export const galatApi = (status: number, code: string, message: string): ResponsApi => ({ status, json: { error: { code, message } } })
 
 export const TEMUAN_MOCKUP: Temuan[] = [
   { id: T_DRAF, userId: ID_DIMAS, userName: 'Dimas', title: 'Kesulitan menentukan akar masalah (teknik analisis)', category: 'training', confidence: 0.9, reviewStatus: 'draft', held: false, handedOffAt: null },
@@ -61,9 +73,11 @@ export function tinjauanGap(o: OpsiTinjauan = {}): { penangan: Penangan; terkiri
   const delivery = o.delivery ?? { target: 'elitementor', label: 'EliteMentor', assignAvailable: true }
   const rekomendasi = o.rekomendasi === undefined ? REKOMENDASI : o.rekomendasi
 
-  const penangan: Penangan = (req) => {
+  const gagal = (path: string) => o.galat?.(path, temuan)
+  const penangan: Penangan = async (req) => {
     if (cocok(req, 'GET /tna/review')) {
       terkirim.push({ path: 'GET /tna/review', body: Object.fromEntries(req.query) })
+      const g = await gagal('GET /tna/review'); if (g) return g
       const aktif = temuan.filter((t) => t.reviewStatus !== 'rejected')
       const status = req.query.get('status') ?? 'draft'
       const rows = status === 'all' ? temuan : aktif.filter((t) => (status === 'draft' ? t.reviewStatus === 'draft' : t.reviewStatus !== 'draft'))
@@ -80,6 +94,7 @@ export function tinjauanGap(o: OpsiTinjauan = {}): { penangan: Penangan; terkiri
     const kl = cocok(req, 'POST /tna/findings/:id/classify')
     if (kl) {
       terkirim.push({ path: `classify ${kl.id}`, body: req.body })
+      const g = await gagal(`classify ${kl.id}`); if (g) return g
       const t = temuan.find((x) => x.id === kl.id)!
       const c = (req.body as { classification: string }).classification
       if (c === 'needs_review') t.held = true
@@ -88,6 +103,8 @@ export function tinjauanGap(o: OpsiTinjauan = {}): { penangan: Penangan; terkiri
     }
     if (cocok(req, 'GET /tna/review/solutions')) {
       terkirim.push({ path: 'GET /tna/review/solutions', body: Object.fromEntries(req.query) })
+      if (o.tundaSolusiMs) await new Promise((r) => setTimeout(r, o.tundaSolusiMs))
+      const g = await gagal('GET /tna/review/solutions'); if (g) return g
       const putus = temuan.filter((t) => t.reviewStatus === 'approved' || t.reviewStatus === 'edited')
       return data({
         training: putus.filter((t) => t.category === 'training').map((t) => {
@@ -108,6 +125,7 @@ export function tinjauanGap(o: OpsiTinjauan = {}): { penangan: Penangan; terkiri
     const pl = cocok(req, 'POST /tna/findings/:id/plan')
     if (pl) {
       terkirim.push({ path: `plan ${pl.id}`, body: req.body })
+      const g = await gagal(`plan ${pl.id}`); if (g) return g
       const p = { id: `plan-${pl.id.slice(-1)}`, assignmentStatus: null }
       rencana.set(pl.id, p)
       return data({ id: p.id, status: 'new' }, 201)
@@ -115,11 +133,13 @@ export function tinjauanGap(o: OpsiTinjauan = {}): { penangan: Penangan; terkiri
     const as = cocok(req, 'POST /tna/plan-items/:id/assign')
     if (as) {
       terkirim.push({ path: `assign ${as.id}`, body: req.body })
+      const g = await gagal(`assign ${as.id}`); if (g) return g
       for (const p of rencana.values()) if (p.id === as.id) p.assignmentStatus = 'sent'
       return data({ id: as.id, status: 'new' })
     }
     if (cocok(req, 'POST /tna/review/improvement-handoff')) {
       terkirim.push({ path: 'handoff', body: req.body })
+      const g = await gagal('handoff'); if (g) return g
       const ids = (req.body as { findingIds: string[] }).findingIds
       for (const t of temuan) if (ids.includes(t.id)) t.handedOffAt = '2026-11-23T03:00:00.000Z'
       return data({ handedOff: ids, already: [], skipped: [] })

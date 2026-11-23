@@ -21,8 +21,10 @@ const items = ref<ReviewItem[]>([])
 const gapLabel = ref('')
 const solutions = ref<ReviewSolutions | null>(null)
 const errors = ref<{ message: string }[]>([])
-const savingId = ref('')
+/** Temuan yang klasifikasinya sedang disimpan; temuan lain tetap bisa diklasifikasi bersamaan. */
+const pendingIds = ref(new Set<string>())
 const busy = ref(false)
+const loading = ref(false)
 const handedCount = ref<number | null>(null)
 
 const message = (e: unknown, fallback: string) => (e instanceof ApiError ? e.message : fallback)
@@ -36,8 +38,11 @@ async function refresh(query: Record<string, string>) {
 }
 async function load() {
   if (!gapQuery.value) { errors.value = [{ message: 'Alamat gap tidak lengkap. Buka tinjauan dari detail gap Training Needs.' }]; return }
-  try { await refresh(gapQuery.value) } catch (e) { errors.value = [{ message: message(e, 'Tinjauan temuan tidak bisa dimuat') }] }
+  loading.value = true
+  try { await refresh(gapQuery.value) } catch (e) { errors.value = [{ message: message(e, 'Tinjauan temuan tidak bisa dimuat') }] } finally { loading.value = false }
 }
+/** Tulis sudah berhasil, hanya muat ulang yang gagal: jangan laporkan sebagai gagal menyimpan. */
+const savedButStale = (what: string) => ({ message: `${what}, tetapi data tidak bisa dimuat ulang.` })
 onMounted(load)
 watch(() => route.fullPath, () => { errors.value = []; handedCount.value = null; load() })
 
@@ -54,20 +59,34 @@ const planned = computed(() => new Set((solutions.value?.training ?? []).filter(
 const actioned = (f: ReviewItem) => !!f.handedOffAt || planned.value.has(f.id)
 const optionsFor = (f: ReviewItem) => (['training', 'improvement', 'needs_review'] as const).map((key) => ({
   key, label: LABEL[key],
-  disabled: savingId.value === f.id || actioned(f) || (key === 'needs_review' && decided(f)),
+  disabled: actioned(f) || (key === 'needs_review' && decided(f)),
+  // sedang menyimpan atau solusi sedang dijalankan: aria-disabled supaya fokus tidak hilang dari tombol yang diklik
+  pending: busy.value || pendingIds.value.has(f.id),
 }))
+function setPending(id: string, on: boolean) {
+  const next = new Set(pendingIds.value)
+  if (on) next.add(id); else next.delete(id)
+  pendingIds.value = next
+}
 const pct = (c: number | null) => (c === null ? '' : `· AI ${Math.round(c * 100)}%`)
 
 async function classify(f: ReviewItem, key: string) {
-  if (key === current(f)) return
-  errors.value = []; savingId.value = f.id
+  if (key === current(f) || busy.value || pendingIds.value.has(f.id)) return
+  errors.value = []; setPending(f.id, true)
+  let saved = false
   try {
     const out = (await lna.classifyFinding(f.id, key as ReviewClassification)).data
     items.value = items.value.map((x) => (x.id === f.id ? out : x))
+    saved = true
     solutions.value = (await lna.reviewSolutions(gapQuery.value!)).data
   } catch (e) {
+    if (saved) { errors.value = [savedButStale('Klasifikasi tersimpan')]; return }
     errors.value = [{ message: message(e, 'Klasifikasi gagal disimpan') }]
-  } finally { savingId.value = '' }
+    // 409: temuan sudah diputus atau ditindaklanjuti di tempat lain; tampilkan nilai dari server
+    if (e instanceof ApiError && e.status === 409) {
+      try { await refresh(gapQuery.value!) } catch { errors.value.push({ message: 'Tinjauan temuan tidak bisa dimuat ulang' }) }
+    }
+  } finally { setPending(f.id, false) }
 }
 
 // --- Solusi pelatihan (mockup `modRec`, `sendEM`) ---
@@ -92,14 +111,20 @@ async function runTraining() {
   if (!delivery.value) return
   errors.value = []; busy.value = true
   const failed: { message: string }[] = []
+  let wrote = false
   for (const t of training.value) {
     try {
       const planId = t.planItem?.id ?? (await lna.planFinding(t.findingId)).data.id
-      if (delivery.value.assignAvailable && t.planItem?.assignmentStatus !== 'sent') await lna.assignPlanItem(planId)
+      if (!t.planItem) wrote = true
+      if (delivery.value.assignAvailable && t.planItem?.assignmentStatus !== 'sent') { await lna.assignPlanItem(planId); wrote = true }
     } catch (e) { failed.push({ message: `${t.title}: ${message(e, 'gagal diproses')}` }) }
   }
   errors.value = failed
-  try { solutions.value = (await lna.reviewSolutions(gapQuery.value!)).data } catch (e) { errors.value.push({ message: message(e, 'Solusi tidak bisa dimuat ulang') }) }
+  try {
+    solutions.value = (await lna.reviewSolutions(gapQuery.value!)).data
+  } catch (e) {
+    errors.value.push(wrote ? savedButStale('Rencana tersimpan') : { message: message(e, 'Solusi tidak bisa dimuat ulang') })
+  }
   busy.value = false
 }
 async function downloadCsv() {
@@ -116,11 +141,15 @@ const handedNote = computed(() => {
 })
 async function handoff() {
   errors.value = []; busy.value = true
+  let saved = false
   try {
     const r = (await lna.handoffImprovement(pendingHandoff.value.map((i) => i.findingId))).data
     handedCount.value = r.handedOff.length + r.already.length
+    saved = true
     await refresh(gapQuery.value!)
-  } catch (e) { errors.value = [{ message: message(e, 'Temuan tidak bisa diteruskan') }] } finally { busy.value = false }
+  } catch (e) {
+    errors.value = [saved ? savedButStale('Temuan diteruskan ke Improvement Needs dan tersimpan') : { message: message(e, 'Temuan tidak bisa diteruskan') }]
+  } finally { busy.value = false }
 }
 </script>
 
@@ -130,8 +159,9 @@ async function handoff() {
     <h1 class="el-h1">Tinjauan temuan AI</h1>
     <p class="b7-sub">{{ gapLabel ? `${gapLabel}. ` : '' }}HR memastikan klasifikasi sebelum solusi dijalankan; AI tidak memutuskan sendiri.</p>
     <UiErrorSummary :errors="errors" />
+    <p v-if="loading && !solutions" class="el-muted" aria-busy="true">Memuat…</p>
 
-    <div v-if="solutions" class="el-grid el-grid-2 b7-grid">
+    <div v-if="solutions" class="el-grid el-grid-2 b7-grid" :aria-busy="loading ? 'true' : undefined">
       <UiCard>
         <h3 class="el-h3">Temuan dan klasifikasi</h3>
         <ul class="b7-findings">
