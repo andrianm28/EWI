@@ -67,7 +67,7 @@ test('alur lengkap: persetujuan, jawaban, ringkasan, kirim ke HR', async ({ page
   await page.getByRole('button', { name: 'Sesuai, kirim ke HR' }).click()
   await expect(page.getByText('Ringkasan sudah dikirim ke HR untuk ditinjau.')).toBeVisible()
   expect(sent.find((x) => x.path === 'confirm')?.body).toEqual({})
-  await expect(page.getByText('S1ABCDEF · ELGOS-AI · log audit: persetujuan tercatat · 1 jawaban')).toBeVisible()
+  await expect(page.getByText('S1ABCDEF · model ELGOS-AI (POC) · log audit: persetujuan tercatat · 1 jawaban')).toBeVisible()
 })
 
 test('P7 IV-1/3/4/5/9/10/11: judul persetujuan, audit sebelum setuju di dalam kartu, gelembung mockup, temuan, note sukses', async ({ page }) => {

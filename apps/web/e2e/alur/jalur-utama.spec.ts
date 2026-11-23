@@ -65,6 +65,8 @@ test('jalur 2: HR dari Dashboard utama ke Training Needs, membuka detail gap, la
     await expect(page.getByRole('heading', { level: 1, name: 'Analisis insiden' })).toBeVisible()
   })
   await test.step('tugaskan wawancara: karyawan, tenggat, durasi', async () => {
+    // P8 R2: formulir penugasan dibuka di dialog dari CTA "Mulai wawancara akar masalah"
+    await page.getByRole('button', { name: 'Mulai wawancara akar masalah' }).click()
     const form = page.getByRole('form', { name: 'Tugaskan wawancara' })
     await form.getByRole('checkbox', { name: 'Dimas' }).check()
     await form.getByLabel('Tenggat').fill('2026-12-05')

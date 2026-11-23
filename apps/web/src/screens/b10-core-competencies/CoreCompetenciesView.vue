@@ -43,7 +43,7 @@ const aivTo = computed(() => (session.hasFlag('cca.interview') ? { name: 'cc', q
     </div>
     <div v-else-if="tab === 'val'" id="cc-panel-val" role="tabpanel" aria-labelledby="cc-tab-val">
       <UiAgentCard title="Wawancara nilai" action="Buka wawancara AI" :to="aivTo" data-testid="cc-agen-val">
-        AI mewawancarai pimpinan tentang makna dan perilaku kunci tiap nilai 5C, lalu mewawancarai karyawan, terutama yang belum menyelesaikan program, untuk menilai gap terhadap jawaban pimpinan.
+        AI mewawancarai pimpinan tentang makna dan perilaku kunci tiap nilai korporasi, lalu mewawancarai karyawan, terutama yang belum menyelesaikan program, untuk menilai gap terhadap jawaban pimpinan.
       </UiAgentCard>
       <ProgramSection :interview-to="aivTo" />
       <h2 class="el-h2 cc-gap-title">Gap perilaku per nilai</h2>

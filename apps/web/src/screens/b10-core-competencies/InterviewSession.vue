@@ -103,12 +103,13 @@ const confirm = () => act(async () => { await cca.confirm(props.assignmentId); e
         </div>
       </div>
       <template v-if="pending">
-        <div v-if="pending.options?.length" class="cc-actions" role="group" aria-label="Pilihan jawaban">
-          <UiButton v-for="o in pending.options" :key="o" variant="outlined" size="sm" :disabled="busy" @click="answer(o)">{{ o }}</UiButton>
+        <!-- P8 R13 (AIV-8): pilihan jawaban bergaya `.ac` mockup; isian bebas input satu baris `.inp` -->
+        <div v-if="pending.options?.length" class="iv-acs" role="group" aria-label="Pilihan jawaban">
+          <button v-for="o in pending.options" :key="o" type="button" class="iv-ac" :disabled="busy" @click="answer(o)">{{ o }}</button>
         </div>
         <form class="iv-answer" @submit.prevent="answer(text)">
           <label class="el-sr-only" for="cc-answer">Jawaban</label>
-          <textarea id="cc-answer" v-model="text" rows="2" maxlength="2000" class="el-input iv-grow" placeholder="Tulis jawaban Anda" />
+          <input id="cc-answer" v-model="text" type="text" autocomplete="off" maxlength="2000" class="el-input iv-grow" :placeholder="pending.options?.length ? 'Atau ketik jawaban Anda sendiri' : 'Ketik jawaban Anda'" />
           <UiButton type="submit" :disabled="busy">Kirim</UiButton>
         </form>
       </template>

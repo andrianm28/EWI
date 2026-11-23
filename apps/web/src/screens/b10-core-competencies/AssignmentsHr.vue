@@ -3,8 +3,8 @@
 // HR tidak menerima daftar karyawan per orang; sintesis pimpinan vs karyawan di SynthesisCard (tahap 2).
 import { computed, onMounted, ref } from 'vue'
 import { cca, fmtDate, STATUS_LABEL, type Assignments, type AssignmentStatus, type LeaderRow } from '@/api/cca'
-import { UiButton, UiCard, UiChip, UiDataTable, UiErrorSummary, UiField, UiKpiCard, type UiColumn } from '@/ui'
-import { defaultDue, todayIso } from './due'
+import { UiButton, UiCard, UiChip, UiDataTable, UiErrorSummary, UiKpiCard, type UiColumn } from '@/ui'
+import AssignDueDialog from './AssignDueDialog.vue'
 import InterviewFlow from './InterviewFlow.vue'
 import SynthesisCard from './SynthesisCard.vue'
 
@@ -13,7 +13,8 @@ const data = ref<HrData | null>(null)
 const loading = ref(true)
 const errors = ref<{ message: string }[]>([])
 const notice = ref('')
-const due = ref(defaultDue())
+/** P8 R2 (AH-2): pimpinan yang akan ditugaskan; tenggatnya dipilih di dialog. */
+const pending = ref<LeaderRow[] | null>(null)
 const busy = ref(false)
 const themes = ref<number | null>(null)
 
@@ -30,7 +31,6 @@ const COLUMNS: UiColumn[] = [
   { key: 'name', label: 'Pimpinan', sortable: true },
   { key: 'division', label: 'Divisi', sortable: true },
   { key: 'status', label: 'Status' },
-  { key: 'dueDate', label: 'Batas waktu' },
   { key: 'team', label: 'Tim selesai', mono: true },
   { key: 'aksi', label: 'Tindakan' },
 ]
@@ -52,8 +52,9 @@ async function run(fn: () => Promise<string>) {
   errors.value = []; notice.value = ''; busy.value = true
   try { const msg = await fn(); await load(); notice.value = msg } catch (e) { errors.value = [{ message: (e as Error).message }] } finally { busy.value = false }
 }
-const assign = (rows: LeaderRow[]) => run(async () => {
-  const res = await cca.assign(rows.map((r) => r.userId), due.value)
+const assign = (rows: LeaderRow[], dueDate: string) => run(async () => {
+  pending.value = null
+  const res = await cca.assign(rows.map((r) => r.userId), dueDate)
   const left = res.skipped.length + res.rejected.length
   return `${res.assigned.length} pimpinan ditugaskan${left ? `, ${left} dilewati` : ''}.`
 })
@@ -72,25 +73,33 @@ const cancel = (row: LeaderRow) => run(async () => { await cca.cancelAssignment(
         <UiKpiCard v-for="k in kpis" :key="k.label" :label="k.label" :value="k.value" :note="k.note" />
       </div>
       <UiCard>
-        <h3 class="el-h3">Penugasan ke pimpinan dan atasan</h3>
-        <p class="el-muted">Topik: visi, misi, dan nilai korporasi. Atasan yang selesai bisa meneruskan wawancara ke anggota timnya.</p>
+        <!-- P8 R2 (AH-2): "Tugaskan semua" di kanan header kartu -->
+        <div class="cc-row cc-cardhead">
+          <h3 class="el-h3">Penugasan ke pimpinan dan atasan</h3>
+          <UiButton size="sm" :disabled="busy || !unassigned.length" @click="pending = unassigned">Tugaskan semua</UiButton>
+        </div>
+        <p class="el-muted cc-cardsub">Topik: visi, misi, dan nilai korporasi. Atasan yang selesai bisa meneruskan wawancara ke anggota timnya.</p>
         <UiDataTable :columns="COLUMNS" :rows="data.leaders" row-key="userId" caption="Pimpinan dan atasan yang bisa ditugaskan" caption-hidden empty-text="Belum ada pengguna berperan atasan atau pimpinan. Impor data karyawan dulu.">
-          <template #toolbar>
-            <UiField id="cc-batas" v-slot="{ attrs }" label="Batas waktu penugasan baru"><input v-bind="attrs" v-model="due" class="el-input" type="date" :min="todayIso()" required /></UiField>
-            <UiButton size="sm" :disabled="busy || !unassigned.length || !due" @click="assign(unassigned)">Tugaskan semua</UiButton>
-          </template>
           <template #cell-name="{ row }"><b>{{ row.name }}</b><div v-if="row.jobRoleName" class="el-muted cc-small">{{ row.jobRoleName }}</div></template>
           <template #cell-division="{ row }">{{ row.division ?? '-' }}</template>
-          <template #cell-status="{ row }"><UiChip :tone="TONE[asRow(row).status]">{{ STATUS_LABEL[asRow(row).status] }}</UiChip></template>
-          <template #cell-dueDate="{ row }">{{ fmtDate(asRow(row).dueDate) }}</template>
+          <!-- P8 R2 (AH-3): tenggat jadi teks kecil di sel Status -->
+          <template #cell-status="{ row }">
+            <UiChip :tone="TONE[asRow(row).status]">{{ STATUS_LABEL[asRow(row).status] }}</UiChip>
+            <div v-if="asRow(row).dueDate" class="el-muted cc-small">Batas {{ fmtDate(asRow(row).dueDate, 'short') }}</div>
+          </template>
           <template #cell-team="{ row }">{{ row.teamDone }} dari {{ row.teamTotal }}</template>
           <template #cell-aksi="{ row }">
-            <UiButton v-if="row.status === 'none' || row.status === 'cancelled'" variant="tonal" size="sm" :disabled="busy || !due" @click="assign([asRow(row)])">Tugaskan<span class="el-sr-only"> {{ row.name }}</span></UiButton>
+            <UiButton v-if="row.status === 'none' || row.status === 'cancelled'" variant="tonal" size="sm" :disabled="busy" @click="pending = [asRow(row)]">Tugaskan<span class="el-sr-only"> {{ row.name }}</span></UiButton>
             <UiButton v-else-if="row.status === 'assigned'" variant="text" size="sm" :disabled="busy" @click="cancel(asRow(row))">Batalkan<span class="el-sr-only"> penugasan {{ row.name }}</span></UiButton>
             <span v-else class="el-muted">{{ row.status === 'completed' ? 'Selesai' : 'Sedang berjalan' }}</span>
           </template>
         </UiDataTable>
       </UiCard>
+      <AssignDueDialog
+        :open="!!pending" title="Tugaskan wawancara pimpinan" :busy="busy"
+        :who="pending?.length === 1 ? pending[0]!.name : `${pending?.length ?? 0} pimpinan`"
+        @close="pending = null" @confirm="assign(pending ?? [], $event)"
+      />
       <SynthesisCard @loaded="themes = $event" />
     </template>
   </div>

@@ -113,7 +113,8 @@ const review = (decision: 'approved' | 'returned') => act(
         <UiChip :tone="statusTone" data-testid="status-draf">{{ DRAFT_LABEL[draft.status] }}</UiChip>
       </p>
       <h1 class="el-h1">{{ draft.moduleName }}</h1>
-      <p class="el-muted">Draf awal disusun dari tujuan pembelajaran di DACUM Tool 1 (job function) dan Tool 2 (KSA) dengan prinsip instructional design. Anda meninjau tiap tahap sebelum lanjut.</p>
+      <!-- P8 R8 (PK-3, LI-28): kalimat mockup dengan subjek jujur; draf dibuat templat (generatedBy template), bukan agen AI -->
+      <p class="el-muted">Templat ELGOS menyusun draf dari tujuan pembelajaran di DACUM Tool 1 (job function) dan Tool 2 (KSA), dengan prinsip instructional design. Anda meninjau tiap tahap sebelum lanjut.</p>
       <UiNote v-if="draft.status === 'returned' && draft.reviewNote" tone="warning">Catatan {{ draft.reviewerName ?? 'SME' }}: {{ draft.reviewNote }}</UiNote>
 
       <!-- LI-27: stepper vertikal + catatan pendekatan di kartu kiri 240px, konten di kanan -->
@@ -204,7 +205,7 @@ const review = (decision: 'approved' | 'returned') => act(
               </span>
             </div>
           </details>
-          <UiAuditLine class="li-gap" :items="['Draf awal dari templat ELGOS', 'Sumber: DACUM Tool 1 dan Tool 2', 'Perlu persetujuan SME sebelum dipakai']" />
+          <UiAuditLine class="li-gap" :items="['Templat ELGOS', 'sumber: DACUM Tool 1 dan Tool 2', 'draf perlu persetujuan SME sebelum dipakai']" />
         </UiCard>
       </div>
     </template>

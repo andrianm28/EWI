@@ -1,5 +1,7 @@
 // Fungsi murni layar B8 (label dan pilihan tombol), dipakai "Hasil saya" dan "Rencana belajar".
 // Spek: docs/designs/b8-karyawan.md "Layar web".
+// Angka memakai formatter bersama (koma desimal id-ID, paritas P8 R4).
+import { formatNumber } from '@/ui/format'
 import type { DataRequestType, LearningCard, MyCompetencyStatus, MyResults } from '@/api/lna'
 
 type Tone = 'success' | 'warning' | 'critical' | 'neutral'
@@ -11,10 +13,6 @@ export const COMPETENCY_STATUS: Record<MyCompetencyStatus, { label: string; tone
   gap: { label: 'Belum', tone: 'critical' },
   not_assessed: { label: 'Belum dinilai', tone: 'neutral' },
 }
-
-const num = new Intl.NumberFormat('id-ID', { maximumFractionDigits: 2 })
-/** Angka dengan koma desimal (id-ID). */
-export const formatNumber = (n: number) => num.format(n)
 
 export function competencyStatus(status: string): { label: string; tone: Tone } {
   return COMPETENCY_STATUS[status as MyCompetencyStatus] ?? COMPETENCY_STATUS.not_assessed

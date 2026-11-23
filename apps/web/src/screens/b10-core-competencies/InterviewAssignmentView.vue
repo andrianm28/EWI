@@ -6,8 +6,8 @@ import { ApiError } from '@/api/client'
 import { cca, fmtDate, STATUS_LABEL, type Assignment, type Assignments, type AssignmentStatus, type TeamRow } from '@/api/cca'
 import AppShell from '@/components/AppShell.vue'
 import { useSessionStore } from '@/stores/session'
-import { UiBreadcrumb, UiButton, UiCard, UiChip, UiDataTable, UiErrorSummary, UiField, UiNote, type UiColumn } from '@/ui'
-import { defaultDue, todayIso } from './due'
+import { UiBreadcrumb, UiButton, UiCard, UiChip, UiDataTable, UiErrorSummary, UiNote, type UiColumn } from '@/ui'
+import AssignDueDialog from './AssignDueDialog.vue'
 import InterviewFlow from './InterviewFlow.vue'
 import InterviewSession from './InterviewSession.vue'
 import './cc.css'
@@ -18,7 +18,8 @@ const loading = ref(true)
 const disabled = ref(false)
 const errors = ref<{ message: string }[]>([])
 const notice = ref('')
-const due = ref(defaultDue())
+/** P8 R2 (AA-4): anggota tim yang akan ditugaskan; tenggatnya dipilih di dialog. */
+const pending = ref<TeamRow[] | null>(null)
 const busy = ref(false)
 
 async function load() {
@@ -53,10 +54,10 @@ const asRow = (r: Record<string, unknown>) => r as unknown as TeamRow
 const open = (s: AssignmentStatus) => s === 'none' || s === 'cancelled'
 const unassigned = computed(() => (leader.value?.team ?? []).filter((m) => open(m.status)))
 
-async function assign(rows: TeamRow[]) {
-  errors.value = []; notice.value = ''; busy.value = true
+async function assign(rows: TeamRow[], dueDate: string) {
+  errors.value = []; notice.value = ''; busy.value = true; pending.value = null
   try {
-    const res = await cca.assign(rows.map((r) => r.userId), due.value)
+    const res = await cca.assign(rows.map((r) => r.userId), dueDate)
     await load()
     const left = res.skipped.length + res.rejected.length
     notice.value = `${res.assigned.length} anggota tim ditugaskan${left ? `, ${left} dilewati` : ''}.`
@@ -69,7 +70,8 @@ async function assign(rows: TeamRow[]) {
     <UiBreadcrumb :items="[{ label: 'Learning Needs Analysis' }, { label: 'Wawancara AI' }]" />
     <div class="cc-stack" data-testid="cc-wawancara">
       <div class="cc-row">
-        <h1 class="el-h1">{{ session.activeView === 'atasan' ? 'Wawancara AI' : 'Wawancara visi, misi, dan nilai' }}</h1>
+        <!-- P8 R15 (AIV-1): h1 mockup "Wawancara AI" juga untuk karyawan; judul kartu tetap "Wawancara visi, misi, dan nilai" -->
+        <h1 class="el-h1">Wawancara AI</h1>
         <UiChip tone="review">Pilot</UiChip>
       </div>
       <p class="el-muted cc-sub">
@@ -101,23 +103,28 @@ async function assign(rows: TeamRow[]) {
             <InterviewSession v-if="mineLeader && openId === mineLeader.id" :key="mineLeader.id" :assignment-id="mineLeader.id" style="margin-top: 16px" @finished="finished" @close="openId = null" />
           </UiCard>
           <UiCard>
-            <h3 class="el-h3">Teruskan wawancara ke tim Anda</h3>
-            <p class="el-muted">Karyawan diwawancarai AI untuk menilai gap terhadap hasil wawancara Anda. Penugasan dari Anda, hasilnya masuk ke HR.</p>
+            <!-- P8 R2 (AA-4): tanpa field tanggal di toolbar; "Tugaskan semua" dipertahankan di header kartu -->
+            <div class="cc-row cc-cardhead">
+              <h3 class="el-h3">Teruskan wawancara ke tim Anda</h3>
+              <UiButton v-if="leader.canAssign" size="sm" :disabled="busy || !unassigned.length" @click="pending = unassigned">Tugaskan semua</UiButton>
+            </div>
+            <p class="el-muted cc-cardsub">Karyawan diwawancarai AI untuk menilai gap terhadap hasil wawancara Anda. Penugasan dari Anda, hasilnya masuk ke HR.</p>
             <UiNote v-if="!leader.canAssign" tone="warning" style="margin: 12px 0">Selesaikan wawancara pimpinan Anda dulu sebelum menugaskan anggota tim.</UiNote>
             <UiDataTable :columns="COLUMNS" :rows="leader.team" row-key="userId" caption="Anggota tim Anda" caption-hidden empty-text="Belum ada anggota tim yang tercatat sebagai bawahan langsung Anda.">
-              <template v-if="leader.canAssign" #toolbar>
-                <UiField id="cc-batas-tim" v-slot="{ attrs }" label="Batas waktu penugasan baru"><input v-bind="attrs" v-model="due" class="el-input" type="date" :min="todayIso()" required /></UiField>
-                <UiButton size="sm" :disabled="busy || !unassigned.length || !due" @click="assign(unassigned)">Tugaskan semua</UiButton>
-              </template>
               <template #cell-jobRoleName="{ row }">{{ row.jobRoleName ?? '-' }}</template>
               <template #cell-status="{ row }"><UiChip :tone="TONE[asRow(row).status]">{{ STATUS_LABEL[asRow(row).status] }}</UiChip></template>
               <template #cell-aksi="{ row }">
-                <UiButton v-if="open(asRow(row).status)" variant="tonal" size="sm" :disabled="busy || !leader.canAssign || !due" @click="assign([asRow(row)])">Tugaskan<span class="el-sr-only"> {{ row.name }}</span></UiButton>
+                <UiButton v-if="open(asRow(row).status)" variant="tonal" size="sm" :disabled="busy || !leader.canAssign" @click="pending = [asRow(row)]">Tugaskan<span class="el-sr-only"> {{ row.name }}</span></UiButton>
                 <span v-else class="el-muted">{{ row.status === 'completed' ? 'Selesai' : 'Menunggu karyawan' }}</span>
               </template>
             </UiDataTable>
             <UiNote style="margin-top: 12px">Atasan hanya melihat status tim. Isi jawaban karyawan diringkas dan tidak ditampilkan per orang.</UiNote>
           </UiCard>
+          <AssignDueDialog
+            :open="!!pending" title="Tugaskan wawancara tim" :busy="busy"
+            :who="pending?.length === 1 ? pending[0]!.name : `${pending?.length ?? 0} anggota tim`"
+            @close="pending = null" @confirm="assign(pending ?? [], $event)"
+          />
         </template>
 
         <!-- AIV-6: sesi karyawan tampil di kartu "Percakapan" mandiri, menggantikan kartu penugasan -->

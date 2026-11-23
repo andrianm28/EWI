@@ -38,3 +38,8 @@ ul.cc-list { margin: 0 0 16px; list-style: disc; }
 .cc-leadcard { display: flex; justify-content: space-between; align-items: center; gap: 16px; }
 @media (max-width: 600px) { .cc-leadcard { flex-wrap: wrap; } }
 .cc-confirm { font-weight: 500; }
+/* P8 R2: dialog tenggat penugasan */
+.cc-dialog { display: grid; gap: 12px; }
+.cc-cardhead { margin-bottom: 4px; }
+.cc-cardhead .el-h3 { margin: 0; }
+.cc-cardsub { margin: 0 0 12px; }

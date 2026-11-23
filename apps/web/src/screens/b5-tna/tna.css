@@ -13,7 +13,14 @@
 .tna-period__select { width: auto; }
 .tna-head { align-items: flex-start; }
 .tna-list { margin: 0; padding-left: 20px; line-height: 24px; }
-.tna-cta { background: var(--el-primary-container); }
+.tna-cta { background: var(--el-primary-container); border-color: var(--el-primary-container); color: var(--el-on-primary-container); }
+/* P8 R2 (TD-5): kartu CTA satu baris mockup: teks kiri, tombol kanan; turun ke baris baru di layar sempit */
+.tna-cta.el-card { display: flex; gap: 16px; align-items: center; flex-wrap: wrap; justify-content: space-between; }
+.tna-cta__title { margin: 0; }
+.tna-cta__text { flex: 1 1 320px; min-width: 0; }
+.tna-cta__text p { margin: 0; }
+.tna-cta__actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.tna-cta .tna-cta__actions { flex: none; }
 .tna-form { display: grid; gap: 12px; max-width: 560px; margin-top: 12px; }
 .tna-fieldset { border: 0; padding: 0; margin: 0; display: grid; gap: 4px; }
 .tna-fieldset legend { font-weight: 500; margin-bottom: 4px; }
@@ -33,3 +40,4 @@
 .tna-subsection { margin-top: 16px; padding-top: 12px; border-top: 1px solid var(--el-outline-variant); }
 .tna-inline { display: flex; gap: 8px; align-items: center; margin-top: 8px; }
 .tna-inline__select { width: auto; height: 36px; }
+.tna-diff { color: var(--el-critical); }

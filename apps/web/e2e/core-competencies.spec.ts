@@ -135,7 +135,8 @@ test('HR: tab Vision & Mission menampilkan kesiapan dan gap; status validasi dan
   await vision.getByLabel('Nama').fill('Keamanan cloud')
   await vision.getByLabel('Target').fill('85')
   await vision.getByRole('button', { name: 'Simpan' }).click()
-  expect(sent).toContainEqual({ method: 'POST', path: '/sources/s-1/requirements', body: { name: 'Keamanan cloud', definition: null, targetScore: 85, actualScore: null } })
+  // dijaga dengan poll: permintaan dikirim asinkron setelah klik (flaky di bawah beban paralel)
+  await expect.poll(() => sent).toContainEqual({ method: 'POST', path: '/sources/s-1/requirements', body: { name: 'Keamanan cloud', definition: null, targetScore: 85, actualScore: null } })
 })
 
 test('HR: tab Corporate Values menampilkan laporan program agregat dan gap per nilai, tanpa data per orang', async ({ page }) => {
@@ -162,8 +163,10 @@ test('HR: tab Wawancara AI menugaskan pimpinan yang belum ditugaskan', async ({ 
   const panel = page.getByTestId('cc-wawancara-hr')
   await expect(panel.getByText('1 dari 3').first()).toBeVisible()
   await expect(panel.getByRole('row', { name: /Dewi Atasan/ })).toContainText('3 dari 6')
-  await panel.getByLabel('Batas waktu penugasan baru').fill('2026-12-15')
+  // P8 R2: tenggat dipilih di dialog setelah menekan Tugaskan semua
   await panel.getByRole('button', { name: 'Tugaskan semua' }).click()
+  await page.getByRole('dialog').getByLabel('Batas waktu').fill('2026-12-15')
+  await page.getByRole('dialog').getByRole('button', { name: 'Tugaskan', exact: true }).click()
   await expect(panel.getByRole('status')).toHaveText('2 pimpinan ditugaskan.')
   expect(sent).toContainEqual({ method: 'POST', path: '/assignments', body: { assigneeIds: ['u-l2', 'u-l3'], dueDate: '2026-12-15', durationMinutes: 10 } })
 })
@@ -183,6 +186,7 @@ test('atasan: melihat status tim saja dan baru bisa menugaskan setelah wawancara
   await expect(page.getByRole('row', { name: /Karyawan A/ })).toContainText('Selesai')
   await expect(page.getByText('Atasan hanya melihat status tim.')).toBeVisible()
   await page.getByRole('button', { name: 'Tugaskan Karyawan B' }).click()
+  await page.getByRole('dialog').getByRole('button', { name: 'Tugaskan', exact: true }).click()
   await expect.poll(() => sent.length).toBe(1)
   expect(sent[0]).toMatchObject({ method: 'POST', path: '/assignments', body: { assigneeIds: ['u-b'] } })
 })
@@ -213,7 +217,7 @@ test('karyawan: wawancara belum diaktifkan', async ({ page }) => {
 
 // Paritas P3 (docs/designs/paritas-mockup/p3-komponen-bersama.md): kartu Agen AI, breadcrumb, dan baris klik
 const KARTU_VM = 'AI mewawancarai pimpinan tentang visi dan misi, lalu mewawancarai karyawan untuk menilai gap terhadap jawaban pimpinan. Alurnya seperti DACUM, untuk pimpinan perusahaan. HR menugaskan ke atasan, atasan ke karyawan.'
-const KARTU_NILAI = 'AI mewawancarai pimpinan tentang makna dan perilaku kunci tiap nilai 5C, lalu mewawancarai karyawan, terutama yang belum menyelesaikan program, untuk menilai gap terhadap jawaban pimpinan.'
+const KARTU_NILAI = 'AI mewawancarai pimpinan tentang makna dan perilaku kunci tiap nilai korporasi, lalu mewawancarai karyawan, terutama yang belum menyelesaikan program, untuk menilai gap terhadap jawaban pimpinan.'
 
 test('P3 CC-1/CV-1: kartu Agen AI di tab VM dan Values; tombol membuka tab Wawancara AI', async ({ page }) => {
   await loginAs(page)

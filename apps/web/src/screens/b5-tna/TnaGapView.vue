@@ -6,7 +6,7 @@ import { useRoute } from 'vue-router'
 import AppShell from '@/components/AppShell.vue'
 import { ApiError } from '@/api/client'
 import { formatWib } from '@/api/lna'
-import { UiBreadcrumb, UiButton, UiCard, UiChip, UiDataTable, UiErrorSummary, UiField, UiKpiCard, UiStatus, type UiColumn } from '@/ui'
+import { UiBreadcrumb, UiButton, UiCard, UiChip, UiDataTable, UiDialog, UiErrorSummary, UiField, UiKpiCard, UiStatus, formatScore, type UiColumn } from '@/ui'
 import { useSessionStore } from '@/stores/session'
 import { routeOpen } from '@/router'
 import { HR_ROLES, gaps, gapRefFromQuery, type DetailEmployee, type GapDetail, type Project } from './api'
@@ -29,7 +29,10 @@ const error = ref('')
 /** Galat formulir penugasan, masing-masing menaut ke field-nya (spek bagian 16: field terkait ditandai). */
 const formErrors = ref<{ message: string; fieldId?: string }[]>([])
 const fieldError = (fieldId: string) => formErrors.value.find((e) => e.fieldId === fieldId)?.message
-const allErrors = computed(() => [...formErrors.value, ...(error.value ? [{ message: error.value }] : [])])
+const pageErrors = computed(() => (error.value ? [{ message: error.value }] : []))
+/** P8 R2 (TD-5): formulir penugasan di dialog, dibuka dari CTA satu baris. */
+const assignOpen = ref(false)
+function openAssign() { formErrors.value = []; notice.value = ''; assignOpen.value = true }
 const notice = ref('')
 const busy = ref(false)
 
@@ -105,6 +108,7 @@ async function assign() {
     const r = (await gaps.assign(body)).data
     notice.value = `${r.assigned.length} wawancara ditugaskan${r.skipped.length ? `, ${r.skipped.length} dilewati (sudah punya sesi terbuka)` : ''}.`
     picked.value = []
+    assignOpen.value = false
     await load()
   } catch (e) {
     if (e instanceof ApiError) formErrors.value = [{ message: e.message, fieldId: fieldOf(e) }]
@@ -127,7 +131,8 @@ async function cancel(e: DetailEmployee) {
 const kpis = computed(() => {
   const g = d.value
   if (!g) return []
-  if (g.kind === 'competency') return [{ l: 'TARGET', v: `${g.targetPct}%` }, { l: 'AKTUAL', v: `${g.actualPct}%` }, { l: 'GAP', v: `−${g.gapPct}%` }]
+  // P8 R4 (TN-8): skor 0-100 tanpa "%"
+  if (g.kind === 'competency') return [{ l: 'TARGET', v: formatScore(g.targetPct) }, { l: 'AKTUAL', v: formatScore(g.actualPct) }, { l: 'GAP', v: `−${formatScore(g.gapPct)}` }]
   return [{ l: 'TARGET', v: num(g.target, g.unit) }, { l: 'AKTUAL', v: num(g.actual, g.unit) }, { l: 'GAP', v: num(g.diff, g.unit) }]
 })
 const SESSION_LABEL: Record<string, string> = { scheduled: 'Ditugaskan', in_progress: 'Berjalan', completed: 'Selesai' }
@@ -139,7 +144,7 @@ const sessionText = (e: DetailEmployee) => {
 }
 const valueText = (e: DetailEmployee) => {
   if (d.value?.kind === 'okr') return `${num(e.value)} / ${num(e.target)} · ${e.isMet ? 'Tercapai' : 'Belum tercapai'}`
-  return e.value === null ? 'Belum dinilai' : `${e.value} / ${e.target}`
+  return e.value === null ? 'Belum dinilai' : `${formatScore(e.value)} / ${formatScore(e.target)}`
 }
 const cols: UiColumn[] = [
   { key: 'name', label: 'Nama', sortable: true }, { key: 'jobRoleName', label: 'Jabatan' }, { key: 'value', label: 'Nilai' },
@@ -150,7 +155,7 @@ const cols: UiColumn[] = [
 <template>
   <AppShell>
     <UiBreadcrumb :items="[{ label: 'Training Needs', to: { name: 'tna', query: { tab: backTab } } }, { label: 'Detail gap' }]" />
-    <UiErrorSummary :errors="allErrors" />
+    <UiErrorSummary :errors="pageErrors" />
     <template v-if="d">
       <div class="tna-row tna-head">
         <div>
@@ -185,9 +190,20 @@ const cols: UiColumn[] = [
 
       <UiStatus v-if="notice" tone="success" role="status" class="tna-gap">{{ notice }}</UiStatus>
 
-      <UiCard v-if="assignOn" class="tna-gap tna-cta">
-        <h2 class="tna-h2">Cari akar masalah</h2>
-        <p>AI mewawancarai karyawan terkait, merangkum temuan, lalu HR memutuskan solusi.</p>
+      <!-- P8 R2 (TD-5): kartu CTA satu baris seperti mockup; formulir penugasan B5 dibuka di dialog -->
+      <UiCard v-if="assignOn" class="tna-gap tna-cta" data-testid="tna-cta">
+        <div class="tna-cta__text">
+          <h2 class="tna-h2 tna-cta__title">Cari akar masalah</h2>
+          <p>AI mewawancarai karyawan terkait, merangkum temuan, lalu HR memutuskan solusi.</p>
+        </div>
+        <div class="tna-cta__actions">
+          <UiButton icon="forum" @click="openAssign">Mulai wawancara akar masalah</UiButton>
+          <UiButton v-if="isHr" variant="outlined" :to="reviewTo">Langsung ke tinjauan HR</UiButton>
+        </div>
+      </UiCard>
+      <p v-else-if="isHr" class="tna-gap"><RouterLink :to="reviewTo" class="tna-link">Langsung ke tinjauan HR</RouterLink></p>
+      <UiDialog v-if="assignOn" :open="assignOpen" title="Tugaskan wawancara akar masalah" @close="assignOpen = false">
+        <UiErrorSummary :errors="formErrors" />
         <form aria-label="Tugaskan wawancara" class="tna-form" novalidate @submit.prevent="assign">
           <UiField id="tna-project" label="Proyek" :error="fieldError('tna-project')">
             <template #default="{ attrs }">
@@ -223,13 +239,12 @@ const cols: UiColumn[] = [
             <label><input v-model="duration" type="radio" :value="15" /> 15 menit</label>
             <label><input v-model="duration" type="radio" :value="30" /> 30 menit</label>
           </fieldset>
-          <div class="tna-row">
+          <div class="tna-cta__actions">
             <UiButton type="submit" icon="forum" :disabled="busy">Tugaskan wawancara</UiButton>
-            <UiButton v-if="isHr" variant="outlined" :to="reviewTo">Langsung ke tinjauan HR</UiButton>
+            <UiButton variant="text" @click="assignOpen = false">Batal</UiButton>
           </div>
         </form>
-      </UiCard>
-      <p v-else-if="isHr" class="tna-gap"><RouterLink :to="reviewTo" class="tna-link">Langsung ke tinjauan HR</RouterLink></p>
+      </UiDialog>
     </template>
   </AppShell>
 </template>

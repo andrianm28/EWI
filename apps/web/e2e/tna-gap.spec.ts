@@ -68,6 +68,8 @@ test('HR: klik gap membuka detail, lalu tugaskan wawancara untuk karyawan terpil
   await expect(page.getByText('Materi pelatihan belum mencakup langkah ini.')).toBeVisible()
   await expect(page.getByRole('link', { name: 'Langsung ke tinjauan HR' })).toBeVisible()
 
+  // P8 R2: formulir penugasan dibuka di dialog dari CTA
+  await page.getByRole('button', { name: 'Mulai wawancara akar masalah' }).click()
   const form = page.getByRole('form', { name: 'Tugaskan wawancara' })
   // Sari sudah punya sesi terbuka, jadi tidak bisa dicentang
   await expect(form.getByRole('checkbox', { name: 'Sari' })).toHaveCount(0)
@@ -87,6 +89,7 @@ test('HR: galat penugasan dari API ditampilkan', async ({ page }) => {
     assign: { status: 400, json: { error: { code: 'DUE_DATE_OUT_OF_RANGE', message: 'Tenggat paling cepat besok dan paling lama 30 hari lagi' } } },
   })
   await page.goto(`/tna/gap?kind=competency&competencyId=${ID_KOMPETENSI}`)
+  await page.getByRole('button', { name: 'Mulai wawancara akar masalah' }).click()
   const form = page.getByRole('form', { name: 'Tugaskan wawancara' })
   await form.getByLabel('Tenggat').fill('2026-12-05')
   await form.getByRole('button', { name: 'Tugaskan wawancara' }).click()
@@ -96,6 +99,7 @@ test('HR: galat penugasan dari API ditampilkan', async ({ page }) => {
 test('HR: tenggat kosong ditolak di peramban, galat menaut ke field', async ({ page }) => {
   const sent = await setup(page, { flags: { ...BOARD, 'tna.interview_assignment': true } })
   await page.goto(`/tna/gap?kind=competency&competencyId=${ID_KOMPETENSI}`)
+  await page.getByRole('button', { name: 'Mulai wawancara akar masalah' }).click()
   const form = page.getByRole('form', { name: 'Tugaskan wawancara' })
   await form.getByRole('button', { name: 'Tugaskan wawancara' }).click()
   await expect(page.getByRole('alert').getByRole('link', { name: 'Pilih tenggat wawancara' })).toBeVisible()
@@ -142,7 +146,7 @@ test('P3 TN-7: kolom Kode pertama; klik di mana pun pada baris membuka detail ga
   await expect(comp.getByRole('columnheader').first()).toHaveText('Kode')
   const baris = comp.getByRole('row', { name: /Analisis insiden/ })
   await expect(baris.getByRole('cell').first()).toHaveText('ST-A2')
-  await baris.getByRole('cell', { name: '75%' }).click()
+  await baris.getByRole('cell', { name: '75', exact: true }).click()
   await expect(page).toHaveURL(/\/tna\/gap\?/)
   await expect(page.getByRole('heading', { level: 1, name: 'Analisis insiden' })).toBeVisible()
   const crumb = page.getByRole('navigation', { name: 'Lokasi' })
@@ -157,7 +161,7 @@ test('P3 TN-7: kolom Kode pertama; klik di mana pun pada baris membuka detail ga
 test('P3 review: Ctrl-klik atau klik tengah di sel non-tautan membuka tab baru, halaman ini tetap', async ({ page, context }) => {
   await setup(page, { flags: BOARD })
   await page.goto('/tna?tab=kompetensi')
-  const sel = page.getByRole('table', { name: 'Gap kompetensi' }).getByRole('row', { name: /Analisis insiden/ }).getByRole('cell', { name: '75%' })
+  const sel = page.getByRole('table', { name: 'Gap kompetensi' }).getByRole('row', { name: /Analisis insiden/ }).getByRole('cell', { name: '75', exact: true })
   const [tabCtrl] = await Promise.all([context.waitForEvent('page'), sel.click({ modifiers: ['ControlOrMeta'] })])
   await expect.poll(() => tabCtrl.url()).toMatch(/\/tna\/gap\?/)
   await expect(page).toHaveURL(/tab=kompetensi/)

@@ -7,21 +7,19 @@ import AppShell from '@/components/AppShell.vue'
 import { ApiError } from '@/api/client'
 import { UiAuditLine, UiBreadcrumb, UiButton, UiCard, UiChip, UiErrorSummary, UiField, UiNote, UiStatus, UiStepper } from '@/ui'
 import { useSessionStore } from '@/stores/session'
-import { routeOpen } from '@/router'
 import PercakapanWawancara from './PercakapanWawancara.vue'
 import PersetujuanTna from './PersetujuanTna.vue'
 import { TNA_CONSENT_VERSION } from '@/content/consent'
 import { CLASSIFICATION_LABEL } from '../b5-tna/labels'
+import { AI_PRODUCT_LABEL } from '@/api/ai'
 import { iv, stepOf, type SessionView, type Step, type Summary } from './api'
+import { ivCrumbs } from './crumbs'
 import './iv.css'
 import '../b5-tna/tna.css'
 
 const session = useSessionStore()
-// Paritas P3 (mockup baris 549): "Training Needs › Wawancara akar masalah"; induk jadi tautan bila /tna terbuka
-const crumbs = computed(() => [
-  { label: 'Training Needs', to: routeOpen('tna', session.activeView) ? { name: 'tna' } : undefined },
-  { label: 'Wawancara akar masalah' },
-])
+// Paritas P3/P8 R15 (mockup baris 549): induk jadi tautan hanya bila menu Training Needs ada (crumbs.ts)
+const crumbs = computed(() => ivCrumbs(session))
 const route = useRoute()
 const router = useRouter()
 const id = computed(() => route.params.id as string)
@@ -125,7 +123,8 @@ const audit = computed(() => {
   if (!v?.sessionCode) return []
   // IV-3: sebelum persetujuan diberikan, audit tidak boleh menyebut persetujuan tercatat
   const consent = step.value === 'consent' ? 'persetujuan belum' : 'persetujuan tercatat'
-  return [v.sessionCode, v.aiLabel ?? 'ELGOS-AI', `log audit: ${consent} · ${v.answerCount ?? 0} jawaban`]
+  // P8 R18 (K-8): label produk untuk tenant seperti mockup "model ELGOS-AI (POC)"; ID model tidak pernah dikirim (A11)
+  return [v.sessionCode, `model ${AI_PRODUCT_LABEL}`, `log audit: ${consent} · ${v.answerCount ?? 0} jawaban`]
 })
 </script>
 

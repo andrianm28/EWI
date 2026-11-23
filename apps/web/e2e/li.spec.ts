@@ -274,7 +274,7 @@ test('P6 Program & Permintaan: kartu jabatan, tab, catatan, dan chip hitungan se
   await expect(page.getByRole('note').filter({ hasText: 'Prioritas Pareto:' })).toHaveText('Prioritas Pareto: 1 dari 2 course di program ini adalah prioritas Pareto: ST-A2. Course prioritas tampil paling atas di tiap rumpun.')
   await expect(page.getByTestId('course-ST-A2')).toContainText('Pareto #1 · 60% gap')
   await page.goto('/req')
-  await expect(page.getByText('dengan bantuan agen ELGOS')).toBeVisible()
+  await expect(page.getByText('dengan bantuan templat ELGOS')).toBeVisible()
   await expect(page.getByTestId('jumlah-draf')).toHaveText('1 draf')
   await expect(page.getByTestId('jumlah-permintaan')).toHaveText('1')
 })

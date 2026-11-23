@@ -11,7 +11,8 @@
 .iv-msg small { display: block; font-size: 11px; opacity: 0.75; margin-bottom: 2px; letter-spacing: 0.4px; }
 .iv-msg--ai { justify-self: start; background: var(--el-surface-2); color: var(--el-on-surface); border-bottom-left-radius: 4px; }
 .iv-msg--me { justify-self: end; background: var(--el-primary); color: var(--el-on-primary); border-bottom-right-radius: 4px; }
-.iv-answer { display: flex; gap: 8px; align-items: flex-end; margin-top: 16px; }
+.iv-answer { display: flex; gap: 8px; align-items: center; margin-top: 16px; }
+.iv-acs + .iv-answer { margin-top: 0; }
 .iv-grow { flex: 1; }
 .iv-bullets { list-style: disc; padding-left: 20px; }
 .iv-list { margin-top: 20px; display: grid; gap: 12px; }
@@ -27,3 +28,12 @@
 .iv-sub { margin: 0 0 20px; }
 .iv-finding__title { font-weight: 500; }
 .iv-note { display: grid; gap: 12px; max-width: 560px; }
+/* P8 R13 (AIV-8): pilihan jawaban `.ac` mockup: kotak radius 8, garis netral, teks warna teks */
+.iv-acs { display: flex; flex-wrap: wrap; gap: 8px; margin: 16px 0 8px; }
+.iv-ac {
+  display: inline-flex; align-items: center; min-height: 36px; padding: 8px 14px; border-radius: 8px; text-align: left;
+  border: 1px solid var(--el-outline); background: var(--el-surface-card); color: var(--el-on-surface); font: inherit; cursor: pointer;
+}
+.iv-ac:hover:not(:disabled) { background: var(--el-surface-2); }
+.iv-ac:disabled { color: var(--el-outline); cursor: not-allowed; }
+.iv-ac:focus-visible { outline: 2px solid var(--el-primary); outline-offset: 2px; }

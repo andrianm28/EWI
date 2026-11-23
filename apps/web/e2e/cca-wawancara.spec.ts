@@ -238,11 +238,11 @@ test('P8 R13 AIV-8: pilihan jawaban bergaya .ac mockup dan input satu baris "Ata
   const pilihan = sesi.getByRole('group', { name: 'Pilihan jawaban' }).getByRole('button', { name: 'Cukup jelas' })
   await expect(pilihan).toHaveClass(/iv-ac/)
   await expect(pilihan).toHaveCSS('border-top-left-radius', '8px')
-  const jawaban = sesi.getByLabel('Jawaban')
+  const jawaban = sesi.getByLabel('Jawaban', { exact: true })
   await expect(jawaban).toHaveJSProperty('tagName', 'INPUT')
   await expect(jawaban).toHaveAttribute('placeholder', 'Atau ketik jawaban Anda sendiri')
   await pilihan.click()
   // pertanyaan kedua tanpa pilihan: placeholder tanpa "Atau"
   await expect(sesi.getByTestId('cc-turn-participant')).toHaveCount(1)
-  await expect(sesi.getByLabel('Jawaban')).toHaveAttribute('placeholder', 'Ketik jawaban Anda')
+  await expect(sesi.getByLabel('Jawaban', { exact: true })).toHaveAttribute('placeholder', 'Ketik jawaban Anda')
 })

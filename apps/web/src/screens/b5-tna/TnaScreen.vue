@@ -6,7 +6,7 @@ import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import AppShell from '@/components/AppShell.vue'
 import { ApiError } from '@/api/client'
-import { UiAgentCard, UiBreadcrumb, UiButton, UiCard, UiChip, UiDataTable, UiErrorSummary, UiKpiCard, UiNote, UiProgressBar, UiTabs, type UiColumn } from '@/ui'
+import { UiAgentCard, UiBreadcrumb, UiButton, UiCard, UiChip, UiDataTable, UiErrorSummary, UiKpiCard, UiNote, UiProgressBar, UiTabs, formatScore, type UiColumn } from '@/ui'
 import { routeOpen } from '@/router'
 import { useSessionStore } from '@/stores/session'
 import { lna } from '@/api/lna'
@@ -151,10 +151,11 @@ const ivTo = computed(() => (routeOpen('iv', session.activeView, session) ? { na
         <UiNote class="tna-gap-b"><b>Gap kompetensi</b> = kesenjangan skor pegawai terhadap <b>Job Competency Model</b> jabatan (DACUM Tool 1). Klik baris untuk membuka detail dan menugaskan wawancara akar masalah.</UiNote>
         <UiDataTable :columns="compCols" :rows="comps" row-key="key" caption="Gap kompetensi" caption-hidden empty-text="Belum ada gap. Impor data asesmen atau kinerja lebih dulu." :row-to="detailLink" row-link-key="name">
           <template #cell-name="{ row }"><span class="tna-link">{{ row.name }}</span></template>
-          <template #cell-targetPct="{ row }">{{ row.targetPct }}%</template>
-          <template #cell-actualPct="{ row }">{{ row.actualPct }}%</template>
+          <!-- P8 R4 (TN-8): skor 0-100 tanpa "%", desimal koma -->
+          <template #cell-targetPct="{ row }">{{ formatScore(row.targetPct) }}</template>
+          <template #cell-actualPct="{ row }">{{ formatScore(row.actualPct) }}</template>
           <template #cell-gapPct="{ row }">
-            <div class="tna-row"><UiProgressBar :value="gapWidth(row.gapPct)" :tone="row.gapPct >= 20 ? 'critical' : 'primary'" :label="`Gap ${row.name}`" class="tna-bar" /><span class="el-mono">−{{ row.gapPct }}</span></div>
+            <div class="tna-row"><UiProgressBar :value="gapWidth(row.gapPct)" :tone="row.gapPct >= 20 ? 'critical' : 'primary'" :label="`Gap ${row.name}`" class="tna-bar" /><span class="el-mono">−{{ formatScore(row.gapPct) }}</span></div>
           </template>
           <template #cell-people="{ row }">{{ row.peopleWithGap }} dari {{ row.assessed }}</template>
           <template #cell-status="{ row }">{{ interviewStatus(row) }}</template>
@@ -173,7 +174,8 @@ const ivTo = computed(() => (routeOpen('iv', session.activeView, session) ? { na
           <template #cell-name="{ row }"><span class="tna-link">{{ row.name }}</span></template>
           <template #cell-target="{ row }">{{ num(row.target, row.unit) }}</template>
           <template #cell-actual="{ row }">{{ num(row.actual, row.unit) }}</template>
-          <template #cell-diff="{ row }">{{ num(row.diff, row.unit) }}</template>
+          <!-- P8 (TN-11): selisih merah seperti mockup `--er` -->
+          <template #cell-diff="{ row }"><span class="tna-diff">{{ num(row.diff, row.unit) }}</span></template>
           <template #cell-people="{ row }">{{ row.peopleMissed }} dari {{ row.peopleTotal }}</template>
           <template #cell-status="{ row }">{{ interviewStatus(row) }}</template>
           <template #cell-classification="{ row }"><UiChip :tone="CLASSIFICATION_TONE[row.classification]">{{ CLASSIFICATION_LABEL[row.classification] }}</UiChip></template>

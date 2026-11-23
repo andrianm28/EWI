@@ -6,7 +6,7 @@ import { ApiError } from '@/api/client'
 import { tenantAdmin, type AdminUser, type JobRole, type RoleOption } from '@/api/tenantAdmin'
 import { useSessionStore } from '@/stores/session'
 import AdminLinks from './AdminLinks.vue'
-import { UiButton, UiCard, UiChip, UiDataTable, UiErrorSummary, UiField, UiNote, UiStatus, type UiColumn, type UiSortState } from '@/ui'
+import { UiButton, UiCard, UiChip, UiDataTable, UiErrorSummary, UiField, UiNote, type UiColumn, type UiSortState } from '@/ui'
 
 const session = useSessionStore()
 const users = ref<AdminUser[]>([])
@@ -56,7 +56,8 @@ const rows = computed(() => {
 })
 const asUser = (row: Record<string, unknown>) => row as unknown as AdminUser
 // akun hasil impor yang belum pernah masuk juga tampil "Diundang" (spek 6.1)
-const statusOf = (u: AdminUser) => (u.status === 'disabled' ? { label: 'Nonaktif', tone: 'neutral' as const } : u.pendingLogin ? { label: 'Diundang', tone: 'info' as const } : { label: 'Aktif', tone: 'success' as const })
+// P8 R3 (K-3): status berupa chip terisi seperti mockup (`chip c-ok`), bukan UiStatus
+const statusOf = (u: AdminUser) => (u.status === 'disabled' ? { label: 'Nonaktif', tone: 'neutral' as const } : u.pendingLogin ? { label: 'Diundang', tone: 'training' as const } : { label: 'Aktif', tone: 'success' as const })
 const isSelf = (u: AdminUser) => u.id === session.user?.id
 const locked = (u: AdminUser) => u.role === 'eta_admin'
 
@@ -170,7 +171,7 @@ const setStatus = (u: AdminUser, status: 'active' | 'disabled') => act(async () 
         <template #cell-email="{ row }"><span class="el-mono adm__email">{{ asUser(row).email }}</span></template>
         <template #cell-roleLabel="{ row }"><UiChip>{{ asUser(row).roleLabel }}</UiChip></template>
         <template #cell-jobRoleName="{ row }">{{ asUser(row).jobRoleName ?? '' }}</template>
-        <template #cell-status="{ row }"><UiStatus :tone="statusOf(asUser(row)).tone">{{ statusOf(asUser(row)).label }}</UiStatus></template>
+        <template #cell-status="{ row }"><UiChip :tone="statusOf(asUser(row)).tone">{{ statusOf(asUser(row)).label }}</UiChip></template>
         <template #cell-aksi="{ row }">
           <span v-if="locked(asUser(row))" class="el-muted">Dikelola ETA</span>
           <div v-else class="adm__row">

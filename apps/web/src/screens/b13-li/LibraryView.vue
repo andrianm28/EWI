@@ -122,7 +122,6 @@ async function develop(m: ModuleDetail) {
         <span><b>Prioritas Pareto 20/80:</b> {{ paretoNote }}</span>
         <UiButton v-if="lib.pareto.count" size="sm" :disabled="busy" @click="requestPriority">Minta modul prioritas yang generik ke {{ shortVendor(vendor) }}</UiButton>
       </UiNote>
-      <p class="el-muted li-small">Tombol "Minta" hanya mencatat permintaan di ELGOS. ELGOS tidak mengirim apa pun ke {{ vendor }}.</p>
 
       <UiCard tonal class="li-filter li-gap" data-testid="filter-modul">
         <div v-for="r in filterRows" :key="r.key" class="li-filter__row">
@@ -184,10 +183,14 @@ async function develop(m: ModuleDetail) {
             {{ detail.recommendation === 'dev' ? 'Topik spesifik proses perusahaan, sehingga kecil kemungkinan ada di katalog umum.' : 'Topik generik yang dapat disediakan mitra pelatihan.' }}
             Usulan awal, dapat diubah.
           </UiNote>
-          <div v-if="detail.status.key === 'none'" class="li-actions li-actions--row">
-            <UiButton icon="inventory_2" :disabled="busy" @click="requestOne(detail)">Minta ke {{ vendor }}</UiButton>
-            <UiButton variant="tonal" icon="auto_awesome" :disabled="busy" @click="develop(detail)">Kembangkan dengan ELGOS</UiButton>
-          </div>
+          <template v-if="detail.status.key === 'none'">
+            <div class="li-actions li-actions--row">
+              <UiButton icon="inventory_2" :disabled="busy" aria-describedby="li-minta-hint" @click="requestOne(detail)">Minta ke {{ vendor }}</UiButton>
+              <UiButton variant="tonal" icon="auto_awesome" :disabled="busy" @click="develop(detail)">Kembangkan dengan ELGOS</UiButton>
+            </div>
+            <!-- P8 R20 (PK-1, LI-4): kalimat vendor jadi petunjuk kecil di bawah tombol -->
+            <p id="li-minta-hint" class="el-muted li-hint">Tombol Minta hanya mencatat permintaan di ELGOS; ELGOS tidak mengirim apa pun ke {{ vendor }}.</p>
+          </template>
           <div v-else-if="detail.draft" class="li-actions">
             <UiButton variant="tonal" :to="{ name: 'req-draf', params: { id: detail.draft.id } }">Buka rancangan modul</UiButton>
           </div>

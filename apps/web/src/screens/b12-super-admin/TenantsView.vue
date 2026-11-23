@@ -7,6 +7,8 @@ import { ApiError } from '@/api/client'
 import { platform, TENANT_STATUS, type PlatformTenant, type TenantList, type TenantModule } from '@/api/platform'
 import { UiButton, UiCard, UiChip, UiDataTable, UiErrorSummary, UiField, UiKpiCard, UiNote, UiStatus, type UiColumn, type UiSortState } from '@/ui'
 
+// P8 R3: nada TENANT_STATUS (UiStatus) dipetakan ke nada chip
+const CHIP_TONE = { success: 'success', info: 'training', neutral: 'neutral', warning: 'review' } as const
 const list = ref<TenantList | null>(null)
 const encryption = ref<'local' | 'kms'>('local')
 const loading = ref(true)
@@ -184,7 +186,8 @@ const accessLabel = (m: TenantModule) => (m.entitled === null ? 'Tidak perlu lan
           <UiButton v-if="!formOpen" size="sm" @click="openForm">Buat tenant baru</UiButton>
         </template>
         <template #cell-name="{ row }"><b>{{ asTenant(row).name }}</b><br /><span class="el-muted sa__mono">{{ asTenant(row).slug }}</span></template>
-        <template #cell-status="{ row }"><UiStatus :tone="TENANT_STATUS[asTenant(row).status].tone">{{ TENANT_STATUS[asTenant(row).status].label }}</UiStatus></template>
+        <!-- P8 R3 (K-3): status tenant berupa chip terisi seperti mockup -->
+        <template #cell-status="{ row }"><UiChip :tone="CHIP_TONE[TENANT_STATUS[asTenant(row).status].tone]">{{ TENANT_STATUS[asTenant(row).status].label }}</UiChip></template>
         <!-- TEN-5: "{aktif} / {tersedia}" -->
         <template #cell-activeModules="{ row }"><span class="el-mono">{{ asTenant(row).activeModules }} / {{ list.kpis.modulesAvailable }}</span></template>
         <template #cell-adminEmail="{ row }">{{ asTenant(row).adminEmail ?? 'Belum ada' }}</template>

@@ -42,7 +42,7 @@ async function develop(moduleId: string) {
   <AppShell>
     <UiBreadcrumb :items="[{ label: 'Learning Intervention' }, { label: 'Permintaan & pengembangan' }]" />
     <h1 class="el-h1">Permintaan &amp; pengembangan modul</h1>
-    <p class="el-muted">Dua jalur untuk memiliki modul: meminta dari {{ vendor }}, atau mengembangkan sendiri dengan bantuan agen ELGOS berdasarkan tujuan pembelajaran dari DACUM Tool 1 dan 2.</p>
+    <p class="el-muted">Dua jalur untuk memiliki modul: meminta dari {{ vendor }}, atau mengembangkan sendiri dengan bantuan templat ELGOS berdasarkan tujuan pembelajaran dari DACUM Tool 1 dan 2.</p>
     <UiNote v-if="error" tone="critical" data-testid="galat">{{ error }}</UiNote>
 
     <div v-if="res" class="li-split li-gap">
@@ -62,7 +62,9 @@ async function develop(moduleId: string) {
             <UiButton variant="text" size="sm" :disabled="busy" @click="move(r, 'cancelled')">Batalkan</UiButton>
           </div>
         </div>
-        <p class="el-muted li-small li-gap">Alur: diminta → dikonfirmasi {{ vendor }} → modul dikirim → dipasang di EliteMentor. HR mencatat tiap langkah; ELGOS tidak mengirim apa pun ke {{ vendor }}.</p>
+        <!-- P8 R20 (PK-1, LI-24): kalimat vendor jadi petunjuk kecil di bawah tombol langkah; catatan alur sama dengan mockup -->
+        <p v-if="active.length" class="el-muted li-hint">HR mencatat tiap langkah; ELGOS tidak mengirim apa pun ke {{ vendor }}.</p>
+        <p class="el-muted li-small li-gap">Alur: diminta → dikonfirmasi {{ vendor }} → modul dikirim → dipasang di EliteMentor.</p>
       </UiCard>
 
       <UiCard as="section" aria-label="Pengembangan bersama ELGOS">

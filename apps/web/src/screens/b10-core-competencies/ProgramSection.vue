@@ -1,5 +1,5 @@
 <script setup lang="ts">
-// Hasil program nilai korporasi (mis. DNA 5C): laporan agregat, lalu kelola program (konfigurasi, impor, isian agregat).
+// Hasil program nilai korporasi (program budaya milik tenant): laporan agregat, lalu kelola program (konfigurasi, impor, isian agregat).
 // Halaman ini tidak pernah menampilkan hasil per orang.
 import { computed, onMounted, ref } from 'vue'
 import type { RouteLocationRaw } from 'vue-router'

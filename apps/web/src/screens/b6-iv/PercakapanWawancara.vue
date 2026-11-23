@@ -30,7 +30,8 @@ function submit() {
   </div>
   <form v-if="canAnswer" class="iv-answer" @submit.prevent="submit">
     <label class="el-sr-only" for="iv-answer">Jawaban</label>
-    <textarea id="iv-answer" v-model="text" rows="2" class="el-input iv-grow" placeholder="Tulis jawaban Anda" />
+    <!-- P8 R13 (K-2, IV-7): input satu baris `.inp` mockup; pilihan jawaban AI menunggu paket B6 -->
+    <input id="iv-answer" v-model="text" type="text" autocomplete="off" class="el-input iv-grow" placeholder="Ketik jawaban Anda" />
     <slot name="masukan-suara" />
     <UiButton type="submit" :disabled="busy">Kirim</UiButton>
   </form>

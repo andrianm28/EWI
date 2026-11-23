@@ -7,7 +7,8 @@ import { ApiError } from '@/api/client'
 import {
   ATTEMPT_LABEL, platform, type AiCostRow, type AiQualityRow, type AttemptRow, type PlatformLogRow, type PlatformSettings,
 } from '@/api/platform'
-import { UiButton, UiCard, UiErrorSummary, UiField, UiNote, UiStatus } from '@/ui'
+import { AI_PRODUCT_LABEL } from '@/api/ai'
+import { UiButton, UiCard, UiChip, UiErrorSummary, UiField, UiNote, UiStatus } from '@/ui'
 
 const settings = ref<PlatformSettings | null>(null)
 const quality = ref<AiQualityRow[]>([])
@@ -116,12 +117,15 @@ async function downloadCsv() {
             <dt>Enkripsi data</dt><dd>{{ settings.display.encryption === 'kms' ? 'Kunci per tenant di AWS KMS' : 'Kunci induk lokal (non-produksi)' }}</dd>
           </dl>
         </UiCard>
-        <UiCard>
+        <!-- P8 R18 (K-8, PLT-2): label produk seperti mockup; ID penyedia hanya di sini (layar Super Admin) -->
+        <UiCard data-testid="pf-model">
           <h2 class="el-h3">Model AI wawancara</h2>
-          <dl class="pf__dl">
-            <dt>Model</dt><dd>{{ settings.display.aiModel.provider }}<template v-if="settings.display.aiModel.model"> · {{ settings.display.aiModel.model }}</template></dd>
-            <dt>Kesepakatan AI–HR</dt><dd>Target {{ settings.editable.aiHrAgreementTarget }}%</dd>
-          </dl>
+          <p class="el-muted pf__desc">Versi model dan skrip wawancara yang tersedia untuk tenant.</p>
+          <div class="pf__chips">
+            <UiChip>{{ AI_PRODUCT_LABEL }}</UiChip>
+            <UiChip tone="review">Kesepakatan AI–HR ≥ {{ settings.editable.aiHrAgreementTarget }}% (kriteria pilot)</UiChip>
+          </div>
+          <p class="el-mono pf__id" data-testid="pf-model-id">ID penyedia (hanya Super Admin): {{ settings.display.aiModel.provider }}<template v-if="settings.display.aiModel.model"> · {{ settings.display.aiModel.model }}</template></p>
         </UiCard>
         <UiCard>
           <h2 class="el-h3">Kebijakan bawaan</h2>
@@ -282,6 +286,9 @@ async function downloadCsv() {
 .pf__dl { display: grid; grid-template-columns: minmax(140px, 40%) 1fr; gap: 8px 16px; margin: 8px 0 0; }
 .pf__dl dt { font-weight: 500; }
 .pf__dl dd { margin: 0; }
+.pf__desc { margin: 0; }
+.pf__chips { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+.pf__id { font-size: 12px; color: var(--el-on-surface-variant); margin: 8px 0 0; }
 .pf__table { width: 100%; border-collapse: collapse; margin-top: 8px; }
 .pf__table th, .pf__table td { text-align: left; padding: 8px; border-bottom: 1px solid var(--el-outline-variant, #ddd); font-weight: normal; }
 .pf__table thead th { font-weight: 600; }

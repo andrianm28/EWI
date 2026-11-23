@@ -48,3 +48,5 @@
 
 /* Baris dalam kartu dipisah garis (Program, Permintaan) */
 .li-line { padding: 12px 0; border-top: 1px solid var(--el-outline-variant); }
+/* P8 R20: petunjuk kecil di bawah tombol */
+.li-hint { font-size: 12px; margin: 6px 0 0; }
