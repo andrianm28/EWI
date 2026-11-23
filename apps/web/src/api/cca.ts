@@ -105,7 +105,7 @@ export type SynthesisRow = {
   leaderAgree: number | null; leaderRespondents: number; employeeAligned: number | null; employeeRespondents: string
   gap: number | null; hot: boolean; actualScore: number | null; actualSource: 'manual' | 'synthesis' | null
 }
-export interface Synthesis { themes: SynthesisRow[]; minRespondents: number; kpis: { themes: number; leadersCompleted: number; employeesCompleted: string } }
+export interface Synthesis { themes: SynthesisRow[]; minRespondents: number; employeeBatch: number; kpis: { themes: number; leadersCompleted: number; employeesCompleted: string } }
 export interface ApplyResult { applied: { requirementId: string; previous: { actualScore: number | null; actualSource: string | null } }[]; skipped: { requirementId: string; reason: string }[] }
 
 const call = <T>(path: string, init: RequestInit = {}) => api<{ data: T }>(`/cca${path}`, init, useSessionStore().token).then((r) => r.data)

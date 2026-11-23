@@ -343,8 +343,11 @@ function createCcaStores(sequelize, { cipher } = {}) {
           RETURNING a.id`, { tenantId, id, restartCount, summary: await cipher.encrypt(tenantId, JSON.stringify(summary)) });
       return !!row;
     },
-    /** Konfirmasi peserta: completed + salin sikap (selain not_covered). Return baris, atau null bila keadaan berubah. */
-    async confirmInterview(tenantId, id) {
+    /**
+     * Konfirmasi peserta: completed + salin sikap (selain not_covered). Untuk tier karyawan, penyelesaian yang menunggu
+     * dimasukkan ke batch sintesis bila `settle(pending)` mengembalikan id (D-7). Return baris, atau null bila keadaan berubah.
+     */
+    async confirmInterview(tenantId, id, { settle } = {}) {
       const t = await sequelize.transaction();
       try {
         const [rows] = await sequelize.query(
@@ -360,6 +363,20 @@ function createCcaStores(sequelize, { cipher } = {}) {
             `INSERT INTO cca_interview_stances (tenant_id, assignment_id, requirement_id, tier, stance)
              SELECT :tenantId, :id, r.id, :tier, :stance FROM cca_requirements r WHERE r.tenant_id = :tenantId AND r.id = :requirementId
              ON CONFLICT DO NOTHING`, { replacements: { tenantId, id, tier: row.tier, stance: x.stance, requirementId: x.requirementId }, transaction: t });
+        }
+        if (row.tier === 'employee' && settle) {
+          // satu konfirmasi per tenant sekaligus menghitung batch, supaya dua konfirmasi berbalapan tidak saling lewat
+          await sequelize.query(`SELECT pg_advisory_xact_lock(hashtext('cca-synthesis-batch:' || :tenantId))`, { replacements: { tenantId }, transaction: t });
+          const pending = await sequelize.query(
+            `SELECT a.id, a.assignee_id AS "assigneeId" FROM cca_assignments a
+              WHERE a.tenant_id = :tenantId AND a.tier = 'employee' AND a.status = 'completed' AND a.synthesis_settled_at IS NULL`,
+            { replacements: { tenantId }, transaction: t, type: QueryTypes.SELECT });
+          const ids = settle(pending);
+          if (ids.length) {
+            await sequelize.query(
+              `UPDATE cca_assignments SET synthesis_settled_at = now() WHERE tenant_id = :tenantId AND id IN (:ids)`,
+              { replacements: { tenantId, ids }, transaction: t });
+          }
         }
         await t.commit();
         return row;
@@ -382,12 +399,13 @@ function createCcaStores(sequelize, { cipher } = {}) {
     /** Masukan sintesis: sikap dari penugasan completed (semua putaran; sintesis memilih yang terbaru per orang per tier). */
     async synthesisResponses(tenantId) {
       const rows = await select(
-        `SELECT a.id, a.assignee_id AS "assigneeId", a.tier, a.completed_at AS "completedAt", x.requirement_id AS "requirementId", x.stance
+        `SELECT a.id, a.assignee_id AS "assigneeId", a.tier, a.completed_at AS "completedAt",
+                a.synthesis_settled_at IS NOT NULL AS settled, x.requirement_id AS "requirementId", x.stance
            FROM cca_assignments a LEFT JOIN cca_interview_stances x ON x.assignment_id = a.id AND x.tenant_id = a.tenant_id
           WHERE a.tenant_id = :tenantId AND a.status = 'completed' AND a.completed_at IS NOT NULL`, { tenantId });
       const byAssignment = new Map();
       for (const r of rows) {
-        if (!byAssignment.has(r.id)) byAssignment.set(r.id, { assigneeId: r.assigneeId, tier: r.tier, completedAt: r.completedAt, stances: {} });
+        if (!byAssignment.has(r.id)) byAssignment.set(r.id, { assigneeId: r.assigneeId, tier: r.tier, completedAt: r.completedAt, settled: r.settled, stances: {} });
         if (r.requirementId) byAssignment.get(r.id).stances[r.requirementId] = r.stance;
       }
       return [...byAssignment.values()];
