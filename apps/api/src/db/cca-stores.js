@@ -11,7 +11,19 @@ const PROGRAM_COLS = `p.id, p.key, p.name, p.provider, to_char(p.cutoff_date, 'Y
   p.recommendations, p.manual_report AS "manualReport", p.updated_at AS "updatedAt"`;
 const ASSIGNMENT_COLS = `a.id, a.assignee_id AS "assigneeId", a.assigned_by AS "assignedBy", a.tier, a.parent_id AS "parentId",
   to_char(a.due_date, 'YYYY-MM-DD') AS "dueDate", a.duration_minutes AS "durationMinutes", a.status, a.session_id AS "sessionId",
-  a.completed_at AS "completedAt", a.created_at AS "createdAt"`;
+  a.completed_at AS "completedAt", a.created_at AS "createdAt", a.consent_version AS "consentVersion", a.started_at AS "startedAt",
+  a.summary_at AS "summaryAt", a.restart_count AS "restartCount", a.context_requirement_ids AS "contextRequirementIds"`;
+const TURN_COLS = 't.position, t.role, t.theme, t.text, t.options';
+
+/** Ringkasan tersimpan: JSON { themes, stances } (tahap 2) atau teks bebas (sambungan tahap 1, dibaca sebagai satu tema). */
+function parseSummary(text) {
+  if (!text) return null;
+  try {
+    const j = JSON.parse(text);
+    if (j && Array.isArray(j.themes)) return { themes: j.themes, stances: Array.isArray(j.stances) ? j.stances : [] };
+  } catch { /* teks bebas */ }
+  return { themes: [{ theme: null, question: null, answer: text }], stances: [] };
+}
 
 function createCcaStores(sequelize, { cipher } = {}) {
   if (!cipher) throw new Error('createCcaStores butuh cipher (R2-3)');
@@ -226,6 +238,10 @@ function createCcaStores(sequelize, { cipher } = {}) {
         `SELECT ${ASSIGNMENT_COLS}, a.summary FROM cca_assignments a
           WHERE a.tenant_id = :tenantId AND a.assignee_id = :userId ORDER BY a.created_at`, { tenantId, userId });
       if (withSummary) await cipher.open(tenantId, assignments, ['summary']);
+      const withThemes = (a) => {
+        const parsed = parseSummary(a.summary);
+        return parsed ? { themes: parsed.themes, stances: parsed.stances } : null;
+      };
       const named = (list, scores) => list.map((x, i) => ({ name: x.name, score: (scores || [])[i] ?? null }));
       return {
         programResults: results.map(({ config, valueScores, componentScores, ...r }) => ({
@@ -233,15 +249,149 @@ function createCcaStores(sequelize, { cipher } = {}) {
         })),
         interviewAssignments: assignments.map((a) => ({
           id: a.id, tier: a.tier, status: a.status, dueDate: a.dueDate, durationMinutes: a.durationMinutes, createdAt: a.createdAt, completedAt: a.completedAt,
-          ...(withSummary ? { summary: a.summary ?? null } : {}),
+          ...(withSummary ? { summary: withThemes(a) } : {}),
         })),
       };
     },
+    /** Ringkasan terdekripsi { themes, stances } atau null. */
     async getAssignmentSummary(tenantId, id) {
       const row = await one('SELECT a.summary FROM cca_assignments a WHERE a.tenant_id = :tenantId AND a.id = :id', { tenantId, id });
       if (!row || !row.summary) return null;
       const [opened] = await cipher.open(tenantId, [row], ['summary']);
-      return opened.summary;
+      return parseSummary(opened.summary);
+    },
+
+    // --- Percakapan wawancara (tahap 2) ---
+    /** Sumber aktif untuk konteks pertanyaan: visi dan misi pertama menurut urutan, nama semua nilai. */
+    async interviewSources(tenantId) {
+      const rows = await select(
+        `SELECT s.kind, s.title, s.text FROM cca_sources s WHERE s.tenant_id = :tenantId AND s.status = 'active'
+          ORDER BY s.position, s.created_at`, { tenantId });
+      const first = (kind) => {
+        const r = rows.find((x) => x.kind === kind);
+        return r ? { title: r.title, text: r.text } : null;
+      };
+      return { vision: first('vision'), mission: first('mission'), values: rows.filter((x) => x.kind === 'value').map((x) => x.title) };
+    },
+    /** Persyaratan tervalidasi dari sumber aktif, urut sumber lalu nama. ids: batasi ke daftar ini (urutan dipertahankan). */
+    async validatedRequirements(tenantId, { ids, limit } = {}) {
+      const rep = { tenantId };
+      let sql = `SELECT r.id, r.name, r.actual_score::float8 AS "actualScore", r.actual_source AS "actualSource",
+                        s.kind AS "sourceKind", s.title AS "sourceTitle"
+                   FROM cca_requirements r JOIN cca_sources s ON s.id = r.source_id AND s.tenant_id = r.tenant_id
+                  WHERE r.tenant_id = :tenantId AND r.status = 'validated' AND s.status = 'active'`;
+      if (ids) {
+        if (!ids.length) return [];
+        sql += ' AND r.id IN (:ids)'; rep.ids = ids;
+      }
+      sql += ' ORDER BY s.position, s.created_at, r.name, r.id';
+      if (limit) { sql += ' LIMIT :limit'; rep.limit = limit; }
+      const rows = await select(sql, rep);
+      if (!ids) return rows;
+      const byId = new Map(rows.map((r) => [r.id, r]));
+      return ids.map((id) => byId.get(id)).filter(Boolean);
+    },
+    /** Persetujuan: assigned -> in_progress, potret persyaratan. Return baris, atau null bila status sudah berubah. */
+    async startInterview(tenantId, id, { consentVersion, requirementIds }) {
+      return returning(
+        `UPDATE cca_assignments AS a SET status = 'in_progress', consent_version = :consentVersion, consent_at = now(), started_at = now(),
+                context_requirement_ids = CAST(:ids AS uuid[]), updated_at = now()
+          WHERE a.tenant_id = :tenantId AND a.id = :id AND a.status = 'assigned' RETURNING ${ASSIGNMENT_COLS}`,
+        { tenantId, id, consentVersion, ids: `{${requirementIds.join(',')}}` });
+    },
+    async listTurns(tenantId, assignmentId) {
+      const rows = await select(`SELECT ${TURN_COLS} FROM cca_interview_turns t
+                                  WHERE t.tenant_id = :tenantId AND t.assignment_id = :assignmentId ORDER BY t.position`, { tenantId, assignmentId });
+      return cipher.open(tenantId, rows, ['text']);
+    },
+    /**
+     * Sisipkan giliran secara atomik: hanya bila penugasan masih berjalan, belum diringkas, dan putarannya sama
+     * (restartCount). Posisi bentrok (kiriman paralel) atau keadaan berubah -> null.
+     */
+    async insertTurn(tenantId, assignmentId, { position, role, theme, text, options, restartCount }) {
+      const [rows] = await sequelize.query(
+        `INSERT INTO cca_interview_turns (tenant_id, assignment_id, position, role, theme, text, options)
+         SELECT a.tenant_id, a.id, :position, :role, :theme, :text, CAST(:options AS jsonb) FROM cca_assignments a
+          WHERE a.tenant_id = :tenantId AND a.id = :assignmentId AND a.status = 'in_progress' AND a.summary_at IS NULL AND a.restart_count = :restartCount
+         ON CONFLICT (assignment_id, position) DO NOTHING RETURNING position`,
+        { replacements: { tenantId, assignmentId, position, role, theme, text: await cipher.encrypt(tenantId, text), options: options ? JSON.stringify(options) : null, restartCount } });
+      return rows[0] || null;
+    },
+    /** Simpan ringkasan bila belum ada dan putarannya sama. Return true bila tersimpan. */
+    async saveInterviewSummary(tenantId, id, { summary, restartCount }) {
+      const row = await returning(
+        `UPDATE cca_assignments AS a SET summary = :summary, summary_at = now(), updated_at = now()
+          WHERE a.tenant_id = :tenantId AND a.id = :id AND a.status = 'in_progress' AND a.summary_at IS NULL AND a.restart_count = :restartCount
+          RETURNING a.id`, { tenantId, id, restartCount, summary: await cipher.encrypt(tenantId, JSON.stringify(summary)) });
+      return !!row;
+    },
+    /** Konfirmasi peserta: completed + salin sikap (selain not_covered). Return baris, atau null bila keadaan berubah. */
+    async confirmInterview(tenantId, id) {
+      const t = await sequelize.transaction();
+      try {
+        const [rows] = await sequelize.query(
+          `UPDATE cca_assignments AS a SET status = 'completed', completed_at = now(), updated_at = now()
+            WHERE a.tenant_id = :tenantId AND a.id = :id AND a.status = 'in_progress' AND a.summary_at IS NOT NULL
+            RETURNING ${ASSIGNMENT_COLS}, a.summary`, { replacements: { tenantId, id }, transaction: t });
+        if (!rows[0]) { await t.rollback(); return null; }
+        const [opened] = await cipher.open(tenantId, [rows[0]], ['summary']);
+        const { summary, ...row } = opened;
+        const stances = (parseSummary(summary).stances || []).filter((x) => x.stance !== 'not_covered');
+        for (const x of stances) {
+          await sequelize.query(
+            `INSERT INTO cca_interview_stances (tenant_id, assignment_id, requirement_id, tier, stance)
+             SELECT :tenantId, :id, r.id, :tier, :stance FROM cca_requirements r WHERE r.tenant_id = :tenantId AND r.id = :requirementId
+             ON CONFLICT DO NOTHING`, { replacements: { tenantId, id, tier: row.tier, stance: x.stance, requirementId: x.requirementId }, transaction: t });
+        }
+        await t.commit();
+        return row;
+      } catch (e) { await t.rollback(); throw e; }
+    },
+    /** Ulangi sekali: hapus giliran dan ringkasan. Return baris, atau null bila batas habis atau keadaan berubah. */
+    async restartInterview(tenantId, id, { maxRestarts }) {
+      const t = await sequelize.transaction();
+      try {
+        const [rows] = await sequelize.query(
+          `UPDATE cca_assignments AS a SET restart_count = a.restart_count + 1, summary = NULL, summary_at = NULL, updated_at = now()
+            WHERE a.tenant_id = :tenantId AND a.id = :id AND a.status = 'in_progress' AND a.restart_count < :maxRestarts
+            RETURNING ${ASSIGNMENT_COLS}`, { replacements: { tenantId, id, maxRestarts }, transaction: t });
+        if (!rows[0]) { await t.rollback(); return null; }
+        await sequelize.query('DELETE FROM cca_interview_turns WHERE tenant_id = :tenantId AND assignment_id = :id', { replacements: { tenantId, id }, transaction: t });
+        await t.commit();
+        return rows[0];
+      } catch (e) { await t.rollback(); throw e; }
+    },
+    /** Masukan sintesis: sikap dari penugasan completed (semua putaran; sintesis memilih yang terbaru per orang per tier). */
+    async synthesisResponses(tenantId) {
+      const rows = await select(
+        `SELECT a.id, a.assignee_id AS "assigneeId", a.tier, a.completed_at AS "completedAt", x.requirement_id AS "requirementId", x.stance
+           FROM cca_assignments a LEFT JOIN cca_interview_stances x ON x.assignment_id = a.id AND x.tenant_id = a.tenant_id
+          WHERE a.tenant_id = :tenantId AND a.status = 'completed' AND a.completed_at IS NOT NULL`, { tenantId });
+      const byAssignment = new Map();
+      for (const r of rows) {
+        if (!byAssignment.has(r.id)) byAssignment.set(r.id, { assigneeId: r.assigneeId, tier: r.tier, completedAt: r.completedAt, stances: {} });
+        if (r.requirementId) byAssignment.get(r.id).stances[r.requirementId] = r.stance;
+      }
+      return [...byAssignment.values()];
+    },
+    /** Isi nilai aktual dari sintesis. items: [{ id, score }]. Return [{ requirementId, previous: { actualScore, actualSource } }]. */
+    async applySynthesis(tenantId, items) {
+      const t = await sequelize.transaction();
+      try {
+        const out = [];
+        for (const { id, score } of items) {
+          const [prev] = await sequelize.query(
+            `SELECT r.actual_score::float8 AS "actualScore", r.actual_source AS "actualSource" FROM cca_requirements r
+              WHERE r.tenant_id = :tenantId AND r.id = :id FOR UPDATE`, { replacements: { tenantId, id }, transaction: t, type: QueryTypes.SELECT });
+          if (!prev) continue;
+          await sequelize.query(
+            `UPDATE cca_requirements SET actual_score = :score, actual_source = 'synthesis', actual_updated_at = now(), updated_at = now()
+              WHERE tenant_id = :tenantId AND id = :id`, { replacements: { tenantId, id, score }, transaction: t });
+          out.push({ requirementId: id, previous: prev });
+        }
+        await t.commit();
+        return out;
+      } catch (e) { await t.rollback(); throw e; }
     },
   };
 

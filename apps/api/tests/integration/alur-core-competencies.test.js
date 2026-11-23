@@ -1,8 +1,8 @@
 'use strict';
 // B18 test alur (spek 3.3 baris "Core Competencies berjenjang", B10): HR menugaskan atasan tingkat lebih tinggi →
 // setelah wawancaranya selesai ia menugaskan timnya → anggota tim diwawancarai; atasan langsung hanya melihat status,
-// HR hanya melihat hitungan dan ringkasan tier pimpinan. Percakapan wawancara (tahap 2) belum ada, jadi selesainya
-// wawancara memakai langkah driver `cca.selesaikanWawancara` (sambungan store sementara sampai mesin wawancara punya API).
+// HR hanya melihat hitungan dan ringkasan tier pimpinan. Wawancara dijalankan lewat API tahap 2 (persetujuan, empat
+// jawaban, ringkasan, kirim) dengan langkah driver `cca.selesaikanWawancara`.
 const crypto = require('crypto');
 const { createDb } = require('../../src/db');
 const { createStores } = require('../../src/db/stores');
@@ -19,15 +19,14 @@ run('Alur Core Competencies berjenjang (HR, pimpinan, atasan, karyawan)', () => 
   let db; let a; const tenantIds = [];
   const orang = {}; let lain;
   const slug = `alur-cca-${crypto.randomBytes(3).toString('hex')}`;
-  const RINGKASAN_KEPALA = 'Ringkasan kepala divisi: fokus kolaborasi lintas tim.';
-  const RINGKASAN_TIM = 'Ringkasan anggota tim KENARI-CCA-7D1';
+  const JAWABAN_KEPALA = 'Jawaban kepala divisi: fokus kolaborasi lintas tim.';
+  const JAWABAN_TIM = 'Jawaban anggota tim KENARI-CCA-7D1';
   const tenggat = tanggalWib(7);
 
   beforeAll(async () => {
     db = createDb({ databaseUrl: process.env.DATABASE_URL, dbSchema: process.env.DB_SCHEMA || 'ewi' });
-    const stores = createStores(db);
     const config = makeConfig();
-    a = langkah(createApp({ config, stores, ai: createStubProvider() }), pembuatMasuk(config), { stores });
+    a = langkah(createApp({ config, stores: createStores(db), ai: createStubProvider() }), pembuatMasuk(config));
 
     const tenant = await siapkanTenant(db, { slug, flags: [FLAGS.MODULE_CCA, FLAGS.CCA_INTERVIEW] });
     tenantIds.push(tenant.id);
@@ -69,7 +68,7 @@ run('Alur Core Competencies berjenjang (HR, pimpinan, atasan, karyawan)', () => 
     expect((await a.cca.penugasan(orang.kepala)).canAssign).toBe(false);
 
     const milik = (await a.cca.penugasan(orang.kepala)).mine.leader;
-    await a.cca.selesaikanWawancara(orang.kepala, milik.id, RINGKASAN_KEPALA);
+    await a.cca.selesaikanWawancara(orang.kepala, milik.id, JAWABAN_KEPALA);
     expect((await a.cca.penugasan(orang.kepala)).canAssign).toBe(true);
   });
 
@@ -85,14 +84,15 @@ run('Alur Core Competencies berjenjang (HR, pimpinan, atasan, karyawan)', () => 
   it('anggota tim melihat penugasannya dan diwawancarai; atasan langsungnya hanya melihat status, tanpa ringkasan', async () => {
     const milik = (await a.cca.penugasan(orang.atasan)).mine.employee;
     expect(milik).toMatchObject({ tier: 'employee', status: 'assigned', dueDate: tenggat });
-    await a.cca.selesaikanWawancara(orang.atasan, milik.id, RINGKASAN_TIM);
+    await a.cca.selesaikanWawancara(orang.atasan, milik.id, JAWABAN_TIM);
 
-    expect((await a.cca.ringkasan(orang.atasan, milik.id)).summary).toBe(RINGKASAN_TIM);
+    // penyedia AI tiruan meringkas dengan memotong jawaban per tema
+    expect((await a.cca.ringkasan(orang.atasan, milik.id)).themes.map((t) => t.answer)).toEqual(Array(4).fill(JAWABAN_TIM));
 
     const tampilanKepala = await a.cca.penugasan(orang.kepala);
     expect(tampilanKepala.role).toBe('leader');
     expect(tampilanKepala.team).toEqual([expect.objectContaining({ userId: orang.atasan.id, status: 'completed' })]);
-    expect(JSON.stringify(tampilanKepala)).not.toContain(RINGKASAN_TIM);
+    expect(JSON.stringify(tampilanKepala)).not.toContain(JAWABAN_TIM);
     expect((await a.mentah('get', `/api/cca/assignments/${milik.id}/summary`, orang.kepala)).status).toBe(404);
   });
 
@@ -100,10 +100,10 @@ run('Alur Core Competencies berjenjang (HR, pimpinan, atasan, karyawan)', () => 
     const tampilanHr = await a.cca.penugasan(orang.hr);
     expect(tampilanHr.kpis).toMatchObject({ leadersAssigned: 1, leadersCompleted: 1, employeesAssigned: 1, employeesCompleted: 1 });
     expect(tampilanHr.leaders.find((x) => x.userId === orang.kepala.id)).toMatchObject({ status: 'completed', teamAssigned: 1, teamDone: 1 });
-    expect(JSON.stringify(tampilanHr)).not.toContain(RINGKASAN_TIM);
+    expect(JSON.stringify(tampilanHr)).not.toContain(JAWABAN_TIM);
 
     const kepala = tampilanHr.leaders.find((x) => x.userId === orang.kepala.id);
-    expect((await a.cca.ringkasan(orang.hr, kepala.assignmentId)).summary).toBe(RINGKASAN_KEPALA);
+    expect((await a.cca.ringkasan(orang.hr, kepala.assignmentId)).themes[0]).toMatchObject({ theme: 'vision', answer: JAWABAN_KEPALA });
     const tim = (await a.cca.penugasan(orang.atasan)).mine.employee;
     const r = await a.mentah('get', `/api/cca/assignments/${tim.id}/summary`, orang.hr);
     expect(r.status).toBe(403);

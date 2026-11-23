@@ -74,11 +74,8 @@ async function hapusTenant(db, ids) {
 
 const kodeGalat = (res) => (res.body && res.body.error && res.body.error.code) || `HTTP_${res.status}`;
 
-/**
- * opsi.stores: hanya untuk sambungan mesin yang belum punya API (mis. selesainya wawancara Core Competencies tahap 2).
- * Begitu API-nya ada, langkah itu pindah ke API di sini dan test alur tidak berubah.
- */
-function langkah(app, masuk, { stores } = {}) {
+/** Langkah alur lewat API saja (tanpa menulis store langsung). */
+function langkah(app, masuk) {
   const kirim = (method, path, siapa, body) => {
     const r = request(app)[method](path).set(masuk(siapa));
     return body === undefined ? r : r.send(body);
@@ -282,12 +279,18 @@ function langkah(app, masuk, { stores } = {}) {
       async ringkasan(siapa, assignmentId) {
         return (await kirim('get', `/api/cca/assignments/${assignmentId}/summary`, siapa).expect(200)).body.data;
       },
-      /** Sambungan sementara: mesin wawancara tahap 2 belum punya API, jadi selesai lewat store (butuh opsi.stores). */
-      async selesaikanWawancara(pengguna, assignmentId, ringkasan) {
-        if (!stores) throw new Error('langkah(app, masuk, { stores }) dibutuhkan untuk cca.selesaikanWawancara');
-        const row = await stores.cca.completeAssignment(pengguna.tenantId, assignmentId, { summary: ringkasan });
-        if (!row) throw new Error('Penugasan tidak aktif');
-        return row;
+      /**
+       * B10 tahap 2: peserta menyetujui teks persetujuan berlaku, menjawab empat pertanyaan, membuat ringkasan, lalu
+       * mengirimnya. `jawaban` = satu teks (dipakai untuk keempat pertanyaan) atau daftar empat teks. Mengembalikan tema ringkasan.
+       */
+      async selesaikanWawancara(pengguna, assignmentId, jawaban) {
+        const base = `/api/cca/assignments/${assignmentId}`;
+        const daftar = Array.isArray(jawaban) ? jawaban : Array(4).fill(jawaban);
+        await kirim('post', `${base}/consent`, pengguna, { consentVersion: currentConsentVersion('cca') }).expect(200);
+        for (const text of daftar) await kirim('post', `${base}/turns`, pengguna, { text }).expect(200);
+        const ringkasan = (await kirim('post', `${base}/summary`, pengguna).expect(201)).body.data;
+        await kirim('post', `${base}/summary/confirm`, pengguna).expect(200);
+        return ringkasan.themes;
       },
     },
     lim: {

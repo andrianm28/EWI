@@ -1,6 +1,8 @@
 'use strict';
 // Penyedia AI tiruan yang deterministik (tanpa LLM). Bawaan untuk test dan di luar produksi (PK-06).
 // Skor yang dihasilkan selalu ber-confidence rendah dan wajib dinilai ulang.
+const { CCA_STANCES, ccaDefaultQuestion } = require('./prompts');
+
 const STUB_NOTE = 'Skor sementara dari penyedia AI tiruan (stub); perlu dinilai ulang.';
 const NON_TRAINING_HINTS = ['sop', 'tools', 'tool', 'aplikasi', 'sistem', 'akses', 'jaringan', 'prosedur'];
 
@@ -118,6 +120,28 @@ function createStubProvider() {
         findings.push({ category: 'non_training', title: 'Kendala non-training disebut (SOP/tools/sistem)', detail: STUB_NOTE, confidence: 0.2 });
       }
       return { findings, usage: usage('analyze_tna') };
+    },
+
+    // B10 tahap 2: pertanyaan bawaan per tema; konteks tidak memuat data orang
+    async ccaQuestion({ tier, theme, sources }) {
+      return { question: ccaDefaultQuestion(tier, theme, sources), usage: usage('next_question') };
+    },
+
+    // Ringkasan = jawaban per tema dipotong; sikap penuh bila nama persyaratan disebut, partial bila nama sumbernya disebut
+    async summarizeCca({ tier, turns, requirements }) {
+      const answers = turns.filter((t) => t.role === 'participant');
+      const themes = turns.filter((t) => t.role === 'ai').map((q) => {
+        const a = answers.find((x) => x.theme === q.theme);
+        return { theme: q.theme, question: q.text, answer: a ? a.text.slice(0, 200) : null };
+      });
+      const text = answers.map((a) => a.text).join(' ').toLowerCase();
+      const [full, partial] = CCA_STANCES[tier];
+      const stances = requirements.map((r) => {
+        if (mentions(text, r.name)) return { requirementId: r.id, stance: full };
+        if (r.sourceTitle && mentions(text, r.sourceTitle)) return { requirementId: r.id, stance: partial };
+        return { requirementId: r.id, stance: 'not_covered' };
+      });
+      return { themes, stances, usage: usage('summarize_cca') };
     },
 
     async assistantReply(args) {
