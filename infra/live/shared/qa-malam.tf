@@ -16,19 +16,19 @@ variable "github_repo" {
 variable "qa_bedrock_region" {
   type        = string
   default     = "ap-southeast-1"
-  description = "PD-2b: Singapura (ap-southeast-1). Cek 23 Nov di akun ELGOS: Jakarta hanya lewat profil global.*; Sonnet 5 ON_DEMAND di Singapura."
+  description = "Region endpoint Bedrock: Singapura (ap-southeast-1). Keputusan user 23 Nov: Sonnet 5.5 lewat profil global.* dari Singapura."
 }
 
 variable "qa_bedrock_model_id" {
   type        = string
   default     = ""
-  description = "ID model dasar Claude (keputusan user 23 Nov: anthropic.claude-sonnet-5). Kosong = role QA malam tidak dibuat."
+  description = "ID model dasar Claude (keputusan user 23 Nov: anthropic.claude-sonnet-5-5). Kosong = role QA malam tidak dibuat."
 }
 
 variable "qa_inference_profile_id" {
   type        = string
   default     = ""
-  description = "Opsional: ID inference profile lintas region (mis. apac.anthropic....) bila model hanya tersedia lewat profil."
+  description = "ID inference profile bila model hanya tersedia lewat profil (keputusan user 23 Nov: global.anthropic.claude-sonnet-5-5)."
 }
 
 variable "qa_budget_usd" {
