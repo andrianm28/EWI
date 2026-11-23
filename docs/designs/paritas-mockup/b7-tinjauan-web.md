@@ -51,41 +51,55 @@ Tidak ditutup: RV-3 dan TD-6 (akses atasan), lihat Keputusan.
    - Galat per temuan dikumpulkan ke `UiErrorSummary`; yang berhasil tetap tersimpan, data dimuat ulang.
 9. **Tindakan perbaikan.** Temuan non-pelatihan dari `solutions.improvement`. Tombol "Buat tindakan di Improvement Needs" → `POST /review/improvement-handoff` dengan temuan yang belum diteruskan. Hasil: `UiNote success` "{n} temuan diteruskan ke Improvement Needs." (spek B7 butir 6: tindakan dibuat modul B9, jadi bukan "tindakan perbaikan dibuat" seperti mockup). Semua sudah diteruskan sebelumnya → note yang sama dengan jumlah total. `inaEnabled` salah → tombol tidak tampil, muted "Modul Improvement Needs belum aktif untuk organisasi Anda."
 10. **Detail gap** (`TnaGapView.vue`): "Langsung ke tinjauan HR" menuju `review` dengan query gap + tab bila `routeOpen('review')`, selain itu antrean lama `tna-review` (perilaku sekarang). Tetap hanya HR.
-11. **Antrean lama** tetap ada sebagai antrean lintas karyawan (dirujuk banner Pengelolaan TNA, dashboard, dan test). Dipindah dari `views/ReviewView.vue` + `screens/legacy-review/` ke `screens/b7-tinjauan/AntreanView.vue`; nama rute `tna-review`, path `/m/tna/review`, judul "Tinjauan hasil AI" tidak berubah. Ditulis ulang dengan `UiCard`, `UiButton`, `UiChip`, `UiTabs`, `UiField`, `UiStatus`, `UiErrorSummary`; teks, `data-testid`, dan perilaku sama. Tabel B0 §5.3/§4 diperbarui.
+11. **Dashboard "Tinjau"** (`review_pending`, B3) menunjuk antrean `tna-review` saja: angkanya seluruh tenant, sedangkan `review` butuh rujukan gap. Mockup `go.review` dari dashboard membuka layar tanpa gap; tidak bisa dipetakan tanpa memilih gap. Spek B3 3.5 diperbarui.
+12. **Temuan beku** (persetujuan wawancara ditarik, B8) tidak tampil di layar per gap maupun hitungannya: tidak bisa diklasifikasi (`409 CONSENT_WITHDRAWN`). Antrean lama tetap menampilkan yang sudah diputus sebagai riwayat.
+13. **Antrean lama** tetap ada sebagai antrean lintas karyawan (dirujuk banner Pengelolaan TNA, dashboard, dan test). Dipindah dari `views/ReviewView.vue` + `screens/legacy-review/` ke `screens/b7-tinjauan/AntreanView.vue`; nama rute `tna-review`, path `/m/tna/review`, judul "Tinjauan hasil AI" tidak berubah. Ditulis ulang dengan `UiCard`, `UiButton`, `UiChip`, `UiTabs`, `UiField`, `UiStatus`, `UiErrorSummary`; teks, `data-testid`, dan perilaku sama. Tabel B0 §5.3/§4 diperbarui.
 
 ## Test (TDD, merah dulu)
 
 API `apps/api/tests/integration/tinjauan-hr.test.js` (Postgres), blok baru "per gap":
-- [ ] `GET /review?kind=competency&competencyId=…&status=all`: hanya temuan kompetensi itu (termasuk temuan tanpa kompetensi dari sesi berfokus gap itu), `counts` per gap, `gap.label` = nama kompetensi; tanpa transkrip.
-- [ ] Gap OKR lewat baris kinerja temuan.
-- [ ] Rujukan tidak valid → 400; kompetensi tenant lain → 404; atasan → 403.
-- [ ] `GET /review/solutions?kind=…`: hanya temuan gap itu.
+- [x] `GET /review?kind=competency&competencyId=…&status=all`: hanya temuan kompetensi itu (termasuk temuan tanpa kompetensi dari sesi berfokus gap itu), `counts` per gap, `gap.label` = nama kompetensi; tanpa transkrip.
+- [x] Gap OKR lewat baris kinerja temuan.
+- [x] Rujukan tidak valid → 400; kompetensi tenant lain → 404; atasan → 403.
+- [x] `GET /review/solutions?kind=…`: hanya temuan gap itu.
 
 E2E `apps/web/e2e/b7-tinjauan.spec.ts` (mock `page.route` lewat `mockApi`, `loginSebagai`):
-- [ ] Dari detail gap HR: "Langsung ke tinjauan HR" membuka `/tna/tinjauan?…`; breadcrumb, h1, subjudul dengan nama gap; judul top bar "Tinjauan HR"; tautan breadcrumb kembali ke `/tna?tab=kompetensi`.
-- [ ] Daftar temuan dengan "· AI 90%", saran AI untuk draf, tombol aktif sesuai keputusan; klik Improvement Needs mengirim `classify` `improvement` dan tombol menjadi aktif; "Perlu ditinjau HR" nonaktif untuk temuan yang sudah diputus.
-- [ ] Solusi: kotak modul (kode, nama, level); "Tugaskan di EliteMentor" mengirim plan lalu assign; note terkirim.
-- [ ] `lms_export`: "Buat rencana" hanya plan, lalu tombol unduh CSV.
-- [ ] "Buat tindakan di Improvement Needs" mengirim handoff dan menampilkan "n temuan diteruskan ke Improvement Needs."
-- [ ] Tanpa temuan pelatihan/non-pelatihan: teks kosong mockup.
-- [ ] Flag `tna.review_workspace` mati: tombol di detail gap ke antrean lama; `/tna/tinjauan` memantul ke beranda.
-- [ ] Atasan: `/tna/tinjauan` memantul; tombol tidak ada (test lama tna-gap tetap).
-- [ ] Respons tidak memuat/menampilkan `detail` (PO-6): teks rincian tidak muncul.
-- [ ] Antrean lama: test `poc-dna-tna`, `shell`, `alur/batas-akses` tetap hijau; tidak ada kelas Tailwind di `AntreanView.vue` (test statis sederhana di e2e lewat cek kelas `el-card` pada item).
-- [ ] Snapshot visual layar tinjauan HR 1440 (dibandingkan dengan `hr--review.png`).
+- [x] Dari detail gap HR: "Langsung ke tinjauan HR" membuka `/tna/tinjauan?…`; breadcrumb, h1, subjudul dengan nama gap; judul top bar "Tinjauan HR"; tautan breadcrumb kembali ke `/tna?tab=kompetensi`.
+- [x] Daftar temuan dengan "· AI 90%", saran AI untuk draf, tombol aktif sesuai keputusan; klik Improvement Needs mengirim `classify` `improvement` dan tombol menjadi aktif; "Perlu ditinjau HR" nonaktif untuk temuan yang sudah diputus.
+- [x] Solusi: kotak modul (kode, nama, level); "Tugaskan di EliteMentor" mengirim plan lalu assign; note terkirim.
+- [x] `lms_export`: "Buat rencana" hanya plan, lalu tombol unduh CSV.
+- [x] "Buat tindakan di Improvement Needs" mengirim handoff dan menampilkan "n temuan diteruskan ke Improvement Needs."
+- [x] Tanpa temuan pelatihan/non-pelatihan: teks kosong mockup.
+- [x] Flag `tna.review_workspace` mati: tombol di detail gap ke antrean lama; `/tna/tinjauan` memantul ke beranda.
+- [x] Atasan: `/tna/tinjauan` memantul; tombol tidak ada (test lama tna-gap tetap).
+- [x] Respons tidak memuat/menampilkan `detail` (PO-6): teks rincian tidak muncul.
+- [x] Antrean lama: test `poc-dna-tna`, `shell`, `alur/batas-akses` tetap hijau; tidak ada kelas Tailwind di `AntreanView.vue` (test statis sederhana di e2e lewat cek kelas `el-card` pada item).
+- [x] Snapshot visual layar tinjauan HR 1440 (dibandingkan dengan `hr--review.png`).
 
 ## Checklist file
 
-- [ ] `docs/designs/paritas-mockup/b7-tinjauan-web.md` (dokumen ini)
-- [ ] `apps/api/src/modules/tna/index.js` (`GET /review` filter gap), `review-workspace.js` (`/review/solutions` filter gap, helper filter), `gaps.js` (ekspor helper kunci gap temuan bila perlu), `gap-routes.js` (parser rujukan gap dipindah agar bisa dipakai bersama)
-- [ ] `apps/api/src/db/lna-stores.js` (kolom pencocokan di `REVIEW_COLS` dan `listReviewedForSolutions`)
-- [ ] `apps/api/tests/integration/tinjauan-hr.test.js`
-- [ ] `apps/web/src/screens/b7-tinjauan/routes.ts`, `TinjauanView.vue`, `AntreanView.vue`, `api.ts`, `b7.css`
-- [ ] hapus `apps/web/src/screens/legacy-review/`, `apps/web/src/views/ReviewView.vue`
-- [ ] `apps/web/src/ui/UiSegmented.vue` (`variant`, `disabled` per opsi)
-- [ ] `apps/web/src/screens/b5-tna/TnaGapView.vue` (tujuan tombol)
-- [ ] `apps/web/src/api/lna.ts` (parameter gap)
-- [ ] `apps/web/e2e/b7-tinjauan.spec.ts`, `apps/web/e2e/support/tinjauan.ts`
-- [ ] `docs/designs/b0-fondasi-ui.md` (UiSegmented, tabel rute), `docs/designs/b7-tinjauan-hr.md` (checklist web, filter gap)
+- [x] `docs/designs/paritas-mockup/b7-tinjauan-web.md` (dokumen ini)
+- [x] `apps/api/src/modules/tna/index.js` (`GET /review` filter gap), `review-workspace.js` (`/review/solutions` filter gap, helper filter), `gaps.js` (ekspor helper kunci gap temuan bila perlu), `gap-routes.js` (parser rujukan gap dipindah agar bisa dipakai bersama)
+- [x] `apps/api/src/db/lna-stores.js` (kolom pencocokan di `REVIEW_COLS` dan `listReviewedForSolutions`)
+- [x] `apps/api/tests/integration/tinjauan-hr.test.js`
+- [x] `apps/web/src/screens/b7-tinjauan/routes.ts`, `TinjauanView.vue`, `AntreanView.vue`, `api.ts`, `b7.css`
+- [x] hapus `apps/web/src/screens/legacy-review/`, `apps/web/src/views/ReviewView.vue`
+- [x] `apps/web/src/ui/UiSegmented.vue` (`variant`, `disabled` per opsi)
+- [x] `apps/web/src/screens/b5-tna/TnaGapView.vue` (tujuan tombol)
+- [x] `apps/web/src/api/lna.ts` (parameter gap)
+- [x] `apps/web/e2e/b7-tinjauan.spec.ts`, `apps/web/e2e/support/tinjauan.ts`
+- [x] `docs/designs/b0-fondasi-ui.md` (UiSegmented, tabel rute), `docs/designs/b7-tinjauan-hr.md` (checklist web, filter gap)
 
 Reviewer wajib: Andrian (perubahan API, kode bersama `UiSegmented`, router paket).
+
+## Review spek (langkah 2)
+
+Subagent `egm:egm-design` dan `egm:egm-implementation-readiness` tidak tersedia di sesi ini (tool Agent tidak ada untuk subagent pelaksana). Pengganti: tinjauan mandiri dengan dua lensa yang sama sebelum test ditulis. `[⚠️ BELUM TERVERIFIKASI]` review independen egm diulang sesi induk.
+
+| Temuan | Triase |
+| --- | --- |
+| Per gap butuh definisi keanggotaan temuan; API belum punya filter | **Perbaiki**: filter gap di API memakai R6 yang sudah ada (keputusan 3), test API merah dulu |
+| Nama gap untuk subjudul: memanggil `/gaps/detail` akan mengaudit seluruh karyawan gap hanya untuk label | **Perbaiki**: `GET /review` mengembalikan `gap.label` |
+| Dashboard `review_pending` ikut terbuka ke `review` tanpa gap (layar kosong) | **Perbaiki**: keputusan 11 |
+| Saran AI dipilihkan seperti mockup | **Tolak**: menyesatkan (keputusan 4) |
+| Filter gap di `GET /review` tanpa flag baru (CLAUDE.md aturan 3) | **Tolak dengan alasan**: hanya mempersempit bacaan yang sudah ada, HR saja, tanpa perilaku tulis; rute web di balik `tna.review_workspace` |

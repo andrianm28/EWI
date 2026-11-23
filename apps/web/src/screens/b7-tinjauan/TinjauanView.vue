@@ -27,15 +27,16 @@ const handedCount = ref<number | null>(null)
 
 const message = (e: unknown, fallback: string) => (e instanceof ApiError ? e.message : fallback)
 
+/** Muat ulang temuan dan solusi gap ini. Temuan yang ditolak tidak diklasifikasi lagi (menolak dan riwayatnya di antrean lama). */
+async function refresh(query: Record<string, string>) {
+  const [q, s] = await Promise.all([lna.reviewQueue('all', query), lna.reviewSolutions(query)])
+  items.value = q.data.filter((f) => f.reviewStatus !== 'rejected')
+  gapLabel.value = q.gap?.label ?? ''
+  solutions.value = s.data
+}
 async function load() {
   if (!gapQuery.value) { errors.value = [{ message: 'Alamat gap tidak lengkap. Buka tinjauan dari detail gap Training Needs.' }]; return }
-  try {
-    const [q, s] = await Promise.all([lna.reviewQueue('all', gapQuery.value), lna.reviewSolutions(gapQuery.value)])
-    // Temuan yang ditolak tidak diklasifikasi lagi; menolak dan riwayatnya ada di antrean lama
-    items.value = q.data.filter((f) => f.reviewStatus !== 'rejected')
-    gapLabel.value = q.gap?.label ?? ''
-    solutions.value = s.data
-  } catch (e) { errors.value = [{ message: message(e, 'Tinjauan temuan tidak bisa dimuat') }] }
+  try { await refresh(gapQuery.value) } catch (e) { errors.value = [{ message: message(e, 'Tinjauan temuan tidak bisa dimuat') }] }
 }
 onMounted(load)
 watch(() => route.fullPath, () => { errors.value = []; handedCount.value = null; load() })
@@ -51,10 +52,9 @@ const current = (f: ReviewItem): string => (decided(f) ? KEY_OF_CATEGORY[f.categ
 const planned = computed(() => new Set((solutions.value?.training ?? []).filter((t) => t.planItem).map((t) => t.findingId)))
 /** Sudah ditindaklanjuti (rencana atau serah ke Improvement Needs): API menolak klasifikasi ulang (409 ALREADY_ACTIONED). */
 const actioned = (f: ReviewItem) => !!f.handedOffAt || planned.value.has(f.id)
-const handedIds = computed(() => new Set((solutions.value?.improvement ?? []).filter((i) => i.handedOffAt).map((i) => i.findingId)))
 const optionsFor = (f: ReviewItem) => (['training', 'improvement', 'needs_review'] as const).map((key) => ({
   key, label: LABEL[key],
-  disabled: savingId.value === f.id || actioned(f) || handedIds.value.has(f.id) || (key === 'needs_review' && decided(f)),
+  disabled: savingId.value === f.id || actioned(f) || (key === 'needs_review' && decided(f)),
 }))
 const pct = (c: number | null) => (c === null ? '' : `· AI ${Math.round(c * 100)}%`)
 
@@ -119,9 +119,7 @@ async function handoff() {
   try {
     const r = (await lna.handoffImprovement(pendingHandoff.value.map((i) => i.findingId))).data
     handedCount.value = r.handedOff.length + r.already.length
-    const [q, s] = await Promise.all([lna.reviewQueue('all', gapQuery.value!), lna.reviewSolutions(gapQuery.value!)])
-    items.value = q.data.filter((f) => f.reviewStatus !== 'rejected')
-    solutions.value = s.data
+    await refresh(gapQuery.value!)
   } catch (e) { errors.value = [{ message: message(e, 'Temuan tidak bisa diteruskan') }] } finally { busy.value = false }
 }
 </script>
