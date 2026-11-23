@@ -6,7 +6,7 @@
 // mengubah teks, menolak, dan riwayat (dirujuk banner Pengelolaan TNA dan dashboard).
 import { computed, onMounted, reactive, ref } from 'vue'
 import AppShell from '@/components/AppShell.vue'
-import { UiButton, UiCard, UiChip, UiErrorSummary, UiField, UiStatus, UiTabs } from '@/ui'
+import { UiBreadcrumb, UiButton, UiCard, UiChip, UiErrorSummary, UiField, UiStatus, UiTabs } from '@/ui'
 import { confidenceLabel, lna, REVIEW_STATUS_LABEL, type ReviewCounts, type ReviewItem } from '@/api/lna'
 import './b7.css'
 
@@ -65,7 +65,7 @@ const target = (f: ReviewItem) => (f.metricName ? `${f.metricName}: target ${f.t
 
 <template>
   <AppShell>
-    <nav class="el-muted b7-bc" aria-label="Lokasi"><RouterLink :to="{ name: 'tna' }" class="b7-link">Training Needs</RouterLink> <span aria-hidden="true">›</span> Tinjauan hasil AI</nav>
+    <UiBreadcrumb :items="[{ label: 'Training Needs', to: { name: 'tna' } }, { label: 'Tinjauan hasil AI' }]" />
     <h1 class="el-h1">Review hasil AI</h1>
     <p class="el-muted b7-sub">
       Temuan AI baru tampil ke atasan dan karyawan, dan baru dihitung di dashboard, setelah Anda setujui.

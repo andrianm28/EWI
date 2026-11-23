@@ -7,7 +7,7 @@ import { useRoute } from 'vue-router'
 import AppShell from '@/components/AppShell.vue'
 import { ApiError } from '@/api/client'
 import { lna, TIER_LABEL, type ReviewClassification, type ReviewItem, type ReviewSolutions } from '@/api/lna'
-import { UiButton, UiCard, UiChip, UiErrorSummary, UiNote, UiSegmented } from '@/ui'
+import { UiBreadcrumb, UiButton, UiCard, UiChip, UiErrorSummary, UiNote, UiSegmented } from '@/ui'
 import { gapRefFromQuery } from '@/screens/b5-tna/api'
 import { CLASSIFICATION_LABEL } from '@/screens/b5-tna/labels'
 import './b7.css'
@@ -155,7 +155,7 @@ async function handoff() {
 
 <template>
   <AppShell>
-    <nav class="el-muted b7-bc" aria-label="Lokasi"><RouterLink :to="{ name: 'tna', query: { tab: backTab } }" class="b7-link">Training Needs</RouterLink> <span aria-hidden="true">›</span> Tinjauan HR</nav>
+    <UiBreadcrumb :items="[{ label: 'Training Needs', to: { name: 'tna', query: { tab: backTab } } }, { label: 'Tinjauan HR' }]" />
     <h1 class="el-h1">Tinjauan temuan AI</h1>
     <p class="b7-sub">{{ gapLabel ? `${gapLabel}. ` : '' }}HR memastikan klasifikasi sebelum solusi dijalankan; AI tidak memutuskan sendiri.</p>
     <UiErrorSummary :errors="errors" />

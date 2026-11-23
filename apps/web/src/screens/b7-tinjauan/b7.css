@@ -1,5 +1,4 @@
 /* B7 Tinjauan HR: ukuran mengikuti mockup (Main.dc.html .bc, .rad, .mod, kartu solusi). */
-.b7-bc { font-size: 12px; margin-bottom: 8px; display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
 .b7-link { color: var(--el-primary); text-decoration: underline; }
 .b7-sub { color: var(--el-on-surface-variant); margin: 0 0 20px; }
 .b7-small { font-size: 12px; }

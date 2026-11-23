@@ -34,7 +34,7 @@ test('HR membuka tinjauan dari detail gap; breadcrumb kembali ke asal gap', asyn
   await expect(page.getByText('Analisis insiden. HR memastikan klasifikasi sebelum solusi dijalankan; AI tidak memutuskan sendiri.')).toBeVisible()
   await expect(page.getByTestId('judul-layar')).toHaveText('Tinjauan HR')
   const bc = page.getByRole('navigation', { name: 'Lokasi' })
-  await expect(bc).toHaveText('Training Needs › Tinjauan HR')
+  await expect(bc).toHaveText(/Training Needs\s*›\s*Tinjauan HR/)
   // permintaan memakai filter gap yang sama dengan detail gap
   expect(sent.find((s) => s.path === 'GET /tna/review')?.body).toMatchObject({ kind: 'competency', competencyId: ID_KOMPETENSI })
   expect(sent.find((s) => s.path === 'GET /tna/review/solutions')?.body).toMatchObject({ kind: 'competency', competencyId: ID_KOMPETENSI })
