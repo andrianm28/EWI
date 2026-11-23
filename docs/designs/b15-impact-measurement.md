@@ -50,7 +50,7 @@ dengan `ON DELETE CASCADE` dari `tenants`.
 | `lim_plans` | rencana pengukuran: `title`, `job_role_id` → `lna_job_roles` ON DELETE SET NULL (nullable, "Mulai dari masalah bisnis · <jabatan>"), `period_from`, `period_until` (date nullable, kohort; bagian 4.1), `business_problem`, `desired_behavior`, `priority_capabilities`, `evidence_plan`, `existing_metrics` (teks 5 pertanyaan, maks 2000), `baseline_label`, `after_label` (mis. "Sep 2026", "Nov 2026"), `value_estimate` (jsonb nullable `{ label, value, note }`), `factors` (jsonb, larik teks maks 20), `status` (`active`/`archived`), `created_by`, `updated_by` (→ `users` ON DELETE SET NULL) |
 | `lim_plan_modules` | `plan_id` (ON DELETE CASCADE), `module_id` → `li_modules` ON DELETE CASCADE (PK `plan_id, module_id`) : modul belajar yang diukur |
 | `lim_indicators` | `plan_id` (ON DELETE CASCADE), `name` (maks 255), `level` (`performance`/`business`), `source` (maks 255), `unit` (maks 16, mis. "mnt", "%"), `direction` (`lower_better`/`higher_better`), `baseline`, `current`, `target` (numeric nullable), `strength` (`strong`/`moderate`/`weak`/null = dihitung), `position` |
-| `lim_measurements` | per karyawan per kompetensi per rencana: `plan_id` (CASCADE), `user_id` → `users` (CASCADE), `competency_id` → `lna_competencies` (CASCADE), `pre_score`, `pre_source` (`manual`/`import`/`dna`), `post_score`, `post_source` (`manual`/`import`, penimpa skor LD), `performance_score`, `performance_source` (`manual`/`import`), `performance_note` (maks 500), `reinterview_status` (`none`/`scheduled`/`done`), `reinterview_on` (date), `reinterview_score`, `reinterview_session_id` (uuid, tanpa FK di tahap 1), `reinterview_summary` (teks terenkripsi per tenant, tahap 3; kolom belum dibuat di tahap 1), `updated_by` (→ `users` SET NULL), `updated_at`. UNIQUE (`plan_id`, `user_id`, `competency_id`) |
+| `lim_measurements` | per karyawan per kompetensi per rencana: `plan_id` (CASCADE), `user_id` → `users` (CASCADE), `competency_id` → `lna_competencies` (CASCADE), `pre_score`, `pre_source` (`manual`/`import`/`dna`), `post_score`, `post_source` (`manual`/`import`, penimpa skor LD), `performance_score`, `performance_source` (`manual`/`import`), `performance_note` (maks 500), `reinterview_status` (`none`/`scheduled`/`done`), `reinterview_on` (date), `reinterview_score`, `reinterview_session_id` (uuid, tanpa FK di tahap 1), `updated_by` (→ `users` SET NULL), `updated_at`. UNIQUE (`plan_id`, `user_id`, `competency_id`) |
 
 Skor 0–100, CHECK di DB, sama dengan `ld_participants.score`.
 
@@ -242,8 +242,8 @@ wawancara ulang. Tanpa bukti di tengah, klaim bahwa pelatihan memperbaiki kinerj
 
 ### 6.7 Ekspor dan hapus data karyawan (PK-15)
 
-`buildExport` di `modules/employees` menambah `impactMeasurement`: baris `lim_measurements` karyawan itu (tanpa
-`reinterview_summary` kecuali karyawan itu sendiri). Tidak digerbang flag (PK-15: hak subjek data berlaku apa pun modul
+`buildExport` di `modules/employees` menambah `impactMeasurement`: baris `lim_measurements` karyawan itu (alasan
+skor wawancara ulang ada di `lim_reinterviews.summary`, lihat 12.5; kolom `reinterview_summary` tidak dibuat). Tidak digerbang flag (PK-15: hak subjek data berlaku apa pun modul
 yang aktif). Hapus karyawan menghapus barisnya lewat FK `lim_measurements.user_id` ON DELETE CASCADE.
 
 ## 7. Keputusan default yang dipakai
@@ -365,3 +365,142 @@ lewat API sungguhan dan menemukan satu bug:
 | # | Temuan | Keputusan |
 | --- | --- | --- |
 | A1 | `POST /api/lim/plans` tanpa `baselineLabel`/`afterLabel` (persis yang dikirim formulir web), atau tanpa `jobRoleId`/`periodFrom`/`periodUntil`, menghasilkan 500: isian `undefined` dari validasi menimpa bawaan `null` | Diperbaiki test-first: test integrasi "rencana minimal" (merah 500, lalu hijau 201); `planFields` kini membuang isian yang tidak dikirim (satu tempat untuk POST dan PATCH). E2E web tidak menangkapnya karena API di-mock |
+
+## 12. Tahap 3: wawancara ulang AI (23 Nov)
+
+Status: spek tahap 3, ditulis 23 Nov setelah thread paritas mockup mencatat layar ini belum ada (coordinator). Acuan:
+mockup Pak Eji tab Pengukuran AI (antrean → Konfirmasi hasil belajar → Benchmark kinerja → Hasil bisnis → Ringkasan) dan
+catatan mockup "Dalam produk, karyawan mengerjakannya sendiri lewat EliteMentor; di mockup ini HR memulainya untuk
+demonstrasi". ELGOS terpisah dari EliteMentor (B15 revisi), jadi "lewat EliteMentor" dibaca sebagai: karyawan
+mengerjakannya sendiri di layar karyawan ELGOS. Pola sesi, giliran terenkripsi, dan pemanggilan AI mengikuti B10 tahap 2
+(`modules/cca/interview.js`), bukan mesin B6 (`modules/interviews`, terikat proyek TNA).
+
+### 12.1 Keputusan
+
+- **T-1 Pelaku.** Karyawan peserta antrean menjalankan wawancara ulangnya sendiri. HR tidak bisa memulai atau menjawab atas
+  nama karyawan; HR hanya menjadwalkan (6.4) dan membaca hasil. Atasan tidak melihat apa pun di luar 6.5.
+- **T-2 Kapan terbuka.** Wawancara terbuka bagi karyawan bila ada pasangan (karyawan, kompetensi) berstatus `scheduled`
+  di rencana `active`. Tanggal jadwal adalah target, bukan kunci: karyawan boleh mulai lebih awal atau terlambat. Satu
+  wawancara per (rencana, karyawan) mencakup semua kompetensi `scheduled` saat persetujuan diberikan (potret, maks
+  `MAX_COMPETENCIES` = 4, urut nama; sisanya tetap `scheduled` untuk wawancara berikutnya).
+- **T-3 Persetujuan.** Versi baru `lim-consent-id-v1.0` di `core/consent` (draf turunan teks TNA v1.0, tujuan
+  "mengukur apakah hasil pelatihan masih terpakai; hasilnya dibandingkan dengan data kinerja untuk menilai dampak
+  program, bukan dasar penilaian kinerja individu"), menunggu legal, sama dengan keputusan user untuk
+  CCA (D-8 B10). Menambah versi mengubah kode bersama (review Andrian).
+- **T-4 Pertanyaan.** Per kompetensi potret dua pertanyaan: `scenario` (situasi kerja, "apa langkah Anda") dan `verify`
+  (cara memastikan hasilnya benar), lalu satu pertanyaan penutup `apply` untuk semua kompetensi ("apa yang berubah di
+  pekerjaan Anda sejak pelatihan"). Jumlah = 2 × kompetensi + 1 (mockup, satu kompetensi: 3). AI membuat teks pertanyaan
+  dan tiga pilihan jawaban; karyawan boleh mengetik jawaban sendiri (maks 2000 karakter). Pilihan jawaban tidak
+  membawa skor ke layar.
+- **T-5 Skor.** Setelah jawaban terakhir, server meminta AI menilai tiap kompetensi 0–100 dengan rubrik tetap (100 =
+  langkah tepat dengan bukti dan sudah diterapkan; sekitar 60 = sebagian; sekitar 30 = tidak menunjukkan kemampuan) dan
+  satu kalimat alasan per kompetensi (maks 200 karakter; prompt melarang mengutip jawaban karyawan, supaya alasan
+  tidak menjadi jalan belakang ke transkrip). Skor dibulatkan bilangan bulat dan dijepit 0–100; kompetensi yang tidak dinilai
+  model ditolak (sesi tetap `in_progress`, `step: 'scoring'`, layar mencoba lagi lewat `POST /turns` tanpa `text`).
+  Skor ditulis lewat store baru `completeReinterview(tenantId, id, { scores, summary })`: satu transaksi mengunci baris
+  wawancara `FOR UPDATE`, mensyaratkan `status = 'in_progress'` (dua jawaban terakhir paralel tidak bisa menutup dua
+  kali), menulis `lim_measurements.reinterview_score`/status `done`/`reinterview_session_id` = id wawancara untuk
+  pasangan potret yang masih `scheduled`, lalu menutup sesi. Tidak ada langkah konfirmasi ringkasan oleh karyawan: ini pengukuran, bukan pemetaan pendapat.
+  Karyawan melihat "Terima kasih, jawaban Anda sudah tersimpan" tanpa skor.
+- **T-6 Transkrip.** Giliran disimpan terenkripsi per tenant dan hanya untuk karyawan itu (sama dengan PO-6: layar
+  review HR tanpa transkrip). Ringkasan (skor + alasan per kompetensi) disimpan terenkripsi di
+  `lim_reinterviews.summary`; HR membaca skor dan alasan.
+- **T-7 Benchmark, hasil bisnis, ringkasan (layar HR).** Dihitung aturan (`generatedBy: 'rules'`), bukan AI:
+  - Benchmark per kompetensi potret: post (Learning Delivery atau isian), wawancara ulang, kinerja. Temuan seperti mockup:
+    `post − wawancara ulang > 10` → "Hasil belajar tidak bertahan" (`retention_drop`), selain itu "Hasil belajar
+    terkonfirmasi"; `wawancara ulang − kinerja > 10` → "Belum diterapkan penuh di pekerjaan" (`application_gap`), selain
+    itu "Kemampuan terlihat di kinerja". Nilai yang kosong → temuan `missing` ("Data belum lengkap").
+    Konstanta `GAP_THRESHOLD = 10` di `domain.js`. [⚠️ BELUM TERVERIFIKASI: ambang 10 dari mockup.]
+  - Hasil bisnis: indikator tim rencana dan faktor lain (sama dengan tab Dampak bisnis), dengan catatan mockup
+    "Indikator tingkat tim, bukan per orang".
+  - Ringkasan rantai bukti per karyawan, enam tingkat: Aktivitas (keikutsertaan LD karyawan itu), Pembelajaran (post),
+    Kapabilitas (wawancara ulang), Penerapan (kinerja), Kinerja tim dan Hasil bisnis (indikator rencana pertama yang
+    lengkap per tingkat). Tingkat keyakinan, urutan menang Rendah > Sedang > Tinggi: "Rendah" bila ada `missing`,
+    "Sedang" bila ada `retention_drop`/`application_gap`, selain itu "Tinggi".
+  - Rekomendasi aturan, satu per kompetensi per kondisi (tanpa duplikat teks; rekomendasi indikator satu per
+    indikator tanpa data): `retention_drop` → "Jadwalkan penguatan <kompetensi> dan ulangi wawancara dalam
+    4 pekan."; `application_gap` → "Buka tindakan perbaikan di Improvement Needs untuk hambatan non-pelatihan.";
+    tanpa keduanya → "Lanjutkan ke kompetensi berikutnya dalam jalur belajar." (teks mockup; rekomendasi Career &
+    Promotion tidak dipakai karena bertentangan dengan tujuan persetujuan dan bagian 1); indikator bisnis tanpa data → "Lengkapi
+    data <indikator> agar tingkat hasil bisnis lengkap." [⏳ DITERIMA: mockup menulis "Rekomendasi AI" dan "tingkat
+    keyakinan AI"; sama dengan keputusan 6.2 dan B14, layar menulis "Rekomendasi" dan "Tingkat keyakinan" dengan
+    keterangan "dari data pengukuran" sampai ada narasi LLM.]
+- **T-8 Flag.** Flag baru `lim.reinterview` (default mati), di samping `module.lim` dan paket `full_suite`.
+- **T-9 Ulang.** Tidak ada "ulangi" di tengah wawancara. Setelah `done`, HR bisa menjadwalkan ulang hanya lewat
+  rencana baru (6.4 tetap melewati pasangan `done`). [⏳ DITERIMA: penguatan dan wawancara ulang kedua masuk
+  rekomendasi, mekanismenya di luar tahap 3.]
+
+### 12.2 Data dan migrasi
+
+Migrasi `20261123003000-lim-wawancara-ulang.js` (raw SQL, punya `down`):
+
+- `lim_reinterviews`: `id`, `tenant_id` (CASCADE), `plan_id` → `lim_plans` (CASCADE), `user_id` → `users` (CASCADE),
+  `status` (`in_progress`/`completed`), `consent_version`, `consent_at`, `competency_ids uuid[]` (potret, 1–4),
+  `summary` (teks terenkripsi, JSON `{ competencies: [{ competencyId, score, reason }] }`), `completed_at`,
+  `created_at`, `updated_at`. UNIQUE parsial (`plan_id`, `user_id`) WHERE `status = 'in_progress'`.
+- `lim_reinterview_turns`: `reinterview_id` (CASCADE), `tenant_id`, `position` 1..18 (= 2 × (2 × `MAX_COMPETENCIES` + 1)), `role` (`ai`/`participant`),
+  `kind` (`scenario`/`verify`/`apply`), `competency_id` (nullable untuk `apply`), `text` terenkripsi, `options` (JSON
+  terenkripsi), UNIQUE (`reinterview_id`, `position`). Baris jawaban memakai `kind` dan `competency_id` pertanyaannya.
+- `ai_usage_logs.operation` CHECK ditambah `lim_question` dan `summarize_lim` (kode bersama).
+
+Sisipan giliran memakai pola B10: kunci baris wawancara `FOR UPDATE` lalu jumlah giliran harus = position − 1.
+
+### 12.3 Endpoint (`/api/lim`, flag `lim.reinterview` untuk semua rute di bawah)
+
+Rute karyawan dipasang sebelum pembatas peran HR/atasan dan hanya membaca data pemanggil sendiri.
+
+| Rute | Siapa | Isi |
+| --- | --- | --- |
+| `GET /me/reinterviews` | semua peran | daftar rencana `active` tempat pemanggil punya pasangan `scheduled` atau wawancara `in_progress`/`completed`: `{ planId, planTitle, scheduledOn, status: 'open'/'in_progress'/'completed', competencies: [nama] }` |
+| `GET /me/reinterviews/:planId/session` | pemilik | `step` (`consent`/`chat`/`done`), `consentVersionRequired`, giliran publik, `answerCount`, `questionCount` |
+| `POST /me/reinterviews/:planId/consent` | pemilik | `{ consentVersion }` → buat wawancara dengan potret kompetensi, lalu pertanyaan pertama (AI gagal → `{ question: null }`, layar meminta lagi) |
+| `POST /me/reinterviews/:planId/turns` | pemilik | `{ text }` jawaban; tanpa `text` = minta ulang pertanyaan yang belum ada. Jawaban terakhir memicu penilaian (T-5) dan menjawab `{ done: true }` |
+| `GET /plans/:id/reinterviews/:userId` | HR | hasil satu karyawan: skor + alasan per kompetensi, benchmark, temuan, hasil bisnis, rantai bukti, keyakinan, rekomendasi (T-7). Dicatat `audit.readIndividual`. 404 bila belum `completed` |
+
+Antrean (`GET /plans/:id/queue`) menambah `reinterviewId` dan `canView` (= `done` dan ada wawancara `completed`). Galat
+AI menjadi 502 `AI_UNAVAILABLE` dengan pesan umum, seperti B10.
+
+### 12.4 Layar
+
+- Karyawan: rute baru `/wawancara-ulang` (tampilan karyawan dan atasan, submodul `lim`, flag `lim.reinterview`, judul
+  "Wawancara ulang"): daftar dari `GET /me/reinterviews`, lalu sesi: teks persetujuan → percakapan "Konfirmasi hasil
+  belajar" ("Pertanyaan n dari N", tiga tombol pilihan + "Atau ketik jawaban sendiri") → selesai.
+- HR, tab Pengukuran AI: tombol "Lihat hasil" pada baris `canView` membuka alur empat langkah mockup (panel langkah
+  kiri): 1 Konfirmasi hasil belajar (skor + alasan per kompetensi, tanpa transkrip), 2 Benchmark kinerja (tiga batang
+  per kompetensi + temuan), 3 Hasil bisnis, 4 Ringkasan (rantai bukti, keyakinan, rekomendasi, "Kembali ke antrean").
+  Catatan mockup "di mockup ini HR memulainya" diganti "Karyawan mengerjakan wawancara ulang sendiri dari menu
+  Wawancara ulang setelah dijadwalkan."
+
+### 12.5 Ekspor dan hapus (PK-15)
+
+Ekspor karyawan menambah `reinterviews` (status, tanggal, skor per kompetensi); alasan dan transkrip hanya untuk
+ekspor oleh karyawan itu sendiri. Hapus karyawan menghapus wawancara dan giliran lewat CASCADE.
+
+### 12.6 Test (ditulis lebih dulu)
+
+- Unit `lim-reinterview.test.js`: urutan pertanyaan (2 × n + 1, `scenario`/`verify` per kompetensi lalu `apply`),
+  temuan benchmark dan ambang 10, keyakinan, rekomendasi, rantai per karyawan.
+- Unit AI: prompt dan parser `limQuestion`/`summarizeLim` (stub dan Bedrock), skor dijepit dan kompetensi hilang ditolak.
+- Integrasi `lim-wawancara-ulang.test.js`: alur karyawan (persetujuan, 3 pertanyaan untuk 1 kompetensi, skor tersimpan,
+  antrean `done`, ringkasan per kompetensi terisi), privasi (karyawan lain 404, HR tanpa transkrip, atasan 403 untuk
+  hasil), flag mati, versi persetujuan salah, AI gagal, jawaban paralel, ekspor/hapus.
+- e2e: alur karyawan dengan API tiruan; HR membuka "Lihat hasil" dan melewati empat langkah.
+
+### 12.7 Triase review spek (egm-resolve, 23 Nov)
+
+Review goldfish (implementation-readiness) atas bagian 12. Semua temuan diterima kecuali yang dicatat.
+
+| # | Temuan | Keputusan |
+| --- | --- | --- |
+| 1 | `position` 1..9 terlalu kecil (4 kompetensi = 18 giliran) | Diperbaiki di 12.2: 1..18; jawaban mewarisi `kind`/`competency_id` |
+| 2 | HR membatalkan jadwal atau mengarsipkan rencana saat wawancara berjalan | Jadwal/batal (6.4) melewati pasangan milik wawancara `in_progress` (alasan lewat `in_progress`); `completeReinterview` hanya menulis pasangan yang masih `scheduled`; rencana `archived` → rute sesi 409 `PLAN_ARCHIVED`, baris tetap `in_progress` |
+| 3 | `recordReinterview` tidak bisa ikut transaksi | Store baru `completeReinterview` (T-5) |
+| 4 | Coba lagi penilaian tidak punya endpoint | `POST /turns` tanpa `text` saat semua jawaban ada = nilai ulang; `step: 'scoring'` (T-5) |
+| 5 | Lebih dari 4 kompetensi membuat `canView` palsu; banyak wawancara `completed` | `canView` = ada minimal satu wawancara `completed`; `GET /plans/:id/reinterviews/:userId` menjawab daftar wawancara `completed` terbaru dulu, layar menampilkan yang terbaru |
+| 6 | Ringkasan di dua tempat | Kolom `lim_measurements.reinterview_summary` dihapus dari rencana (bagian 4, 6.7) |
+| 7 | Persetujuan "bukan penilaian kinerja" vs benchmark kinerja dan rekomendasi C&P; alasan AI bisa mengutip jawaban | Teks tujuan persetujuan diubah (T-3); rekomendasi C&P dibuang; alasan maks 200 karakter, prompt melarang kutipan, ada test parser memotong |
+| 8 | Keyakinan dan rekomendasi untuk banyak kompetensi tidak terdefinisi | Rendah > Sedang > Tinggi; satu rekomendasi per kompetensi per kondisi (T-7) |
+| 9 | Celah mockup | "Lanjutkan ke kompetensi berikutnya…" ditambah; tombol mockup "Simpan hasil" tidak dibuat karena hasil tersimpan otomatis di T-5 |
+| 10 | Kelayakan tidak dicek ulang | Saat persetujuan: pemanggil harus masih peserta rencana (periode + jabatan, 4.1), selain itu 404 |
+| 11 | Kasus belum disebut | `audit.record` `lim.reinterview_consent` dan `lim.reinterview_completed`; flag mati → 404 (`requireFlag`); giliran publik = semua giliran sesi (maks 18: `position`, `role`, `kind`, `text`, `options`). [⏳ DITERIMA: tidak ada batas waktu untuk wawancara `in_progress` yang ditinggal; karyawan bisa melanjutkan kapan saja selama rencana `active`.] |
+| 12 | T-7 hampir fitur kedua | Diterima sebagai urutan kerja: T-1..T-6 (backend + layar karyawan) di komit pertama, T-7 (hasil HR) di komit berikut dengan test sendiri, flag yang sama |
