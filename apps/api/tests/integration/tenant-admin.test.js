@@ -273,7 +273,7 @@ run('Admin Tenant B11 (Postgres)', () => {
     expect(pdone.body.data.result).toMatchObject({ imported: 2, red: 1 });
     sum = (await get('/imports/summary')).body.data;
     expect(sum.performance).toEqual([expect.objectContaining({ period: '2026-Q4', records: 2, missed: 1, lastImport: expect.objectContaining({ filename: 'okr_q4_2026.csv', source: 'HRIS', uploadedByName: 'Admin A' }) })]);
-    expect(JSON.stringify(sum.performance)).not.toMatch(/staf|E-2/i);
+    expect(JSON.stringify(sum.performance)).not.toMatch(/staf|\bE-2\b/i);
     expect((await get('/imports/summary', 'adminB')).body.data.performance).toEqual([]);
   });
 
