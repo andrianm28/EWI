@@ -61,6 +61,14 @@ jobs:
       - run: npx playwright install --with-deps chromium
         working-directory: apps/web
       - run: npm run e2e -w apps/web
+      # Audit PR 39 butir 39-1: hasil snapshot (actual/diff PNG) diunggah saat gagal, supaya baseline bisa dibuat
+      # ulang dari mesin CI dan ambang dashboard/asisten kembali ke 0,02
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: e2e-test-results
+          path: apps/web/test-results
+          retention-days: 14
 
   infra:
     runs-on: ubuntu-latest

@@ -1,6 +1,6 @@
 # Gap kesetaraan: grup "shell" (token, kerangka, menu, login, dashboard)
 
-Acuan: `tools/mockup-render/Main.dc.html` (sama persis dengan `/mnt/project-files/mockup-pak-eji/Main.dc.html`), `DesignSystem.dc.html`, mock-shots `hr--dash`, `atasan--dash`, `login--cred`, `login--otp`, `admin--users`, `super--tenants`, `karyawan--my`. Aplikasi: `apps/web/src` + app-shots `dashboard-*`, `login-*`, `alur-menu-peran-*`.
+Acuan: `/mnt/project-files/mockup-pak-eji/Main.dc.html`, `DesignSystem.dc.html`, mock-shots `hr--dash`, `atasan--dash`, `login--cred`, `login--otp`, `admin--users`, `super--tenants`, `karyawan--my`. Aplikasi: `apps/web/src` + app-shots `dashboard-*`, `login-*`, `alur-menu-peran-*`.
 Path relatif ke `apps/web/src/`.
 
 Catatan screenshot: beberapa folder app-shots berisi layar test lain (mis. `dashboard-atasan-…/test-finished-1.png` dan `poc-dna-tna-link-masuk-tidak-valid…` menampilkan "Hasil saya"). Untuk layar itu yang dipakai kodenya dan `test-finished-2.png`.

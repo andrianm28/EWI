@@ -15,7 +15,7 @@ Acuan domain: [B10](../b10-core-competencies.md) (bagian 11 dan 13), [B5](../b5-
 
 ## Layar mockup
 
-`tools/mockup-render/Main.dc.html`: CC VM 305–329 (`.r-cc` baris 109: `minmax(0,2.2fr) 70px 70px 1.6fr 140px`), CC Values 331–384, Wawancara AI HR 599–625 (sintesis 619–624), atasan 600–601 dan 627–637, DNA 386–465, TNA 474–520, INA 704–721 (`.r-ina` baris 91). Foto: `mock-shots/hr--cc--vm`, `hr--cc--val`, `hr--cc--aiv-list`, `atasan--aiv--list`, `karyawan--aiv--list`, `hr--tna--*`, `hr--ina`, `hr--dna--*`.
+`/mnt/project-files/mockup-pak-eji/Main.dc.html`: CC VM 305–329 (`.r-cc` baris 109: `minmax(0,2.2fr) 70px 70px 1.6fr 140px`), CC Values 331–384, Wawancara AI HR 599–625 (sintesis 619–624), atasan 600–601 dan 627–637, DNA 386–465, TNA 474–520, INA 704–721 (`.r-ina` baris 91). Foto: `mock-shots/hr--cc--vm`, `hr--cc--val`, `hr--cc--aiv-list`, `atasan--aiv--list`, `karyawan--aiv--list`, `hr--tna--*`, `hr--ina`, `hr--dna--*`.
 
 ## Gap yang ditutup
 

@@ -10,7 +10,7 @@ HR membuka "Tinjauan temuan AI" dari detail gap Training Needs, mengklasifikasi 
 
 ## Layar mockup
 
-`tools/mockup-render/Main.dc.html` baris 671–702 (template `s.review`) dan 1926–1944, 2163–2166 (logika `rev`, `modRec`, `sendEM`, `makeIna`). Foto: `mock-shots/hr--review.png`, `mock-shots/atasan--review.png`.
+`/mnt/project-files/mockup-pak-eji/Main.dc.html` baris 671–702 (template `s.review`) dan 1926–1944, 2163–2166 (logika `rev`, `modRec`, `sendEM`, `makeIna`). Foto: `mock-shots/hr--review.png`, `mock-shots/atasan--review.png`.
 
 1. Breadcrumb `Training Needs › Tinjauan HR`. Tautan kembali ke asal gap (mockup `goBack` = `st.back`, yaitu tab Training Needs asal gap, bukan Detail gap).
 2. h1 "Tinjauan temuan AI"; subjudul "{nama gap}. HR memastikan klasifikasi sebelum solusi dijalankan; AI tidak memutuskan sendiri."

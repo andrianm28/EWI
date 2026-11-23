@@ -6,7 +6,7 @@ Acuan domain: B0 (`docs/designs/b0-fondasi-ui.md` bagian 4 dan 5.3), B4, B5 bagi
 
 ## Layar mockup
 
-`tools/mockup-render/Main.dc.html`: `.bc` (baris 124–125), `.card.t` + `.btn.t.sm` (60, 72), `.row.lk` (87–88). Kartu Agen AI: baris 308 (CC Visi & Misi), 332 (CC Nilai), 392 (DNA), 478 (TNA), 708 (INA). Breadcrumb: 297, 389, 476, 524, 706, 726, 781, 809, 837, 939 (LD), 1120 (CP). Baris klik: 319/377 (CC), 504 (TNA kompetensi), 1790 (Pareto dashboard → `open(c.id)`).
+`/mnt/project-files/mockup-pak-eji/Main.dc.html`: `.bc` (baris 124–125), `.card.t` + `.btn.t.sm` (60, 72), `.row.lk` (87–88). Kartu Agen AI: baris 308 (CC Visi & Misi), 332 (CC Nilai), 392 (DNA), 478 (TNA), 708 (INA). Breadcrumb: 297, 389, 476, 524, 706, 726, 781, 809, 837, 939 (LD), 1120 (CP). Baris klik: 319/377 (CC), 504 (TNA kompetensi), 1790 (Pareto dashboard → `open(c.id)`).
 
 ## Gap yang ditutup
 

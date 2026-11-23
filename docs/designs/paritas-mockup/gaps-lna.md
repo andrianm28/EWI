@@ -1,6 +1,6 @@
 # Gap kesetaraan UI: grup LNA (Core Competencies, Developmental Needs, Training Needs, Improvement Needs)
 
-Acuan: `tools/mockup-render/Main.dc.html` (baris template disebut `M:<baris>`), mock-shots `hr--cc--*`, `atasan--aiv--list`, `*--dna--*`, `*--tna--*`, `*--gap`, `*--review`, `*--ina`.
+Acuan: `/mnt/project-files/mockup-pak-eji/Main.dc.html` (baris template disebut `M:<baris>`), mock-shots `hr--cc--*`, `atasan--aiv--list`, `*--dna--*`, `*--tna--*`, `*--gap`, `*--review`, `*--ina`.
 Aplikasi: app-shots (catatan: di banyak folder `test-finished-1.png` adalah halaman kedua "Hasil saya"; layar yang benar ada di `test-finished-2.png`).
 Path file relatif ke `apps/web/src/`. Mockup tidak membedakan HR dan atasan untuk DNA, TNA, review, INA (innerText identik kecuali shell).
 

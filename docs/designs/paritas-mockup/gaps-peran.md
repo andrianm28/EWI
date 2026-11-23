@@ -1,6 +1,6 @@
 # Gap kesetaraan UI: peran lain (Karyawan, Admin Tenant, Super Admin)
 
-Acuan: `tools/mockup-render/Main.dc.html` (template baris 281-293, 548-669, 885-935, 1165-1250; logika 1435-1443, 1669-1767, 1826-1835, 2095-2170).
+Acuan: `/mnt/project-files/mockup-pak-eji/Main.dc.html` (template baris 281-293, 548-669, 885-935, 1165-1250; logika 1435-1443, 1669-1767, 1826-1835, 2095-2170).
 Bukti aplikasi: screenshot e2e + screenshot tambahan di `parity/shots-peran/` (alur iv dan aiv lengkap) dan `parity/specs-peran/out-e2e/` (super admin; app-shots lama untuk super-admin dan iv ternyata berisi layar Hasil saya, jadi diambil ulang).
 Path file relatif ke `apps/web/src/`. Shell (drawer/top bar, pemilih tampilan) tidak dinilai.
 

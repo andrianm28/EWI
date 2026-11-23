@@ -6,7 +6,7 @@ Acuan domain: [b13-learning-intervention.md](../b13-learning-intervention.md), B
 
 ## Layar mockup
 
-`tools/mockup-render/Main.dc.html`: Library baris 726–777 (data 2005–2045), Program 780–805 (data 2026, 2048–2061), Permintaan 808–833, Pengembangan modul 836–880 (data 2078–2086). Foto: `parity/mock-shots/hr--lib`, `hr--prog`, `hr--req`, `hr--lidev--1..4`.
+`/mnt/project-files/mockup-pak-eji/Main.dc.html`: Library baris 726–777 (data 2005–2045), Program 780–805 (data 2026, 2048–2061), Permintaan 808–833, Pengembangan modul 836–880 (data 2078–2086). Foto: `parity/mock-shots/hr--lib`, `hr--prog`, `hr--req`, `hr--lidev--1..4`.
 
 ## Gap yang ditutup
 

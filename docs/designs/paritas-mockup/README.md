@@ -1,10 +1,10 @@
 # Paritas UI ELGOS dengan mockup Pak Eji (audit 23 Nov 2026)
 
-Acuan: mockup final Pak Eji (keputusan user 19 Nov), salinan di `tools/mockup-render/Main.dc.html` (asli di project files `mockup-pak-eji/`). Yang dibandingkan: `apps/web` di `claude/project-thread-scbrmb` head `524dead` (sudah termasuk PR #38).
+Acuan: mockup final Pak Eji (keputusan user 19 Nov), berkas `/mnt/project-files/mockup-pak-eji/Main.dc.html` di folder proyek (tidak disimpan di repo publik sejak audit PR 39 butir 39-5; lihat `tools/mockup-render/README.md`). Yang dibandingkan: `apps/web` di `claude/project-thread-scbrmb` head `524dead` (sudah termasuk PR #38).
 
 ## Cara membandingkan
 
-1. **Mockup.** Runtime artifact (`support.js`) tidak ikut tersalin, jadi `tools/mockup-render/support.js` mengimplementasikan ulang format `.dc.html` seminimal mungkin: `{{ }}`, `sc-if`, `sc-for`, `onX`, dan `DCLogic.setState`. `node tools/mockup-render/catalog.cjs <folder>` memotret 70 state (5 peran, semua tab dan langkah utama) beserta teks `innerText`-nya.
+1. **Mockup.** Runtime artifact (`support.js`) tidak ikut tersalin, jadi `tools/mockup-render/support.js` mengimplementasikan ulang format `.dc.html` seminimal mungkin: `{{ }}`, `sc-if`, `sc-for`, `onX`, dan `DCLogic.setState`. `node tools/mockup-render/catalog.cjs [--mockup <path>] <folder>` (mockup bawaan dari folder proyek) memotret 70 state (5 peran, semua tab dan langkah utama) beserta teks `innerText`-nya.
 2. **Aplikasi.** Semua e2e dijalankan dengan `screenshot: { mode: 'on', fullPage: true }`, sehingga ada satu PNG akhir untuk setiap test (API di-mock). Untuk state yang tidak tercakup, dibuat spec sementara di luar repo.
 3. Satu reviewer untuk tiap grup layar membandingkan screenshot berdampingan, lalu membaca kode layar supaya setiap gap menunjuk `file:baris`.
 
@@ -96,3 +96,10 @@ User memilih "Terapkan semua rekomendasi" (23 Nov 2026). Semua butir **Diterapka
 | R20 | Kalimat "ELGOS tidak mengirim apa pun ke vendor" | PK-1 | Pindah ke petunjuk kecil di bawah tombol | Diterapkan: petunjuk di bawah tombol "Minta ke" dan daftar permintaan |
 | R21 | Wizard: baca saja vs sunting | PK-4 | Sunting tetap, dengan simpan otomatis (K-P6-5) | Diterapkan (keputusan saja) |
 | R22 | Atasan di tab Pengukuran AI (LIM) | PK-7 | Diputuskan thread B15 | Diterapkan (keputusan diserahkan ke B15) |
+
+## Tindak lanjut
+
+| # | Butir | Rencana | Status |
+| --- | --- | --- | --- |
+| TL-1 | Ambang snapshot longgar tanpa pelacak (audit PR 39 butir 39-1): `dashboard-hr-terang/gelap` 0,04 (`e2e/dashboard.spec.ts`), `asisten-panel-karyawan` 0,06 (`e2e/asisten.spec.ts`); bawaan 0,02 | CI kini mengunggah `apps/web/test-results` (actual/diff PNG) saat job e2e gagal (`.github/workflows/ci.yml`, artifact `e2e-test-results`). Langkah: turunkan kedua ambang ke 0,02 di satu PR, biarkan CI gagal, ambil PNG actual dari artifact, tinjau, jadikan baseline baru, lalu CI harus hijau di 0,02 | Terbuka (23 Nov) |
+| TL-2 | Salinan mockup klien sudah dihapus dari tree (39-5), tetapi masih ada di riwayat git repo publik | Keputusan user/Andrian: biarkan atau tulis ulang riwayat | Terbuka |

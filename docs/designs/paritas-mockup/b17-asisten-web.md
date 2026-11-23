@@ -4,7 +4,7 @@ Bagian dari [rencana paritas](README.md). Paket: [B17 Asisten ELGOS](../b17-asis
 
 ## Tujuan
 
-FAB `smart_toy` di kanan bawah setiap layar ber-shell dan panel chat "Asisten ELGOS" persis mockup Pak Eji (`tools/mockup-render/Main.dc.html` baris 1235–1250, CSS `.fab`/`.asst`/`.chat`/`.msg` baris 103–108 dan 138–142, logika `asOpen`/`asTurns`/`asDraft`/`asReply` baris 1741–1768 dan 2119–2120). Jawaban berasal dari API B17, bukan `RULES` mockup.
+FAB `smart_toy` di kanan bawah setiap layar ber-shell dan panel chat "Asisten ELGOS" persis mockup Pak Eji (`/mnt/project-files/mockup-pak-eji/Main.dc.html` baris 1235–1250, CSS `.fab`/`.asst`/`.chat`/`.msg` baris 103–108 dan 138–142, logika `asOpen`/`asTurns`/`asDraft`/`asReply` baris 1741–1768 dan 2119–2120). Jawaban berasal dari API B17, bukan `RULES` mockup.
 
 Referensi foto: `node catalog.cjs` dengan `{ asOpen: true }` untuk hr, atasan, karyawan, admin, super, HR sebagai karyawan, dan satu state berisi percakapan dengan tombol "Buka Rencana belajar".
 

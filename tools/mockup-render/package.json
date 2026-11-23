@@ -1,0 +1,11 @@
+{
+  "name": "@ewi/mockup-render",
+  "private": true,
+  "description": "Alat internal: memotret layar mockup Pak Eji untuk audit paritas ELGOS. Bukan bagian build aplikasi.",
+  "scripts": {
+    "catalog": "node catalog.cjs"
+  },
+  "devDependencies": {
+    "playwright": "1.63.0"
+  }
+}

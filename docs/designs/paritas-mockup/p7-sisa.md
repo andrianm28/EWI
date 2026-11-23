@@ -4,7 +4,7 @@ Bagian dari [rencana paritas](README.md). Lingkup: gap yang tersisa setelah P2�
 
 Keputusan user 23 Nov: tata letak, copy, dan komponen ikut mockup 1:1. Fitur kelola tambahan tidak dibuang tetapi dipindah ke pola sekunder (`<details>` "Kelola …"). `UiStatus` global tidak diubah (K-3); status di layar yang mockup-nya memakai chip memakai `UiChip` lokal (pola K-P6-2). API tidak diubah.
 
-Acuan domain: [b14-learning-delivery.md](../b14-learning-delivery.md), [b16-career-promotion.md](../b16-career-promotion.md), B0 (`docs/designs/b0-fondasi-ui.md`). Mockup: `tools/mockup-render/Main.dc.html` (LD 936–1006 + data 1453–1510; CP 1119–1162 + data 1595–1645; aiv 636–668; iv 560–600; admin 1165–1250).
+Acuan domain: [b14-learning-delivery.md](../b14-learning-delivery.md), [b16-career-promotion.md](../b16-career-promotion.md), B0 (`docs/designs/b0-fondasi-ui.md`). Mockup: `/mnt/project-files/mockup-pak-eji/Main.dc.html` (LD 936–1006 + data 1453–1510; CP 1119–1162 + data 1595–1645; aiv 636–668; iv 560–600; admin 1165–1250).
 
 ## Gap yang ditutup
 

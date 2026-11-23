@@ -2,7 +2,7 @@
 
 Bagian dari [rencana paritas](README.md). Keputusan user 23 Nov 2026: **"Terapkan semua rekomendasi"** untuk daftar R1–R22 di README (bagian "Status 23 Nov 2026 (akhir P7)"). Aturan tetap: tampilan 1:1 mockup, keputusan yang sudah tercatat di spek paket (`docs/designs/b*.md`) tidak berubah.
 
-Lingkup: `apps/web` saja. API tidak diubah, tidak ada migrasi, flag tetap seperti sekarang. Layar LIM (`screens/b15-lim`, thread B15) tidak disentuh; butir R yang menyebut gap LIM dicatat sebagai keputusan untuk thread itu. Mockup: `tools/mockup-render/Main.dc.html` (baris disebut `M:<baris>`).
+Lingkup: `apps/web` saja. API tidak diubah, tidak ada migrasi, flag tetap seperti sekarang. Layar LIM (`screens/b15-lim`, thread B15) tidak disentuh; butir R yang menyebut gap LIM dicatat sebagai keputusan untuk thread itu. Mockup: `/mnt/project-files/mockup-pak-eji/Main.dc.html` (baris disebut `M:<baris>`).
 
 ## Ringkasan
 
