@@ -67,28 +67,28 @@ Acuan domain: B0 (`docs/designs/b0-fondasi-ui.md` bagian 4 dan 5.3), B4, B5 bagi
 
 ## Test (e2e, API di-mock)
 
-- [ ] `e2e/ui-kit.spec.ts`: `UiAgentCard` (judul "Agen AI · …", chip Pilot, tombol tonal bila `to`; tanpa `to` tidak ada tombol); `UiBreadcrumb` (`navigation "Lokasi"`, induk tautan, butir terakhir `aria-current`, 12px); tabel klik baris (klik sel non-tautan berpindah, Tab memfokus tautan lalu Enter berpindah, sort tetap). Snapshot `ui-kit-*` diperbarui.
-- [ ] `e2e/paritas.spec.ts` (P3): kartu Agen AI di `/cc` (VM dan Values), `/dna`, `/tna`, `/ina` dengan judul dan copy mockup; tombol CC muncul hanya dengan flag `cca.interview`, tombol TNA ke `/iv`; DNA tanpa tombol. Breadcrumb di LD dan CP. Setiap breadcrumb di layar tersentuh memakai `nav "Lokasi"` 12px.
-- [ ] `e2e/tna-gap.spec.ts`: kolom Kode tampil; klik sel Target pada baris membuka Detail gap; tautan nama tetap bisa difokus.
-- [ ] `e2e/dashboard.spec.ts`: baris Pareto kompetensi adalah tautan ke `/tna/gap?kind=competency&competencyId=…` bila flag papan menyala; tanpa flag tidak ada tautan.
-- [ ] `e2e/core-competencies.spec.ts`: klik baris persyaratan membuka panel ubah untuk baris itu.
-- [ ] `e2e/improvement-needs.spec.ts`: kartu Agen AI berisi copy mockup; tabel verifikasi di kartu "Verifikasi AI".
-- [ ] API unit: `tna-gaps.test.js` (`code` ikut di baris kompetensi), `dashboard.test.js` (`competencyId` di baris Pareto).
+- [x] `e2e/ui-kit.spec.ts`: `UiAgentCard` (judul "Agen AI · …", chip Pilot, tombol tonal bila `to`; tanpa `to` tidak ada tombol); `UiBreadcrumb` (`navigation "Lokasi"`, induk tautan, butir terakhir `aria-current`, 12px); tabel klik baris (klik sel non-tautan berpindah, Tab memfokus tautan lalu Enter berpindah, sort tetap). Snapshot `ui-kit-*` diperbarui.
+- [x] `e2e/paritas.spec.ts` (P3): kartu Agen AI di `/cc` (VM dan Values), `/dna`, `/tna`, `/ina` dengan judul dan copy mockup; tombol CC muncul hanya dengan flag `cca.interview`, tombol TNA ke `/iv`; DNA tanpa tombol. Breadcrumb di LD dan CP. Setiap breadcrumb di layar tersentuh memakai `nav "Lokasi"` 12px.
+- [x] `e2e/tna-gap.spec.ts`: kolom Kode tampil; klik sel Target pada baris membuka Detail gap; tautan nama tetap bisa difokus.
+- [x] `e2e/dashboard.spec.ts`: baris Pareto kompetensi adalah tautan ke `/tna/gap?kind=competency&competencyId=…` bila flag papan menyala; tanpa flag tidak ada tautan.
+- [x] `e2e/core-competencies.spec.ts`: klik baris persyaratan membuka panel ubah untuk baris itu.
+- [x] `e2e/improvement-needs.spec.ts`: kartu Agen AI berisi copy mockup; tabel verifikasi di kartu "Verifikasi AI".
+- [x] API unit: `tna-gaps.test.js` (`code` ikut di baris kompetensi), `dashboard.test.js` (`competencyId` di baris Pareto).
 
 ## File
 
-- [ ] `apps/web/src/ui/UiAgentCard.vue`, `UiBreadcrumb.vue` (baru), `UiDataTable.vue`, `index.ts`
-- [ ] `apps/web/src/screens/ui-kit/UiKitView.vue`
-- [ ] `apps/web/src/screens/b10-core-competencies/CoreCompetenciesView.vue`, `RequirementsTab.vue`, `cc.css`
-- [ ] `apps/web/src/screens/b4-dna/DevelopmentNeedsView.vue`
-- [ ] `apps/web/src/screens/b5-tna/TnaScreen.vue`, `TnaGapView.vue`, `api.ts`, `tna.css`
-- [ ] `apps/web/src/screens/b6-iv/IvSessionView.vue`
-- [ ] `apps/web/src/screens/b9-ina/ImprovementNeedsView.vue`
-- [ ] `apps/web/src/screens/b13-li/LibraryView.vue`, `ProgramView.vue`, `RequestsView.vue`, `DraftView.vue`
-- [ ] `apps/web/src/screens/b14-ld/LearningDeliveryView.vue`, `b16-cp/CareerPromotionView.vue`
-- [ ] `apps/web/src/screens/b3-dashboard/DashboardView.vue`, `apps/web/src/api/dashboard.ts`
-- [ ] `apps/api/src/modules/tna/gaps.js`, `apps/api/src/modules/dashboard/index.js` + test unit
-- [ ] `docs/designs/b0-fondasi-ui.md` bagian 4
+- [x] `apps/web/src/ui/UiAgentCard.vue`, `UiBreadcrumb.vue` (baru), `UiDataTable.vue`, `index.ts`
+- [x] `apps/web/src/screens/ui-kit/UiKitView.vue`
+- [x] `apps/web/src/screens/b10-core-competencies/CoreCompetenciesView.vue`, `RequirementsTab.vue`, `cc.css`
+- [x] `apps/web/src/screens/b4-dna/DevelopmentNeedsView.vue`
+- [x] `apps/web/src/screens/b5-tna/TnaScreen.vue`, `TnaGapView.vue`, `api.ts`, `tna.css`
+- [x] `apps/web/src/screens/b6-iv/IvSessionView.vue`
+- [x] `apps/web/src/screens/b9-ina/ImprovementNeedsView.vue`
+- [x] `apps/web/src/screens/b13-li/LibraryView.vue`, `ProgramView.vue`, `RequestsView.vue`, `DraftView.vue`
+- [x] `apps/web/src/screens/b14-ld/LearningDeliveryView.vue`, `b16-cp/CareerPromotionView.vue`
+- [x] `apps/web/src/screens/b3-dashboard/DashboardView.vue`, `apps/web/src/api/dashboard.ts`
+- [x] `apps/api/src/modules/tna/gaps.js`, `apps/api/src/modules/dashboard/index.js` + test unit
+- [x] `docs/designs/b0-fondasi-ui.md` bagian 4
 
 ## Review spek
 

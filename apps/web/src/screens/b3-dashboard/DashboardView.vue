@@ -1,6 +1,7 @@
 <script setup lang="ts">
 // Dashboard utama HR / Dashboard tim atasan (mockup Pak Eji, layar `dash`). Angka dari GET /api/dashboard.
 import { computed, onMounted, ref } from 'vue'
+import { RouterLink } from 'vue-router'
 import AppShell from '@/components/AppShell.vue'
 import { UiButton, UiCard, UiChip, UiKpiCard, UiNote, UiProgressBar } from '@/ui'
 import { ApiError } from '@/api/client'
@@ -90,6 +91,10 @@ const actions = computed(() => (data.value?.actions ?? []).flatMap((item) => {
   return [{ key: a.key, text: a.text(item.count), desc: a.desc, cta: a.cta, to: a.routes.find((r) => routeOpen(r, session.activeView, session)) }]
 }))
 
+// D1 paritas: baris kompetensi membuka Detail gap bila layarnya bisa dibuka; temuan tanpa kompetensi tetap teks
+const gapOpen = computed(() => routeOpen('tna-gap', session.activeView, session))
+const paretoTo = (r: { competencyId: string | null }) => (gapOpen.value && r.competencyId ? { name: 'tna-gap', query: { kind: 'competency', competencyId: r.competencyId } } : undefined)
+
 const PART_LABEL: Record<string, string> = { cca: 'CCA', dna: 'DNA', tna: 'TNA', ina: 'INA' }
 
 const modules = computed(() => (data.value?.modules ?? []).flatMap((m) => {
@@ -140,14 +145,17 @@ const modules = computed(() => (data.value?.modules ?? []).flatMap((m) => {
           <p v-else-if="!data.pareto.rows.length" class="el-muted">Belum ada temuan pelatihan yang disetujui HR.</p>
           <template v-else>
             <p class="el-muted dash-note">{{ paretoNote }}</p>
-            <div v-for="r in data.pareto.rows" :key="r.key" data-testid="pareto-baris" class="dash-pareto">
+            <component
+              :is="paretoTo(r) ? RouterLink : 'div'" v-for="r in data.pareto.rows" :key="r.key" :to="paretoTo(r)" data-testid="pareto-baris"
+              :class="['dash-pareto', { 'dash-pareto--link': paretoTo(r) }]"
+            >
               <div class="dash-row">
                 <span class="dash-strong">{{ r.label }}</span>
                 <UiChip v-if="r.hot" tone="critical" icon="warning">Prioritas</UiChip>
               </div>
               <div class="el-muted el-mono dash-small">{{ r.people }} orang · kum. {{ pct(r.cumulativeShare) }}%</div>
               <UiProgressBar :value="pct(r.cumulativeShare)" :tone="r.hot ? 'critical' : 'primary'" :label="`Kumulatif ${r.label}`" />
-            </div>
+            </component>
           </template>
         </UiCard>
 
@@ -177,6 +185,8 @@ const modules = computed(() => (data.value?.modules ?? []).flatMap((m) => {
 .dash-top { align-items: start; }
 .dash-note { margin: -4px 0 12px; }
 .dash-pareto { margin-bottom: 14px; display: flex; flex-direction: column; gap: 4px; }
+.dash-pareto--link { color: inherit; text-decoration: none; border-radius: 8px; margin-left: -8px; margin-right: -8px; padding: 0 8px; }
+.dash-pareto--link:hover { background: var(--el-surface-1); }
 .dash-strong { font-weight: 500; }
 .dash-action { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 12px 0; border-bottom: 1px solid var(--el-outline-variant); }
 .dash-action:last-child { border-bottom: 0; }

@@ -1,6 +1,7 @@
 <script setup lang="ts">
 // Persyaratan kompetensi per sumber (visi dan misi, atau nilai korporasi): KPI kesiapan, tabel gap, dan kelola oleh HR.
-import { computed, onMounted, reactive, ref } from 'vue'
+import { computed, onMounted, reactive, ref, watch } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import { cca, CLASS_LABEL, fmt, type GroupKey, type Overview, type OverviewGroup, type OverviewRow, type SourceKind } from '@/api/cca'
 import { UiButton, UiCard, UiChip, UiDataTable, UiErrorSummary, UiField, UiKpiCard, UiNote, UiProgressBar, type UiColumn } from '@/ui'
 
@@ -18,6 +19,18 @@ async function load() {
   try { data.value = await cca.overview(props.group) } catch (e) { errors.value = [{ message: (e as Error).message }] } finally { loading.value = false }
 }
 onMounted(load)
+
+// Klik baris (paritas P3, K-P3-4): ?ubah=<id> membuka panel ubah baris itu sampai CC-3 punya layar detail.
+const route = useRoute()
+const router = useRouter()
+const editTo = (r: Record<string, unknown>) => ({ query: { ...route.query, ubah: String(r.id) } })
+function openFromQuery() {
+  const id = typeof route.query.ubah === 'string' ? route.query.ubah : ''
+  const g = id ? data.value?.groups.find((x) => x.rows.some((r) => r.id === id)) : undefined
+  if (g && editor.id !== id) edit(g, g.rows.find((r) => r.id === id)!)
+}
+watch(data, openFromQuery)
+watch(() => route.query.ubah, (id, old) => { if (id) openFromQuery(); else if (old && editor.id === old) closeEditor() })
 
 async function run(fn: () => Promise<void>, done: string) {
   errors.value = []; notice.value = ''
@@ -62,7 +75,11 @@ function addTo(g: OverviewGroup) { Object.assign(editor, { sourceId: g.id, id: '
 function edit(g: OverviewGroup, r: OverviewRow) {
   Object.assign(editor, { sourceId: g.id, id: r.id, name: r.name, definition: r.definition ?? '', target: String(r.targetScore), actual: r.actualScore === null ? '' : String(r.actualScore) })
 }
-const closeEditor = () => { editor.sourceId = ''; editor.id = '' }
+const closeEditor = () => {
+  const linked = !!editor.id && route.query.ubah === editor.id
+  editor.sourceId = ''; editor.id = ''
+  if (linked) { const query = { ...route.query }; delete query.ubah; void router.replace({ query }) }
+}
 const saveRow = () => run(async () => {
   const target = num(editor.target)
   if (target === null || Number.isNaN(target)) throw new Error('Target wajib diisi dengan angka 0-100')
@@ -81,6 +98,7 @@ const setStatus = (r: OverviewRow, status: 'validated' | 'rejected') =>
       <template v-if="isVm">Seberapa besar gap kompetensi karyawan terhadap persyaratan yang diturunkan dari visi dan misi perusahaan.</template>
       <template v-else>Seberapa besar gap karyawan dalam menunjukkan perilaku tiap nilai korporasi.</template>
     </p>
+    <slot />
     <UiErrorSummary v-if="errors.length" :errors="errors" />
     <p v-if="notice" role="status" class="el-muted">{{ notice }}</p>
 
@@ -115,7 +133,7 @@ const setStatus = (r: OverviewRow, status: 'validated' | 'rejected') =>
         </div>
         <UiDataTable
           :columns="columns" :rows="g.rows" row-key="id" :caption="`${isVm ? 'Persyaratan kompetensi' : 'Indikator perilaku'}: ${g.title}`" caption-hidden
-          :empty-text="`Belum ada ${rowWord}.`" style="margin-top: 16px"
+          :empty-text="`Belum ada ${rowWord}.`" style="margin-top: 16px" :row-to="editTo" row-link-key="name"
         >
           <template #cell-name="{ row }"><b>{{ row.name }}</b><div v-if="row.definition" class="el-muted cc-small">{{ row.definition }}</div></template>
           <template #cell-actualScore="{ row }">{{ fmt(asRow(row).actualScore) }}</template>

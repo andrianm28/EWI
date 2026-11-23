@@ -5,7 +5,7 @@ import { useRoute, useRouter } from 'vue-router'
 import AppShell from '@/components/AppShell.vue'
 import './li.css'
 import { ApiError } from '@/api/client'
-import { UiButton, UiCard, UiChip, UiKpiCard, UiNote, UiStatus } from '@/ui'
+import { UiBreadcrumb, UiButton, UiCard, UiChip, UiKpiCard, UiNote, UiStatus } from '@/ui'
 import { li, type CatalogItem, type Library, type ModuleDetail, type ModuleRow } from './api'
 import { KIND_LABEL, LEVEL_LABEL, jobLabel, pct, priorityLabel, statusLabel } from './labels'
 
@@ -68,7 +68,7 @@ async function develop(m: ModuleDetail) {
 
 <template>
   <AppShell>
-    <p class="el-muted">Learning Intervention › Library</p>
+    <UiBreadcrumb :items="[{ label: 'Learning Intervention' }, { label: 'Library' }]" />
     <h1 class="el-h1">Library</h1>
     <p class="el-muted">Semua modul Knowledge, Skill, dan Attitude (KSA) dari DACUM Tool 2. Setiap modul dapat diminta dari {{ vendor }} atau dikembangkan bersama ELGOS.</p>
 

@@ -137,7 +137,7 @@ Semua di bawah `/api/tna`, sesudah `auth`, `tenantContext`, `requireSubmodule('t
   "unapprovedCompetencies": 0 } }
 
 // GET /gaps/competencies → data.rows[] + data.unapprovedCompetencies (cumulativeShare null pada baris ok)
-{ "key": "c:<uuid>", "kind": "competency", "competencyId": "<uuid>", "name": "Analisis insiden",
+{ "key": "c:<uuid>", "kind": "competency", "competencyId": "<uuid>", "code": "ST-A2", "name": "Analisis insiden",
   "target": 3, "actual": 2.25, "gap": 0.75, "targetPct": 75, "actualPct": 56, "gapPct": 19,
   "assessed": 4, "peopleWithGap": 3, "peopleTotal": 5, "cumulativeShare": 0.41,
   "classification": "pending", "interviewed": false, "interviewedCount": 0, "assignedCount": 0 }
@@ -363,7 +363,7 @@ Ditulis sebelum PR layar (aturan 11 langkah 1). Dasar: B0 bagian 4 dan 5.3, mock
 **Layar `tna`** (`TnaScreen.vue`): breadcrumb "Learning Needs Analysis › Training Needs", `<h1>` "Training Needs".
 - Papan tampil bila `tna.gap_board` menyala, tampilan aktif bukan `karyawan`, **dan** `session.roles` memuat `hr_admin`, `eta_admin`, atau `supervisor` (peran yang diterima R1; `pimpinan`, `role_leader`, `tenant_admin` akan mendapat 403 `ROLE_FORBIDDEN`). Bila tidak, layar tidak memanggil `/gaps/*` sama sekali (tidak ada galat tambahan). `UiTabs` `id="tna-tab"`, `label="Bagian Training Needs"`: "Ringkasan", "Gap kompetensi", "Gap OKR" (kunci `ringkasan`, `kompetensi`, `okr`; tab disimpan di query `tab`).
   - Ringkasan: empat `UiKpiCard` dari `GET /gaps/summary`: "GAP KOMPETENSI", "GAP OKR", "SUDAH DIWAWANCARAI" (`interviewed` / `totalGaps`), "KONTRIBUSI 4 GAP TERBESAR" (`top4Share` sebagai persen; "–" bila `totalGaps = 0`, karena API mengirim 0); kartu "Klasifikasi gap" (empat nilai `classification`, `UiProgressBar` bernilai jumlah / `totalGaps` × 100); ringkasan memakai periode yang sama dengan tab OKR (ganti periode memuat ulang ringkasan dan tab OKR); kartu "Alur dari gap ke solusi" (teks mockup). Bila `unapprovedCompetencies > 0`: `UiNote` "n kompetensi menunggu pengesahan HR sebelum dipakai sebagai target".
-  - Gap kompetensi: `UiDataTable` dari `GET /gaps/competencies`: Kompetensi, Target (`targetPct`), Aktual (`actualPct`), Gap (`gapPct` + bar), Orang (`peopleWithGap` dari `assessed`), Status wawancara, Klasifikasi. Kolom Kode mockup ditunda (B4). Nama kompetensi adalah tautan (slot `#cell-name` `UiDataTable`, yang tidak punya klik baris) ke `tna-gap`.
+  - Gap kompetensi: `UiDataTable` dari `GET /gaps/competencies`: Kompetensi, Target (`targetPct`), Aktual (`actualPct`), Gap (`gapPct` + bar), Orang (`peopleWithGap` dari `assessed`), Status wawancara, Klasifikasi. Kolom Kode (`code`, null bila kompetensi belum berkode) ditambahkan paritas P3 sebagai kolom pertama. Baris bisa diklik (`rowTo` `UiDataTable`, tautan di sel nama) ke `tna-gap`; begitu pula tabel Gap OKR.
   - Gap OKR: pemilih periode (`periods`, nilai awal `period`), tabel dari `GET /gaps/okr`: Key result, Target, Aktual, Selisih (`diff` + `unit`), Orang (`peopleMissed` dari `peopleTotal`), Status wawancara, Klasifikasi. Nama key result adalah tautan ke `tna-gap`.
   - Label klasifikasi (`labels.ts`, satu peta bersama): `training` "Training Needs", `non_training` "Improvement Needs", `review` "Perlu ditinjau HR", `pending` "Belum diwawancarai", `ok` "Dalam batas". Status wawancara: "n selesai · n berjalan" dari `interviewedCount`/`assignedCount`.
   - Galat API tampil di `UiErrorSummary`; tabel kosong memakai `emptyText` "Belum ada gap. Impor data asesmen atau kinerja lebih dulu."

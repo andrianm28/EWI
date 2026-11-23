@@ -5,7 +5,7 @@ import { useRoute, useRouter } from 'vue-router'
 import AppShell from '@/components/AppShell.vue'
 import './li.css'
 import { ApiError } from '@/api/client'
-import { UiAuditLine, UiButton, UiCard, UiErrorSummary, UiField, UiNote, UiStatus, UiStepper } from '@/ui'
+import { UiAuditLine, UiBreadcrumb, UiButton, UiCard, UiErrorSummary, UiField, UiNote, UiStatus, UiStepper } from '@/ui'
 import { li, type Draft } from './api'
 import { DRAFT_LABEL, KIND_LABEL, LEVEL_LABEL } from './labels'
 
@@ -61,7 +61,7 @@ const review = (decision: 'approved' | 'returned') => act(
 
 <template>
   <AppShell>
-    <p class="el-muted"><RouterLink :to="{ name: 'req' }">Permintaan &amp; pengembangan</RouterLink> › Pengembangan modul</p>
+    <UiBreadcrumb :items="[{ label: 'Permintaan & pengembangan', to: { name: 'req' } }, { label: 'Pengembangan modul' }]" />
     <UiErrorSummary v-if="error" :errors="[{ message: error }]" />
     <UiNote v-if="notice" tone="success" data-testid="info">{{ notice }}</UiNote>
 

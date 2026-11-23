@@ -4,7 +4,7 @@
 import { computed, onMounted, ref, watch } from 'vue'
 import AppShell from '@/components/AppShell.vue'
 import { useSessionStore } from '@/stores/session'
-import { UiButton, UiCard, UiChip, UiDataTable, UiErrorSummary, UiKpiCard, UiNote, UiProgressBar, UiSegmented, UiTabs, type UiColumn } from '@/ui'
+import { UiAgentCard, UiBreadcrumb, UiButton, UiCard, UiChip, UiDataTable, UiErrorSummary, UiKpiCard, UiNote, UiProgressBar, UiSegmented, UiTabs, type UiColumn } from '@/ui'
 import { dnaApi, STAGE_LABEL, TIER_LABEL, type Curriculum, type DevelopmentPlan, type Dictionary, type EmployeeNeed, type Overview, type PlanModule, type Stage } from './api'
 
 const session = useSessionStore()
@@ -110,9 +110,13 @@ const moduleChip = (m: PlanModule): { tone: 'success' | 'review' | 'neutral'; la
 
 <template>
   <AppShell>
-    <p class="el-muted" style="margin:0 0 4px">Learning Needs Analysis › Developmental Needs</p>
+    <UiBreadcrumb :items="[{ label: 'Learning Needs Analysis' }, { label: 'Developmental Needs' }]" />
     <h1 class="el-h1">Developmental Needs</h1>
     <p class="el-muted" style="margin:0 0 16px">Proaktif: kebutuhan pengembangan setiap jabatan berdasarkan kamus kompetensi dan tingkat Basic, Intermediate, Advanced (BIA).</p>
+    <!-- Tanpa tombol: layar validasi kamus lewat AI belum ada (paritas P3, K-P3-2) -->
+    <UiAgentCard title="Validasi kamus kompetensi" data-testid="dn-agen">
+      AI mewawancarai atasan pemilik jabatan untuk memvalidasi hasil DACUM, lalu karyawan jabatan itu untuk menilai posisi mereka pada tingkat Basic, Intermediate, Advanced.
+    </UiAgentCard>
 
     <UiErrorSummary v-if="error" :errors="[{ message: error }]" style="margin-bottom:16px" />
     <p v-if="loading" class="el-muted">Memuat…</p>

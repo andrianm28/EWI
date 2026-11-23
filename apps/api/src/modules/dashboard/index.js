@@ -106,7 +106,7 @@ function dashboardRouter({ stores, flags, entitlements, settings, audit }) {
       const sent = new Set(marked.slice(0, PARETO_LIMIT).filter((x) => !x.competencyId).map((x) => x.key));
       titleRowIds = [...new Set(findings.filter((f) => inScope.has(f.userId) && !f.competencyId && sent.has(`t:${String(f.title).toLowerCase()}`)).map((f) => f.userId))];
       pareto = {
-        rows: marked.slice(0, PARETO_LIMIT).map(({ key, label, people: n, score, share, cumulativeShare, hot }) => ({ key, label, people: n, score, share, cumulativeShare, hot })),
+        rows: marked.slice(0, PARETO_LIMIT).map(({ key, label, competencyId, people: n, score, share, cumulativeShare, hot }) => ({ key, label, competencyId, people: n, score, share, cumulativeShare, hot })),
         total: marked.length,
         hotCount: marked.filter((x) => x.hot).length,
       };

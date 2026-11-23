@@ -1,7 +1,10 @@
 <script setup lang="ts" generic="Row extends Record<string, unknown>">
 // Tabel data rapat (IBM Carbon): header bisa diurutkan, toolbar, caption, keadaan kosong.
 // Pengurutan di sisi klien atas `rows`. Sel khusus lewat slot #cell-<key>="{ row, value }".
+// Baris bisa diklik (`.row.lk` mockup) lewat `rowTo`: sel `rowLinkKey` menjadi tautan, klik di mana pun pada baris
+// mengikuti tautan itu kecuali klik pada elemen interaktif lain.
 import { computed } from 'vue'
+import { useRouter, type RouteLocationRaw } from 'vue-router'
 import UiIcon from './UiIcon.vue'
 
 export interface Column {
@@ -22,7 +25,11 @@ const props = withDefaults(defineProps<{
   caption: string
   captionHidden?: boolean
   emptyText?: string
-}>(), { captionHidden: false, emptyText: 'Belum ada data.' })
+  /** Tujuan baris; null/undefined = baris biasa. */
+  rowTo?: (row: Row) => RouteLocationRaw | null | undefined
+  /** Kolom yang isinya menjadi tautan baris (bawaan kolom pertama). */
+  rowLinkKey?: string
+}>(), { captionHidden: false, emptyText: 'Belum ada data.', rowTo: undefined, rowLinkKey: undefined })
 
 const sort = defineModel<SortState | null>('sort', { default: null })
 
@@ -54,6 +61,18 @@ const sorted = computed(() => {
   })
 })
 
+const router = useRouter()
+const linkKey = computed(() => props.rowLinkKey ?? props.columns[0]?.key)
+const targetOf = (row: Row) => props.rowTo?.(row) ?? null
+const INTERACTIVE = 'a, button, input, select, textarea, label, summary, [role="button"]'
+function onRowClick(e: MouseEvent, row: Row) {
+  const to = targetOf(row)
+  if (!to || e.defaultPrevented || e.button !== 0) return
+  if ((e.target as Element | null)?.closest(INTERACTIVE)) return
+  if (window.getSelection()?.toString()) return // pengguna sedang menyeleksi teks
+  void router.push(to)
+}
+
 const ariaSort = (col: Column) => (sort.value?.key === col.key ? (sort.value.dir === 'asc' ? 'ascending' : 'descending') : 'none')
 const sortIcon = (col: Column) => (sort.value?.key === col.key ? (sort.value.dir === 'asc' ? 'arrow_upward' : 'arrow_downward') : 'unfold_more')
 </script>
@@ -78,9 +97,12 @@ const sortIcon = (col: Column) => (sort.value?.key === col.key ? (sort.value.dir
           </tr>
         </thead>
         <tbody>
-          <tr v-for="row in sorted" :key="String(row[rowKey])">
+          <tr v-for="row in sorted" :key="String(row[rowKey])" :class="{ 'is-link': targetOf(row) }" @click="onRowClick($event, row)">
             <td v-for="c in columns" :key="c.key" :class="{ 'is-right': c.align === 'right', 'el-mono': c.mono }">
-              <slot :name="`cell-${c.key}`" :row="row" :value="row[c.key]">{{ row[c.key] ?? '–' }}</slot>
+              <RouterLink v-if="c.key === linkKey && targetOf(row)" :to="targetOf(row)!" class="el-table__link">
+                <slot :name="`cell-${c.key}`" :row="row" :value="row[c.key]">{{ row[c.key] ?? '–' }}</slot>
+              </RouterLink>
+              <slot v-else :name="`cell-${c.key}`" :row="row" :value="row[c.key]">{{ row[c.key] ?? '–' }}</slot>
             </td>
           </tr>
           <tr v-if="!sorted.length">
@@ -110,6 +132,9 @@ const sortIcon = (col: Column) => (sort.value?.key === col.key ? (sort.value.dir
 .el-table tbody tr:last-child td { border-bottom: 0; }
 .el-table tbody tr:hover td { background: var(--el-surface-1); }
 .el-table .is-right { text-align: right; }
+.el-table tr.is-link { cursor: pointer; }
+.el-table__link { color: inherit; text-decoration: none; }
+.el-table__link:hover { text-decoration: underline; }
 .el-table__sort {
   display: inline-flex; align-items: center; gap: 4px; border: 0; background: transparent; padding: 0; font: inherit;
   letter-spacing: inherit; text-transform: inherit; color: inherit; cursor: pointer;
