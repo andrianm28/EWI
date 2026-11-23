@@ -139,6 +139,8 @@ function parseTrustProxy(raw) {
 // spek. Urutan untuk teks: Jakarta (ap-southeast-3) bila model tersedia in-region, lalu Singapura (ap-southeast-1),
 // lalu profil inferensi lintas region APAC (apac.). Profil di luar APAC (global., us., eu., ...) ditolak kecuali
 // AI_ALLOW_CROSS_REGION=true diputuskan kemudian.
+// Hasil cek akun ELGOS 23 Nov: Jakarta hanya lewat profil global., Singapura punya Claude in-region; user memilih
+// Singapura (docs/designs/pd-2b-bedrock-singapura.md), jadi bawaan BEDROCK_REGION Singapura. Jakarta tetap diizinkan.
 const JAKARTA = 'ap-southeast-3';
 const SINGAPORE = 'ap-southeast-1';
 const DEFAULT_AI_REGIONS = [JAKARTA, SINGAPORE];
@@ -158,7 +160,7 @@ function loadAiConfig(env, errors) {
   if (production && provider === 'stub') errors.push('AI_PROVIDER=stub tidak boleh di produksi (pakai bedrock)');
   const allowCrossRegion = env.AI_ALLOW_CROSS_REGION === 'true';
   const allowedRegions = (env.AI_ALLOWED_REGIONS || DEFAULT_AI_REGIONS.join(',')).split(',').map((r) => r.trim()).filter(Boolean);
-  const region = env.BEDROCK_REGION || JAKARTA;
+  const region = env.BEDROCK_REGION || SINGAPORE;
   const modelId = (env.BEDROCK_MODEL_ID || '').trim();
   let extraFields = null;
   if (provider === 'bedrock') {
