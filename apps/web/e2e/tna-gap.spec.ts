@@ -226,3 +226,61 @@ test('P5 TN-3/TN-5/TN-9/TN-10/TN-12: copy KPI dan note mockup, tombol Lihat gap 
   await page.getByRole('tab', { name: 'Gap OKR' }).click()
   await expect(page.getByRole('note')).toContainText('pencapaian OKR operasional')
 })
+
+// Triase review independen P5 (p5-code-review.md, bagian "Review independen")
+test('P5 triase M1: papan menyala, HR tetap melihat catatan temuan AI menunggu review di /tna', async ({ page }) => {
+  await setup(page, { flags: BOARD, reviewPending: 3 })
+  await page.goto('/tna')
+  const note = page.getByTestId('tna-review-ringkas')
+  await expect(note).toContainText('3 temuan AI dari wawancara TNA menunggu review')
+  await expect(note.getByRole('link', { name: 'Review' })).toHaveAttribute('href', '/m/tna/review')
+})
+
+test('P5 triase M1: tanpa temuan menunggu review, catatan tidak tampil', async ({ page }) => {
+  await setup(page, { flags: BOARD })
+  await page.goto('/tna')
+  await expect(page.getByRole('tab', { name: 'Ringkasan' })).toBeVisible()
+  await expect(page.getByTestId('tna-review-ringkas')).toHaveCount(0)
+})
+
+test('P5 triase: /tna/kelola dengan papan mati dialihkan ke /tna', async ({ page }) => {
+  await setup(page)
+  await page.goto('/tna/kelola')
+  await expect(page).toHaveURL(/\/tna$/)
+  await expect(page.getByTestId('tna-findings')).toBeVisible()
+})
+
+test('P5 triase M2: karyawan membuka /tna/kelola langsung, hasilnya sama dengan /tna (pengelolaan di /tna)', async ({ page }) => {
+  await setup(page, { peran: 'karyawan', flags: BOARD })
+  await page.goto('/tna')
+  await expect(page.getByRole('tab')).toHaveCount(0)
+  await expect(page.getByTestId('tna-findings')).toBeVisible()
+  await page.goto('/tna/kelola')
+  await expect(page).toHaveURL(/\/tna$/)
+  await expect(page.getByTestId('tna-findings')).toBeVisible()
+})
+
+test('P5 triase M2: atasan dengan papan menyala bisa membuka /tna/kelola', async ({ page }) => {
+  await setup(page, { peran: 'atasan', flags: BOARD })
+  await page.goto('/tna/kelola')
+  await expect(page).toHaveURL(/\/tna\/kelola$/)
+  await expect(page.getByTestId('tna-findings')).toBeVisible()
+})
+
+test('P5 triase M2: submodul tna tidak dilanggan, /tna/kelola diarahkan ke beranda seperti /tna', async ({ page }) => {
+  const { penangan } = papanGapTna({ peran: 'hr' })
+  await mockApi(page, penangan)
+  await loginSebagai(page, 'hr', { submodules: ['cca', 'dna', 'ina'], flags: BOARD })
+  await page.goto('/tna')
+  await expect(page).not.toHaveURL(/\/tna/)
+  const home = new URL(page.url()).pathname
+  await page.goto('/tna/kelola')
+  await expect(page).not.toHaveURL(/\/tna/)
+  expect(new URL(page.url()).pathname).toBe(home)
+})
+
+test('P5 triase TN-12: "pencapaian OKR" tebal seperti mockup', async ({ page }) => {
+  await setup(page, { flags: BOARD })
+  await page.goto('/tna?tab=okr')
+  await expect(page.getByRole('note').locator('b', { hasText: 'pencapaian OKR' })).toBeVisible()
+})

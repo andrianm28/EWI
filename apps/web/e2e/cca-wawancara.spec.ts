@@ -178,6 +178,9 @@ test('HR: sintesis menandai gap besar, menyembunyikan angka di bawah 5 responden
 
   await kartu.getByRole('link', { name: 'Lihat Corporate Values' }).click()
   await expect(page.getByRole('tab', { name: 'Corporate Values' })).toHaveAttribute('aria-selected', 'true')
+  await page.getByRole('tab', { name: 'Wawancara AI' }).click()
+  await page.getByTestId('cc-sintesis').getByRole('link', { name: 'Lihat Vision & Mission' }).click()
+  await expect(page.getByRole('tab', { name: 'Corporate Vision & Mission' })).toHaveAttribute('aria-selected', 'true')
 })
 
 test('P5 AH-9: sintesis tanpa daftar tema menampilkan pesan galat, bukan kartu rusak', async ({ page }) => {

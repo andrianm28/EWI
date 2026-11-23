@@ -125,8 +125,11 @@ test('HR: tab Vision & Mission menampilkan kesiapan dan gap; status validasi dan
   await vision.getByRole('row', { name: /Tata kelola layanan/ }).getByRole('cell').nth(1).click()
   await expect(vision.getByTestId('cc-editor')).toContainText('Tervalidasi')
   await expect(vision.getByTestId('cc-editor').getByRole('button', { name: /^Validasi/ })).toHaveCount(0)
+  // triase P5: Tolak minta konfirmasi di tempat dulu
   await vision.getByTestId('cc-editor').getByRole('button', { name: 'Tolak Tata kelola layanan' }).click()
-  expect(sent).toContainEqual({ method: 'PATCH', path: '/requirements/r-2', body: { status: 'rejected' } })
+  expect(sent.filter((x) => x.path === '/requirements/r-2')).toEqual([])
+  await vision.getByTestId('cc-editor').getByRole('button', { name: 'Ya, tolak Tata kelola layanan' }).click()
+  await expect.poll(() => sent.filter((x) => x.path === '/requirements/r-2')).toEqual([{ method: 'PATCH', path: '/requirements/r-2', body: { status: 'rejected' } }])
 
   await vision.getByRole('button', { name: 'Tambah persyaratan kompetensi' }).click()
   await vision.getByLabel('Nama').fill('Keamanan cloud')
@@ -302,7 +305,7 @@ test('P5 CV-7..CV-10: Values tiga KPI, label Kesiapan, bar kesiapan hijau bila 8
   await expect(committed.getByRole('progressbar', { name: 'Gap Serah terima rapi' })).toHaveClass(/el-bar--critical/)
 })
 
-test('P5 AA-1..AA-6: Wawancara AI atasan dengan breadcrumb, chip Perlu wawancara, tanggal singkat, tombol tim tonal nonaktif', async ({ page }) => {
+test('P5 AA-1..AA-6: Wawancara AI atasan dengan breadcrumb, chip Perlu wawancara, tanggal singkat, status tim berupa teks', async ({ page }) => {
   const team = [{ userId: 'u-a', name: 'Karyawan A', jobRoleName: 'Engineer', status: 'completed' }, { userId: 'u-b', name: 'Karyawan B', jobRoleName: 'Engineer', status: 'assigned' }]
   await loginAs(page, { role: 'supervisor', assignments: { role: 'leader', mine: { leader: assignment('leader', 'assigned'), employee: null }, canAssign: true, team } })
   await page.goto('/aiv')
@@ -311,12 +314,41 @@ test('P5 AA-1..AA-6: Wawancara AI atasan dengan breadcrumb, chip Perlu wawancara
   await expect(card).toContainText('Perlu wawancara')
   await expect(card).toContainText('Batas waktu 30 Nov 2026')
   await expect(card.getByRole('heading', { name: 'Wawancara pimpinan dari HR' })).toHaveClass(/el-h3/)
-  await expect(page.getByRole('row', { name: /Karyawan A/ }).getByRole('button', { name: 'Selesai' })).toBeDisabled()
-  await expect(page.getByRole('row', { name: /Karyawan B/ }).getByRole('button', { name: 'Menunggu karyawan' })).toBeDisabled()
+  // triase P5: status non-tugaskan berupa teks, bukan tombol nonaktif
+  await expect(page.getByRole('row', { name: /Karyawan A/ }).getByRole('button')).toHaveCount(0)
+  await expect(page.getByRole('row', { name: /Karyawan B/ }).getByRole('cell').last()).toHaveText('Menunggu karyawan')
 })
 
 test('P5 AA-1: karyawan juga melihat breadcrumb Wawancara AI', async ({ page }) => {
   await loginAs(page, { role: 'learner', assignments: { role: 'employee', mine: { leader: null, employee: assignment('employee', 'assigned') } } })
   await page.goto('/aiv')
   await expect(page.getByRole('navigation', { name: 'Lokasi' })).toHaveText(/Learning Needs Analysis\s*›\s*Wawancara AI/)
+})
+
+// Triase review independen P5
+test('P5 triase: membuka panel lewat klik baris memindah fokus ke judul panel; Tolak bisa dibatalkan', async ({ page }) => {
+  const sent = await loginAs(page)
+  await page.goto('/cc')
+  const vision = page.getByTestId('cc-sumber-vision')
+  await vision.getByRole('row', { name: /Arsitektur public cloud/ }).getByRole('cell').nth(1).click()
+  await expect(vision.getByRole('heading', { name: 'Ubah persyaratan kompetensi' })).toBeFocused()
+  const editor = vision.getByTestId('cc-editor')
+  await editor.getByRole('button', { name: 'Tolak Arsitektur public cloud' }).click()
+  await editor.getByRole('button', { name: 'Batal tolak' }).click()
+  await expect(editor.getByRole('button', { name: /^Ya, tolak/ })).toHaveCount(0)
+  expect(sent).toEqual([])
+})
+
+test('P5 triase: Validasi tidak terkirim dua kali saat permintaan masih berjalan', async ({ page }) => {
+  const sent = await loginAs(page)
+  // PATCH lambat: tombol harus nonaktif selama menunggu
+  await page.route(/\/api\/cca\/requirements\//, async (r) => { sent.push({ method: r.request().method(), path: '/slow', body: null }); await new Promise((ok) => setTimeout(ok, 800)); await r.fulfill({ json: { data: {} } }) })
+  await page.goto('/cc?ubah=r-1')
+  const editor = page.getByTestId('cc-editor')
+  const btn = editor.getByRole('button', { name: 'Validasi Arsitektur public cloud' })
+  await btn.click()
+  await expect(btn).toBeDisabled()
+  await btn.click({ force: true })
+  await expect(page.getByTestId('cc-req-vm').getByRole('status')).toContainText('divalidasi')
+  expect(sent.filter((x) => x.path === '/slow')).toHaveLength(1)
 })
