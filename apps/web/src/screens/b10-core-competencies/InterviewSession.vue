@@ -23,11 +23,11 @@ async function load() {
 }
 onMounted(load)
 
-/** Jalankan aksi lalu muat ulang sesi; galat AI ditampilkan tanpa membuang jawaban yang sudah tersimpan. */
-async function act(fn: () => Promise<unknown>) {
+/** Jalankan aksi lalu muat ulang sesi. onError dipanggil dengan galatnya (mis. mengembalikan jawaban ke kotak teks). */
+async function act(fn: () => Promise<unknown>, onError?: (e: unknown) => string | void) {
   errors.value = []; busy.value = true
   try { await fn() } catch (e) {
-    errors.value = [{ message: e instanceof ApiError && e.code === 'AI_UNAVAILABLE' ? `${e.message} Jawaban Anda sudah tersimpan.` : (e as Error).message }]
+    errors.value = [{ message: onError?.(e) || (e as Error).message }]
   } finally { await load(); busy.value = false }
 }
 
@@ -39,14 +39,20 @@ const isLeader = computed(() => s.value?.assignment.tier === 'leader')
 
 function agree() {
   if (!agreed.value) { errors.value = [{ message: 'Centang persetujuan untuk melanjutkan', fieldId: 'cc-consent' }]; return }
-  act(() => cca.consent(props.assignmentId, s.value?.consentVersionRequired ?? CCA_CONSENT_VERSION))
+  // versi teks yang ditampilkan layar ini; server menolak bila sudah tidak berlaku (CONSENT_VERSION_INVALID)
+  act(() => cca.consent(props.assignmentId, CCA_CONSENT_VERSION))
 }
 function answer(value: string) {
   const v = value.trim()
   if (!v) { errors.value = [{ message: 'Tulis jawaban atau pilih salah satu pilihan', fieldId: 'cc-answer' }]; return }
   text.value = ''
-  act(() => cca.turn(props.assignmentId, v))
+  act(() => cca.turn(props.assignmentId, v), (e) => {
+    // AI gagal setelah jawaban tersimpan: tinggal minta pertanyaan berikutnya. Galat lain: jawaban dikembalikan.
+    if (e instanceof ApiError && e.code === 'AI_UNAVAILABLE') return `${e.message} Jawaban Anda sudah tersimpan.`
+    text.value = v
+  })
 }
+const restart = () => act(async () => { await cca.restart(props.assignmentId); await cca.turn(props.assignmentId) })
 const confirm = () => act(async () => { await cca.confirm(props.assignmentId); emit('finished') })
 </script>
 
@@ -63,7 +69,7 @@ const confirm = () => act(async () => { await cca.confirm(props.assignmentId); e
       </p>
       <h3 class="iv-h3">Yang akan terjadi</h3>
       <ul class="iv-bullets">
-        <li>Asisten AI mengajukan 4 pertanyaan, sekitar {{ s.assignment.durationMinutes }} menit. Anda bisa memilih jawaban yang disarankan atau menulis sendiri.</li>
+        <li>Asisten AI mengajukan {{ s.questionCount }} pertanyaan, sekitar {{ s.assignment.durationMinutes }} menit. Anda bisa memilih jawaban yang disarankan atau menulis sendiri.</li>
         <li>Setelah itu AI meringkas jawaban Anda per tema. Anda memeriksa ringkasan sebelum dikirim, dan bisa mengulang wawancara satu kali.</li>
       </ul>
       <h3 class="iv-h3">Siapa melihat apa</h3>
@@ -83,7 +89,7 @@ const confirm = () => act(async () => { await cca.confirm(props.assignmentId); e
         <span>Saya sudah membaca keterangan di atas dan setuju mengikuti wawancara.</span>
       </label>
       <div class="iv-actions"><UiButton :disabled="busy" @click="agree">Mulai wawancara</UiButton></div>
-      <p class="el-muted iv-small">{{ s.consentVersionRequired }}</p>
+      <p class="el-muted iv-small">{{ CCA_CONSENT_VERSION }}</p>
     </div>
 
     <template v-else-if="s.step === 'chat'">
@@ -127,9 +133,14 @@ const confirm = () => act(async () => { await cca.confirm(props.assignmentId); e
       </dl>
       <div v-if="s.step === 'summary'" class="iv-actions">
         <UiButton :disabled="busy" @click="confirm">Sesuai, kirim</UiButton>
-        <UiButton v-if="s.assignment.restartsLeft > 0" variant="outlined" :disabled="busy" @click="act(() => cca.restart(assignmentId))">Ulangi wawancara</UiButton>
+        <UiButton v-if="s.assignment.restartsLeft > 0" variant="outlined" :disabled="busy" @click="restart">Ulangi wawancara</UiButton>
       </div>
       <p v-if="s.step === 'summary' && s.assignment.restartsLeft > 0" class="el-muted iv-small">Mengulang menghapus percakapan dan ringkasan ini. Hanya bisa sekali.</p>
+    </template>
+
+    <template v-else-if="s.step === 'done'">
+      <h2 class="iv-h2">Terkirim</h2>
+      <p class="el-muted">Wawancara ini sudah selesai.</p>
     </template>
 
     <UiNote v-else tone="warning">Penugasan ini sudah dibatalkan.</UiNote>

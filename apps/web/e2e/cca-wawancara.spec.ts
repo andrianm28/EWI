@@ -12,10 +12,10 @@ const question = (i: number) => ({ role: 'ai', theme: THEMES[i], text: `Pertanya
 /** Mock sesi peserta dengan state: persetujuan, giliran, ringkasan, kirim. Mengembalikan daftar permintaan tulis. */
 async function mockSesi(page: Page, o: { aiGagalSekali?: boolean } = {}) {
   const tulis: PermintaanApi[] = []
-  const st = { status: 'assigned', turns: [] as Record<string, unknown>[], summary: false, gagal: !!o.aiGagalSekali }
+  const st = { status: 'assigned', turns: [] as Record<string, unknown>[], summary: false, gagal: !!o.aiGagalSekali, restartsLeft: 1 }
   const answers = () => st.turns.filter((t) => t.role === 'participant').length
   const session = () => ({
-    assignment: { ...assignment(st.status), restartsLeft: 1 },
+    assignment: { ...assignment(st.status), restartsLeft: st.restartsLeft },
     step: st.status === 'assigned' ? 'consent' : st.status === 'completed' ? 'done' : st.summary ? 'summary' : 'chat',
     consentVersionRequired: CONSENT, turns: st.turns, answerCount: answers(), questionCount: 4,
     summary: st.summary ? { themes: THEMES.map((theme) => ({ theme, question: 'Q', answer: `Ringkasan ${theme}.` })), createdAt: '2026-11-23T03:00:00Z' } : null,
@@ -38,6 +38,7 @@ async function mockSesi(page: Page, o: { aiGagalSekali?: boolean } = {}) {
       return { json: { data: { question: ask(), done: false } } }
     }
     if (cocok(req, 'POST /cca/assignments/:id/summary')) { st.summary = true; return { status: 201, json: { data: session().summary } } }
+    if (cocok(req, 'POST /cca/assignments/:id/restart')) { st.turns = []; st.summary = false; st.restartsLeft = 0; return { json: { data: { restartsLeft: 0 } } } }
     if (cocok(req, 'POST /cca/assignments/:id/summary/confirm')) { st.status = 'completed'; return { json: { data: { status: 'completed' } } } }
     return undefined
   })
@@ -95,9 +96,30 @@ test('karyawan: pertanyaan gagal dimuat bisa diminta ulang', async ({ page }) =>
   expect(tulis[1]).toMatchObject({ method: 'POST', path: '/cca/assignments/as-1/turns', body: {} })
 })
 
+test('karyawan: mengulang wawancara sekali langsung memuat pertanyaan pertama', async ({ page }) => {
+  const tulis = await mockSesi(page)
+  await loginSebagai(page, 'karyawan', { flags: FLAGS })
+  await page.goto('/aiv')
+  await page.getByRole('button', { name: 'Mulai wawancara' }).click()
+  const sesi = page.getByTestId('cc-sesi')
+  await sesi.getByLabel('Saya sudah membaca keterangan di atas dan setuju mengikuti wawancara.').check()
+  await sesi.getByRole('button', { name: 'Mulai wawancara' }).click()
+  for (let i = 0; i < 4; i += 1) {
+    await expect(sesi.getByTestId('cc-turn-ai')).toHaveCount(i + 1)
+    await sesi.getByRole('textbox', { name: 'Jawaban' }).fill(`Jawaban ${i + 1}`)
+    await sesi.getByRole('button', { name: 'Kirim' }).click()
+  }
+  await sesi.getByRole('button', { name: 'Buat ringkasan' }).click()
+  await sesi.getByRole('button', { name: 'Ulangi wawancara' }).click()
+  await expect(sesi.getByText('Pertanyaan 1 dari 4')).toBeVisible()
+  await expect(sesi.getByTestId('cc-turn-ai')).toHaveCount(1)
+  expect(tulis.slice(-2).map((r) => `${r.method} ${r.path.replace('/cca/assignments/as-1', '')}`)).toEqual(['POST /restart', 'POST /turns'])
+  expect(tulis[tulis.length - 1].body).toEqual({})
+})
+
 const SYNTH = {
   minRespondents: 5,
-  kpis: { themes: 2, leadersCompleted: 2, employeesCompleted: 7 },
+  kpis: { themes: 2, leadersCompleted: 2, employeesCompleted: '5–9' },
   themes: [
     { requirementId: 'r-1', name: 'Kolaborasi lintas tim', sourceKind: 'vision', sourceTitle: 'Corporate Vision', leaderAgree: 100, leaderRespondents: 1, employeeAligned: 80, employeeRespondents: '5–9', gap: 20, hot: true, actualScore: null, actualSource: null },
     { requirementId: 'r-2', name: 'Fokus pelanggan', sourceKind: 'vision', sourceTitle: 'Corporate Vision', leaderAgree: 100, leaderRespondents: 1, employeeAligned: null, employeeRespondents: '<5', gap: null, hot: false, actualScore: 70, actualSource: 'manual' },
@@ -130,7 +152,7 @@ test('HR: sintesis menandai gap besar, menyembunyikan angka di bawah 5 responden
   await expect(sedikit.getByRole('button', { name: /Isi dari sintesis/ })).toHaveCount(0)
 
   await panas.getByRole('button', { name: 'Isi dari sintesis Kolaborasi lintas tim' }).click()
-  await expect(kartu.getByRole('status')).toHaveText('1 nilai aktual diisi dari sintesis.')
+  await expect(kartu.getByRole('status')).toHaveText('Nilai aktual Kolaborasi lintas tim diisi dari sintesis. Nilai sebelumnya: kosong.')
   expect(tulis[0].body).toEqual({ requirementIds: ['r-1'] })
 
   await kartu.getByRole('button', { name: 'Karyawan' }).click()

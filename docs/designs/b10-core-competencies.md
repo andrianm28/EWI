@@ -261,7 +261,7 @@ Tahap 3 (layar):
 
 ## 11. Tahap 2: percakapan wawancara, ringkasan, dan sintesis (spek 23 Nov)
 
-Status: draf untuk review egm. Tahap 2 dibangun setelah B6 (#25, #29) masuk integrasi. Turunan persyaratan oleh AI dari
+Status: dibangun 23 Nov (PR #31), review diff egm dan code review dua sumbu ditriase di 11.11. Tahap 2 dibangun setelah B6 (#25, #29) masuk integrasi. Turunan persyaratan oleh AI dari
 dokumen visi-misi (CCA-B21/B22) **tidak** ikut tahap 2a ini (lihat 11.9).
 
 ### 11.1 Yang dibangun
@@ -316,9 +316,10 @@ dokumen visi-misi (CCA-B21/B22) **tidak** ikut tahap 2a ini (lihat 11.9).
   `employeeRespondents` dikirim sebagai pita (`"<5"`, `"5–9"`, `"10–19"`, `"20+"`). Pimpinan tidak diberi ambang (HR sudah
   boleh membaca ringkasan pimpinan per orang). [⚠️ BELUM TERVERIFIKASI: angka 5 dan pita adalah pilihan penulis; risiko
   sisa (selisih pita di batas) dicatat untuk Andrian dan legal.]
-- **D-8 Teks persetujuan CCA.** `CONSENT_VERSIONS.cca` belum ada; menambahnya mengubah `core/consent` (kode bersama,
-  review Andrian). Diajukan ke user (kartu). Default sambil menunggu: draf `cca-consent-id-v1.0` dari teks TNA v1.0
-  dengan tujuan "pemetaan pemahaman visi, misi, dan nilai; bukan penilaian kinerja" (kalimat mockup), menunggu legal.
+- **D-8 Teks persetujuan CCA.** Menambah `CONSENT_VERSIONS.cca` mengubah `core/consent` (kode bersama, review Andrian).
+  **Keputusan user 23 Nov (kartu): draf `cca-consent-id-v1.0` baru, menunggu legal**, dari teks TNA v1.0 dengan tujuan
+  "pemetaan pemahaman visi, misi, dan nilai; bukan penilaian kinerja" (kalimat mockup). Layar mengirim versi teks yang
+  ditampilkannya, bukan versi dari server.
 - **D-9 Nilai aktual dari sintesis.** Bagian 6.1 sudah menetapkan (mockup final 19 Nov) bahwa nilai aktual persyaratan
   sama dengan angka "karyawan sejalan". `apply` mengikuti itu: `actual_score = employeeAligned` (setelah pembulatan D-7),
   dihitung ulang di server saat `apply` dijalankan, hanya atas pilihan HR per baris. Nilai lama dikembalikan dan dicatat
@@ -335,7 +336,7 @@ Migrasi baru `apps/api/migrations/20261123001000-cca-wawancara.js` (blok 10, ber
   menerima teks tetap didukung (dibaca sebagai satu tema).
 - `cca_interview_turns`: `id uuid`, `tenant_id` FK tenants CASCADE, `assignment_id` FK `cca_assignments` ON DELETE
   CASCADE, `position smallint`, `role` (`ai`, `participant`), `theme varchar(16)`, `text` text terenkripsi, `options`
-  jsonb NULL (hanya giliran AI), `created_at`. `UNIQUE (assignment_id, position)`.
+  text NULL berisi JSON terenkripsi (hanya giliran AI; bisa memparafrasekan jawaban), `created_at`. `UNIQUE (assignment_id, position)`.
 - `cca_interview_stances`: `tenant_id`, `assignment_id` FK CASCADE, `requirement_id` FK `cca_requirements` CASCADE,
   `tier`, `stance` (`agree`, `partial`, `disagree`, `aligned`, `not_aligned`); PK `(assignment_id, requirement_id)`,
   indeks `(tenant_id, requirement_id)`.
@@ -359,15 +360,16 @@ pemanggil (404) → keadaan (409) → body (400).
 
 | Metode | Path | Hasil |
 | --- | --- | --- |
-| GET | `/session` | `{ assignment, step, consentVersionRequired, turns: [{ role, theme, text, options }], answerCount, questionCount: 4, summary: { themes, createdAt } \| null }`. `step`: `consent` (status `assigned`), `chat`, `summary` (`summary_at` terisi), `done` |
+| GET | `/session` | `{ assignment, step, consentVersionRequired, turns: [{ role, theme, text, options }], answerCount, questionCount: 4, summary: { themes, createdAt } \| null }`. `step`: `consent` (status `assigned`), `chat`, `summary` (`summary_at` terisi), `done`, `cancelled`. `assignment.restartsLeft` untuk tombol "Ulangi" |
 | POST | `/consent` | `{ consentVersion }`; status harus `assigned`; versi harus berlaku (400 `CONSENT_VERSION_INVALID`). Satu transaksi: status `in_progress`, `consent_*`, `started_at`, potret persyaratan. Lalu pertanyaan pertama diminta ke AI; bila AI gagal, persetujuan tetap tersimpan dan respons 200 `{ question: null }` (layar meminta ulang lewat `POST /turns` tanpa `text`). Audit `create` `cca.interview_consent` |
 | POST | `/turns` | `{ text? }`. Dengan `text` (1–2000 karakter): status `in_progress`, belum ada ringkasan (409 `SUMMARY_EXISTS`), jawaban < 4 (bila sudah 4 → 409 `INVALID_STATE`), giliran terakhir harus pertanyaan AI (selain itu 409 `INVALID_STATE`). Jawaban keempat tidak memanggil AI dan mengembalikan `{ question: null, done: true }`. Tanpa `text`: bila giliran terakhir jawaban peserta (atau belum ada giliran) dan jawaban < 4, server meminta pertanyaan berikutnya; selain itu 409 `INVALID_STATE`. AI gagal → 502 `AI_UNAVAILABLE`, jawaban tetap tersimpan |
 | POST | `/summary` | Syarat 4 jawaban (409 `INVALID_STATE`). Bila ringkasan sudah ada, dikembalikan 200 tanpa memanggil model. Selain itu `summarizeCca` lalu simpan bersyarat (`WHERE summary_at IS NULL AND restart_count = :awal`); yang kalah membuang hasilnya dan mengembalikan ringkasan pemenang. 201 `{ themes, createdAt }`. Sikap tidak dikirim ke peserta. Audit `create` `cca.interview_summary` |
 | POST | `/summary/confirm` | Satu transaksi bersyarat (`status = 'in_progress' AND summary_at IS NOT NULL`): status `completed`, `completed_at`, sikap selain `not_covered` disalin ke `cca_interview_stances`. Yang kalah 409 `INVALID_STATE`. 200 `{ status: 'completed' }`. Audit `update` `cca.assignment` `{ status: 'completed' }` |
 | POST | `/restart` | `restart_count < 1` (lalu 409 `RESTART_LIMIT`); satu transaksi (kunci baris `FOR UPDATE`): hapus giliran, ringkasan, `summary_at`, `restart_count + 1`; status tetap `in_progress`. 200 `{ restartsLeft: 0 }`; layar meminta pertanyaan pertama lewat `POST /turns` tanpa `text`. Audit `delete` `cca.interview_transcript` |
 
-Konkurensi: `POST /turns` mengunci baris penugasan (`SELECT … FOR UPDATE`) saat menyisipkan; pelanggaran
-`UNIQUE (assignment_id, position)` dipetakan ke 409 `INVALID_STATE`, bukan 500.
+Konkurensi: penyisipan giliran mengunci baris penugasan (`SELECT … FOR UPDATE`) dalam satu transaksi dan hanya
+menyisipkan bila keadaan, putaran (`restart_count`), dan jumlah giliran = posisi − 1 masih cocok; yang kalah 409
+`INVALID_STATE`, bukan 500. Ulangi dan simpan ringkasan memakai UPDATE bersyarat (mengunci baris yang sama).
 
 **HR** (`hr_admin`, `eta_admin`), juga di balik `cca.interview`; peran lain 403:
 
@@ -375,7 +377,7 @@ Konkurensi: `POST /turns` mengunci baris penugasan (`SELECT … FOR UPDATE`) saa
 | --- | --- | --- |
 | GET | `/api/cca/synthesis` | `{ themes: [{ requirementId, name, sourceKind, sourceTitle, leaderAgree, leaderRespondents, employeeAligned, employeeRespondents (pita), gap, hot, actualScore, actualSource }], minRespondents, kpis: { themes, leadersCompleted, employeesCompleted } }`. `kpis.themes` = baris dengan `leaderRespondents > 0` (mockup "Tema tersintesis") |
 | POST | `/api/cca/synthesis/apply` | `{ requirementIds }` (1–100) → dihitung ulang di server; baris dengan `employeeAligned` diisi `actual_score`, `actual_source = 'synthesis'`; 200 `{ applied: [{ requirementId, previous: { actualScore, actualSource } }], skipped: [{ requirementId, reason }] }`. Audit `update` `cca.requirement` berisi nilai lama |
-| GET | `/api/cca/interview/preview?tier=leader\|employee` | Empat pertanyaan bawaan dengan sumber organisasi disisipkan, tanpa AI, tanpa simpan |
+| GET | `/api/cca/interview/preview?tier=leader\|employee` (bawaan `leader`) | Empat pertanyaan bawaan dengan sumber organisasi disisipkan, tanpa AI, tanpa simpan |
 
 `GET /assignments/:id/summary` (tahap 1) membaca `themes` dari JSON ringkasan; aksesnya tidak berubah (peserta
 sendiri; HR untuk tier pimpinan; tier karyawan 403 `SUMMARY_RESTRICTED`).
@@ -397,10 +399,12 @@ sendiri; HR untuk tier pimpinan; tier karyawan 403 `SUMMARY_RESTRICTED`).
 
 ### 11.6 AI
 
-- `prompts.js`: cabang `cca` di `interviewSystemPrompt` (tema, sumber, larangan menilai kinerja, keluaran JSON
+- `prompts.js`: `ccaQuestionPrompt` (tema, sumber, nama persyaratan potret, larangan menilai kinerja, keluaran JSON
   `{ text, options }`) dan `ccaSummaryPrompt({ tier, turns, requirements })` keluaran `{ themes, stances }` dengan
-  `not_covered` sebagai bawaan.
-- `stub-provider` dan `bedrock-provider`: `nextQuestion` untuk `cca`, `summarizeCca`. Stub: sikap setuju/sejalan untuk
+  `not_covered` sebagai bawaan. Metode penyedia terpisah (`ccaQuestion`), bukan cabang `nextQuestion`, karena keluarannya
+  objek, bukan teks.
+- `stub-provider` dan `bedrock-provider`: `ccaQuestion` (operasi `next_question`), `summarizeCca`. Galat penyedia menjadi 502
+  `AI_UNAVAILABLE` dengan pesan umum; detail teknis hanya di log. Stub: sikap setuju/sejalan untuk
   persyaratan yang namanya muncul di jawaban, `partial` bila nama sumbernya muncul, `not_covered` selain itu.
 
 ### 11.7 Test yang ditulis lebih dulu
@@ -454,6 +458,37 @@ Satu subagent baru tanpa riwayat, empat lensa egm (zoom out, pemahaman, kritik d
 | G12 | Tabel endpoint mencampur peserta dan HR | PROPOSE FIX | dua tabel |
 | G13 | Retensi transkrip | PROPOSE FIX | R-5 |
 | G14 | KPI "Tema tersintesis"; urutan bagian 12/13 | PROPOSE FIX / DECLINE | KPI didefinisikan; urutan bagian dibiarkan (dirujuk dari tempat lain) |
+
+### 11.11 Review diff tahap 2 (goldfish + code review dua sumbu, 23 Nov)
+
+Goldfish D1–D14 (laporan: `/mnt/project-files/elgos-eksekusi/egm-b10-b15/b10-tahap2-diff-review.md`), Standards S1–S9,
+Spec P1–P7. Triase `egm-resolve`:
+
+| # | Temuan | Kategori | Tindakan |
+| --- | --- | --- | --- |
+| D1 | HR bisa menebak jawaban satu karyawan dari selisih sintesis sebelum/sesudah ia selesai, dibantu `teamDone` dan `employeesCompleted` yang tepat | ESCALATE + PROPOSE FIX sebagian | KPI karyawan selesai di sintesis kini rentang; risiko sisa (penyegaran tiap selesai, `teamDone` tahap 1) ke Andrian dan legal: usulan segarkan angka karyawan per 5 penyelesaian baru atau saat putaran ditutup |
+| D2 | Semua galat jadi 502 dengan pesan teknis | PROPOSE FIX | hanya `AiError` → 502 pesan umum; galat lain diteruskan; pakai `ai-calls.callAi` |
+| D3, P1 | Pertanyaan tanpa nama persyaratan (D-3) | PROPOSE FIX | nama persyaratan potret dikirim ke `ccaQuestion`; test |
+| D4 | Layar mengirim versi persetujuan dari server | PROPOSE FIX | kirim `CCA_CONSENT_VERSION` layar |
+| D5, P3 | Ulangi bisa balapan dengan sisip giliran; tanpa `FOR UPDATE` | PROPOSE FIX | sisip giliran dalam transaksi `FOR UPDATE` + cek jumlah giliran |
+| D6 | Test kurang bukti | PROPOSE FIX | test AI gagal saat ringkasan, flag mati di rute tahap 2, penugasan batal 409, `eta_admin`; balapan ulangi dijaga kunci, tanpa test paralel |
+| D7, P5 | "Isi semua" menimpa isian manual tanpa konfirmasi | PROPOSE FIX | tombol massal dihapus; per baris menampilkan nilai lama |
+| D8 | Jawaban hilang saat galat; "sudah tersimpan" salah tempat | PROPOSE FIX | jawaban dikembalikan ke kotak teks; catatan hanya untuk galat AI setelah jawaban |
+| D9 | `done` tanpa ringkasan tampil "dibatalkan"; ulangi tidak memuat pertanyaan | PROPOSE FIX | tampilan `done` tanpa ringkasan; ulangi langsung meminta pertanyaan pertama (e2e) |
+| D10 | `options` tersimpan terbuka | PROPOSE FIX | kolom `options` teks terenkripsi |
+| D11, S3, S4, S9 | Duplikasi `callAi`, `isHr` mati, hitung jawaban berulang | PROPOSE FIX | dihapus/diekstrak; `wrap`/`UUID_RE` disalin dari `index.js` tetap (usulan pindah ke core sudah di D20 untuk Andrian) |
+| D11 (tier) | kolom `tier` di stances tidak dibaca | DECLINE | spek 11.3; dipakai untuk kueri agregat per tier tanpa join kelak |
+| D12, S6 | Kunci JSON campur bahasa; nama `interview` | PROPOSE FIX / DECLINE | kunci JSON ringkasan seragam Inggris; judul kartu "Sintesis AI" dari mockup dibiarkan (AI memberi sikap, aturan menggabung) |
+| D13 | `down` membuat kode tahap 1 membaca JSON terenkripsi sebagai teks | DECLINE (catat di PR) | rollback produksi tidak direncanakan; dicatat di Merge Danger |
+| D14 | Persetujuan berhasil bisa 409 bila sisip pertanyaan pertama kalah | PROPOSE FIX | `INVALID_STATE` juga ditelan, `question: null` |
+| S1 | Tahap 2 memakai flag `cca.interview` yang ada | CONTEST | spek 11.4 sengaja; flag bawaan mati dan belum dinyalakan di tenant mana pun |
+| S2 | `ownAssignment` tidak lewat `visibleEmployeeScope()` | CONTEST | data milik sendiri (peserta), bukan visibilitas karyawan lain |
+| S5 | Kosakata sikap ganda; angka 4/5 dipatok di layar | PROPOSE FIX | `synthesis.js` memakai `CCA_STANCES`; pita memakai `MIN_RESPONDENTS`; layar memakai `questionCount` dan `minRespondents` |
+| S7 | Adaptor sesi palsu untuk `recordUsage` | DECLINE | adaptor satu baris lebih kecil daripada mengubah kode bersama B6 |
+| S8 | Literal array Postgres dirakit tangan | DECLINE | isinya UUID dari database sendiri |
+| P2 | Dokumen B18 belum diperbarui | PROPOSE FIX | 3.2 dan 3.3 diperbarui |
+| P4, P6 | `step: cancelled`, `restartsLeft`, tier bawaan | CONTEST | dibutuhkan layar; spek 11.4 diperbarui |
+| P7 | Ringkasan menyaring ulang potret | PROPOSE FIX | potret dipakai apa adanya (`snapshot: true`); R-4 menyaring di sintesis; test |
 
 ## 13. Layar (tahap 3)
 

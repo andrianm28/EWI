@@ -1,15 +1,13 @@
 'use strict';
 // Sintesis wawancara Core Competencies (spek B10 bagian 11.2 D-6, D-7): dihitung aturan, bukan AI.
 
+const { CCA_STANCES } = require('../../ai/prompts');
+
 const MIN_RESPONDENTS = 5;
 const HOT_GAP = 20;
-const STANCES = {
-  leader: { full: 'agree', partial: 'partial', none: 'disagree' },
-  employee: { full: 'aligned', partial: 'partial', none: 'not_aligned' },
-};
 
 function respondentBand(n) {
-  if (n < 5) return '<5';
+  if (n < MIN_RESPONDENTS) return `<${MIN_RESPONDENTS}`;
   if (n < 10) return '5–9';
   if (n < 20) return '10–19';
   return '20+';
@@ -27,14 +25,14 @@ function latestResponses(responses) {
 }
 
 function score(responses, tier, requirementId) {
-  const s = STANCES[tier];
+  const [full, partial, none] = CCA_STANCES[tier];
   let n = 0; let points = 0;
   for (const r of responses) {
     if (r.tier !== tier) continue;
     const stance = r.stances && r.stances[requirementId];
-    if (stance === s.full) points += 1;
-    else if (stance === s.partial) points += 0.5;
-    else if (stance !== s.none) continue;
+    if (stance === full) points += 1;
+    else if (stance === partial) points += 0.5;
+    else if (stance !== none) continue;
     n += 1;
   }
   return { n, value: n === 0 ? null : Math.round((100 * points) / n) };
@@ -63,4 +61,4 @@ function synthesize(requirements, responses) {
   });
 }
 
-module.exports = { MIN_RESPONDENTS, HOT_GAP, STANCES, respondentBand, synthesize };
+module.exports = { MIN_RESPONDENTS, HOT_GAP, respondentBand, synthesize };

@@ -273,13 +273,16 @@ function createCcaStores(sequelize, { cipher } = {}) {
       };
       return { vision: first('vision'), mission: first('mission'), values: rows.filter((x) => x.kind === 'value').map((x) => x.title) };
     },
-    /** Persyaratan tervalidasi dari sumber aktif, urut sumber lalu nama. ids: batasi ke daftar ini (urutan dipertahankan). */
-    async validatedRequirements(tenantId, { ids, limit } = {}) {
+    /**
+     * Persyaratan tervalidasi dari sumber aktif, urut sumber lalu nama. ids: batasi ke daftar ini (urutan dipertahankan).
+     * snapshot: dengan ids, ambil apa adanya walau statusnya sudah berubah (potret persetujuan, D-3; R-4 menyaring di sintesis).
+     */
+    async validatedRequirements(tenantId, { ids, limit, snapshot = false } = {}) {
       const rep = { tenantId };
       let sql = `SELECT r.id, r.name, r.actual_score::float8 AS "actualScore", r.actual_source AS "actualSource",
                         s.kind AS "sourceKind", s.title AS "sourceTitle"
                    FROM cca_requirements r JOIN cca_sources s ON s.id = r.source_id AND s.tenant_id = r.tenant_id
-                  WHERE r.tenant_id = :tenantId AND r.status = 'validated' AND s.status = 'active'`;
+                  WHERE r.tenant_id = :tenantId${snapshot && ids ? '' : " AND r.status = 'validated' AND s.status = 'active'"}`;
       if (ids) {
         if (!ids.length) return [];
         sql += ' AND r.id IN (:ids)'; rep.ids = ids;
@@ -302,20 +305,35 @@ function createCcaStores(sequelize, { cipher } = {}) {
     async listTurns(tenantId, assignmentId) {
       const rows = await select(`SELECT ${TURN_COLS} FROM cca_interview_turns t
                                   WHERE t.tenant_id = :tenantId AND t.assignment_id = :assignmentId ORDER BY t.position`, { tenantId, assignmentId });
-      return cipher.open(tenantId, rows, ['text']);
+      await cipher.open(tenantId, rows, ['text', 'options']);
+      return rows.map((r) => ({ ...r, options: r.options ? JSON.parse(r.options) : null }));
     },
     /**
-     * Sisipkan giliran secara atomik: hanya bila penugasan masih berjalan, belum diringkas, dan putarannya sama
-     * (restartCount). Posisi bentrok (kiriman paralel) atau keadaan berubah -> null.
+     * Sisipkan giliran di bawah kunci baris penugasan (FOR UPDATE, serial dengan ulangi/ringkasan): hanya bila
+     * penugasan masih berjalan, belum diringkas, putarannya sama (restartCount), dan giliran tersimpan = position - 1.
+     * Keadaan berubah atau kiriman paralel kalah -> null.
      */
     async insertTurn(tenantId, assignmentId, { position, role, theme, text, options, restartCount }) {
-      const [rows] = await sequelize.query(
-        `INSERT INTO cca_interview_turns (tenant_id, assignment_id, position, role, theme, text, options)
-         SELECT a.tenant_id, a.id, :position, :role, :theme, :text, CAST(:options AS jsonb) FROM cca_assignments a
-          WHERE a.tenant_id = :tenantId AND a.id = :assignmentId AND a.status = 'in_progress' AND a.summary_at IS NULL AND a.restart_count = :restartCount
-         ON CONFLICT (assignment_id, position) DO NOTHING RETURNING position`,
-        { replacements: { tenantId, assignmentId, position, role, theme, text: await cipher.encrypt(tenantId, text), options: options ? JSON.stringify(options) : null, restartCount } });
-      return rows[0] || null;
+      const t = await sequelize.transaction();
+      try {
+        const [locked] = await sequelize.query(
+          `SELECT a.id FROM cca_assignments a
+            WHERE a.tenant_id = :tenantId AND a.id = :assignmentId AND a.status = 'in_progress' AND a.summary_at IS NULL AND a.restart_count = :restartCount
+            FOR UPDATE`, { replacements: { tenantId, assignmentId, restartCount }, transaction: t, type: QueryTypes.SELECT });
+        const [{ n }] = locked ? await sequelize.query(
+          'SELECT count(*)::int AS n FROM cca_interview_turns WHERE tenant_id = :tenantId AND assignment_id = :assignmentId',
+          { replacements: { tenantId, assignmentId }, transaction: t, type: QueryTypes.SELECT }) : [{ n: -1 }];
+        if (!locked || n !== position - 1) { await t.rollback(); return null; }
+        await sequelize.query(
+          `INSERT INTO cca_interview_turns (tenant_id, assignment_id, position, role, theme, text, options)
+           VALUES (:tenantId, :assignmentId, :position, :role, :theme, :text, :options)`,
+          { replacements: {
+            tenantId, assignmentId, position, role, theme,
+            text: await cipher.encrypt(tenantId, text), options: options ? await cipher.encrypt(tenantId, JSON.stringify(options)) : null,
+          }, transaction: t });
+        await t.commit();
+        return { position };
+      } catch (e) { await t.rollback(); throw e; }
     },
     /** Simpan ringkasan bila belum ada dan putarannya sama. Return true bila tersimpan. */
     async saveInterviewSummary(tenantId, id, { summary, restartCount }) {

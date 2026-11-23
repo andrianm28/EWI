@@ -21,7 +21,7 @@ const turns = [
 describe('AI wawancara Core Competencies', () => {
   it('ccaQuestion: prompt memuat sumber organisasi dan tema, keluaran { text, options<=3 }, dicatat sebagai next_question', async () => {
     const client = fakeClient(reply('```json\n{"text":"Apa arti visi bagi tim Anda?","options":["A","B","C","D"]}\n```'));
-    const out = await createBedrockProvider(cfg, { client }).ccaQuestion({ tier: 'leader', theme: 'vision', position: 1, sources, turns: [] });
+    const out = await createBedrockProvider(cfg, { client }).ccaQuestion({ tier: 'leader', theme: 'vision', position: 1, sources, requirements: [{ name: 'Kolaborasi lintas tim' }], turns: [] });
     expect(out.question).toEqual({ text: 'Apa arti visi bagi tim Anda?', options: ['A', 'B', 'C'] });
     expect(out.usage[0]).toMatchObject({ operation: 'next_question', inputTokens: 300 });
     const system = client.sent[0].input.system[0].text;
@@ -30,6 +30,7 @@ describe('AI wawancara Core Competencies', () => {
     expect(system).toMatch(/Nilai: Credible, Competent/);
     expect(system).toMatch(/pertanyaan 1 dari 4.*pemahaman visi/);
     expect(system).toMatch(/bukan penilaian kinerja/);
+    expect(system).toMatch(/- Kolaborasi lintas tim/);
   });
 
   it('parseCcaQuestion menolak pertanyaan kosong', () => {
@@ -40,7 +41,7 @@ describe('AI wawancara Core Competencies', () => {
   it('summarizeCca: kode P dipetakan ke ID, sikap tier lain dan kode asing dibuang, yang tidak dijawab not_covered', async () => {
     const raw = JSON.stringify({
       themes: [{ theme: 'vision', summary: 'Kolaborasi dijalankan.' }, { theme: 'behavior', summary: 'Memberi contoh.' }, { theme: 'asing', summary: 'x' }],
-      stances: [{ persyaratan: 'P1', sikap: 'agree' }, { persyaratan: 'P9', sikap: 'agree' }, { persyaratan: 'P2', sikap: 'aligned' }],
+      stances: [{ requirement: 'P1', stance: 'agree' }, { requirement: 'P9', stance: 'agree' }, { requirement: 'P2', stance: 'aligned' }],
     });
     const client = fakeClient(reply(raw));
     const out = await createBedrockProvider(cfg, { client }).summarizeCca({ tier: 'leader', turns, requirements });

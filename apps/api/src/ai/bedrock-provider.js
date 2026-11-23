@@ -123,8 +123,8 @@ function createBedrockProvider(config, { client } = {}) {
     },
 
     // B10 tahap 2: pertanyaan wawancara Core Competencies { text, options }
-    async ccaQuestion({ tier, theme, position, sources, turns }) {
-      const p = P.ccaQuestionPrompt({ tier, theme, position, sources, turns });
+    async ccaQuestion({ tier, theme, position, sources, requirements, turns }) {
+      const p = P.ccaQuestionPrompt({ tier, theme, position, sources, requirements, turns });
       const { value, usage } = await converseParsed('next_question', p, P.parseCcaQuestion, 'pertanyaan');
       return { question: value, usage };
     },

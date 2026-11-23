@@ -52,7 +52,9 @@ run('B10 tahap 2: wawancara dan sintesis Core Competencies (Postgres)', () => {
       tok[key] = tokens.sign({ id: row.id, tenantId: t, role, email: `${key}@ccaw.test` });
     };
     await add('hr', 'hr_admin');
+    await add('eta', 'eta_admin');
     await add('dir', 'pimpinan');
+    await add('spv3', 'supervisor');
     await add('spv', 'supervisor', { sup: u.dir });
     for (let i = 1; i <= 6; i += 1) await add(`k${i}`, 'learner', { sup: u.spv });
     await add('luar', 'hr_admin', { t: other.id });
@@ -159,6 +161,11 @@ run('B10 tahap 2: wawancara dan sintesis Core Competencies (Postgres)', () => {
       const id = (await milik('spv', 'leader')).id;
       calls.length = 0;
       expect((await send('post', `/assignments/${id}/consent`, { consentVersion: CONSENT }, 'spv')).status).toBe(200);
+      // pertanyaan diarahkan ke nama persyaratan potret (D-3), tanpa ID
+      expect(calls[0].args.requirements).toEqual(expect.arrayContaining([{ name: 'Kolaborasi lintas tim' }, { name: 'Integritas data' }]));
+      expect(calls[0].args.requirements).toHaveLength(3);
+      // persyaratan yang ditolak setelah persetujuan tetap ikut ringkasan putaran ini (potret); R-4 menyaringnya di sintesis
+      await send('patch', `/requirements/${req.integritas.id}`, { status: 'rejected' }, 'hr');
       // persyaratan baru setelah persetujuan tidak ikut ringkasan putaran ini
       const vision = (await get('/sources', 'hr')).body.data.find((x) => x.kind === 'vision');
       req.inovasi = (await send('post', `/sources/${vision.id}/requirements`, { name: 'Inovasi layanan', targetScore: 70 }, 'hr')).body.data;
@@ -173,6 +180,7 @@ run('B10 tahap 2: wawancara dan sintesis Core Competencies (Postgres)', () => {
       const summaryCall = calls.find((c) => c.op === 'summary');
       expect(summaryCall.args.requirements.map((x) => x.name).sort()).toEqual(['Fokus pelanggan', 'Integritas data', 'Kolaborasi lintas tim']);
       expect(calls.filter((c) => c.op === 'question')).toHaveLength(4);
+      await send('patch', `/requirements/${req.integritas.id}`, { status: 'validated' }, 'hr');
       expect((await send('post', `/assignments/${id}/summary/confirm`, {}, 'spv')).status).toBe(200);
       // pemakaian AI tercatat tanpa sesi B6
       const [usage] = await db.query(
@@ -218,6 +226,12 @@ run('B10 tahap 2: wawancara dan sintesis Core Competencies (Postgres)', () => {
       expect([fifth.status, fifth.body.error.code]).toEqual([409, 'INVALID_STATE']);
       expect((await send('post', `/assignments/${id}/turns`, { text: '' }, 'spv')).status).toBe(409);
 
+      fail.summary = true;
+      const gagal = await send('post', `/assignments/${id}/summary`, {}, 'spv');
+      expect([gagal.status, gagal.body.error.code]).toEqual([502, 'AI_UNAVAILABLE']);
+      expect(gagal.body.error.message).not.toMatch(/Bedrock|IAM|region/i);
+      expect((await get(`/assignments/${id}/session`, 'spv')).body.data).toMatchObject({ step: 'chat', summary: null });
+      fail.summary = false;
       expect((await send('post', `/assignments/${id}/summary`, {}, 'spv')).status).toBe(201);
       expect((await send('post', `/assignments/${id}/summary`, {}, 'spv')).status).toBe(200); // sudah ada: tanpa model
       expect((await send('post', `/assignments/${id}/turns`, { text: 'x' }, 'spv')).body.error.code).toBe('SUMMARY_EXISTS');
@@ -266,7 +280,7 @@ run('B10 tahap 2: wawancara dan sintesis Core Competencies (Postgres)', () => {
       });
       expect(s.themes.find((x) => x.requirementId === req.pelanggan.id)).toMatchObject({ leaderAgree: 100, employeeAligned: null, gap: null });
       expect(s.themes.map((x) => x.requirementId)).not.toContain(req.draf.id);
-      expect(s.kpis).toEqual({ themes: 3, leadersCompleted: 2, employeesCompleted: 7 });
+      expect(s.kpis).toEqual({ themes: 3, leadersCompleted: 2, employeesCompleted: '5–9' });
 
       const ap = await send('post', '/synthesis/apply', { requirementIds: [req.kolaborasi.id, req.pelanggan.id, req.draf.id] }, 'hr');
       expect(ap.status).toBe(200);
@@ -293,6 +307,27 @@ run('B10 tahap 2: wawancara dan sintesis Core Competencies (Postgres)', () => {
       expect(calls).toHaveLength(0);
       expect((await get('/interview/preview?tier=x', 'hr')).status).toBe(400);
       expect((await get('/interview/preview', 'k1')).status).toBe(403);
+      expect((await get('/synthesis', 'eta')).status).toBe(200);
+    });
+
+    it('penugasan batal: sesi terbaca sebagai cancelled dan semua rute tulis 409; flag mati menutup rute tahap 2', async () => {
+      await send('post', '/assignments', { assigneeIds: [u.spv3], dueDate: future }, 'hr');
+      const id = (await milik('spv3', 'leader')).id;
+      expect((await send('patch', `/assignments/${id}`, { status: 'cancelled' }, 'hr')).status).toBe(200);
+      expect((await get(`/assignments/${id}/session`, 'spv3')).body.data.step).toBe('cancelled');
+      for (const path of ['consent', 'turns', 'summary', 'summary/confirm', 'restart']) {
+        expect((await send('post', `/assignments/${id}/${path}`, { consentVersion: CONSENT, text: 'x' }, 'spv3')).status).toBe(409);
+      }
+
+      await db.query("UPDATE feature_flags SET enabled = false WHERE tenant_id = :t AND key = 'cca.interview'", { replacements: { t: tenant.id } });
+      try {
+        for (const r of [await get(`/assignments/${id}/session`, 'spv3'), await get('/synthesis', 'hr'), await get('/interview/preview', 'hr'),
+          await send('post', '/synthesis/apply', { requirementIds: [req.kolaborasi.id] }, 'hr')]) {
+          expect([r.status, r.body.error.code]).toEqual([403, 'FEATURE_DISABLED']);
+        }
+      } finally {
+        await db.query("UPDATE feature_flags SET enabled = true WHERE tenant_id = :t AND key = 'cca.interview'", { replacements: { t: tenant.id } });
+      }
     });
 
     it('ekspor karyawan sendiri memuat tema dan sikap; HR tidak; hapus karyawan menghapus giliran dan sikap', async () => {

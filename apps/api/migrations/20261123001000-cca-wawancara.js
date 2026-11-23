@@ -20,11 +20,13 @@ module.exports = {
         id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
         tenant_id uuid NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
         assignment_id uuid NOT NULL REFERENCES cca_assignments(id) ON DELETE CASCADE,
+        -- 4 pertanyaan + 4 jawaban (QUESTION_COUNT di modules/cca/interview.js)
         position smallint NOT NULL CHECK (position BETWEEN 1 AND 8),
         role varchar(12) NOT NULL CHECK (role IN ('ai','participant')),
         theme varchar(16) NOT NULL,
         text text NOT NULL,
-        options jsonb,
+        -- pilihan jawaban AI (JSON) terenkripsi seperti text: bisa memparafrasekan jawaban sebelumnya
+        options text,
         created_at timestamptz NOT NULL DEFAULT now(),
         UNIQUE (assignment_id, position)
       );

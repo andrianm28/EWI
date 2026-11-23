@@ -299,14 +299,18 @@ function ccaSourceBlock(sources = {}) {
 
 const CCA_THEME_LABEL = { vision: 'pemahaman visi', mission: 'pemahaman misi', values: 'penerapan nilai', behavior: 'perilaku kunci yang diharapkan dari tim', support: 'dukungan yang dibutuhkan' };
 
-/** Prompt pertanyaan ke-n wawancara CCA. turns: [{ role, theme, text }]. */
-function ccaQuestionPrompt({ tier, theme, position, sources, turns }) {
+/** Prompt pertanyaan ke-n wawancara CCA. turns: [{ role, theme, text }]; requirements: nama persyaratan potret (D-3). */
+function ccaQuestionPrompt({ tier, theme, position, sources, requirements, turns }) {
+  const reqBlock = (requirements || []).length ? requirements.map((r) => `- ${clip(r.name, 200)}`).join('\n') : '(belum ada)';
   const who = tier === 'leader' ? 'pimpinan' : 'karyawan';
   const system = `Anda adalah pewawancara ELGOS (Elite Learning & Growth Operating System) untuk Core Competencies.
 Tujuan: memetakan pemahaman ${who} atas visi, misi, dan nilai perusahaan. Ini bukan penilaian kinerja.
 
 Sumber organisasi:
 ${ccaSourceBlock(sources)}
+
+Persyaratan kompetensi tervalidasi (arahkan pertanyaan supaya jawaban menyinggung yang relevan dengan tema, tanpa membacakan daftarnya):
+${reqBlock}
 
 ${COMMON_RULES}
 - Ini pertanyaan ${position} dari ${CCA_THEMES[tier].length}. Tema pertanyaan ini: ${CCA_THEME_LABEL[theme]}.
@@ -349,11 +353,11 @@ ${reqBlock}
 
 Aturan:
 - "themes": satu butir per tema, "summary" 1 sampai 2 kalimat dari jawaban peserta. Jangan mengarang.
-- "stances": sikap peserta terhadap setiap persyaratan: ${allowed.join(', ')}, atau not_covered bila jawaban tidak menyinggungnya. Bila ragu, pakai not_covered.
+- "stances": sikap peserta terhadap setiap persyaratan (kode P): ${allowed.join(', ')}, atau not_covered bila jawaban tidak menyinggungnya. Bila ragu, pakai not_covered.
 - Jangan menilai kinerja dan jangan menyebut data pribadi.
 
 Balas hanya dengan JSON tanpa teks lain:
-{"themes":[{"theme":"vision","summary":"..."}],"stances":[{"persyaratan":"P1","sikap":"not_covered"}]}`;
+{"themes":[{"theme":"vision","summary":"..."}],"stances":[{"requirement":"P1","stance":"not_covered"}]}`;
   const lines = (turns || []).map((t) => `${t.role === 'ai' ? 'Pewawancara' : 'Peserta'} [${t.theme}]: ${clip(t.text, 2000)}`);
   return { system, user: `<transkrip>\n${lines.join('\n')}\n</transkrip>`, codes: codesList };
 }
@@ -374,8 +378,8 @@ function parseCcaSummary(raw, { tier, turns, codes: codesList }) {
   const allowed = new Set([...CCA_STANCES[tier], 'not_covered']);
   const given = new Map();
   for (const s of Array.isArray(j.stances) ? j.stances : []) {
-    const code = String((s && s.persyaratan) || '').toUpperCase();
-    if (allowed.has(s && s.sikap) && !given.has(code)) given.set(code, s.sikap);
+    const code = String((s && s.requirement) || '').toUpperCase();
+    if (allowed.has(s && s.stance) && !given.has(code)) given.set(code, s.stance);
   }
   return { themes, stances: codesList.map((r) => ({ requirementId: r.id, stance: given.get(r.code) || 'not_covered' })) };
 }

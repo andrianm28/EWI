@@ -1,7 +1,7 @@
 <script setup lang="ts">
 // B10 tahap 2: kartu "Sintesis AI: pimpinan dan karyawan" untuk HR (spek 11.4, D-6, D-7, D-9) dan pratinjau sesi.
 // Angka karyawan hanya tampil dari 5 responden, dibulatkan ke kelipatan 5; responden ditampilkan sebagai rentang.
-import { computed, onMounted, ref } from 'vue'
+import { onMounted, ref } from 'vue'
 import { cca, THEME_LABEL, type InterviewQuestion, type Synthesis, type SynthesisRow } from '@/api/cca'
 import { UiButton, UiCard, UiChip, UiDataTable, UiErrorSummary, UiKpiCard, UiNote, UiProgressBar, UiSegmented, type UiColumn } from '@/ui'
 
@@ -27,14 +27,17 @@ const COLUMNS: UiColumn[] = [
   { key: 'aksi', label: 'Nilai aktual' },
 ]
 const asRow = (r: Record<string, unknown>) => r as unknown as SynthesisRow
-const applicable = computed(() => (data.value?.themes ?? []).filter((r) => r.employeeAligned !== null))
 
-async function apply(rows: SynthesisRow[]) {
+/** Isi nilai aktual satu persyaratan dari sintesis; nilai lama ditampilkan supaya bisa dikembalikan manual (D-9). */
+async function apply(row: SynthesisRow) {
   errors.value = []; notice.value = ''; busy.value = true
   try {
-    const res = await cca.applySynthesis(rows.map((r) => r.requirementId))
+    const res = await cca.applySynthesis([row.requirementId])
     await load()
-    notice.value = `${res.applied.length} nilai aktual diisi dari sintesis${res.skipped.length ? `, ${res.skipped.length} dilewati` : ''}.`
+    const prev = res.applied[0]?.previous
+    notice.value = prev
+      ? `Nilai aktual ${row.name} diisi dari sintesis. Nilai sebelumnya: ${prev.actualScore ?? 'kosong'}${prev.actualSource === 'manual' ? ' (isian manual)' : ''}.`
+      : `${row.name} dilewati: ${res.skipped[0]?.reason ?? 'tidak bisa diisi'}.`
   } catch (e) { errors.value = [{ message: (e as Error).message }] } finally { busy.value = false }
 }
 async function showPreview() {
@@ -53,12 +56,9 @@ async function showPreview() {
       <div class="el-grid el-grid-4" style="margin: 12px 0">
         <UiKpiCard label="Tema tersintesis" :value="String(data.kpis.themes)" note="punya jawaban pimpinan" />
         <UiKpiCard label="Pimpinan selesai" :value="String(data.kpis.leadersCompleted)" note="wawancara terkirim" />
-        <UiKpiCard label="Karyawan selesai" :value="String(data.kpis.employeesCompleted)" note="wawancara terkirim" />
+        <UiKpiCard label="Karyawan selesai" :value="String(data.kpis.employeesCompleted)" note="rentang, wawancara terkirim" />
       </div>
       <UiDataTable :columns="COLUMNS" :rows="data.themes" row-key="requirementId" caption="Sintesis per persyaratan" caption-hidden empty-text="Belum ada persyaratan tervalidasi.">
-        <template #toolbar>
-          <UiButton size="sm" variant="tonal" :disabled="busy || !applicable.length" @click="apply(applicable)">Isi semua nilai aktual dari sintesis</UiButton>
-        </template>
         <template #cell-name="{ row }"><b>{{ row.name }}</b><div class="el-muted cc-small">{{ SOURCE_LABEL[asRow(row).sourceKind] }} · {{ row.sourceTitle }}</div></template>
         <template #cell-leaderAgree="{ row }">{{ pct(asRow(row).leaderAgree) }}<div class="el-muted cc-small">{{ row.leaderRespondents }} pimpinan</div></template>
         <template #cell-employeeAligned="{ row }">{{ pct(asRow(row).employeeAligned) }}<div class="el-muted cc-small">{{ row.employeeRespondents }} karyawan</div></template>
@@ -72,7 +72,7 @@ async function showPreview() {
         </template>
         <template #cell-aksi="{ row }">
           <div class="cc-small">{{ asRow(row).actualScore ?? '-' }}<span v-if="row.actualSource === 'synthesis'" class="el-muted"> (sintesis)</span></div>
-          <UiButton v-if="asRow(row).employeeAligned !== null" variant="text" size="sm" :disabled="busy" @click="apply([asRow(row)])">Isi dari sintesis<span class="el-sr-only"> {{ row.name }}</span></UiButton>
+          <UiButton v-if="asRow(row).employeeAligned !== null" variant="text" size="sm" :disabled="busy" @click="apply(asRow(row))">Isi dari sintesis<span class="el-sr-only"> {{ row.name }}</span></UiButton>
         </template>
       </UiDataTable>
       <UiNote style="margin-top: 12px">Angka karyawan hanya tampil bila paling sedikit {{ data.minRespondents }} karyawan menyinggung persyaratan itu, dibulatkan ke kelipatan 5. Ringkasan karyawan tidak dibuka per orang.</UiNote>
