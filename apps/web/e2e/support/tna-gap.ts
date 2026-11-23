@@ -46,6 +46,8 @@ export interface OpsiPapanGap {
   assign?: ResponsApi
   /** Ganti respons POST /tna/assignments/:id/cancel. */
   cancel?: ResponsApi
+  /** Jumlah temuan AI menunggu review di GET /tna/dashboard (bawaan tidak ada). */
+  reviewPending?: number
 }
 
 /** Penangan papan gap B5 dan pengelolaan TNA lama di halaman yang sama. Permintaan tulis dicatat di `terkirim`. */
@@ -54,7 +56,7 @@ export function papanGapTna(o: OpsiPapanGap): { penangan: Penangan; terkirim: Te
   const penangan: Penangan = (req) => {
     if (cocok(req, 'GET /:sm/imports/templates') || cocok(req, 'GET /:sm/imports/batches')) return data([])
     // Pengelolaan TNA lama
-    if (cocok(req, 'GET /tna/dashboard')) return data({ role: PERAN_API[o.peran], people: null, redTargets: 1, sessions: {}, trainingFindings: 0, planItems: {} })
+    if (cocok(req, 'GET /tna/dashboard')) return data({ role: PERAN_API[o.peran], people: null, redTargets: 1, sessions: {}, trainingFindings: 0, planItems: {}, reviewPending: o.reviewPending })
     if (cocok(req, 'GET /tna/findings')) return data([{ id: 'f1', userId: 'd', userName: 'Dimas', title: 'Kesulitan analisis insiden', status: 'open', competencyName: null, metricName: null, target: null, actual: null }])
     if (cocok(req, 'GET /tna/pareto') || cocok(req, 'GET /tna/plan-items') || cocok(req, 'GET /tna/sessions')) return data([])
     if (cocok(req, 'GET /tna/job-roles')) return { json: { data: [{ id: 'jr1', name: 'Service Delivery L1' }], defaults: { scope: 'red_only', jobRoleId: null } } }

@@ -113,7 +113,7 @@ async function assign(rows: TeamRow[]) {
               <template #cell-status="{ row }"><UiChip :tone="TONE[asRow(row).status]">{{ STATUS_LABEL[asRow(row).status] }}</UiChip></template>
               <template #cell-aksi="{ row }">
                 <UiButton v-if="open(asRow(row).status)" variant="tonal" size="sm" :disabled="busy || !leader.canAssign || !due" @click="assign([asRow(row)])">Tugaskan<span class="el-sr-only"> {{ row.name }}</span></UiButton>
-                <UiButton v-else variant="tonal" size="sm" disabled>{{ row.status === 'completed' ? 'Selesai' : 'Menunggu karyawan' }}</UiButton>
+                <span v-else class="el-muted">{{ row.status === 'completed' ? 'Selesai' : 'Menunggu karyawan' }}</span>
               </template>
             </UiDataTable>
             <UiNote style="margin-top: 12px">Atasan hanya melihat status tim. Isi jawaban karyawan diringkas dan tidak ditampilkan per orang.</UiNote>

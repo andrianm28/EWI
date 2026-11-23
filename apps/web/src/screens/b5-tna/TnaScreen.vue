@@ -9,8 +9,10 @@ import { ApiError } from '@/api/client'
 import { UiAgentCard, UiBreadcrumb, UiButton, UiCard, UiChip, UiDataTable, UiErrorSummary, UiKpiCard, UiNote, UiProgressBar, UiTabs, type UiColumn } from '@/ui'
 import { routeOpen } from '@/router'
 import { useSessionStore } from '@/stores/session'
+import { lna } from '@/api/lna'
 import TnaPengelolaan from './TnaPengelolaan.vue'
-import { BOARD_ROLES, gaps, gapRefOf, type CompetencyGap, type GapSummary, type OkrGap } from './api'
+import { useShowBoard } from './board'
+import { HR_ROLES, gaps, gapRefOf, type CompetencyGap, type GapSummary, type OkrGap } from './api'
 import { CLASSIFICATION_LABEL, CLASSIFICATION_TONE, interviewStatus, num, pct } from './labels'
 import './tna.css'
 
@@ -19,7 +21,13 @@ const route = useRoute()
 const router = useRouter()
 
 // Papan hanya untuk peran yang diterima API (R1); selain itu tidak ada panggilan /gaps sama sekali
-const showBoard = computed(() => session.hasFlag('tna.gap_board') && session.activeView !== 'karyawan' && session.roles.some((r) => BOARD_ROLES.includes(r)))
+const showBoard = useShowBoard()
+// Triase P5 M1: banner temuan AI menunggu review ikut pindah ke Kelola TNA, jadi HR diberi catatan ringkas di papan
+const reviewPending = ref(0)
+async function loadReviewPending() {
+  if (!showBoard.value || !HR_ROLES.includes(session.role)) return
+  try { reviewPending.value = (await lna.tnaDashboard()).data.reviewPending ?? 0 } catch { /* catatan opsional; galat papan ditangani loadBoard */ }
+}
 
 const TABS = [{ key: 'ringkasan', label: 'Ringkasan' }, { key: 'kompetensi', label: 'Gap kompetensi' }, { key: 'okr', label: 'Gap OKR' }]
 const tab = computed({
@@ -44,7 +52,7 @@ async function loadBoard() {
     if (!period.value && s.data.period) period.value = s.data.period
   } catch (e) { error.value = e instanceof ApiError ? e.message : 'Papan gap tidak bisa dimuat' }
 }
-onMounted(loadBoard)
+onMounted(() => { void loadBoard(); void loadReviewPending() })
 watch(period, (v, old) => { if (old) loadBoard() })
 
 const kpis = computed(() => {
@@ -104,6 +112,12 @@ const ivTo = computed(() => (routeOpen('iv', session.activeView, session) ? { na
       </UiAgentCard>
       <p class="el-muted">Reaktif: setiap gap adalah masalah yang bisa diwawancarai untuk menemukan akar penyebab, lalu diberi solusi pelatihan atau perbaikan.</p>
       <UiErrorSummary :errors="error ? [{ message: error }] : []" />
+      <UiNote v-if="reviewPending" tone="warning" class="tna-gap-b" data-testid="tna-review-ringkas">
+        <div class="tna-row">
+          <span>{{ reviewPending }} temuan AI dari wawancara TNA menunggu review.</span>
+          <UiButton size="sm" to="/m/tna/review">Review</UiButton>
+        </div>
+      </UiNote>
       <UiTabs id="tna-tab" v-model="tab" :tabs="TABS" label="Bagian Training Needs" />
 
       <div v-if="tab === 'ringkasan'" id="tna-tab-panel-ringkasan" role="tabpanel" aria-labelledby="tna-tab-tab-ringkasan" class="tna-panel">
@@ -149,7 +163,7 @@ const ivTo = computed(() => (routeOpen('iv', session.activeView, session) ? { na
       </div>
 
       <div v-else id="tna-tab-panel-okr" role="tabpanel" aria-labelledby="tna-tab-tab-okr" class="tna-panel">
-        <UiNote class="tna-gap-b"><b>Gap OKR</b> = kesenjangan terhadap pencapaian <b>OKR</b> operasional. Diperlakukan sama seperti gap kompetensi: dapat diwawancarai dan diberi solusi.</UiNote>
+        <UiNote class="tna-gap-b"><b>Gap OKR</b> = kesenjangan terhadap <b>pencapaian OKR</b> operasional. Diperlakukan sama seperti gap kompetensi: dapat diwawancarai dan diberi solusi.</UiNote>
         <label v-if="summary?.periods.length" class="tna-period">Periode
           <select v-model="period" class="el-input tna-period__select">
             <option v-for="p in summary.periods" :key="p" :value="p">{{ p }}</option>
