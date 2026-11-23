@@ -3,6 +3,7 @@
 import { computed, onMounted, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import AppShell from '@/components/AppShell.vue'
+import './li.css'
 import { ApiError } from '@/api/client'
 import { UiButton, UiCard, UiChip, UiNote, UiStatus } from '@/ui'
 import { li, type CatalogItem, type RequestStatus, type Requests, type VendorRequest } from './api'

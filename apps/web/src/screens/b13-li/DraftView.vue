@@ -3,6 +3,7 @@
 import { computed, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import AppShell from '@/components/AppShell.vue'
+import './li.css'
 import { ApiError } from '@/api/client'
 import { UiAuditLine, UiButton, UiCard, UiErrorSummary, UiField, UiNote, UiStatus, UiStepper } from '@/ui'
 import { li, type Draft } from './api'

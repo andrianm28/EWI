@@ -5,7 +5,8 @@ import { loginSebagai, navigasi, semuaModulDengan, SEMUA_MODUL, type Peran } fro
 // Seam: menu "Navigasi utama" setelah masuk lewat loginSebagai. Layar di belakang tiap butir tidak diuji di sini;
 // permintaan API layar beranda yang tidak di-mock dijawab 404 BELUM_DIMOCK dan tidak memengaruhi menu.
 
-const grup = (page: Page) => navigasi(page).getByRole('button')
+// Grup accordion = tombol ber-aria-expanded (tombol Mode gelap di kaki drawer bukan grup)
+const grup = (page: Page) => navigasi(page).locator('button[aria-expanded]')
 
 /** Sub-butir hanya terlihat saat grup accordion terbuka, jadi grup yang tertutup dibuka dulu. */
 async function butirMenu(page: Page) {

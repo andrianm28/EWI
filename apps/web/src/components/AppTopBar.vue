@@ -1,11 +1,11 @@
 <script setup lang="ts">
-// Top app bar: judul layar, tenant, pil audit, ganti tampilan, identitas, tema, keluar.
+// Top app bar: judul layar, tenant, pil audit, ganti tampilan, identitas, keluar (urutan mockup Pak Eji).
+// Tombol tema ada di kaki drawer supaya bar tetap satu baris 64px di lebar 1280 (paritas S2).
 import { computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useSessionStore } from '@/stores/session'
 import { homeFor } from '@/router'
 import { menuLabel } from '@/shell/menu'
-import { theme, toggleTheme } from '@/shell/theme'
 import { VIEW_LABEL, type ViewKey } from '@/shell/views'
 import { UiButton, UiIcon, UiSegmented } from '@/ui'
 
@@ -60,9 +60,6 @@ function logout() {
       <UiSegmented v-model="view" :options="viewOptions" label="Tampilan" />
     </div>
     <span v-if="session.user" class="el-pill" data-testid="identitas"><UiIcon name="person" :size="16" />{{ VIEW_LABEL[session.activeView] }} · {{ session.user.email }}</span>
-    <button type="button" class="el-top__theme" :aria-pressed="theme === 'dark'" @click="toggleTheme">
-      <UiIcon :name="theme === 'dark' ? 'light_mode' : 'dark_mode'" :size="20" /><span class="el-sr-only">Mode gelap</span>
-    </button>
     <UiButton variant="outlined" size="sm" icon="logout" @click="logout">Keluar</UiButton>
   </header>
 </template>
@@ -75,11 +72,11 @@ function logout() {
 .el-top__title { flex: 1 1 200px; font-weight: 500; min-width: 0; }
 .el-top__tenant { font-size: 12px; font-weight: 400; color: var(--el-on-surface-variant); }
 .el-top__views { display: flex; align-items: center; gap: 6px; }
-.el-top__menu, .el-top__theme {
+.el-top__menu {
   width: 40px; height: 40px; border-radius: 20px; border: 0; background: transparent; color: var(--el-on-surface-variant);
   display: inline-flex; align-items: center; justify-content: center; cursor: pointer;
 }
-.el-top__menu:hover, .el-top__theme:hover { background: var(--el-surface-2); }
+.el-top__menu:hover { background: var(--el-surface-2); }
 .el-top__menu { display: none; }
 @media (max-width: 900px) {
   .el-top { padding: 8px 16px; }

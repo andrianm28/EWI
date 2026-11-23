@@ -3,6 +3,7 @@
 import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import AppShell from '@/components/AppShell.vue'
+import './li.css'
 import { ApiError } from '@/api/client'
 import { UiButton, UiCard, UiChip, UiKpiCard, UiNote, UiStatus } from '@/ui'
 import { li, type CatalogItem, type Library, type ModuleDetail, type ModuleRow } from './api'
@@ -176,23 +177,3 @@ async function develop(m: ModuleDetail) {
   </AppShell>
 </template>
 
-<style>
-.li-gap { margin-top: 16px; }
-.li-small { font-size: 13px; }
-.li-row { display: flex; gap: 12px; align-items: center; justify-content: space-between; flex-wrap: wrap; }
-.li-filters { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 12px; }
-.li-split { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 16px; align-items: start; }
-@media (max-width: 1100px) { .li-split { grid-template-columns: minmax(0, 1fr); } }
-.li-list { list-style: none; margin: 0; padding: 0; max-height: 640px; overflow: auto; }
-.li-item {
-  display: flex; gap: 12px; width: 100%; text-align: left; padding: 12px; border: 0; border-bottom: 1px solid var(--el-outline-variant);
-  background: none; color: inherit; font: inherit; cursor: pointer; border-radius: 8px;
-}
-.li-item:hover { background: var(--el-surface-1); }
-.li-item[aria-current='true'] { background: var(--el-secondary-container); color: var(--el-on-secondary-container); }
-.li-item:focus-visible { outline: 2px solid var(--el-primary); outline-offset: -2px; }
-.li-item__body { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
-.li-chips { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
-.li-actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 16px; }
-.li-h4 { font-size: 14px; font-weight: 500; margin: 12px 0 4px; }
-</style>
