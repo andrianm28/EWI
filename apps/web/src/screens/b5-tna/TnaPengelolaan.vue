@@ -1,16 +1,17 @@
 <script setup lang="ts">
 // Pengelolaan TNA (dulu views/TnaView.vue, POC): dipicu target OKR/KPI/SLA yang tidak tercapai (RG-2). Tampilan menyesuaikan peran (RG-3).
-// Dipasang di bawah papan gap oleh TnaScreen (docs/designs/b5-training-needs.md bagian 16). Isi dan data-testid dipertahankan.
+// Dipasang di `/tna` saat papan gap mati, atau di `/tna/kelola` (TnaKelolaView) saat papan menyala (paritas P5, TN-2).
+// Isi, label, dan data-testid dipertahankan; gaya memakai komponen Ui* dan token --el-* (tanpa Tailwind).
 // HR wajib memilih siapa yang diwawancarai karena BT-29 belum diputuskan (tidak ada pilihan bawaan).
 import { computed, onMounted, ref } from 'vue'
 import ImportPanel from '@/components/ImportPanel.vue'
+import { UiButton, UiCard, UiDataTable, UiField, UiKpiCard, UiNote, type UiColumn } from '@/ui'
 import {
   lna, COURSE_STATUS_LABEL, PLAN_STATUS_LABEL, PLAN_NEXT, FLAG_TRAINING_REQUEST, FLAG_NON_TRAINING_HR, formatWib,
   type Finding, type NonTrainingFinding, type NonTrainingGrant, type ParetoRow, type PlanItem, type Project, type Session, type TnaDashboard,
 } from '@/api/lna'
 import { useSessionStore } from '@/stores/session'
 
-defineProps<{ heading?: string }>()
 const session = useSessionStore()
 const dash = ref<TnaDashboard | null>(null)
 const pareto = ref<ParetoRow[]>([])
@@ -42,6 +43,13 @@ const ungranted = computed(() => supervisors.value.filter((s) => !grants.value.s
 const openInvites = computed(() => sessions.value.filter((s) => s.status === 'scheduled' || s.status === 'in_progress'))
 const isExpired = (s: Session) => !!s.inviteExpiresAt && new Date(s.inviteExpiresAt).getTime() <= Date.now()
 const statusOptions = (p: PlanItem) => [p.status, ...(PLAN_NEXT[p.status] ?? [])]
+const INVITE_COLUMNS: UiColumn[] = [
+  { key: 'intervieweeName', label: 'Karyawan' }, { key: 'status', label: 'Status' }, { key: 'inviteExpiresAt', label: 'Berlaku sampai' }, { key: 'aksi', label: 'Tindakan' },
+]
+const PARETO_COLUMNS: UiColumn[] = [
+  { key: 'label', label: 'Kebutuhan' }, { key: 'people', label: 'Orang', mono: true }, { key: 'score', label: 'Skor', mono: true }, { key: 'cumulativeShare', label: 'Kumulatif', mono: true },
+]
+const asSession = (r: Record<string, unknown>) => r as unknown as Session
 
 // Impor & penjadwalan (HR)
 const period = ref('')
@@ -121,164 +129,155 @@ const target = (f: Finding) => (f.metricName ? `${f.metricName}: target ${f.targ
 </script>
 
 <template>
-  <div>
-    <h2 v-if="heading" class="mt-6 text-base font-semibold">{{ heading }}</h2>
-    <p class="mt-1 text-sm text-slate-600">Kebutuhan training dari target OKR/KPI/SLA yang belum tercapai.</p>
-    <p v-if="error" role="alert" class="mt-3 text-sm text-red-600">{{ error }}</p>
-    <p v-if="notice" role="status" class="mt-3 text-sm text-emerald-700">{{ notice }}</p>
+  <div class="tna-stack">
+    <p class="el-muted">Kebutuhan training dari target OKR/KPI/SLA yang belum tercapai.</p>
+    <p v-if="error" role="alert" class="tna-alert">{{ error }}</p>
+    <p v-if="notice" role="status" class="tna-notice">{{ notice }}</p>
 
     <!-- PK-14: temuan AI menunggu review HR sebelum tampil (PM-5 ★A) -->
-    <section v-if="isHr && dash?.reviewPending" class="mt-4 flex items-center justify-between gap-3 rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm" data-testid="tna-review-banner">
-      <div>
-        <div class="font-medium">{{ dash.reviewPending }} temuan AI dari wawancara TNA menunggu review</div>
-        <div class="text-slate-600">Temuan baru tampil ke atasan dan karyawan, dan baru dihitung di dashboard, setelah Anda setujui.</div>
+    <UiNote v-if="isHr && dash?.reviewPending" tone="warning" data-testid="tna-review-banner">
+      <div class="tna-row">
+        <div>
+          <div class="tna-strong">{{ dash.reviewPending }} temuan AI dari wawancara TNA menunggu review</div>
+          <div>Temuan baru tampil ke atasan dan karyawan, dan baru dihitung di dashboard, setelah Anda setujui.</div>
+        </div>
+        <UiButton size="sm" to="/m/tna/review">Review</UiButton>
       </div>
-      <RouterLink to="/m/tna/review" class="shrink-0 rounded bg-slate-900 px-3 py-1.5 text-white">Review</RouterLink>
-    </section>
-    <p v-else-if="isHr" class="mt-4 text-sm"><RouterLink to="/m/tna/review" class="text-blue-700">Riwayat review hasil AI</RouterLink></p>
+    </UiNote>
+    <p v-else-if="isHr"><RouterLink to="/m/tna/review" class="tna-a">Riwayat review hasil AI</RouterLink></p>
 
-    <section v-if="mySessions.length" class="mt-4 rounded-lg border border-blue-200 bg-blue-50 p-4" data-testid="tna-my-sessions">
-      <h2 class="font-medium">Wawancara untuk Anda</h2>
-      <p class="text-sm text-slate-600">Sekitar 30 menit, membahas target yang belum tercapai.</p>
-      <template v-for="s in mySessions" :key="s.id">
-        <p v-if="s.status === 'scheduled' && isExpired(s)" class="mt-2 text-sm text-red-600">Undangan sudah berakhir. Minta HR memperpanjang undangan Anda.</p>
-        <RouterLink v-else :to="`/iv/${s.id}`" class="mt-2 block text-sm text-blue-700">
-          {{ s.status === 'scheduled' ? 'Mulai wawancara' : 'Lanjutkan wawancara' }}
-        </RouterLink>
-        <p v-if="s.inviteExpiresAt && !isExpired(s)" class="text-xs text-slate-500">Undangan berlaku sampai {{ formatWib(s.inviteExpiresAt) }} WIB.</p>
-      </template>
-    </section>
+    <UiCard v-if="mySessions.length" tonal data-testid="tna-my-sessions">
+      <h2 class="tna-h2">Wawancara untuk Anda</h2>
+      <p class="el-muted">Sekitar 30 menit, membahas target yang belum tercapai.</p>
+      <div v-for="s in mySessions" :key="s.id" class="tna-session">
+        <p v-if="s.status === 'scheduled' && isExpired(s)" class="tna-crit">Undangan sudah berakhir. Minta HR memperpanjang undangan Anda.</p>
+        <UiButton v-else size="sm" :to="`/iv/${s.id}`">{{ s.status === 'scheduled' ? 'Mulai wawancara' : 'Lanjutkan wawancara' }}</UiButton>
+        <p v-if="s.inviteExpiresAt && !isExpired(s)" class="el-muted tna-small">Undangan berlaku sampai {{ formatWib(s.inviteExpiresAt) }} WIB.</p>
+      </div>
+    </UiCard>
 
-    <section v-if="dash" class="mt-4 grid gap-3 sm:grid-cols-4" data-testid="tna-stats">
-      <div class="rounded-lg border bg-white p-4"><div class="text-2xl font-semibold">{{ dash.redTargets }}</div><div class="text-sm text-slate-500">Target merah</div></div>
-      <div class="rounded-lg border bg-white p-4"><div class="text-2xl font-semibold">{{ dash.sessions?.completed ?? 0 }}</div><div class="text-sm text-slate-500">Wawancara selesai</div></div>
-      <div class="rounded-lg border bg-white p-4"><div class="text-2xl font-semibold">{{ dash.trainingFindings }}</div><div class="text-sm text-slate-500">Kebutuhan training</div></div>
-      <div class="rounded-lg border bg-white p-4"><div class="text-2xl font-semibold">{{ plan.length }}</div><div class="text-sm text-slate-500">Item training plan</div></div>
-    </section>
+    <div v-if="dash" class="el-grid el-grid-4" data-testid="tna-stats">
+      <UiKpiCard label="Target merah" :value="dash.redTargets" />
+      <UiKpiCard label="Wawancara selesai" :value="dash.sessions?.completed ?? 0" />
+      <UiKpiCard label="Kebutuhan training" :value="dash.trainingFindings" />
+      <UiKpiCard label="Item training plan" :value="plan.length" />
+    </div>
 
-    <!-- R3-3: data kinerja (mis. ekspor HappyFive) dan data karyawan lewat file XLSX/CSV -->
-    <ImportPanel v-if="isHr" submodule="tna" :projects="projects" class="mt-4" @imported="load" />
+    <!-- R3-3: data kinerja (mis. ekspor HappyFive) dan data karyawan lewat file XLSX/CSV. ImportPanel bersama belum dimigrasi (p5-lna.md) -->
+    <ImportPanel v-if="isHr" submodule="tna" :projects="projects" data-import-panel @imported="load" />
 
-    <section v-if="isHr && !assignmentOn" class="mt-4 grid gap-4 md:grid-cols-2">
-      <form class="space-y-2 rounded-lg border bg-white p-4 text-sm" @submit.prevent="schedule">
-        <h2 class="font-medium">Jadwalkan wawancara TNA</h2>
-        <label class="block">Periode <input v-model="period" required class="mt-1 w-full rounded border px-2 py-1" placeholder="2026-11" /></label>
-        <label class="block">Proyek
-          <select v-model="projectId" required class="mt-1 w-full rounded border px-2 py-1">
-            <option value="" disabled>Pilih proyek</option>
-            <option v-for="p in projects" :key="p.id" :value="p.id">{{ p.name }}</option>
-          </select>
-        </label>
-        <fieldset class="space-y-1">
-          <legend>Siapa yang diwawancarai?</legend>
-          <label class="flex gap-2"><input v-model="scope" type="radio" value="red_only" /> Hanya karyawan dengan target merah</label>
-          <label class="flex gap-2"><input v-model="scope" type="radio" value="all_members" /> Semua karyawan di job role tertentu</label>
-        </fieldset>
-        <label class="block">Job role{{ scope === 'all_members' ? '' : ' (opsional)' }}
-          <select v-model="jobRoleId" class="mt-1 w-full rounded border px-2 py-1">
-            <option value="">{{ scope === 'all_members' ? 'Pilih job role' : 'Semua job role' }}</option>
-            <option v-for="j in jobRoles" :key="j.id" :value="j.id">{{ j.name }}</option>
-          </select>
-        </label>
-        <p class="text-xs text-slate-500" data-testid="tna-scope-note">Target merah pada periode di atas menjadi bahan pembahasan. TNA tidak memerlukan hasil DACUM.</p>
-        <button type="submit" class="rounded bg-slate-900 px-3 py-1.5 text-white">Jadwalkan</button>
-      </form>
-    </section>
+    <UiCard v-if="isHr && !assignmentOn" as="form" class="tna-form" @submit.prevent="schedule">
+      <h2 class="tna-h2">Jadwalkan wawancara TNA</h2>
+      <UiField id="tna-periode" v-slot="{ attrs }" label="Periode"><input v-bind="attrs" v-model="period" required class="el-input" placeholder="2026-11" /></UiField>
+      <UiField id="tna-proyek" v-slot="{ attrs }" label="Proyek">
+        <select v-bind="attrs" v-model="projectId" required class="el-input">
+          <option value="" disabled>Pilih proyek</option>
+          <option v-for="p in projects" :key="p.id" :value="p.id">{{ p.name }}</option>
+        </select>
+      </UiField>
+      <fieldset class="tna-fieldset">
+        <legend>Siapa yang diwawancarai?</legend>
+        <label class="el-check"><input v-model="scope" type="radio" value="red_only" /> Hanya karyawan dengan target merah</label>
+        <label class="el-check"><input v-model="scope" type="radio" value="all_members" /> Semua karyawan di job role tertentu</label>
+      </fieldset>
+      <UiField id="tna-jobrole" v-slot="{ attrs }" :label="`Job role${scope === 'all_members' ? '' : ' (opsional)'}`">
+        <select v-bind="attrs" v-model="jobRoleId" class="el-input">
+          <option value="">{{ scope === 'all_members' ? 'Pilih job role' : 'Semua job role' }}</option>
+          <option v-for="j in jobRoles" :key="j.id" :value="j.id">{{ j.name }}</option>
+        </select>
+      </UiField>
+      <p class="el-muted tna-small" data-testid="tna-scope-note">Target merah pada periode di atas menjadi bahan pembahasan. TNA tidak memerlukan hasil DACUM.</p>
+      <div><UiButton type="submit">Jadwalkan</UiButton></div>
+    </UiCard>
 
-    <section v-if="isHr && openInvites.length" class="mt-4 rounded-lg border bg-white p-4">
-      <h2 class="font-medium">Undangan wawancara berjalan</h2>
-      <p class="text-xs text-slate-500">Berlaku 7 hari. Pengingat email otomatis H-3 dan H-1.</p>
-      <table class="mt-2 w-full text-sm" data-testid="tna-invites">
-        <thead class="text-left text-slate-500"><tr><th class="py-1">Karyawan</th><th>Status</th><th>Berlaku sampai</th><th></th></tr></thead>
-        <tbody>
-          <tr v-for="s in openInvites" :key="s.id" class="border-t">
-            <td class="py-1">{{ s.intervieweeName }}</td>
-            <td>{{ s.status === 'scheduled' ? 'Belum mulai' : 'Berjalan' }}</td>
-            <td :class="isExpired(s) ? 'text-red-600' : ''">{{ s.inviteExpiresAt ? `${formatWib(s.inviteExpiresAt)} WIB` : '-' }}{{ isExpired(s) ? ' (berakhir)' : '' }}</td>
-            <td class="text-right"><button class="text-blue-700" @click="extend(s)">Perpanjang 7 hari</button></td>
-          </tr>
-        </tbody>
-      </table>
-    </section>
+    <UiCard v-if="isHr && openInvites.length">
+      <h2 class="tna-h2">Undangan wawancara berjalan</h2>
+      <p class="el-muted tna-small">Berlaku 7 hari. Pengingat email otomatis H-3 dan H-1.</p>
+      <UiDataTable :columns="INVITE_COLUMNS" :rows="openInvites" row-key="id" caption="Undangan wawancara berjalan" caption-hidden data-testid="tna-invites" class="tna-gap-t">
+        <template #cell-intervieweeName="{ row }">{{ row.intervieweeName }}</template>
+        <template #cell-status="{ row }">{{ row.status === 'scheduled' ? 'Belum mulai' : 'Berjalan' }}</template>
+        <template #cell-inviteExpiresAt="{ row }">
+          <span :class="{ 'tna-crit': isExpired(asSession(row)) }">{{ row.inviteExpiresAt ? `${formatWib(asSession(row).inviteExpiresAt!)} WIB` : '-' }}{{ isExpired(asSession(row)) ? ' (berakhir)' : '' }}</span>
+        </template>
+        <template #cell-aksi="{ row }"><UiButton variant="text" size="sm" @click="extend(asSession(row))">Perpanjang 7 hari</UiButton></template>
+      </UiDataTable>
+    </UiCard>
 
-    <section v-if="!isLearner && pareto.length" class="mt-4 rounded-lg border bg-white p-4">
-      <h2 class="font-medium">Prioritas kebutuhan training</h2>
-      <table class="mt-2 w-full text-sm" data-testid="tna-pareto">
-        <thead class="text-left text-slate-500"><tr><th class="py-1">Kebutuhan</th><th>Orang</th><th>Skor</th><th>Kumulatif</th></tr></thead>
-        <tbody>
-          <tr v-for="r in pareto" :key="r.key" class="border-t">
-            <td class="py-1">{{ r.label }}</td><td>{{ r.people }}</td><td>{{ r.score }}</td><td>{{ Math.round(r.cumulativeShare * 100) }}%</td>
-          </tr>
-        </tbody>
-      </table>
-    </section>
+    <UiCard v-if="!isLearner && pareto.length">
+      <h2 class="tna-h2">Prioritas kebutuhan training</h2>
+      <UiDataTable :columns="PARETO_COLUMNS" :rows="pareto" row-key="key" caption="Prioritas kebutuhan training" caption-hidden data-testid="tna-pareto">
+        <template #cell-cumulativeShare="{ row }">{{ Math.round(Number(row.cumulativeShare) * 100) }}%</template>
+      </UiDataTable>
+    </UiCard>
 
-    <section class="mt-4 rounded-lg border bg-white p-4">
-      <h2 class="font-medium">{{ isLearner ? 'Hasil TNA Anda' : 'Kebutuhan training' }}</h2>
-      <p v-if="!findings.length" class="mt-2 text-sm text-slate-500">Belum ada hasil.<template v-if="!isHr"> Hasil wawancara tampil setelah direview HR.</template></p>
-      <ul class="mt-2 divide-y text-sm" data-testid="tna-findings">
-        <li v-for="f in findings" :key="f.id" class="flex items-start justify-between gap-3 py-2">
+    <UiCard>
+      <h2 class="tna-h2">{{ isLearner ? 'Hasil TNA Anda' : 'Kebutuhan training' }}</h2>
+      <p v-if="!findings.length" class="el-muted">Belum ada hasil.<template v-if="!isHr"> Hasil wawancara tampil setelah direview HR.</template></p>
+      <ul class="tna-items" data-testid="tna-findings">
+        <li v-for="f in findings" :key="f.id">
           <div>
-            <div>{{ f.title }}<span v-if="!isLearner" class="text-slate-500"> · {{ f.userName }}</span></div>
-            <div class="text-xs text-slate-500">{{ f.competencyName ?? 'Kompetensi belum terpetakan' }}<template v-if="target(f)"> · {{ target(f) }}</template></div>
+            <div>{{ f.title }}<span v-if="!isLearner" class="el-muted"> · {{ f.userName }}</span></div>
+            <div class="el-muted tna-small">{{ f.competencyName ?? 'Kompetensi belum terpetakan' }}<template v-if="target(f)"> · {{ target(f) }}</template></div>
           </div>
-          <button v-if="isHr && f.status === 'open'" class="shrink-0 text-blue-700" @click="planFinding(f.id)">Buat training plan</button>
-          <button v-if="canRequestTraining" class="shrink-0 text-blue-700" @click="requestTraining(f.id)">Minta training</button>
+          <UiButton v-if="isHr && f.status === 'open'" variant="text" size="sm" @click="planFinding(f.id)">Buat training plan</UiButton>
+          <UiButton v-if="canRequestTraining" variant="text" size="sm" @click="requestTraining(f.id)">Minta training</UiButton>
         </li>
       </ul>
-    </section>
+    </UiCard>
 
-    <section v-if="showNonTraining" class="mt-4 rounded-lg border bg-white p-4" data-testid="tna-non-training">
-      <h2 class="font-medium">Temuan di luar pelatihan</h2>
-      <p class="text-xs text-slate-500">{{ isHr ? 'Terlihat oleh HR dan atasan yang Anda beri akses' : 'Akses diberikan HR untuk tim Anda' }}. Bukan kebutuhan training, jadi tidak dibuatkan rencana aksi di ELGOS.</p>
-      <p v-if="!nonTraining.length" class="mt-2 text-sm text-slate-500">Belum ada temuan.</p>
-      <ul class="mt-2 divide-y text-sm">
-        <li v-for="f in nonTraining" :key="f.id" class="py-2">
-          <div>{{ f.title }}<span class="text-slate-500"> · {{ f.userName }}</span></div>
-          <div v-if="f.metricName || f.linkedTrainingTitle" class="text-xs text-slate-500">
-            <template v-if="f.metricName">{{ f.metricName }}</template><template v-if="f.metricName && f.linkedTrainingTitle"> · </template><template v-if="f.linkedTrainingTitle">terkait: {{ f.linkedTrainingTitle }}</template>
+    <UiCard v-if="showNonTraining" data-testid="tna-non-training">
+      <h2 class="tna-h2">Temuan di luar pelatihan</h2>
+      <p class="el-muted tna-small">{{ isHr ? 'Terlihat oleh HR dan atasan yang Anda beri akses' : 'Akses diberikan HR untuk tim Anda' }}. Bukan kebutuhan training, jadi tidak dibuatkan rencana aksi di ELGOS.</p>
+      <p v-if="!nonTraining.length" class="el-muted">Belum ada temuan.</p>
+      <ul class="tna-items">
+        <li v-for="f in nonTraining" :key="f.id">
+          <div>
+            <div>{{ f.title }}<span class="el-muted"> · {{ f.userName }}</span></div>
+            <div v-if="f.metricName || f.linkedTrainingTitle" class="el-muted tna-small">
+              <template v-if="f.metricName">{{ f.metricName }}</template><template v-if="f.metricName && f.linkedTrainingTitle"> · </template><template v-if="f.linkedTrainingTitle">terkait: {{ f.linkedTrainingTitle }}</template>
+            </div>
           </div>
         </li>
       </ul>
-      <div v-if="isHr" class="mt-4 border-t pt-3 text-sm" data-testid="tna-non-training-access">
-        <h3 class="font-medium">Akses atasan</h3>
-        <ul class="mt-1 divide-y">
-          <li v-for="g in grants" :key="g.supervisorId" class="flex items-center justify-between py-1">
+      <div v-if="isHr" class="tna-subsection" data-testid="tna-non-training-access">
+        <h3 class="el-h3">Akses atasan</h3>
+        <ul class="tna-items">
+          <li v-for="g in grants" :key="g.supervisorId">
             <span>{{ g.supervisorName ?? g.supervisorEmail }}</span>
-            <button class="text-red-700" @click="revoke(g)">Cabut akses</button>
+            <UiButton variant="outlined" size="sm" @click="revoke(g)">Cabut akses</UiButton>
           </li>
         </ul>
-        <p v-if="!grants.length" class="text-xs text-slate-500">Belum ada atasan yang diberi akses.</p>
-        <form v-if="ungranted.length" class="mt-2 flex gap-2" @submit.prevent="grant">
-          <select v-model="grantPick" class="rounded border px-2 py-1" aria-label="Atasan">
+        <p v-if="!grants.length" class="el-muted tna-small">Belum ada atasan yang diberi akses.</p>
+        <form v-if="ungranted.length" class="tna-inline" @submit.prevent="grant">
+          <select v-model="grantPick" class="el-input tna-inline__select" aria-label="Atasan">
             <option value="" disabled>Pilih atasan</option>
             <option v-for="sp in ungranted" :key="sp.id" :value="sp.id">{{ sp.name ?? sp.email }}</option>
           </select>
-          <button type="submit" class="rounded bg-slate-900 px-3 py-1 text-white">Beri akses</button>
+          <UiButton type="submit" size="sm">Beri akses</UiButton>
         </form>
       </div>
-    </section>
+    </UiCard>
 
-    <section v-if="plan.length" class="mt-4 rounded-lg border bg-white p-4">
-      <h2 class="font-medium">Training plan</h2>
-      <ul class="mt-2 divide-y text-sm" data-testid="tna-plan">
-        <li v-for="p in plan" :key="p.id" class="flex items-center justify-between gap-3 py-2">
+    <UiCard v-if="plan.length">
+      <h2 class="tna-h2">Training plan</h2>
+      <ul class="tna-items" data-testid="tna-plan">
+        <li v-for="p in plan" :key="p.id">
           <div>
             <div>
-              <a v-if="p.catalogItemUrl" :href="p.catalogItemUrl" target="_blank" rel="noopener noreferrer" class="text-indigo-700 underline">{{ p.catalogItemTitle }}</a>
+              <a v-if="p.catalogItemUrl" :href="p.catalogItemUrl" target="_blank" rel="noopener noreferrer" class="tna-a">{{ p.catalogItemTitle }}</a>
               <template v-else>{{ p.catalogItemTitle ?? p.findingTitle ?? p.note }}</template>
-              <span v-if="!isLearner" class="text-slate-500"> · {{ p.userName }}</span>
+              <span v-if="!isLearner" class="el-muted"> · {{ p.userName }}</span>
             </div>
-            <div class="text-xs text-slate-500">
+            <div class="el-muted tna-small">
               {{ p.origin === 'learner_request' ? 'Diminta karyawan' : 'Usulan' }}<template v-if="p.needsModule"> · perlu modul baru</template><template v-if="p.courseStatus"> · Course: {{ COURSE_STATUS_LABEL[p.courseStatus] ?? p.courseStatus }}</template>
             </div>
           </div>
-          <select v-if="!isLearner && statusOptions(p).length > 1" :value="p.status" class="rounded border px-2 py-1 text-xs" :aria-label="`Status ${p.id}`" @change="setStatus(p.id, ($event.target as HTMLSelectElement).value)">
+          <select v-if="!isLearner && statusOptions(p).length > 1" :value="p.status" class="el-input tna-inline__select" :aria-label="`Status ${p.id}`" @change="setStatus(p.id, ($event.target as HTMLSelectElement).value)">
             <option v-for="k in statusOptions(p)" :key="k" :value="k">{{ PLAN_STATUS_LABEL[k] ?? k }}</option>
           </select>
-          <span v-else class="text-xs">{{ PLAN_STATUS_LABEL[p.status] ?? p.status }}</span>
+          <span v-else class="tna-small">{{ PLAN_STATUS_LABEL[p.status] ?? p.status }}</span>
         </li>
       </ul>
-    </section>
+    </UiCard>
   </div>
 </template>

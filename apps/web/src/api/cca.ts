@@ -162,8 +162,8 @@ export const STATUS_LABEL: Record<AssignmentStatus, string> = {
   cancelled: 'Dibatalkan',
 }
 export const fmt = (n: number | null | undefined, suffix = '') => (n === null || n === undefined ? '-' : `${String(n).replace('.', ',')}${suffix}`)
-export const fmtDate = (iso: string | null | undefined) => {
+export const fmtDate = (iso: string | null | undefined, month: 'long' | 'short' = 'long') => {
   if (!iso) return '-'
   const d = new Date(`${iso.slice(0, 10)}T00:00:00`)
-  return Number.isNaN(d.getTime()) ? iso : d.toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' })
+  return Number.isNaN(d.getTime()) ? iso : d.toLocaleDateString('id-ID', { day: 'numeric', month, year: 'numeric' })
 }

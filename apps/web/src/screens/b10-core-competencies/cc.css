@@ -7,6 +7,18 @@
 .cc-form__wide { grid-column: 1 / -1; }
 .cc-gapcell { display: flex; align-items: center; gap: 8px; min-width: 140px; }
 .cc-gapcell .el-bar { flex: 1; }
+.cc-gapnum { width: 32px; flex: none; }
+.cc-name { font-weight: 500; }
+/* CC-4: KPI kesiapan di kartu sumber tanpa bingkai, rata kanan (.kpi mockup) */
+.cc-kpi-plain { text-align: right; }
+/* P5 AH-6: daftar tema sintesis (mockup baris 621) */
+.cc-synth__sub { margin: -4px 0 12px; }
+.cc-themes { list-style: none; margin: 0; padding: 0; }
+.cc-themes li { margin-bottom: 14px; }
+.cc-theme__head { margin-bottom: 6px; }
+.cc-theme__src { margin-left: 6px; }
+.cc-more { margin-top: 16px; border-top: 1px solid var(--el-outline-variant); padding-top: 12px; }
+.cc-more > summary { cursor: pointer; color: var(--el-primary); font-weight: 500; }
 .cc-meter + .cc-meter { margin-top: 12px; }
 .cc-meter .cc-row { margin-bottom: 6px; }
 .cc-small { font-size: 12px; }
@@ -15,3 +27,6 @@
 .cc-summary dt { font-weight: 600; }
 .cc-summary dd { margin: 0; }
 @media (max-width: 600px) { .cc-summary { grid-template-columns: minmax(0, 1fr); } .cc-summary dd { margin-bottom: 8px; } }
+/* P5 AA-2: kartu wawancara pimpinan, teks kiri dan tombol kanan */
+.cc-leadcard { display: flex; justify-content: space-between; align-items: center; gap: 16px; }
+@media (max-width: 600px) { .cc-leadcard { flex-wrap: wrap; } }

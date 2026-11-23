@@ -54,7 +54,8 @@ test('HR: ringkasan KPI, tab gap kompetensi dan OKR dengan label klasifikasi', a
   const okr = page.getByRole('table', { name: 'Gap OKR' })
   await expect(okr).toContainText('Waktu respons')
   await expect(okr).toContainText('Perlu ditinjau HR')
-  await expect(page.getByTestId('tna-findings')).toBeVisible()
+  // P5 TN-2: pengelolaan lama tidak lagi di bawah papan
+  await expect(page.getByTestId('tna-findings')).toHaveCount(0)
 })
 
 test('HR: klik gap membuka detail, lalu tugaskan wawancara untuk karyawan terpilih', async ({ page }) => {
@@ -177,4 +178,51 @@ test('flag penugasan mati: detail gap tanpa formulir penugasan', async ({ page }
   await page.goto(`/tna/gap?kind=competency&competencyId=${ID_KOMPETENSI}`)
   await expect(page.getByRole('heading', { level: 1, name: 'Analisis insiden' })).toBeVisible()
   await expect(page.getByRole('form', { name: 'Tugaskan wawancara' })).toHaveCount(0)
+})
+
+// Paritas P5 (docs/designs/paritas-mockup/p5-lna.md)
+// ImportPanel bersama (B0 kode bersama) dikecualikan; lihat p5-lna.md "Tidak dikerjakan"
+test('P5 TN-2: papan menyala, pengelolaan TNA pindah ke /tna/kelola lewat tautan Kelola TNA, tanpa gaya Tailwind', async ({ page }) => {
+  await setup(page, { flags: BOARD })
+  await page.goto('/tna')
+  await expect(page.getByRole('tab', { name: 'Ringkasan' })).toBeVisible()
+  await expect(page.getByTestId('tna-findings')).toHaveCount(0)
+  await expect(page.getByText('Pengelolaan TNA')).toHaveCount(0)
+  await page.getByRole('link', { name: 'Kelola TNA' }).click()
+  await expect(page).toHaveURL(/\/tna\/kelola$/)
+  await expect(page.getByRole('navigation', { name: 'Lokasi' })).toHaveText(/Learning Needs Analysis\s*›\s*Training Needs\s*›\s*Kelola TNA/)
+  await expect(page.getByRole('heading', { level: 1, name: 'Kelola TNA' })).toBeVisible()
+  await expect(page.getByTestId('tna-findings')).toContainText('Kesulitan analisis insiden')
+  await expect(page.getByTestId('tna-stats')).toBeVisible()
+  const tailwind = await page.locator('main [class]').evaluateAll((els) => els.filter((e) => !e.closest('[data-import-panel]')).map((e) => e.getAttribute('class') ?? '').filter((c) => /\b(slate-|bg-white|text-blue|rounded-lg|border-amber|text-sm|mt-4)/.test(c)))
+  expect(tailwind).toEqual([])
+  await page.getByRole('navigation', { name: 'Lokasi' }).getByRole('link', { name: 'Training Needs' }).click()
+  await expect(page).toHaveURL(/\/tna$/)
+})
+
+test('P5 TN-2: papan mati, pengelolaan tetap di /tna tanpa gaya Tailwind', async ({ page }) => {
+  await setup(page)
+  await page.goto('/tna')
+  await expect(page.getByTestId('tna-findings')).toBeVisible()
+  await expect(page.getByRole('link', { name: 'Kelola TNA' })).toHaveCount(0)
+  const tailwind = await page.locator('main [class]').evaluateAll((els) => els.filter((e) => !e.closest('[data-import-panel]')).map((e) => e.getAttribute('class') ?? '').filter((c) => /\b(slate-|bg-white|text-blue|rounded-lg|text-sm|mt-4)/.test(c)))
+  expect(tailwind).toEqual([])
+})
+
+test('P5 TN-3/TN-5/TN-9/TN-10/TN-12: copy KPI dan note mockup, tombol Lihat gap kompetensi, bar gap di bawah 20 tidak merah', async ({ page }) => {
+  await setup(page, { flags: BOARD })
+  await page.goto('/tna')
+  await expect(page.getByText('terhadap Job Competency Model', { exact: true })).toBeVisible()
+  await expect(page.getByText('key result di bawah target', { exact: true })).toBeVisible()
+  await expect(page.getByText('dari 3 gap', { exact: true })).toBeVisible()
+  await expect(page.getByText('dari total gap kompetensi', { exact: true })).toBeVisible()
+  await page.getByRole('button', { name: 'Lihat gap kompetensi' }).click()
+  await expect(page.getByRole('tab', { name: 'Gap kompetensi' })).toHaveAttribute('aria-selected', 'true')
+  await expect(page.getByRole('note')).toContainText('Job Competency Model')
+  await expect(page.getByRole('note')).toContainText('Klik baris untuk membuka detail')
+  const bar = page.getByRole('progressbar', { name: 'Gap Analisis insiden' })
+  await expect(bar).not.toHaveClass(/el-bar--critical/)
+  await expect(bar).toHaveAttribute('aria-valuenow', '100')
+  await page.getByRole('tab', { name: 'Gap OKR' }).click()
+  await expect(page.getByRole('note')).toContainText('pencapaian OKR operasional')
 })

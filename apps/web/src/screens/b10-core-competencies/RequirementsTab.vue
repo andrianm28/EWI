@@ -40,14 +40,16 @@ async function run(fn: () => Promise<void>, done: string) {
 
 const columns = computed<UiColumn[]>(() => [
   { key: 'name', label: isVm.value ? 'Persyaratan kompetensi (turunan)' : 'Indikator perilaku', sortable: true },
-  { key: 'targetScore', label: 'Target', sortable: true, align: 'right', mono: true },
-  { key: 'actualScore', label: 'Aktual', sortable: true, align: 'right', mono: true },
+  { key: 'targetScore', label: 'Target', sortable: true, mono: true },
+  { key: 'actualScore', label: 'Aktual', sortable: true, mono: true },
   { key: 'gap', label: 'Gap', sortable: true },
   { key: 'classification', label: 'Klasifikasi' },
-  { key: 'status', label: 'Validasi' },
-  { key: 'aksi', label: 'Tindakan' },
 ])
-const gapWidth = (r: OverviewRow) => (r.gap === null || !r.targetScore ? 0 : Math.min(100, (r.gap / r.targetScore) * 100))
+// Paritas P5 CC-5: skala mockup (gap 35 = bar penuh), merah bila gap 20 atau lebih
+const gapWidth = (r: OverviewRow) => (r.gap === null ? 0 : Math.min(100, (r.gap / 35) * 100))
+const gapHot = (r: OverviewRow) => r.gap !== null && r.gap >= 20
+// Baris yang sedang diubah, untuk status validasi dan tombol Validasi/Tolak di panel (P5 CC-3)
+const editingRow = computed(() => (editor.id ? data.value?.groups.flatMap((g) => g.rows).find((r) => r.id === editor.id) ?? null : null))
 const asRow = (r: Record<string, unknown>) => r as unknown as OverviewRow
 
 const kpis = computed(() => {
@@ -55,10 +57,10 @@ const kpis = computed(() => {
   if (!k) return []
   const first = { label: 'Kesiapan karyawan', value: fmt(k.readiness, '%'), note: isVm.value ? 'terhadap visi dan misi' : 'terhadap nilai korporasi' }
   const gap = { label: 'Gap terbesar', value: k.biggestGap ? `−${fmt(k.biggestGap.gap)}` : '-', note: k.biggestGap?.name ?? 'belum ada nilai aktual' }
-  const below = { label: 'Di bawah target', value: `${k.belowTarget.count} dari ${k.belowTarget.measured}`, note: `${rowWord.value} yang sudah diukur` }
+  const below = { label: 'Di bawah target', value: `${k.belowTarget.count} dari ${k.belowTarget.measured}`, note: rowWord.value }
   if (isVm.value) return [first, gap, below]
   const weakest = { label: 'Nilai dengan gap terbesar', value: k.weakestSource?.title ?? '-', note: k.weakestSource ? `kesiapan ${fmt(k.weakestSource.readiness, '%')}` : 'belum ada nilai aktual' }
-  return [first, weakest, gap, below]
+  return [first, weakest, below]
 })
 
 // --- Kelola: sumber baru, persyaratan baru, ubah persyaratan ---
@@ -93,22 +95,19 @@ const saveRow = () => run(async () => {
   closeEditor()
 }, 'Perubahan disimpan.')
 const setStatus = (r: OverviewRow, status: 'validated' | 'rejected') =>
-  run(() => cca.updateRequirement(r.id, { status }).then(() => undefined), status === 'validated' ? `"${r.name}" divalidasi.` : `"${r.name}" ditolak dan tidak lagi dihitung.`)
+  run(async () => { await cca.updateRequirement(r.id, { status }); if (editor.id === r.id) closeEditor() }, status === 'validated' ? `"${r.name}" divalidasi.` : `"${r.name}" ditolak dan tidak lagi dihitung.`)
 </script>
 
 <template>
   <div class="cc-stack" :data-testid="`cc-req-${group}`">
-    <p class="el-muted">
-      <template v-if="isVm">Seberapa besar gap kompetensi karyawan terhadap persyaratan yang diturunkan dari visi dan misi perusahaan.</template>
-      <template v-else>Seberapa besar gap karyawan dalam menunjukkan perilaku tiap nilai korporasi.</template>
-    </p>
+    <p v-if="isVm" class="el-muted">Seberapa besar gap kompetensi karyawan terhadap persyaratan yang diturunkan dari visi dan misi perusahaan.</p>
     <slot />
     <UiErrorSummary v-if="errors.length" :errors="errors" />
     <p v-if="notice" role="status" class="el-muted">{{ notice }}</p>
 
     <p v-if="loading" class="el-muted">Memuat…</p>
     <template v-else-if="data">
-      <div v-if="data.groups.length" :class="['el-grid', isVm ? 'el-grid-3' : 'el-grid-4']">
+      <div v-if="data.groups.length" class="el-grid el-grid-3">
         <UiKpiCard v-for="k in kpis" :key="k.label" :label="k.label" :value="k.value" :note="k.note" />
       </div>
 
@@ -116,7 +115,7 @@ const setStatus = (r: OverviewRow, status: 'validated' | 'rejected') =>
         <h3 class="el-h3">Kesiapan per nilai</h3>
         <div v-for="g in data.groups" :key="g.id" class="cc-meter">
           <div class="cc-row"><b>{{ g.title }}</b><span class="el-mono">{{ fmt(g.readiness, '%') }}</span></div>
-          <UiProgressBar :value="g.readiness ?? 0" :label="`Kesiapan ${g.title}`" :tone="g.readiness !== null && g.readiness < 80 ? 'critical' : 'primary'" />
+          <UiProgressBar :value="g.readiness ?? 0" :label="`Kesiapan ${g.title}`" :tone="g.readiness === null ? 'primary' : g.readiness < 80 ? 'critical' : 'success'" />
         </div>
       </UiCard>
 
@@ -133,42 +132,46 @@ const setStatus = (r: OverviewRow, status: 'validated' | 'rejected') =>
             <div class="el-muted">{{ g.text }}</div>
             <div v-if="g.sourceRef" class="el-muted cc-small">Sumber: {{ g.sourceRef }}</div>
           </div>
-          <UiKpiCard label="Kesiapan karyawan" :value="fmt(g.readiness, '%')" />
+          <!-- CC-4: KPI tanpa bingkai, rata kanan (.kpi mockup tanpa .card) -->
+          <div class="cc-kpi-plain" data-testid="cc-kesiapan">
+            <div class="el-kpi__label">{{ isVm ? 'Kesiapan karyawan' : 'Kesiapan' }}</div>
+            <div class="el-kpi__value">{{ fmt(g.readiness, '%') }}</div>
+          </div>
         </div>
         <UiDataTable
           :columns="columns" :rows="g.rows" row-key="id" :caption="`${isVm ? 'Persyaratan kompetensi' : 'Indikator perilaku'}: ${g.title}`" caption-hidden
           :empty-text="`Belum ada ${rowWord}.`" style="margin-top: 16px" :row-to="editTo" row-link-key="name"
         >
-          <template #cell-name="{ row }"><b>{{ row.name }}</b><div v-if="row.definition" class="el-muted cc-small">{{ row.definition }}</div></template>
+          <template #cell-name="{ row }"><span class="cc-name">{{ row.name }}</span></template>
           <template #cell-actualScore="{ row }">{{ fmt(asRow(row).actualScore) }}</template>
           <template #cell-gap="{ row }">
             <div v-if="asRow(row).gap !== null" class="cc-gapcell">
-              <UiProgressBar :value="gapWidth(asRow(row))" :label="`Gap ${row.name}`" :tone="row.classification === 'perlu_ditinjau' ? 'critical' : 'primary'" />
-              <span class="el-mono">−{{ fmt(asRow(row).gap) }}</span>
+              <UiProgressBar :value="gapWidth(asRow(row))" :label="`Gap ${row.name}`" :tone="gapHot(asRow(row)) ? 'critical' : 'primary'" />
+              <span class="el-mono cc-gapnum">−{{ fmt(asRow(row).gap) }}</span>
             </div>
             <span v-else class="el-muted">-</span>
           </template>
           <template #cell-classification="{ row }">
             <UiChip :tone="row.classification === 'perlu_ditinjau' ? 'review' : row.classification === 'dalam_batas' ? 'success' : 'neutral'">{{ CLASS_LABEL[asRow(row).classification] }}</UiChip>
           </template>
-          <template #cell-status="{ row }">{{ row.status === 'validated' ? 'Tervalidasi' : 'Menunggu validasi HR' }}</template>
-          <template #cell-aksi="{ row }">
-            <div class="cc-actions">
-              <UiButton variant="text" size="sm" @click="router.push(editTo(row))">Ubah<span class="el-sr-only"> {{ row.name }}</span></UiButton>
-              <UiButton v-if="row.status !== 'validated'" variant="text" size="sm" @click="setStatus(asRow(row), 'validated')">Validasi<span class="el-sr-only"> {{ row.name }}</span></UiButton>
-              <UiButton variant="text" size="sm" @click="setStatus(asRow(row), 'rejected')">Tolak<span class="el-sr-only"> {{ row.name }}</span></UiButton>
-            </div>
-          </template>
         </UiDataTable>
 
-        <form v-if="editor.sourceId === g.id" class="cc-form" style="margin-top: 16px" @submit.prevent="saveRow">
+        <form v-if="editor.sourceId === g.id" class="cc-form" style="margin-top: 16px" data-testid="cc-editor" @submit.prevent="saveRow">
           <h3 class="el-h3 cc-form__wide">{{ editor.id ? 'Ubah' : 'Tambah' }} {{ rowWord }}</h3>
+          <p v-if="editingRow" class="cc-form__wide cc-row" style="justify-content: flex-start; margin: 0 0 8px">
+            <span class="el-muted">Status validasi:</span>
+            <UiChip :tone="editingRow.status === 'validated' ? 'success' : 'review'">{{ editingRow.status === 'validated' ? 'Tervalidasi' : 'Menunggu validasi HR' }}</UiChip>
+          </p>
           <UiField :id="`req-nama-${g.id}`" v-slot="{ attrs }" label="Nama" class="cc-form__wide"><input v-bind="attrs" v-model="editor.name" class="el-input" required maxlength="255" /></UiField>
           <UiField :id="`req-def-${g.id}`" v-slot="{ attrs }" label="Definisi (opsional)" class="cc-form__wide"><textarea v-bind="attrs" v-model="editor.definition" class="el-input" maxlength="2000" /></UiField>
           <UiField :id="`req-target-${g.id}`" v-slot="{ attrs }" label="Target" hint="Angka 0-100"><input v-bind="attrs" v-model="editor.target" class="el-input" inputmode="decimal" required /></UiField>
           <UiField :id="`req-aktual-${g.id}`" v-slot="{ attrs }" label="Aktual (isian HR)" hint="Kosongkan bila belum diukur"><input v-bind="attrs" v-model="editor.actual" class="el-input" inputmode="decimal" /></UiField>
           <div class="cc-actions cc-form__wide" style="margin-top: 16px">
             <UiButton type="submit">Simpan</UiButton>
+            <template v-if="editingRow">
+              <UiButton v-if="editingRow.status !== 'validated'" variant="tonal" @click="setStatus(editingRow, 'validated')">Validasi<span class="el-sr-only"> {{ editingRow.name }}</span></UiButton>
+              <UiButton variant="outlined" @click="setStatus(editingRow, 'rejected')">Tolak<span class="el-sr-only"> {{ editingRow.name }}</span></UiButton>
+            </template>
             <UiButton variant="text" @click="closeEditor">Batal</UiButton>
           </div>
         </form>

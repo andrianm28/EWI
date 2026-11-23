@@ -1,11 +1,12 @@
 <script setup lang="ts">
-// Training Needs (mockup Pak Eji, layar `tna`): papan gap kompetensi dan OKR di balik flag tna.gap_board,
-// lalu pengelolaan TNA lama. Spek: docs/designs/b5-training-needs.md bagian 16.
+// Training Needs (mockup Pak Eji, layar `tna`): papan gap kompetensi dan OKR di balik flag tna.gap_board.
+// Pengelolaan TNA lama tampil di sini hanya bila papan mati; bila papan menyala, pindah ke `tna-kelola` (paritas P5, TN-2).
+// Spek: docs/designs/b5-training-needs.md bagian 16, docs/designs/paritas-mockup/p5-lna.md.
 import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import AppShell from '@/components/AppShell.vue'
 import { ApiError } from '@/api/client'
-import { UiAgentCard, UiBreadcrumb, UiCard, UiChip, UiDataTable, UiErrorSummary, UiKpiCard, UiNote, UiProgressBar, UiTabs, type UiColumn } from '@/ui'
+import { UiAgentCard, UiBreadcrumb, UiButton, UiCard, UiChip, UiDataTable, UiErrorSummary, UiKpiCard, UiNote, UiProgressBar, UiTabs, type UiColumn } from '@/ui'
 import { routeOpen } from '@/router'
 import { useSessionStore } from '@/stores/session'
 import TnaPengelolaan from './TnaPengelolaan.vue'
@@ -50,10 +51,11 @@ const kpis = computed(() => {
   const k = summary.value?.kpis
   if (!k) return []
   return [
-    { label: 'GAP KOMPETENSI', value: k.competencyGaps, note: 'di bawah target jabatan' },
-    { label: 'GAP OKR', value: k.okrGaps, note: summary.value?.period ? `periode ${summary.value.period}` : 'belum ada data kinerja' },
-    { label: 'SUDAH DIWAWANCARAI', value: `${k.interviewed} / ${k.totalGaps}`, note: 'gap dengan wawancara selesai' },
-    { label: 'KONTRIBUSI 4 GAP TERBESAR', value: k.totalGaps ? pct(k.top4Share) : '–', note: 'dari total gap' },
+    // Paritas P5 TN-3: copy mockup
+    { label: 'GAP KOMPETENSI', value: k.competencyGaps, note: 'terhadap Job Competency Model' },
+    { label: 'GAP OKR', value: k.okrGaps, note: summary.value?.period ? 'key result di bawah target' : 'belum ada data kinerja' },
+    { label: 'SUDAH DIWAWANCARAI', value: k.interviewed, note: `dari ${k.totalGaps} gap` },
+    { label: 'KONTRIBUSI 4 GAP TERBESAR', value: k.totalGaps ? pct(k.top4Share) : '–', note: 'dari total gap kompetensi' },
   ]
 })
 const dist = computed(() => {
@@ -84,6 +86,9 @@ const okrCols: UiColumn[] = [
   { key: 'status', label: 'Status wawancara' },
   { key: 'classification', label: 'Klasifikasi' },
 ]
+// TN-9: lebar relatif gap terbesar, merah hanya bila gap 20 atau lebih (aturan `hot` mockup)
+const maxGap = computed(() => Math.max(0, ...comps.value.map((c) => c.gapPct)))
+const gapWidth = (g: number) => (maxGap.value ? (g / maxGap.value) * 100 : 0)
 const detailLink = (row: CompetencyGap | OkrGap) => ({ name: 'tna-gap', query: { ...gapRefOf(row), tab: tab.value } })
 const ivTo = computed(() => (routeOpen('iv', session.activeView, session) ? { name: 'iv' } : null))
 </script>
@@ -123,18 +128,19 @@ const ivTo = computed(() => (routeOpen('iv', session.activeView, session) ? { na
               <li>Gap terdeteksi (kompetensi atau OKR)</li><li>Wawancara AI untuk akar masalah</li><li>HR meninjau dan mengklasifikasi</li>
               <li>Pelatihan (EliteMentor) atau perbaikan (Improvement Needs)</li><li>Hasil diukur di Impact Measurement</li>
             </ol>
+            <UiButton variant="tonal" size="sm" class="tna-gap" @click="tab = 'kompetensi'">Lihat gap kompetensi</UiButton>
           </UiCard>
         </div>
       </div>
 
       <div v-else-if="tab === 'kompetensi'" id="tna-tab-panel-kompetensi" role="tabpanel" aria-labelledby="tna-tab-tab-kompetensi" class="tna-panel">
-        <UiNote class="tna-gap-b"><b>Gap kompetensi</b> = kesenjangan skor karyawan terhadap target kompetensi jabatan. Buka gap untuk melihat detail dan menugaskan wawancara akar masalah.</UiNote>
+        <UiNote class="tna-gap-b"><b>Gap kompetensi</b> = kesenjangan skor pegawai terhadap <b>Job Competency Model</b> jabatan (DACUM Tool 1). Klik baris untuk membuka detail dan menugaskan wawancara akar masalah.</UiNote>
         <UiDataTable :columns="compCols" :rows="comps" row-key="key" caption="Gap kompetensi" caption-hidden empty-text="Belum ada gap. Impor data asesmen atau kinerja lebih dulu." :row-to="detailLink" row-link-key="name">
           <template #cell-name="{ row }"><span class="tna-link">{{ row.name }}</span></template>
           <template #cell-targetPct="{ row }">{{ row.targetPct }}%</template>
           <template #cell-actualPct="{ row }">{{ row.actualPct }}%</template>
           <template #cell-gapPct="{ row }">
-            <div class="tna-row"><UiProgressBar :value="row.gapPct" tone="critical" :label="`Gap ${row.name}`" class="tna-bar" /><span class="el-mono">−{{ row.gapPct }}</span></div>
+            <div class="tna-row"><UiProgressBar :value="gapWidth(row.gapPct)" :tone="row.gapPct >= 20 ? 'critical' : 'primary'" :label="`Gap ${row.name}`" class="tna-bar" /><span class="el-mono">−{{ row.gapPct }}</span></div>
           </template>
           <template #cell-people="{ row }">{{ row.peopleWithGap }} dari {{ row.assessed }}</template>
           <template #cell-status="{ row }">{{ interviewStatus(row) }}</template>
@@ -143,7 +149,7 @@ const ivTo = computed(() => (routeOpen('iv', session.activeView, session) ? { na
       </div>
 
       <div v-else id="tna-tab-panel-okr" role="tabpanel" aria-labelledby="tna-tab-tab-okr" class="tna-panel">
-        <UiNote class="tna-gap-b"><b>Gap OKR</b> = kesenjangan terhadap pencapaian OKR/KPI/SLA. Diperlakukan sama seperti gap kompetensi: dapat diwawancarai dan diberi solusi.</UiNote>
+        <UiNote class="tna-gap-b"><b>Gap OKR</b> = kesenjangan terhadap pencapaian <b>OKR</b> operasional. Diperlakukan sama seperti gap kompetensi: dapat diwawancarai dan diberi solusi.</UiNote>
         <label v-if="summary?.periods.length" class="tna-period">Periode
           <select v-model="period" class="el-input tna-period__select">
             <option v-for="p in summary.periods" :key="p" :value="p">{{ p }}</option>
@@ -159,9 +165,11 @@ const ivTo = computed(() => (routeOpen('iv', session.activeView, session) ? { na
           <template #cell-classification="{ row }"><UiChip :tone="CLASSIFICATION_TONE[row.classification]">{{ CLASSIFICATION_LABEL[row.classification] }}</UiChip></template>
         </UiDataTable>
       </div>
+      <!-- TN-2: fitur kelola lama tetap terjangkau lewat rute sekunder -->
+      <div class="tna-gap"><UiButton variant="outlined" size="sm" :to="{ name: 'tna-kelola' }">Kelola TNA</UiButton></div>
     </template>
 
-    <TnaPengelolaan :heading="showBoard ? 'Pengelolaan TNA' : undefined" />
+    <TnaPengelolaan v-else />
   </AppShell>
 </template>
 

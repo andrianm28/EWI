@@ -12,7 +12,8 @@ const isHr = computed(() => session.user?.role === 'hr_admin')
 
 const TABS = [
   { key: 'dash', label: 'Ringkasan' }, { key: 'kamus', label: 'Kamus kompetensi' },
-  { key: 'kur', label: 'Kurikulum BIA' }, { key: 'peg', label: 'Kebutuhan pegawai' },
+  // Paritas P5 DN-3: label tab mockup
+  { key: 'kur', label: 'Kurikulum Basic · Intermediate · Advanced' }, { key: 'peg', label: 'Kebutuhan pengembangan pegawai' },
 ]
 const tab = ref('dash')
 const error = ref('')
@@ -91,7 +92,7 @@ const DICT_COLUMNS: UiColumn[] = [
 ]
 const NEED_COLUMNS: UiColumn[] = [
   { key: 'name', label: 'Pegawai', sortable: true }, { key: 'stage', label: 'Tahap saat ini', sortable: true },
-  { key: 'met', label: 'Modul tercapai', align: 'right', mono: true }, { key: 'focus', label: 'Fokus pengembangan' }, { key: 'open', label: 'Rencana' },
+  { key: 'met', label: 'Modul tercapai', mono: true }, { key: 'focus', label: 'Fokus pengembangan' }, { key: 'open', label: 'Rencana' },
 ]
 const kamusNote = computed(() => {
   const d = dictionary.value
@@ -99,7 +100,9 @@ const kamusNote = computed(() => {
   const jf = d.jobFunctions.find((f) => f.id === jobFunctionId.value)
   return jf ? `${d.competencies.length} kompetensi untuk JF${jf.order} · ${jf.name}` : `${d.competencies.length} kompetensi`
 })
-const stageTone = (s: Stage) => (s === 'done' ? 'success' : s === 'not_assessed' ? 'neutral' : 'training')
+// DN-13: warna chip per tahap seperti mockup (Basic kuning, Intermediate biru, Tuntas hijau)
+const STAGE_TONE: Record<Stage, 'review' | 'training' | 'improvement' | 'success' | 'neutral'> = { basic: 'review', intermediate: 'training', advanced: 'improvement', done: 'success', not_assessed: 'neutral' }
+const stageTone = (s: Stage) => STAGE_TONE[s] ?? 'neutral'
 const moduleChip = (m: PlanModule): { tone: 'success' | 'review' | 'neutral'; label: string } => {
   if (m.status === 'met') return { tone: 'success', label: 'Tercapai' }
   if (m.status === 'develop') return { tone: 'review', label: 'Perlu dikembangkan' }
@@ -141,7 +144,7 @@ const moduleChip = (m: PlanModule): { tone: 'success' | 'review' | 'neutral'; la
       <template v-else>
         <UiNote tone="info" style="margin-bottom:8px">
           <b>Hanya untuk jabatan {{ job.name }}.</b> Kamus kompetensi dan kurikulum BIA di halaman ini berlaku untuk jabatan tersebut saja.
-          Jabatan lain bisa dipilih setelah kamusnya dibuat lewat DACUM.
+          Jabatan lain akan muncul di pilihan di atas setelah kamusnya dibuat lewat DACUM.
         </UiNote>
         <UiTabs id="dn" v-model="tab" :tabs="TABS" label="Bagian Developmental Needs" />
 
@@ -220,7 +223,7 @@ const moduleChip = (m: PlanModule): { tone: 'success' | 'review' | 'neutral'; la
             <UiNote v-if="curriculum.untiered" tone="warning" style="margin-bottom:12px">{{ curriculum.untiered }} kompetensi belum punya level program, jadi belum masuk kurikulum.</UiNote>
             <div class="el-grid el-grid-3" style="align-items:start">
               <UiCard v-for="t in curriculum.tiers" :key="t.tier" tonal>
-                <h2 class="el-h3">{{ TIER_LABEL[t.tier] }} <span class="el-muted el-mono" style="font-size:12px">{{ t.count }} modul</span></h2>
+                <h2 class="el-h3">{{ TIER_LABEL[t.tier] }} · {{ t.count }} modul</h2>
                 <p v-if="!t.modules.length" class="el-muted">Belum ada modul.</p>
                 <div v-for="m in t.modules" :key="m.id" class="dn-mod">
                   <span class="el-mono el-muted" style="font-size:12px">{{ m.code ?? '–' }}</span>

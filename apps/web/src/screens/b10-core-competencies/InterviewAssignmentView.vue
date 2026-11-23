@@ -6,7 +6,7 @@ import { ApiError } from '@/api/client'
 import { cca, fmtDate, STATUS_LABEL, type Assignment, type Assignments, type AssignmentStatus, type TeamRow } from '@/api/cca'
 import AppShell from '@/components/AppShell.vue'
 import { useSessionStore } from '@/stores/session'
-import { UiButton, UiCard, UiChip, UiDataTable, UiErrorSummary, UiField, UiNote, type UiColumn } from '@/ui'
+import { UiBreadcrumb, UiButton, UiCard, UiChip, UiDataTable, UiErrorSummary, UiField, UiNote, type UiColumn } from '@/ui'
 import { defaultDue, todayIso } from './due'
 import InterviewFlow from './InterviewFlow.vue'
 import InterviewSession from './InterviewSession.vue'
@@ -37,6 +37,8 @@ const mineEmployee = computed(() => data.value?.mine.employee ?? null)
 
 const TONE: Record<AssignmentStatus, 'neutral' | 'review' | 'success'> = { none: 'neutral', assigned: 'review', in_progress: 'review', completed: 'success', cancelled: 'neutral' }
 const statusOf = (a: Assignment | null): AssignmentStatus => a?.status ?? 'none'
+// Paritas P5 AA-3: label khusus kartu peserta (STATUS_LABEL bersama tetap untuk tabel HR)
+const mineLabel = (s: AssignmentStatus) => (s === 'assigned' ? 'Perlu wawancara' : STATUS_LABEL[s])
 // Sesi yang sedang dibuka peserta (penugasannya sendiri)
 const openId = ref<string | null>(null)
 const ACTION: Partial<Record<AssignmentStatus, string>> = { assigned: 'Mulai wawancara', in_progress: 'Lanjutkan wawancara', completed: 'Lihat ringkasan' }
@@ -64,6 +66,7 @@ async function assign(rows: TeamRow[]) {
 
 <template>
   <AppShell>
+    <UiBreadcrumb :items="[{ label: 'Learning Needs Analysis' }, { label: 'Wawancara AI' }]" />
     <div class="cc-stack" data-testid="cc-wawancara">
       <div class="cc-row">
         <h1 class="el-h1">{{ session.activeView === 'atasan' ? 'Wawancara AI' : 'Wawancara visi, misi, dan nilai' }}</h1>
@@ -83,13 +86,18 @@ async function assign(rows: TeamRow[]) {
 
         <template v-if="asLeader && leader">
           <UiCard data-testid="cc-wawancara-pimpinan">
-            <UiChip :tone="TONE[statusOf(mineLeader)]">{{ STATUS_LABEL[statusOf(mineLeader)] }}</UiChip>
-            <h2 class="el-h2" style="margin: 8px 0 4px">Wawancara pimpinan dari HR</h2>
-            <p v-if="mineLeader" class="el-muted">
-              Topik: visi, misi, dan nilai korporasi. Batas waktu {{ fmtDate(mineLeader.dueDate) }}. Sekitar {{ mineLeader.durationMinutes }} menit; jawaban diringkas AI sebelum dikirim ke HR.
-            </p>
-            <p v-else class="el-muted">HR belum menugaskan wawancara pimpinan kepada Anda.</p>
-            <UiButton v-if="mineLeader && ACTION[mineLeader.status] && openId !== mineLeader.id" style="margin-top: 12px" @click="openId = mineLeader.id">{{ ACTION[mineLeader.status] }}</UiButton>
+            <!-- AA-2: teks kiri, tombol primer kanan satu baris -->
+            <div class="cc-leadcard">
+              <div style="min-width: 0">
+                <UiChip :tone="TONE[statusOf(mineLeader)]">{{ mineLabel(statusOf(mineLeader)) }}</UiChip>
+                <h2 class="el-h3" style="margin: 8px 0 4px">Wawancara pimpinan dari HR</h2>
+                <p v-if="mineLeader" class="el-muted" style="margin: 0">
+                  Topik: visi, misi, dan nilai korporasi. Batas waktu {{ fmtDate(mineLeader.dueDate, 'short') }}. Sekitar {{ mineLeader.durationMinutes }} menit; jawaban diringkas AI sebelum dikirim ke HR.
+                </p>
+                <p v-else class="el-muted" style="margin: 0">HR belum menugaskan wawancara pimpinan kepada Anda.</p>
+              </div>
+              <UiButton v-if="mineLeader && ACTION[mineLeader.status] && openId !== mineLeader.id" @click="openId = mineLeader.id">{{ ACTION[mineLeader.status] }}</UiButton>
+            </div>
             <InterviewSession v-if="mineLeader && openId === mineLeader.id" :key="mineLeader.id" :assignment-id="mineLeader.id" style="margin-top: 16px" @finished="finished" />
           </UiCard>
           <UiCard>
@@ -105,7 +113,7 @@ async function assign(rows: TeamRow[]) {
               <template #cell-status="{ row }"><UiChip :tone="TONE[asRow(row).status]">{{ STATUS_LABEL[asRow(row).status] }}</UiChip></template>
               <template #cell-aksi="{ row }">
                 <UiButton v-if="open(asRow(row).status)" variant="tonal" size="sm" :disabled="busy || !leader.canAssign || !due" @click="assign([asRow(row)])">Tugaskan<span class="el-sr-only"> {{ row.name }}</span></UiButton>
-                <span v-else class="el-muted">{{ row.status === 'completed' ? 'Selesai' : 'Menunggu karyawan' }}</span>
+                <UiButton v-else variant="tonal" size="sm" disabled>{{ row.status === 'completed' ? 'Selesai' : 'Menunggu karyawan' }}</UiButton>
               </template>
             </UiDataTable>
             <UiNote style="margin-top: 12px">Atasan hanya melihat status tim. Isi jawaban karyawan diringkas dan tidak ditampilkan per orang.</UiNote>
