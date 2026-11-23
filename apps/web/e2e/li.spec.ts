@@ -19,7 +19,7 @@ const DRAFT = {
   assessments: [{ kind: 'K', title: 'Knowledge', detail: 'Tes tertulis, lulus bila skor ≥ 80%.', objectives: 1 }],
 }
 
-async function setup(page: Page, calls: { method: string; url: string; body: unknown }[] = [], opt: { singleJob?: boolean } = {}) {
+async function setup(page: Page, calls: { method: string; url: string; body: unknown }[] = [], opt: { singleJob?: boolean; slowPareto?: boolean } = {}) {
   const user = { id: 'u-1', tenantId: 't-1', email: 'hr@demo.test', role: 'hr_admin' }
   await page.route('**/api/auth/tenants', (r) => r.fulfill({ json: { data: [] } }))
   // PK-16: form kata sandi hanya tampil bila API mengizinkan (dev/staging)
@@ -35,8 +35,11 @@ async function setup(page: Page, calls: { method: string; url: string; body: unk
     calls.push({ method: req.method(), url: `${path}${url.search}`, body })
     if (path === '/modules' && req.method() === 'GET') {
       const prio = url.searchParams.get('priority') === 'pareto'
+      // respons filter Pareto sengaja lambat: menguji penjaga urutan permintaan (respons basi diabaikan)
+      if (prio && opt.slowPareto) await new Promise((ok) => setTimeout(ok, 800))
+      const none = url.searchParams.get('level') === 'intermediate'
       return r.fulfill({ json: {
-        data: prio ? [RCA] : [RCA, ITIL], vendorName: VENDOR,
+        data: none ? [] : prio ? [RCA] : [RCA, ITIL], vendorName: VENDOR,
         kpis: { modules: 2, knowledge: 2, skill: 2, attitude: 2, streams: 2 },
         pareto: { available: true, count: 1, codes: ['ST-A2'], cumulativeShare: 0.6, withoutGapData: 1, unlinkedFindings: 0 },
         filters: { jobRoles: opt.singleJob ? [job] : [job, PM], streams: ['Specific Technical', 'Technical Competencies'] },
@@ -49,12 +52,12 @@ async function setup(page: Page, calls: { method: string; url: string; body: unk
     }
     if (path === '/modules/m-2/request') return r.fulfill({ status: 201, json: { data: { id: 'rq-1' } } })
     if (path === '/requests/bulk') return r.fulfill({ status: 201, json: { data: { created: 1, skipped: 0 } } })
-    if (path === '/modules/m-1/draft') return r.fulfill({ status: 201, json: { data: draft } })
+    if (path === '/modules/m-1/draft' || path === '/modules/m-3/draft') return r.fulfill({ status: 201, json: { data: draft } })
     if (path === '/requests' && req.method() === 'GET') {
       return r.fulfill({ json: { vendorName: VENDOR, data: {
         vendor: [{ id: 'rq-1', moduleId: 'm-2', moduleCode: 'TC-B1', moduleName: 'ITIL Foundation', vendorName: VENDOR, status: 'requested', requestedAt: '2026-11-19' }],
         drafts: [{ id: 'd-1', moduleId: 'm-1', moduleCode: 'ST-A2', moduleName: 'Root Cause Analysis', status: draft.status, reviewerName: null, reviewNote: null }],
-        candidates: [],
+        candidates: [{ id: 'm-3', code: 'ST-B9', name: 'Alur Layanan SLA', priority: { rank: 2, share: 0.2, cumulativeShare: 0.8 } }],
       } } })
     }
     if (path === '/catalog') return r.fulfill({ json: { data: [{ id: 'c-1', title: 'Course RCA di LMS', source: 'moodle', externalRef: 'C-1' }] } })
@@ -65,7 +68,8 @@ async function setup(page: Page, calls: { method: string; url: string; body: unk
       return r.fulfill({ json: { vendorName: VENDOR, data: {
         jobRoles: [{ ...job, hasDictionary: true }, { id: 'jr-2', name: 'Project Manager', hasDictionary: false }], jobRoleId: url.searchParams.get('jobRoleId') ?? 'jr-1',
         level: url.searchParams.get('level') ?? 'basic', levels: [{ level: 'basic', count: 1 }, { level: 'intermediate', count: 0 }, { level: 'advanced', count: 1 }],
-        kpis: { courses: 1, available: 0, inProgress: 0, noSource: 1 }, groups: [{ stream: 'Technical Competencies', modules: [ITIL] }], pareto: { available: true, codes: [] },
+        kpis: { courses: 2, available: 0, inProgress: 0, noSource: 2 },
+        groups: [{ stream: 'Specific Technical', modules: [RCA] }, { stream: 'Technical Competencies', modules: [ITIL] }], pareto: { available: true, codes: ['ST-A2'] },
       } } })
     }
     if (path === '/drafts/d-1' && req.method() === 'GET') return r.fulfill({ json: { data: draft } })
@@ -218,7 +222,20 @@ test('P6 LI-5/LI-7: filter berupa baris chip dan baris modul seperti mockup', as
   await expect(rca).toHaveCSS('background-color', 'rgb(236, 239, 245)')
 
   const detail = page.getByTestId('detail-modul')
-  await expect(detail).toContainText('Termasuk modul yang bersama-sama menyumbang sekitar 60% total gap (kumulatif sampai urutan ini). Sediakan lebih dulu.')
+  // N2: tenant satu jabatan menyebut jabatan itu walau filter "Semua jabatan"
+  await expect(detail).toContainText('Termasuk modul yang bersama-sama menyumbang sekitar 60% total gap jabatan Engineer Service Delivery (kumulatif sampai urutan ini). Sediakan lebih dulu.')
+  // LI-9/LI-10: meta, status, Pareto, dan jabatan berupa chip
+  await expect(detail.locator('.el-chip')).toContainText(['ST-A2', 'Advanced', 'Specific Technical', 'Belum tersedia', 'Pareto #1 · 60% gap', 'Engineer Service Delivery'])
+  // LI-12: ikon auto_awesome dan dua tombol sebaris
+  const minta = (await detail.getByRole('button', { name: 'Minta ke Mahaka Institute' }).boundingBox())!
+  const kembang = detail.getByRole('button', { name: 'Kembangkan dengan ELGOS' })
+  await expect(kembang.locator('svg path')).toHaveAttribute('d', /^m760-600/)
+  expect(Math.abs((await kembang.boundingBox())!.y - minta.y)).toBeLessThan(2)
+  // LI-3: jumlah modul prioritas yang spesifik perusahaan (hanya tanpa filter tipe/level/rumpun/prioritas)
+  const note = page.getByRole('note').filter({ hasText: 'Prioritas Pareto 20/80' })
+  await expect(note).not.toContainText('bersifat spesifik perusahaan')
+  await filters.getByRole('group', { name: 'Tipe' }).getByRole('button', { name: 'Semua', exact: true }).click()
+  await expect(page.getByRole('note').filter({ hasText: 'Prioritas Pareto 20/80' })).toContainText('1 modul prioritas bersifat spesifik perusahaan dan perlu dikembangkan bersama ELGOS.')
   await expect(detail).toContainText('Usulan awal, dapat diubah.')
   await expect(page.getByRole('button', { name: 'Minta modul prioritas yang generik ke Mahaka' })).toBeVisible()
 })
@@ -253,7 +270,90 @@ test('P6 Program & Permintaan: kartu jabatan, tab, catatan, dan chip hitungan se
   await expect(page.getByText('Program ini untuk jabatan Engineer Service Delivery.')).toBeVisible()
   await expect(page.getByText('Diminta / draf')).toBeVisible()
   await expect(page.getByTestId('course-TC-B1').getByRole('button', { name: 'Minta ke Mahaka' })).toBeVisible()
+  // LI-18: catatan Pareto menyebut kode course prioritas di program ini
+  await expect(page.getByRole('note').filter({ hasText: 'Prioritas Pareto:' })).toHaveText('Prioritas Pareto: 1 dari 2 course di program ini adalah prioritas Pareto: ST-A2. Course prioritas tampil paling atas di tiap rumpun.')
+  await expect(page.getByTestId('course-ST-A2')).toContainText('Pareto #1 · 60% gap')
   await page.goto('/req')
   await expect(page.getByText('dengan bantuan agen ELGOS')).toBeVisible()
   await expect(page.getByTestId('jumlah-draf')).toHaveText('1 draf')
+  await expect(page.getByTestId('jumlah-permintaan')).toHaveText('1')
+})
+
+test('P6 Permintaan: kandidat "Kembangkan" membuat draf dan membuka wizard', async ({ page }) => {
+  const calls: { method: string; url: string; body: unknown }[] = []
+  await setup(page, calls)
+  await page.goto('/req')
+  const kandidat = page.getByTestId('kandidat-ST-B9')
+  await expect(kandidat).toContainText('Pareto #2 · 20% gap')
+  await kandidat.getByRole('button', { name: 'Kembangkan' }).click()
+  await expect(page).toHaveURL(/\/req\/draf\/d-1$/)
+  expect(calls.find((c) => c.url === '/modules/m-3/draft')?.method).toBe('POST')
+})
+
+test('P6 Library: hasil filter kosong memberi pesan dan tombol hapus semua filter', async ({ page }) => {
+  await setup(page)
+  await page.goto('/lib')
+  const filters = page.getByTestId('filter-modul')
+  await filters.getByRole('group', { name: 'Level' }).getByRole('button', { name: 'Intermediate' }).click()
+  await expect(page.getByTestId('jumlah-modul')).toHaveText('0 dari 2 modul')
+  await expect(page.getByText('Tidak ada modul yang cocok dengan filter.')).toBeVisible()
+  await expect(page.getByTestId('detail-modul')).toHaveCount(0)
+  await page.getByRole('button', { name: 'Hapus semua filter' }).click()
+  await expect(page.getByTestId('jumlah-modul')).toHaveText('2 dari 2 modul')
+  await expect(filters.getByRole('group', { name: 'Level' }).getByRole('button', { name: 'Semua', exact: true })).toHaveAttribute('aria-pressed', 'true')
+})
+
+test('P6 Library: respons filter yang basi tidak menimpa pilihan terbaru', async ({ page }) => {
+  await setup(page, [], { slowPareto: true })
+  await page.goto('/lib')
+  const prio = page.getByTestId('filter-modul').getByRole('group', { name: 'Prioritas' })
+  await expect(page.getByTestId('jumlah-modul')).toHaveText('2 dari 2 modul')
+  await prio.getByRole('button', { name: 'Prioritas Pareto saja' }).click()
+  await prio.getByRole('button', { name: 'Semua modul' }).click()
+  await page.waitForTimeout(1200) // respons Pareto (lambat 800 ms) tiba setelah respons "Semua modul"
+  await expect(page.getByTestId('jumlah-modul')).toHaveText('2 dari 2 modul')
+})
+
+test('P6 Draf: Simpan perubahan, simpan otomatis saat pindah langkah dan keluar, hapus dengan konfirmasi', async ({ page }) => {
+  const calls: { method: string; url: string; body: unknown }[] = []
+  await setup(page, calls)
+  await page.goto('/req/draf/d-1')
+  const puts = () => calls.filter((c) => c.method === 'PUT')
+
+  // M2: Simpan perubahan dari menu Kelola draf
+  await page.getByLabel('Tujuan terukur 1').fill('Menjelaskan 5 Whys pada 4 dari 5 soal')
+  await page.getByText('Kelola draf').click()
+  await page.getByRole('button', { name: 'Simpan perubahan' }).click()
+  await expect(page.getByTestId('info')).toHaveText('Perubahan disimpan.')
+  expect(puts().at(-1)?.body).toMatchObject({ objectives: [{ text: 'Menjelaskan 5 Whys pada 4 dari 5 soal' }] })
+
+  // M1: tanpa perubahan, pindah langkah tidak menyimpan; dengan perubahan, tersimpan otomatis
+  const before = puts().length
+  await page.getByRole('button', { name: 'Lanjut: rancang materi' }).click()
+  expect(puts().length).toBe(before)
+  await page.getByLabel('Isi sesi 1').fill('Relevansi dengan tugas harian')
+  await page.getByRole('button', { name: 'Lanjut: asesmen' }).click()
+  await expect.poll(() => puts().length).toBe(before + 1)
+  expect(puts().at(-1)?.body).toMatchObject({ sessions: [{ detail: 'Relevansi dengan tugas harian' }] })
+  // N1: cakupan asesmen "n dari m tujuan"
+  await expect(page.getByTestId('draf-konten')).toContainText('1 dari 1 tujuan tercakup')
+
+  // M1: keluar lewat breadcrumb dengan perubahan → disimpan dulu
+  await page.getByLabel('Instrumen dan kriteria lulus Knowledge').fill('Tes tertulis 10 soal, lulus bila skor ≥ 80%.')
+  await page.getByRole('navigation', { name: 'Lokasi' }).getByRole('link', { name: 'Permintaan & pengembangan' }).click()
+  await expect(page).toHaveURL(/\/req$/)
+  expect(puts().at(-1)?.body).toMatchObject({ assessments: [{ detail: 'Tes tertulis 10 soal, lulus bila skor ≥ 80%.' }] })
+
+  // hapus draf: perlu konfirmasi, Batal membatalkan
+  await page.goto('/req/draf/d-1')
+  await page.getByText('Kelola draf').click()
+  await page.getByRole('button', { name: 'Hapus draf' }).click()
+  await expect(page.getByText('Yakin hapus draf ini?')).toBeVisible()
+  await page.getByRole('button', { name: 'Batal' }).click()
+  await expect(page.getByText('Yakin hapus draf ini?')).toBeHidden()
+  expect(calls.some((c) => c.method === 'DELETE')).toBe(false)
+  await page.getByRole('button', { name: 'Hapus draf' }).click()
+  await page.getByRole('button', { name: 'Ya, hapus' }).click()
+  await expect(page).toHaveURL(/\/req$/)
+  expect(calls.find((c) => c.method === 'DELETE')?.url).toBe('/drafts/d-1')
 })

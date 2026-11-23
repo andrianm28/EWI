@@ -27,3 +27,24 @@ Standards: `CLAUDE.md` (bahasa Indonesia, test-first, aturan arsitektur), `docs/
 | P6 | Semua test spek 1–7 ada di `li.spec.ts` dan lulus | OK |
 
 Ringkasan: Standards 6 temuan (terburuk S1, diperbaiki); Spec 6 temuan (terburuk P1, spek diselaraskan).
+
+## Review independen (sesi induk, 23 Nov)
+
+Temuan reviewer egm independen dari sesi induk, diperbaiki test-first: test merah `38ec46e`, perbaikan di commit berikutnya.
+
+| # | Bobot | Temuan | Triase |
+| --- | --- | --- | --- |
+| M1 | sedang | "Simpan perubahan" tersembunyi di "Kelola draf" yang tertutup, jadi suntingan bisa hilang saat pindah langkah atau keluar | **Diperbaiki** (K-P6-5): penanda `dirty`, simpan otomatis saat pindah langkah dan di `onBeforeRouteLeave` (tanpa dialog; simpan gagal = tidak pindah), `beforeunload` saat menutup tab. E2e: tanpa perubahan tidak ada PUT; dengan perubahan ada PUT saat pindah langkah dan saat keluar lewat breadcrumb |
+| M1b | sedang | "Hapus draf" tanpa konfirmasi | **Diperbaiki**: konfirmasi sebaris "Yakin hapus draf ini?" + "Ya, hapus"/"Batal". E2e: Batal tidak mengirim DELETE; Ya mengirim `DELETE /drafts/d-1` lalu pindah ke `/req` |
+| M2 | sedang | Tidak ada e2e untuk "Simpan perubahan" | **Diperbaiki**: e2e memeriksa isi PUT dan "Perubahan disimpan." Tombol nonaktif bila tidak ada perubahan |
+| M-a | sedang | Respons filter basi (`watch(filter, load)`) dan `pick()` bisa menimpa pilihan terbaru | **Diperbaiki** (K-P6-6): penjaga urutan terpisah untuk daftar dan detail. E2e dengan respons Pareto yang sengaja lambat |
+| M-b | sedang | Hasil filter kosong tanpa pesan | **Diperbaiki**: "Tidak ada modul yang cocok dengan filter." + "Hapus semua filter"; e2e |
+| M3 | sedang | Celah test: kandidat, course prioritas Program, LI-23, LI-18 dengan kode, kalimat LI-3, chip detail LI-9/10/12 | **Diperbaiki**: mock kandidat ST-B9 dan course prioritas ST-A2; e2e untuk chip `jumlah-permintaan`, kalimat LI-18 ber-kode, kalimat LI-3 (dan tidak muncul saat difilter), chip detail, path ikon `auto_awesome`, dua tombol sebaris, "Kembangkan" pada kandidat (POST `/modules/m-3/draft`) |
+| N1 | rendah | Chip asesmen "{n} tujuan tercakup" bisa ditulis "{n} dari {m}" | **Diperbaiki**: m = jumlah tujuan bertipe sama; e2e "1 dari 1 tujuan tercakup" |
+| N2 | rendah | `gapOf` tidak menyebut jabatan di tenant yang punya satu jabatan | **Diperbaiki**: dipakai satu-satunya jabatan; e2e |
+| N3 | rendah | "Course prioritas tampil paling atas…" tampil walau tidak ada prioritas | **Diperbaiki**: hanya bila ada course prioritas |
+| D1 | rendah | B0: baris `UiSegmented` belum menyebut opsi `pending?` (B7) | **Diperbaiki**: `docs/designs/b0-fondasi-ui.md` menyebut `pending?` dan perilaku `aria-disabled` |
+| K1 | rendah | Filter tidak disinkronkan ke URL | **Diterima** `[⏳ DITERIMA]` (K-P6-7) |
+| K2 | rendah | Baris modul memakai `aria-current` (spek baris 84) | **Diterima**: perilaku lama dipertahankan, bukan listbox (K-P6-7) |
+| N5 | rendah | Keadaan memuat dan e2e jalur galat | **Diterima**: kekurangan lama, tidak diubah di P6 (K-P6-7) |
+| N6 | rendah | Jalur B13 belum diuji e2e | **Tindak lanjut** (K-P6-7): permintaan delivered→installed dengan course katalog, draf `returned` + catatan SME, lepas tautan course, galat API per aksi |

@@ -20,19 +20,31 @@ const filter = reactive({ jobRoleId: '', priority: '', type: '', level: '', stre
 const catalog = ref<CatalogItem[]>([])
 const courseId = ref('')
 
+// Penjaga urutan: filter bisa diganti sebelum respons sebelumnya tiba; hanya respons permintaan terakhir yang dipakai.
+let listSeq = 0
+let detailSeq = 0
 async function load() {
+  const seq = ++listSeq
   try {
-    lib.value = await li.library(filter)
+    const res = await li.library({ ...filter })
+    if (seq !== listSeq) return
+    lib.value = res
     error.value = ''
-    const keep = detail.value && lib.value.data.find((m) => m.id === detail.value!.id)
-    const first = keep ?? lib.value.data.find((m) => m.id === route.query.modul) ?? lib.value.data[0]
+    const keep = detail.value && res.data.find((m) => m.id === detail.value!.id)
+    const first = keep ?? res.data.find((m) => m.id === route.query.modul) ?? res.data[0]
     if (first) await pick(first)
-    else detail.value = null
-  } catch (e) { error.value = e instanceof ApiError ? e.message : 'Library tidak bisa dimuat' }
+    else { detailSeq++; detail.value = null }
+  } catch (e) { if (seq === listSeq) error.value = e instanceof ApiError ? e.message : 'Library tidak bisa dimuat' }
 }
 async function pick(m: ModuleRow) {
-  try { detail.value = (await li.module(m.id, filter.jobRoleId || undefined)).data } catch (e) { error.value = e instanceof ApiError ? e.message : 'Modul tidak bisa dimuat' }
+  const seq = ++detailSeq
+  try {
+    const res = (await li.module(m.id, filter.jobRoleId || undefined)).data
+    if (seq === detailSeq) detail.value = res
+  } catch (e) { if (seq === detailSeq) error.value = e instanceof ApiError ? e.message : 'Modul tidak bisa dimuat' }
 }
+const filtered = computed(() => Object.values(filter).some(Boolean))
+function clearFilters() { Object.assign(filter, { jobRoleId: '', priority: '', type: '', level: '', stream: '' }) }
 onMounted(async () => {
   await load()
   try { catalog.value = (await li.catalog()).data } catch { /* tanpa katalog, tautan course disembunyikan */ }
@@ -58,7 +70,8 @@ const filterRows = computed<{ key: FilterKey; label: string; options: { key: str
 })
 const jobName = computed(() => lib.value?.filters.jobRoles.find((j) => j.id === filter.jobRoleId)?.name ?? '')
 const onlyJob = computed(() => (lib.value?.filters.jobRoles.length === 1 ? lib.value.filters.jobRoles[0]!.name : ''))
-const gapOf = computed(() => (jobName.value ? `total gap jabatan ${jobName.value}` : 'total gap'))
+// N2: tenant dengan satu jabatan menyebut jabatan itu walau filter "Semua jabatan" (mockup)
+const gapOf = computed(() => (jobName.value || onlyJob.value ? `total gap jabatan ${jobName.value || onlyJob.value}` : 'total gap'))
 const paretoNote = computed(() => {
   const p = lib.value?.pareto
   if (!p) return ''
@@ -122,6 +135,10 @@ async function develop(m: ModuleDetail) {
         <div>
           <p class="el-muted li-count" data-testid="jumlah-modul">{{ lib.data.length }} dari {{ lib.kpis.modules }} modul</p>
           <p v-if="!lib.kpis.modules" class="el-muted">Belum ada modul. Impor library modul (templat nomor 9) lewat menu impor data.</p>
+          <UiCard v-else-if="!lib.data.length" class="li-row">
+            <span class="el-muted">Tidak ada modul yang cocok dengan filter.</span>
+            <UiButton v-if="filtered" variant="text" size="sm" @click="clearFilters">Hapus semua filter</UiButton>
+          </UiCard>
           <ul v-else class="li-list" aria-label="Daftar modul">
             <li v-for="m in lib.data" :key="m.id">
               <button type="button" class="li-item" :aria-current="detail?.id === m.id ? 'true' : undefined" @click="pick(m)">

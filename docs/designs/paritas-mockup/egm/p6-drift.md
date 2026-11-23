@@ -16,3 +16,12 @@ Spek: [p6-li.md](../p6-li.md). Kode akhir: `apps/web/src/screens/b13-li/*`, `app
 | Tidak dikerjakan: LI-4, LI-13, LI-24, LI-28 copy, LI-29, LI-34 | tidak diubah | Sesuai |
 
 Tidak ada drift yang tersisa tanpa catatan.
+
+## Setelah review independen
+
+| Butir spek | Kode | Status |
+| --- | --- | --- |
+| K-P6-5 simpan otomatis + konfirmasi hapus | DraftView `dirty`, `go()`, `onBeforeRouteLeave`, `beforeunload`, `.li-confirm` | Sesuai |
+| K-P6-6 penjaga urutan + filter kosong | LibraryView `listSeq`/`detailSeq`, `clearFilters` | Sesuai |
+| LI-31 "{n} dari {m} tujuan tercakup", LI-18 kalimat bersyarat, LI-9 N2 | DraftView `coverage()`, ProgramView, LibraryView `gapOf` | Sesuai |
+| K-P6-7 diterima/tindak lanjut | tidak diubah | Sesuai |

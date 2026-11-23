@@ -86,7 +86,7 @@ function primary(m: ModuleRow) {
               <UiKpiCard label="Diminta / draf" :value="p.kpis.inProgress" note="sedang diproses" />
               <UiKpiCard label="Belum ada sumber" :value="p.kpis.noSource" note="perlu diminta atau dikembangkan" />
             </div>
-            <UiNote tone="warning" class="li-gap"><b>Prioritas Pareto:</b> {{ paretoNote }} Course prioritas tampil paling atas di tiap rumpun.</UiNote>
+            <UiNote tone="warning" class="li-gap"><b>Prioritas Pareto:</b> {{ paretoNote }}<template v-if="prioCodes.length"> Course prioritas tampil paling atas di tiap rumpun.</template></UiNote>
             <UiNote class="li-row li-gap">
               <span><b>{{ vendor }}</b> menyediakan modul yang bersifat generik. Modul spesifik proses perusahaan perlu dikembangkan bersama ELGOS.</span>
               <UiButton size="sm" :disabled="busy || !p.kpis.noSource" @click="requestAll">Minta semua modul generik di program ini</UiButton>

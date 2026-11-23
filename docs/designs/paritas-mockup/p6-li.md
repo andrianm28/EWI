@@ -19,7 +19,7 @@ Acuan domain: [b13-learning-intervention.md](../b13-learning-intervention.md), B
 | LI-6 | "{tampil} dari {total} modul" teks muted di atas daftar, di luar kartu |
 | LI-7 | Baris modul: grid `70px minmax(0,1fr) auto`; kode mono 12px kiri (tidak terpotong); nama 500 + "Rumpun · Level" muted 12px; chip `K n`/`S n`/`A n` netral, chip jabatan (tone training) atau "{n} jabatan" bila >1, chip Pareto critical; status chip kanan (UiChip, bukan UiStatus global). Baris terpilih latar abu `--el-surface-2` (mockup `#ECEFF5`). Baris = `<button aria-current>` di dalam `ul` (perilaku lama) |
 | LI-8 | Status "Belum ada sumber" → "Belum tersedia" (labels.ts, berlaku juga di Program) |
-| LI-9 | Kepala detail: chip kode (netral mono) / level (training) / rumpun (netral) di atas judul; chip status + chip Pareto; kalimat "Termasuk modul yang bersama-sama menyumbang sekitar {p} total gap{ jabatan X} (kumulatif sampai urutan ini). Sediakan lebih dulu." Modul tanpa prioritas: "Tidak termasuk modul prioritas Pareto." (hanya bila ada modul prioritas; API tidak membedakan modul tanpa data gap dari modul di luar 80%, jadi kalimat mockup "Belum ada data gap…" tidak bisa dipastikan benar) |
+| LI-9 | Kepala detail: chip kode (netral mono) / level (training) / rumpun (netral) di atas judul; chip status + chip Pareto; kalimat "Termasuk modul yang bersama-sama menyumbang sekitar {p} total gap{ jabatan X} (kumulatif sampai urutan ini). Sediakan lebih dulu." (X = jabatan terfilter, atau satu-satunya jabatan tenant, N2) Modul tanpa prioritas: "Tidak termasuk modul prioritas Pareto." (hanya bila ada modul prioritas; API tidak membedakan modul tanpa data gap dari modul di luar 80%, jadi kalimat mockup "Belum ada data gap…" tidak bisa dipastikan benar) |
 | LI-10 | Jabatan sebagai chip training; butir KSA berupa daftar 13px dengan garis kiri |
 | LI-11 | Copy sumber dua varian mockup (dev / vendor), termasuk "Usulan awal, dapat diubah." Contoh topik "(kontrak, SLA, EliNotes, alur layanan)" tidak diambil karena data tenant demo |
 | LI-12 | Ikon `auto_awesome` (ditambahkan ke `ui/icons.ts`); tombol aksi sebaris (`li-actions` tanpa wrap ≥ 400px) |
@@ -27,7 +27,7 @@ Acuan domain: [b13-learning-intervention.md](../b13-learning-intervention.md), B
 | LI-15 | Intro Program dinamis "…untuk {jabatan}, tersusun dari…"; `UiNote` info "Program ini untuk jabatan {X}. Susunan Basic, Intermediate, dan Advanced mengikuti kamus kompetensinya. Course yang sama dapat dipakai ulang di program jabatan lain." sebelum tab |
 | LI-16 | Tab "{Level} · {n} course" |
 | LI-17 | KPI "Diminta / draf"; catatan "program {Level} · {jabatan}", "dari {vendor}", "sedang diproses", "perlu diminta atau dikembangkan" |
-| LI-18 | `UiNote` warning "Prioritas Pareto: {n} dari {m} course di program ini adalah prioritas Pareto: {kode}." (kode = course di program yang punya prioritas) |
+| LI-18 | `UiNote` warning "Prioritas Pareto: {n} dari {m} course di program ini adalah prioritas Pareto: {kode}." (kode = course di program yang punya prioritas); "Course prioritas tampil paling atas di tiap rumpun." hanya bila ada prioritas |
 | LI-19 | Banner vendor `UiNote` info + tombol filled sm |
 | LI-20 | Satu kartu per rumpun, judul "{rumpun} · {n} course" di dalam kartu, baris dipisah garis; chip K/S/A, jabatan, status, Pareto sebaris; tombol "Detail" teks + tombol tonal kanan |
 | LI-21 | Tombol per course "Minta ke {vendor pendek}" = kata pertama nama vendor ("Mahaka"); banner Library juga |
@@ -38,7 +38,7 @@ Acuan domain: [b13-learning-intervention.md](../b13-learning-intervention.md), B
 | LI-27 | Draf dua kolom: grid `240px minmax(0,1fr)`; kiri `UiCard tonal` berisi `UiStepper` + catatan Pendekatan (12px muted); kanan kartu konten. Satu kolom di bawah 900px |
 | LI-28 (sebagian) | Chip kode/level/rumpun di atas judul. Copy "Agen ELGOS menyusun…" tidak diambil (PK-3); chip status draf tetap (data alur SME) |
 | LI-30 | Note langkah 1: copy mockup bila semua terukur, copy app bila belum |
-| LI-31 (sebagian) | Sesi: chip cakupan di kanan judul; asesmen: chip "{n} tujuan tercakup". Textarea tetap (PK-4) |
+| LI-31 (sebagian) | Sesi: chip cakupan di kanan judul; asesmen: chip "{n} dari {m} tujuan tercakup" (m = jumlah tujuan bertipe sama). Textarea tetap (PK-4) |
 | LI-32 | Langkah 4: tiga butir ikon `check_circle` (success) dengan kalimat mockup; ikon `warning` + kalimat kurang bila belum terpenuhi |
 | LI-33 | "Lanjut: rancang materi" / "Lanjut: asesmen" / "Lanjut: tinjau dan ajukan"; urutan langkah 4: Kembali (outlined), Kirim ke SME, Ke daftar permintaan (tonal). "Simpan perubahan" dan "Hapus draf" pindah ke `<details>` "Kelola draf" sekunder di bawah tombol navigasi |
 
@@ -58,6 +58,9 @@ Acuan domain: [b13-learning-intervention.md](../b13-learning-intervention.md), B
 - K-P6-1: Filter memakai `UiSegmented variant="chips"` (B7) tanpa varian baru. Nilai "Semua" = kunci `''` sehingga kontrak `li.library(filter)` tidak berubah.
 - K-P6-2: Status di layar LI memakai `UiChip` (tone: success → success, warning → review, info → training, neutral → neutral) karena mockup memakai chip terisi; `UiStatus` global tidak diubah (K-3). `statusLabel` mengembalikan `tone` chip.
 - K-P6-3: Nama vendor pendek diturunkan di klien (kata pertama `vendorName`), tanpa field API baru. "Mahaka Institute" → "Mahaka".
+- K-P6-5 (review independen M1): karena "Simpan perubahan" ada di menu sekunder, wizard menyimpan otomatis bila ada perubahan (penanda `dirty` = isi berbeda dari versi tersimpan terakhir) saat pindah langkah dan saat meninggalkan rute (`onBeforeRouteLeave`), tanpa dialog. Simpan gagal = langkah/rute tidak berpindah, galat tampil. Menutup tab memicu peringatan bawaan `beforeunload`. "Hapus draf" memakai konfirmasi sebaris ("Yakin hapus draf ini?" + "Ya, hapus"/"Batal").
+- K-P6-6: Library memakai penjaga urutan permintaan (daftar dan detail terpisah); hasil filter kosong menampilkan "Tidak ada modul yang cocok dengan filter." + "Hapus semua filter".
+- K-P6-7 (diterima, tidak dikerjakan): filter Library tidak disinkronkan ke URL `[⏳ DITERIMA]`; baris modul tetap `<button aria-current>` (bukan `aria-selected`/listbox); keadaan memuat dan e2e jalur galat adalah kekurangan lama (N5); jalur B13 yang belum diuji e2e (N6: status permintaan delivered→installed dengan course katalog, draf `returned` + catatan SME, lepas tautan course, galat API per aksi) menjadi tindak lanjut.
 - K-P6-4: Ikon `auto_awesome` tidak ada di paket `@material-symbols/svg-400` (diganti nama di Symbols); path diambil dari Material Icons outlined (Apache-2.0) dan diskalakan ke viewBox 960.
 
 ## Test (e2e, `apps/web/e2e/li.spec.ts`, API mock)
