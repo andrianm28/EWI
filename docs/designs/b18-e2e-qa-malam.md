@@ -162,7 +162,7 @@ Spec milik paket (`poc-dna-tna.spec.ts`, `gating.spec.ts`, `shell.spec.ts`, dan 
 
 ### 4.3 Matriks menu per peran (`menu-peran.spec.ts`)
 
-Dari fungsi `N` di mockup. Dengan semua flag dan entitlement menyala, menu tiap peran sama dengan tabel ini. Sub-butir hanya terlihat setelah grup accordion dibuka, jadi test membuka grup dulu.
+Dari fungsi `N` di mockup. Dengan semua flag dan entitlement menyala, menu tiap peran sama dengan tabel ini. Sub-butir hanya terlihat setelah grup accordion dibuka, jadi test membuka grup yang tertutup dulu (`butirMenu`).
 
 | Peran (K2) | Menu |
 | --- | --- |
@@ -176,20 +176,23 @@ Mockup menampilkan Improvement Needs untuk atasan tanpa syarat. K1 sudah diputus
 
 Variasi yang diuji:
 
-- satu flag modul mati: butir modul itu tidak bisa dibuka (tersembunyi atau berlabel "Belum aktif", mengikuti shell B0; tampilan sekarang memakai "Belum aktif");
+- satu flag modul mati (HR: `module.tna`; atasan: `module.cca`): butir modul itu hilang dari menu (shell B0 menyembunyikan butir yang gerbangnya tidak lolos), butir lain tetap;
 - entitlement submodul tidak ada, flag menyala: sama seperti di atas.
 
-Pemetaan butir menu ke gerbang, terverifikasi dari `apps/web/src/shell/menu.ts` dan `src/screens/*/routes.ts` (23 Nov, scbrmb `be5591d`): Core Competencies, Wawancara AI, dan Wawancara visi & nilai ke submodul `cca`; Developmental Needs ke `dna`; Training Needs dan Wawancara akar masalah ke `tna`; Improvement Needs ke `ina` + flag `ina.dashboard`; Library, Program & Course, dan Permintaan & pengembangan ke `module.li` + `full_suite`; Learning Delivery ke `module.ld` + `full_suite`; Learning Impact Measurement ke `module.lim` + `full_suite`; Career & Promotion ke `promotion.recommendation` + submodul `dna`; Dashboard ke `dashboard.main`; layar Admin Tenant ke `admin.tenant`; layar Super Admin ke `platform.console`. Kunci peran API sesudah B2: `hr_admin`, `supervisor`, `learner`, `tenant_admin`, `eta_admin` (`PERAN_API` di `support/sesi.ts`).
+Produk `full_suite` yang tidak ada (gerbang `meta.entitlement` modul 2–5) tidak diulang di sini; sudah diuji di `shell.spec.ts`, `li.spec.ts`, `ld.spec.ts`, dan `lim.spec.ts`.
+
+Pemetaan butir menu ke gerbang, terverifikasi dari `apps/web/src/shell/menu.ts` dan `src/screens/*/routes.ts` (23 Nov, scbrmb `be5591d`): Core Competencies, Wawancara AI, dan Wawancara visi & nilai ke submodul `cca`; Developmental Needs ke `dna`; Training Needs dan Wawancara akar masalah ke `tna`; Improvement Needs ke `ina` + flag `ina.dashboard`; Library, Program & Course, dan Permintaan & pengembangan ke `module.li` + `full_suite`; Learning Delivery ke `module.ld` + `full_suite`; Learning Impact Measurement ke `module.lim` + `full_suite`; Career & Promotion ke `promotion.recommendation` + submodul `dna` + peran asli `hr_admin`/`supervisor`/`eta_admin`; Dashboard ke `dashboard.main` + peran asli `hr_admin`/`eta_admin`/`supervisor`; layar Admin Tenant ke `admin.tenant`; layar Super Admin ke `platform.console`. Kunci peran API yang dipakai test untuk lima tampilan: `hr_admin`, `supervisor`, `learner`, `tenant_admin`, `eta_admin` (`PERAN_API` di `support/sesi.ts`). Peran lain tetap ada dan dipetakan ke tampilan oleh `src/shell/views.ts`: `pimpinan` dan `role_leader` ke Atasan, `sme` ke Karyawan.
 
 Baris Karyawan masih `test.fixme`: layar "Hasil saya" (rute `my`) dan "Rencana belajar" (rute `li`) dari spek B8 belum dibangun di web, jadi karyawan masih mendarat di Beranda lama dengan butir peralihan Developmental Needs dan Training Needs. Karena store sesi baru menawarkan tampilan tambahan setelah layar berandanya ada, HR, atasan, dan Admin Tenant juga belum bisa pindah ke "Karyawan (saya)". Baris ini diaktifkan oleh PR yang membangun kedua layar itu.
 
 ### 4.4 Batas akses (`batas-akses.spec.ts`)
 
-- HR dan atasan membuka sesi wawancara: transkrip tidak tampil (PO-6). Sudah diuji di `poc-dna-tna.spec.ts`; dipindah ke sini hanya bila layar sesi pindah ke shell baru.
+- Selain karyawan yang diwawancarai membuka sesi wawancara: transkrip tidak tampil (PO-6). Layar memutuskan dari `transcriptVisible` di respons API, bukan dari peran, jadi test layar cukup satu peran (HR, di `poc-dna-tna.spec.ts` dan `iv.spec.ts`). Penegakan untuk atasan, HR, dan Super Admin diuji di API (`privacy-audit.test.js`, `user-roles.test.js`).
 - Atasan tanpa akses dari HR: layar Improvement Needs menampilkan pesan terkunci tanpa baris tindakan (K1, layar B9). Sudah diuji di `improvement-needs.spec.ts`, jadi tidak digandakan.
-- Super Admin: tidak ada layar yang menampilkan isi jawaban wawancara.
-- Karyawan membuka URL layar HR, Admin Tenant, atau Super Admin: dialihkan ke berandanya.
-- Flag modul mati: URL langsung ke layar modul dialihkan. `gating.spec.ts` sudah menguji ini untuk modul lama; spec ini menambah modul baru, tidak menggandakan.
+- Super Admin: tidak ada layar yang menampilkan isi jawaban wawancara. Di tingkat tampilan, menunya hanya Tenant dan Konfigurasi platform (`menu-peran.spec.ts`). Rute `/iv/:id`, `/m/dna/sessions/:id`, dan `/m/tna/review` tidak punya gerbang peran di router, jadi alamat langsung tetap terbuka; isinya dijaga API (`transcriptVisible: false`, `INTERVIEW_CONTENT_PRIVATE`). `[⏳ DITERIMA]` Menutup rute itu untuk tampilan Super Admin adalah keputusan paket B6/B2, bukan B18.
+- Karyawan membuka URL layar HR, atasan, Admin Tenant, atau Super Admin: dialihkan ke berandanya.
+- Atasan membuka URL layar khusus HR, Admin Tenant, atau Super Admin: dialihkan ke Dashboard tim. Admin Tenant membuka URL layar Super Admin: dialihkan ke Pengguna & peran.
+- Flag modul mati: URL langsung ke layar modul dialihkan, satu test per flag: `module.cca` (`/cc`, `/aiv`), `module.dna` (`/dna`, `/m/dna`), `module.tna` (`/tna`, `/tna/gap`, `/m/tna/review`, `/iv`, `/iv/:id`), `module.ina` (`/ina`), `module.ld` (`/ld`), `module.lim` (`/lim`). Modul yang flag-nya sudah diuji spec paket tidak diulang: Learning Intervention (`li.spec.ts`), Career & Promotion (`b16-cp.spec.ts`), Dashboard (`dashboard.spec.ts`), Admin Tenant (`admin-tenant.spec.ts`), Super Admin (`super-admin.spec.ts`).
 
 Batas ini diuji di tingkat tampilan. Penegakan sesungguhnya diuji di API (bagian 3 dan test tiap paket).
 
@@ -360,7 +363,7 @@ QA malam dan driver (mulai 20 Nov):
 
 Setelah B0, B1, B2 digabung:
 
-- [x] `apps/web/e2e/alur/menu-peran.spec.ts` (baris Karyawan `test.fixme` sampai layar B8 `my`/`li` ada) dan `batas-akses.spec.ts` (23 Nov)
+- [x] `apps/web/e2e/alur/menu-peran.spec.ts` (baris Karyawan `test.fixme` sampai layar B8 `my`/`li` ada) dan `batas-akses.spec.ts` (23 Nov); `SEMUA_MODUL`, `semuaModulKecuali`, dan `navigasi` ditambah ke `support/sesi.ts`
 - [ ] `apps/web/e2e/alur/jalur-utama.spec.ts`
 
 Per paket yang digabung: baris alurnya di bagian 3.3 (oleh thread paket) dan persona operasi AI-nya di bagian 5.1 (oleh thread integrasi).

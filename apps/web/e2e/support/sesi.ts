@@ -71,3 +71,21 @@ export async function loginSebagai(page: Page, peran: Peran, opsi: OpsiSesi = {}
   await expect(page.getByRole('button', { name: 'Keluar' })).toBeVisible()
   return user
 }
+
+/** Semua modul, layar, dan konsol menyala (flag bawaan produksi mati). Untuk spec yang menguji menu dan rute lengkap. */
+export const SEMUA_MODUL: OpsiSesi = {
+  flags: {
+    'module.cca': true, 'module.dna': true, 'module.tna': true, 'module.ina': true,
+    'module.li': true, 'module.ld': true, 'module.lim': true,
+    'dashboard.main': true, 'ina.dashboard': true, 'promotion.recommendation': true, 'tna.gap_board': true,
+    'admin.tenant': true, 'platform.console': true,
+  },
+}
+
+/** SEMUA_MODUL dengan beberapa flag ditimpa, mis. satu modul dimatikan. */
+export function semuaModulKecuali(flags: Record<string, boolean>, opsi: Omit<OpsiSesi, 'flags'> = {}): OpsiSesi {
+  return { ...opsi, flags: { ...SEMUA_MODUL.flags, ...flags } }
+}
+
+/** Menu utama di shell. */
+export const navigasi = (page: Page) => page.getByRole('navigation', { name: 'Navigasi utama' })
