@@ -156,6 +156,10 @@ test('Program & Course dan Permintaan: kamus belum ada, permintaan massal, dan l
 
   await nav(page).getByRole('link', { name: 'Permintaan & pengembangan' }).click()
   await expect(page.getByTestId('permintaan-TC-B1')).toContainText('Diminta')
+  // LI-26 paritas: dibuka langsung, Permintaan tetap dua kolom (li-split dari li.css)
+  await page.goto('/req')
+  await expect(page.getByTestId('permintaan-TC-B1')).toBeVisible()
+  await expect(page.locator('.li-split')).toHaveCSS('display', 'grid')
   await expect(page.getByTestId('draf-ST-A2')).toContainText('Draf, belum diajukan')
   await page.getByRole('button', { name: 'Catat: dikonfirmasi vendor' }).click()
   await expect.poll(() => calls.find((c) => c.url === '/requests/rq-1')?.body).toEqual({ status: 'confirmed' })

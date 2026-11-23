@@ -55,7 +55,7 @@ Didefinisikan di `apps/web/src/style.css` sebagai variabel CSS pada `:root`, lal
 | `--el-critical` / container | #B3261E / #F9DEDC | #FFB4AB / #8C1D18 |
 
 - Mode gelap tidak ada di mockup. Nilainya diturunkan dengan pola peran warna Material 3. `[⚠️ BELUM TERVERIFIKASI]` belum dilihat Pak Eji atau Desty; bila ditolak, cukup ubah nilai di satu blok CSS.
-- Pemilihan tema: atribut `data-theme="light|dark"` di `<html>`. Tanpa pilihan pengguna, mengikuti `prefers-color-scheme`. Pilihan pengguna (tombol di top bar) disimpan di `localStorage` kunci `elgos.theme`; akses storage dibungkus try/catch.
+- Pemilihan tema: atribut `data-theme="light|dark"` di `<html>`. Tanpa pilihan pengguna, mengikuti `prefers-color-scheme`. Pilihan pengguna (butir "Mode gelap" di kaki drawer; dipindah dari top bar oleh paritas P2 agar top bar sama dengan mockup) disimpan di `localStorage` kunci `elgos.theme`; akses storage dibungkus try/catch.
 - Tipografi: Roboto 400/500/700 dan Roboto Mono 400/500, **di-host sendiri** lewat paket `@fontsource/*` (subset latin). Mockup memuat dari Google Fonts; B0 tidak, supaya aplikasi tidak memanggil pihak ketiga saat dibuka pengguna klien.
 - Ikon: Material Symbols Outlined sebagai path SVG inline di `src/ui/icons.ts` (54 ikon yang dipakai mockup dan komponen). Tanpa font ikon.
 - Ukuran dasar mengikuti mockup: teks 14px/20px, h1 28/36 weight 400, h2 20/28 weight 500, h3 16/24 weight 500, radius kartu 16px, tombol 20px, chip 8px.
@@ -255,7 +255,7 @@ Perhatian: `li` adalah **rute** Rencana belajar milik B8, sedangkan `module.li` 
 
 - `UiSkipLink` ke `#isi`;
 - `AppDrawer`: merek "EG · ELGOS · Elite Learning & Growth OS", lalu menu. Lebar 280px. Di bawah 900px drawer tersembunyi dan dibuka lewat tombol menu di top bar (`aria-expanded`, tutup dengan Esc atau saat pindah rute);
-- `AppTopBar`: judul layar + baris tenant; pil "Log audit aktif"; `UiSegmented` "Tampilan" bila tampilan tersedia lebih dari satu; pil "label tampilan · email"; tombol tema; tombol "Keluar";
+- `AppTopBar`: judul layar + baris tenant; pil "Log audit aktif"; `UiSegmented` "Tampilan" bila tampilan tersedia lebih dari satu; pil "label tampilan · email"; tombol "Keluar" (tombol tema ada di kaki `AppDrawer`, paritas P2);
 - `<main id="isi" tabindex="-1">` dengan lebar maksimum 1280px;
 - komponen `ShellExtra.vue` milik paket (bila ada).
 

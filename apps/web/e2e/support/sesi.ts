@@ -89,3 +89,6 @@ export function semuaModulDengan(flags: Record<string, boolean>, opsi: Omit<Opsi
 
 /** Menu utama di shell. */
 export const navigasi = (page: Page) => page.getByRole('navigation', { name: 'Navigasi utama' })
+
+/** Grup accordion di menu utama (bukan tombol lain di drawer seperti Mode gelap di kaki drawer). */
+export const grupAkordion = (page: Page) => navigasi(page).locator('.el-drawer__list button[aria-expanded]')

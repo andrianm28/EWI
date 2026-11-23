@@ -1,4 +1,5 @@
 import { test, expect, type Page } from '@playwright/test'
+import { grupAkordion } from './support/sesi'
 
 // Shell ELGOS (B0): menu per tampilan, accordion, ganti tampilan, tema, drawer layar sempit.
 // Spek: docs/designs/b0-fondasi-ui.md. API di-mock; rute uji didaftarkan lewat localStorage (build VITE_UI_KIT=1).
@@ -84,8 +85,7 @@ test('karyawan: menu peralihan tanpa grup dan tanpa pemilih tampilan', async ({ 
   await loginAs(page, { role: 'learner' })
   // B6 memasang rute `iv`, jadi butir karyawan "Wawancara akar masalah" ikut tampil
   await expect(nav(page).getByRole('link')).toHaveText(['Beranda', 'Wawancara akar masalah', 'Developmental Needs', 'Training Needs'])
-  // tanpa tombol grup accordion (satu-satunya tombol lain: Mode gelap di kaki drawer)
-  await expect(nav(page).locator('button[aria-expanded]')).toHaveCount(0)
+  await expect(grupAkordion(page)).toHaveCount(0)
   await expect(page.getByTestId('identitas')).toContainText('Karyawan')
   await expect(page.getByRole('group', { name: 'Tampilan' })).toHaveCount(0)
 })
