@@ -8,6 +8,7 @@ import { ApiError } from '@/api/client'
 import { formatWib } from '@/api/lna'
 import { UiButton, UiCard, UiChip, UiDataTable, UiErrorSummary, UiField, UiKpiCard, UiStatus, type UiColumn } from '@/ui'
 import { useSessionStore } from '@/stores/session'
+import { routeOpen } from '@/router'
 import { HR_ROLES, gaps, gapRefFromQuery, type DetailEmployee, type GapDetail, type Project } from './api'
 import { CLASSIFICATION_LABEL, CLASSIFICATION_TONE, num } from './labels'
 import './tna.css'
@@ -18,6 +19,10 @@ const ref_ = computed(() => gapRefFromQuery(route.query))
 const backTab = computed(() => (typeof route.query.tab === 'string' ? route.query.tab : route.query.kind === 'okr' ? 'okr' : 'kompetensi'))
 const isHr = computed(() => session.roles.some((r) => HR_ROLES.includes(r)))
 const assignOn = computed(() => session.hasFlag('tna.interview_assignment'))
+// Paritas B7 web: tinjauan per gap bila rutenya terbuka (flag tna.review_workspace), selain itu antrean lama
+const reviewTo = computed(() => (routeOpen('review', session.activeView)
+  ? { name: 'review', query: { ...(ref_.value as unknown as Record<string, string>), tab: backTab.value } }
+  : { name: 'tna-review' }))
 
 const d = ref<GapDetail | null>(null)
 const error = ref('')
@@ -220,11 +225,11 @@ const cols: UiColumn[] = [
           </fieldset>
           <div class="tna-row">
             <UiButton type="submit" icon="forum" :disabled="busy">Tugaskan wawancara</UiButton>
-            <UiButton v-if="isHr" variant="outlined" :to="{ name: 'tna-review' }">Langsung ke tinjauan HR</UiButton>
+            <UiButton v-if="isHr" variant="outlined" :to="reviewTo">Langsung ke tinjauan HR</UiButton>
           </div>
         </form>
       </UiCard>
-      <p v-else-if="isHr" class="tna-gap"><RouterLink :to="{ name: 'tna-review' }" class="tna-link">Langsung ke tinjauan HR</RouterLink></p>
+      <p v-else-if="isHr" class="tna-gap"><RouterLink :to="reviewTo" class="tna-link">Langsung ke tinjauan HR</RouterLink></p>
     </template>
   </AppShell>
 </template>
