@@ -144,6 +144,9 @@ apps/web/e2e/
     sesi.ts        # loginSebagai(page, peran, opsi)
     api.ts         # mockApi(page, penangan)
     data/          # fixture JSON per modul, semua fiktif
+    dashboard.ts   # respons Dashboard utama (B3), dipakai juga dashboard.spec.ts
+    tna-gap.ts     # penangan papan gap dan penugasan (B5), dipakai juga tna-gap.spec.ts
+    wawancara.ts   # penangan sesi wawancara berstate (B6), dipakai juga iv.spec.ts
   alur/
     menu-peran.spec.ts
     batas-akses.spec.ts
@@ -203,6 +206,8 @@ Satu `test` per jalur, langkah ditandai `test.step`:
 1. Masuk lewat tautan email → menu sesuai peran → ganti tampilan ke "Karyawan (saya)" dan kembali (HR, Atasan, Admin Tenant).
 2. HR: Dashboard utama → Training Needs → detail gap → tugaskan wawancara (karyawan, tenggat, durasi).
 3. Karyawan: Hasil saya → undangan → wawancara akar masalah: persetujuan (galat bila kotak belum dicentang) → percakapan → ringkasan → terkirim.
+
+Status 23 Nov: jalur 2 dan 3 berjalan. Jalur 1 masih `test.fixme` per peran (HR, Atasan, Admin Tenant), karena store sesi baru menawarkan "Karyawan (saya)" setelah layar "Hasil saya" (rute `my`, B8) ada. Jalur 3 mulai dari butir menu Wawancara akar masalah sampai layar itu ada; PR layar B8 menambahkan langkah awal dari "Hasil saya" dan mengaktifkan jalur 1. Penangan mock jalur 2 dan 3 dipindah dari spec paket ke `support/dashboard.ts`, `support/tna-gap.ts`, dan `support/wawancara.ts` supaya tidak digandakan; datanya karangan tangan sesuai kontrak spek paket, bukan fixture tangkapan.
 
 `[⏳ DITERIMA]` Mock bisa melenceng dari API sungguhan. Mitigasi: fixture `support/data/` disalin dari respons test integrasi API paket terkait dan dirujuk di komentar fixture; alur yang sama diuji terhadap API sungguhan di bagian 3.
 
@@ -364,7 +369,7 @@ QA malam dan driver (mulai 20 Nov):
 Setelah B0, B1, B2 digabung:
 
 - [x] `apps/web/e2e/alur/menu-peran.spec.ts` (baris Karyawan `test.fixme` sampai layar B8 `my`/`li` ada) dan `batas-akses.spec.ts` (23 Nov); `SEMUA_MODUL`, `semuaModulKecuali`, dan `navigasi` ditambah ke `support/sesi.ts`
-- [ ] `apps/web/e2e/alur/jalur-utama.spec.ts`
+- [x] `apps/web/e2e/alur/jalur-utama.spec.ts` (23 Nov; jalur 1 `test.fixme` dan langkah awal jalur 3 dari "Hasil saya" menunggu layar B8); penangan bersama `support/dashboard.ts`, `tna-gap.ts`, `wawancara.ts`, tipe `Terkirim` di `support/api.ts`
 
 Per paket yang digabung: baris alurnya di bagian 3.3 (oleh thread paket) dan persona operasi AI-nya di bagian 5.1 (oleh thread integrasi).
 

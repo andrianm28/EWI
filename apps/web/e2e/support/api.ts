@@ -19,6 +19,9 @@ export interface ResponsApi {
   json: unknown
 }
 
+/** Permintaan tulis yang dicatat penangan mock untuk diperiksa test, mis. `{ path: 'confirm', body: {} }`. */
+export interface Terkirim { path: string; body: unknown }
+
 /** Mengembalikan respons, atau undefined bila permintaan ini bukan urusannya (diteruskan ke penangan berikutnya). */
 export type Penangan = (req: PermintaanApi) => ResponsApi | undefined | Promise<ResponsApi | undefined>
 
