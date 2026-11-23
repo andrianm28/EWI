@@ -229,8 +229,20 @@ pause
 # ── 3 ─────────────────────────────────────────────────────────────────────
 stage "Profil admin akun ELGOS"
 say "Profil elgos-admin memakai role OrganizationAccountAccessRole dari profil management."
-aws configure set profile.elgos-admin.role_arn "arn:aws:iam::${ELGOS_ACCOUNT_ID}:role/OrganizationAccountAccessRole"
-aws configure set profile.elgos-admin.source_profile "$MGMT_PROFILE"
+# Provider AWS Terraform tidak mengenali kredensial `aws login` (login_session) sebagai
+# source_profile, jadi role dipasang di elgos-admin-sts dan elgos-admin mengambil kredensial
+# sementaranya lewat credential_process (berlaku juga untuk profil SSO / kunci biasa).
+aws configure set profile.elgos-admin-sts.role_arn "arn:aws:iam::${ELGOS_ACCOUNT_ID}:role/OrganizationAccountAccessRole"
+aws configure set profile.elgos-admin-sts.source_profile "$MGMT_PROFILE"
+aws configure set profile.elgos-admin-sts.region ap-southeast-1
+cfg="${AWS_CONFIG_FILE:-$HOME/.aws/config}"
+if [ -f "$cfg" ]; then  # buang role_arn/source_profile lama dari [profile elgos-admin]
+  cp "$cfg" "$cfg.bak-$(date +%Y%m%d%H%M%S)"
+  awk '/^\[/{s=($0=="[profile elgos-admin]")} !(s && /^(role_arn|source_profile)[[:space:]]*=/)' \
+    "$cfg" > "$cfg.tmp" && cat "$cfg.tmp" > "$cfg" && rm -f "$cfg.tmp"
+fi
+aws configure set profile.elgos-admin.credential_process \
+  "aws configure export-credentials --profile elgos-admin-sts --format process"
 aws configure set profile.elgos-admin.region ap-southeast-1
 aws sts get-caller-identity --profile elgos-admin --query Arn --output text \
   || { warn "gagal masuk akun ELGOS; tunggu beberapa menit setelah akun dibuat lalu jalankan ulang"; exit 1; }
