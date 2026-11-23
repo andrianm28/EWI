@@ -1,8 +1,8 @@
-// B17 Asisten ELGOS: pemanggil dan tipe. Panel di shell menyusul di atas PR B3. Spek: docs/designs/b17-asisten-elgos.md
+// B17 Asisten ELGOS: pemanggil dan tipe. Panel: screens/b17-asisten/ShellExtra.vue. Spek: docs/designs/b17-asisten-elgos.md
 import { api } from '@/api/client'
 import { useSessionStore } from '@/stores/session'
 
-export type AssistantView = 'karyawan' | 'atasan' | 'hr'
+export type AssistantView = 'karyawan' | 'atasan' | 'hr' | 'super'
 export type AssistantOutcome = 'answered' | 'refused' | 'no_answer'
 export interface AssistantIntro {
   view: AssistantView
@@ -14,7 +14,7 @@ export interface AssistantIntro {
 }
 export interface AssistantAnswer {
   answer: string
-  /** Halaman tujuan tombol (kunci rute mockup: my, li, aiv, tna, review, ina) */
+  /** Halaman tujuan tombol (nama rute B0: my, li, iv, tna, review, ina) */
   action: { page: string; label: string } | null
   outcome: AssistantOutcome
 }
