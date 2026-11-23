@@ -115,15 +115,15 @@ Catatan: file `screens/b5-tna/TnaScreen.vue`.
 | TD-3 | Bukti/hipotesis | komponen | Baris dengan ikon Material (`insights` primer / `help` kuning) dan garis pemisah | `ul` berpoin | TnaGapView.vue:162, 166 | sedang | Daftar ikon dengan `UiIcon` + border-bottom |
 | TD-4 | Tabel Karyawan | komponen | Tidak ada | Judul "Karyawan" + tabel Nama/Jabatan/Nilai/Wawancara | TnaGapView.vue:170-178 | rendah | Tambahan disengaja (penugasan); catat |
 | TD-5 | CTA "Cari akar masalah" | layout/komponen | Kartu `--pc` satu baris: teks kiri, tombol "Mulai wawancara akar masalah" (ikon forum) + "Langsung ke tinjauan HR" kanan | Kartu berisi form penugasan (proyek, siapa, karyawan, tenggat, durasi) + "Tugaskan wawancara" | TnaGapView.vue:183-226 | sedang | Perlu keputusan: penugasan menggantikan "mulai langsung". Usul: CTA tetap satu baris, form dibuka di dialog/sheet saat tombol diklik |
-| TD-6 | Atasan | state | "Langsung ke tinjauan HR" juga tampil (mockup sama untuk atasan) | Hanya HR | TnaGapView.vue:223, 227 | - | Perlu keputusan |
+| TD-6 | Atasan | state | "Langsung ke tinjauan HR" juga tampil (mockup sama untuk atasan) | Hanya HR | TnaGapView.vue:228, 232; b7-tinjauan/routes.ts:6-9 | - | Perlu keputusan |
 
 ## 8. Tinjauan temuan AI oleh HR (`/m/tna/review`)
 
 | ID | Layar/state | Jenis | Mockup | Aplikasi | File:baris | Bobot | Usulan perbaikan |
 |---|---|---|---|---|---|---|---|
-| RV-1 | Seluruh layar | komponen/layout | "Tinjauan temuan AI" per gap: breadcrumb "Training Needs › Tinjauan HR", subjudul "{gap}. HR memastikan klasifikasi …"; kiri kartu "Temuan dan klasifikasi" (radio-segmented Training/Improvement/Perlu ditinjau HR, "· AI 90%"); kanan kartu "Solusi pelatihan" (modul rekomendasi + "Tugaskan di EliteMentor") dan "Tindakan perbaikan" ("Buat tindakan di Improvement Needs") | Layar POC lama "Review hasil AI": tautan "← Kembali ke TNA", tab Draft/Riwayat, antrean lintas karyawan, tombol Ubah/Tolak/Setujui, gaya Tailwind | views/ReviewView.vue:59-125; screens/legacy-review/routes.ts:6 | tinggi | Kerjakan paket B7 sesuai mockup (rute `review` per gap), pakai `UiCard`, `UiSegmented`, `UiChip`; antrean lama jadi tab "Riwayat" bila masih perlu |
-| RV-2 | Judul | copy | "Tinjauan temuan AI" (h1 28px) | "Review hasil AI" (`text-lg`) | views/ReviewView.vue:60 | sedang | Termasuk RV-1 |
-| RV-3 | Atasan | state/nav | Mockup `atasan--review` identik dengan HR | Rute hanya `hr_admin`, `eta_admin` | legacy-review/routes.ts:7 | - | Perlu keputusan |
+| RV-1 | Seluruh layar | komponen/layout | "Tinjauan temuan AI" per gap: breadcrumb "Training Needs › Tinjauan HR", subjudul "{gap}. HR memastikan klasifikasi …"; kiri kartu "Temuan dan klasifikasi" (radio-segmented Training/Improvement/Perlu ditinjau HR, "· AI 90%"); kanan kartu "Solusi pelatihan" (modul rekomendasi + "Tugaskan di EliteMentor") dan "Tindakan perbaikan" ("Buat tindakan di Improvement Needs") | Layar POC lama "Review hasil AI": tautan "← Kembali ke TNA", tab Draft/Riwayat, antrean lintas karyawan, tombol Ubah/Tolak/Setujui, gaya Tailwind | views/ReviewView.vue:59-125; screens/legacy-review/routes.ts:6 (kini b7-tinjauan/AntreanView.vue, routes.ts) | tinggi | Kerjakan paket B7 sesuai mockup (rute `review` per gap), pakai `UiCard`, `UiSegmented`, `UiChip`; antrean lama jadi tab "Riwayat" bila masih perlu. **Ditutup** ([b7-tinjauan-web.md](b7-tinjauan-web.md)): rute `review` `b7-tinjauan/TinjauanView.vue`, antrean lama `AntreanView.vue` |
+| RV-2 | Judul | copy | "Tinjauan temuan AI" (h1 28px) | "Review hasil AI" (`text-lg`) | views/ReviewView.vue:60 (kini b7-tinjauan/TinjauanView.vue) | sedang | Termasuk RV-1. **Ditutup** ([b7-tinjauan-web.md](b7-tinjauan-web.md)) |
+| RV-3 | Atasan | state/nav | Mockup `atasan--review` identik dengan HR | Rute hanya `hr_admin`, `eta_admin` | b7-tinjauan/routes.ts:6-9 | - | Perlu keputusan |
 
 ## 9. Improvement Needs (HR dan atasan)
 

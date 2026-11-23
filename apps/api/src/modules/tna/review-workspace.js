@@ -42,6 +42,18 @@ async function gapFilterOf(req, stores) {
   return { key, label, keep: (rows) => findingsInGap(rows, key) };
 }
 
+/** projectId opsional di query: harus satu UUID, selain itu 400 (bukan galat cast di database). */
+function projectIdOf(req) {
+  const v = req.query.projectId;
+  if (v === undefined || v === '') return undefined;
+  if (typeof v !== 'string' || !UUID.test(v)) throw badRequest('projectId tidak valid');
+  return v;
+}
+
+// Layar tinjauan per gap tanpa rincian temuan maupun catatan ringkasan karyawan (PO-6 A); rincian di antrean lama
+const GAP_HIDDEN_FIELDS = ['detail', 'originalDetail', 'summaryNote'];
+const withoutDetail = (item) => Object.fromEntries(Object.entries(item).filter(([k]) => !GAP_HIDDEN_FIELDS.includes(k)));
+
 /** Bentuk satu butir antrean tinjauan: field tahan, saran klasifikasi, dan batas tinjauan. */
 function toReviewItem(row, targetDays, now = new Date()) {
   const { sessionEndedAt, ...item } = withoutGapFields(row);
@@ -58,14 +70,6 @@ function reviewWorkspaceRouter({ stores, settings, catalog, flags, audit, assign
   const hr = requireRole(ROLES.HR_ADMIN);
   const flag = requireFlag(flags, FLAGS.TNA_REVIEW_WORKSPACE, 'Tinjauan HR versi baru belum diaktifkan untuk organisasi Anda');
   const conflict = (code, message) => new HttpError(409, code, message);
-
-  /** projectId opsional di query: harus satu UUID, selain itu 400 (bukan galat cast di database). */
-  const projectIdOf = (req) => {
-    const v = req.query.projectId;
-    if (v === undefined || v === '') return undefined;
-    if (typeof v !== 'string' || !UUID.test(v)) throw badRequest('projectId tidak valid');
-    return v;
-  };
 
   /** Bisakah tenant ini menugaskan langsung ke EliteMentor? Baris 5 dan 6 tabel keputusan di spek. */
   async function assignGate(tenantId, conf) {
@@ -223,4 +227,4 @@ function assertNotWithdrawn(item) {
   if (item && item.consentWithdrawnAt) throw frozenError();
 }
 
-module.exports = { reviewWorkspaceRouter, toReviewItem, gapFilterOf, assertNotWithdrawn, frozenError };
+module.exports = { reviewWorkspaceRouter, toReviewItem, withoutDetail, gapFilterOf, projectIdOf, assertNotWithdrawn, frozenError };
