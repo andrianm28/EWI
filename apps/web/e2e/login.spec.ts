@@ -176,6 +176,6 @@ test('P4 L7: layar sempit, panel kiri di atas dengan semua teks, tanpa gulir hor
   const bKiri = await page.getByRole('complementary', { name: 'Tentang ELGOS' }).boundingBox()
   const bKanan = await page.locator('#isi-login').boundingBox()
   expect(bKiri && bKanan && bKanan.y >= bKiri.y + bKiri.height - 1).toBeTruthy()
-  const melebar = await page.evaluate(() => document.documentElement.scrollWidth > document.documentElement.clientWidth)
+  const melebar = await page.evaluate('document.documentElement.scrollWidth > document.documentElement.clientWidth')
   expect(melebar).toBe(false)
 })
