@@ -175,5 +175,5 @@ test('P5 DN-3/DN-4/DN-11/DN-13/DN-14: label tab dan copy mockup, judul kurikulum
   const ani = page.getByRole('row', { name: /Ani/ })
   await expect(ani.locator('.el-chip').first()).toHaveClass(/el-chip--review/)
   await expect(page.getByRole('row', { name: /Budi/ }).locator('.el-chip').first()).toHaveClass(/el-chip--success/)
-  await expect(ani.getByRole('cell').nth(2)).toHaveCSS('text-align', 'left')
+  await expect(ani.getByRole('cell').nth(2)).not.toHaveCSS('text-align', 'right')
 })

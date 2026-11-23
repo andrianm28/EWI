@@ -17,3 +17,19 @@
 .tna-form { display: grid; gap: 12px; max-width: 560px; margin-top: 12px; }
 .tna-fieldset { border: 0; padding: 0; margin: 0; display: grid; gap: 4px; }
 .tna-fieldset legend { font-weight: 500; margin-bottom: 4px; }
+/* P5 TN-2: Pengelolaan TNA dengan token ELGOS */
+.tna-stack > * + * { margin-top: 16px; }
+.tna-stack p { margin: 0; }
+.tna-alert { color: var(--el-critical); font-weight: 500; }
+.tna-notice { color: var(--el-success); font-weight: 500; }
+.tna-crit { color: var(--el-critical); }
+.tna-strong { font-weight: 500; }
+.tna-a { color: var(--el-primary); }
+.tna-session { margin-top: 8px; }
+.tna-gap-t { margin-top: 8px; }
+.tna-items { list-style: none; margin: 8px 0 0; padding: 0; }
+.tna-items li { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; padding: 8px 0; border-top: 1px solid var(--el-outline-variant); }
+.tna-items li:first-child { border-top: 0; }
+.tna-subsection { margin-top: 16px; padding-top: 12px; border-top: 1px solid var(--el-outline-variant); }
+.tna-inline { display: flex; gap: 8px; align-items: center; margin-top: 8px; }
+.tna-inline__select { width: auto; height: 36px; }

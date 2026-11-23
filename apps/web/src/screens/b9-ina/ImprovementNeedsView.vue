@@ -1,7 +1,8 @@
 <script setup lang="ts">
 // B9 Improvement Needs: tindakan perbaikan non-pelatihan, akses atasan (K1), dan verifikasi AI.
 // Mengikuti blok INA mockup Pak Eji. Otorisasi data ada di API; layar hanya menyesuaikan dengan `meta.level`.
-import { computed, onMounted, reactive, ref } from 'vue'
+import { computed, nextTick, onMounted, reactive, ref, watch } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import AppShell from '@/components/AppShell.vue'
 import { ApiError } from '@/api/client'
 import {
@@ -21,6 +22,7 @@ const hiddenCount = ref(0)
 const showHidden = ref(false)
 const loading = ref(true)
 const loadError = ref('')
+const noAccess = ref(false)
 const notice = ref('')
 const manage = computed(() => level.value === 'manage')
 
@@ -33,6 +35,7 @@ const fail = (e: unknown) => (e instanceof ApiError ? e.message : 'Terjadi kesal
 async function load() {
   loading.value = true
   loadError.value = ''
+  noAccess.value = false
   try {
     const res = await ina.actions(showHidden.value)
     level.value = res.meta.level
@@ -46,7 +49,8 @@ async function load() {
       verifications.value = v.data
     }
   } catch (e) {
-    loadError.value = e instanceof ApiError && e.code === 'NO_INA_ACCESS'
+    noAccess.value = e instanceof ApiError && e.code === 'NO_INA_ACCESS'
+    loadError.value = noAccess.value
       ? 'HR belum memberi Anda akses ke tindakan perbaikan. Hubungi HR bila Anda membutuhkannya.'
       : fail(e)
   } finally {
@@ -70,7 +74,6 @@ const columns = computed<UiColumn[]>(() => [
   { key: 'sourceRef', label: 'Asal gap', mono: true },
   { key: 'dueDate', label: 'Tenggat', sortable: true },
   { key: 'status', label: 'Status', sortable: true },
-  ...(manage.value ? [{ key: 'aksi', label: 'Aksi' }] : []),
 ])
 const rows = computed(() => actions.value as unknown as Record<string, unknown>[])
 const asAction = (row: Record<string, unknown>) => row as unknown as InaAction
@@ -100,6 +103,32 @@ const formErrors = ref<{ message: string; fieldId?: string }[]>([])
 // detail tidak ada di daftar; dimuat terpisah. Selama belum termuat, detail tidak dikirim agar tidak terhapus.
 const detailLoaded = ref(true)
 const form = reactive({ title: '', detail: '', category: 'sop' as ActionCategory, subLabel: '', ownerUserId: '', sourceRef: '', dueDate: '', involvesIndividual: false })
+
+// Paritas P5 IN-7 (K-P5-5): Ubah dan "Verifikasi lewat AI" pindah dari kolom Aksi ke formulir yang dibuka lewat klik baris.
+// `?ubah=<id>` bisa dibagikan; Batal/Simpan menghapusnya; id tak dikenal dihapus dari URL. Pola sama dengan CC (K-P3-10).
+const route = useRoute()
+const router = useRouter()
+const editTo = (row: Record<string, unknown>) => (manage.value ? { query: { ...route.query, ubah: String(row.id) } } : null)
+const formEl = ref<{ $el: HTMLElement } | null>(null)
+function dropUbah() {
+  if (route.query.ubah === undefined) return
+  const query = { ...route.query }; delete query.ubah; void router.replace({ query })
+}
+function openFromQuery() {
+  const id = typeof route.query.ubah === 'string' ? route.query.ubah : ''
+  if (!id || !manage.value) return
+  const a = actions.value.find((x) => x.id === id)
+  if (!a) { if (level.value) dropUbah(); return }
+  if (editing.value?.id !== id || !formOpen.value) {
+    openForm(a)
+    void nextTick(() => formEl.value?.$el?.scrollIntoView?.({ block: 'nearest' }))
+  }
+}
+watch([actions, () => route.query.ubah], ([, id], [, old]) => {
+  if (id) openFromQuery()
+  else if (old && editing.value?.id === old) formOpen.value = false
+})
+function closeForm() { formOpen.value = false; dropUbah() }
 
 function openForm(a?: InaAction) {
   editing.value = a ?? null
@@ -134,7 +163,7 @@ async function submit() {
     if (editing.value) await ina.updateAction(editing.value.id, body)
     else await ina.createAction(body)
     notice.value = editing.value ? 'Tindakan diperbarui.' : 'Tindakan ditambahkan.'
-    formOpen.value = false
+    closeForm()
     await load()
   } catch (e) {
     formErrors.value = [{ message: fail(e) }]
@@ -164,6 +193,7 @@ async function assign(a: InaAction) {
   try {
     await ina.assign(a.id, null)
     notice.value = `Verifikasi untuk "${a.title}" ditugaskan kepada ${a.ownerName ?? 'pemilik'}.`
+    closeForm()
     await load()
   } catch (e) {
     formErrors.value = [{ message: fail(e) }]
@@ -189,9 +219,10 @@ const REPORTED_TONE = { done: 'success', in_progress: 'info', blocked: 'critical
     <UiAgentCard v-if="aiOn && !loadError" title="Verifikasi tindakan perbaikan" data-testid="ina-ai">
       AI menanyai pemilik tindakan perbaikan (atasan atau karyawan pada jabatan terkait) tentang hambatan dan status, lalu merangkum untuk HR.
     </UiAgentCard>
-    <p class="el-muted ina__lead">Tindakan perbaikan untuk masalah di luar pelatihan: SOP, alat, sistem, dan budaya kerja.</p>
+    <p class="el-muted ina__lead">Masalah non-pelatihan (SOP, alat, sistem, budaya) yang berjalan bersamaan dengan Training Needs agar solusi tepat sasaran.</p>
 
-    <UiNote v-if="loadError" tone="critical" data-testid="ina-galat">{{ loadError }}</UiNote>
+    <!-- IN-11: tanpa akses bukan galat, jadi nada peringatan -->
+    <UiNote v-if="loadError" :tone="noAccess ? 'warning' : 'critical'" data-testid="ina-galat">{{ loadError }}</UiNote>
     <p v-else-if="loading && !kpis" class="el-muted">Memuat tindakan perbaikan…</p>
 
     <template v-if="kpis && !loadError">
@@ -199,16 +230,27 @@ const REPORTED_TONE = { done: 'success', in_progress: 'info', blocked: 'critical
       <UiErrorSummary v-if="!formOpen" :errors="formErrors" />
 
       <div class="el-grid el-grid-4 ina__section" data-testid="ina-kpi">
-        <UiKpiCard label="Tindakan" :value="String(kpis.total)" :note="kpis.overdue ? `${kpis.overdue} lewat tenggat` : 'tidak ada yang lewat tenggat'" />
-        <UiKpiCard label="Selesai" :value="String(kpis.done)" />
-        <UiKpiCard label="SOP / Alat / Sistem" :value="String(kpis.process)" />
-        <UiKpiCard label="Budaya" :value="String(kpis.culture)" />
+        <UiKpiCard label="Tindakan" :value="String(kpis.total)" :note="kpis.overdue ? `${kpis.overdue} lewat tenggat` : 'total tercatat'" />
+        <UiKpiCard label="Selesai" :value="String(kpis.done)" :note="manage ? 'klik status untuk ubah' : 'tindakan selesai'" />
+        <UiKpiCard label="SOP / Alat / Sistem" :value="String(kpis.process)" note="perbaikan proses" />
+        <UiKpiCard label="Budaya" :value="String(kpis.culture)" note="perlu dukungan manajemen" />
       </div>
 
       <UiNote v-if="level === 'summary'" class="ina__section">Anda melihat angka ringkasan. Daftar tindakan hanya untuk HR dan atasan langsung yang diberi akses oleh HR.</UiNote>
 
       <template v-else>
-        <UiCard v-if="formOpen" class="ina__section" data-testid="ina-form">
+        <!-- IN-6: judul di luar tabel, tombol kelola di kanannya -->
+        <div class="ina__head">
+          <h2 class="el-h2">{{ showHidden ? 'Tindakan yang menyangkut individu' : 'Tindakan perbaikan' }}</h2>
+          <div v-if="manage" class="ina__row">
+            <UiButton v-if="hiddenCount || showHidden" variant="text" size="sm" data-testid="ina-tersembunyi" @click="toggleHidden">
+              {{ showHidden ? 'Kembali ke daftar utama' : `Lihat ${hiddenCount} tindakan yang menyangkut individu` }}
+            </UiButton>
+            <UiButton v-if="!formOpen" variant="tonal" size="sm" data-testid="ina-tambah" @click="openForm(); dropUbah()">Tambah tindakan</UiButton>
+          </div>
+        </div>
+
+        <UiCard v-if="formOpen" ref="formEl" class="ina__section" data-testid="ina-form">
           <h2 class="el-h3">{{ editing ? 'Ubah tindakan' : 'Tambah tindakan' }}</h2>
           <form novalidate @submit.prevent="submit">
             <UiErrorSummary :errors="formErrors" />
@@ -246,22 +288,19 @@ const REPORTED_TONE = { done: 'success', in_progress: 'info', blocked: 'critical
             </label>
             <div class="ina__row ina__sub">
               <UiButton type="submit" :disabled="saving">{{ saving ? 'Menyimpan…' : 'Simpan' }}</UiButton>
-              <UiButton variant="text" @click="formOpen = false">Batal</UiButton>
+              <UiButton v-if="editing && canVerify(editing)" variant="tonal" @click="assign(editing)">Verifikasi lewat AI</UiButton>
+              <UiButton variant="text" @click="closeForm">Batal</UiButton>
             </div>
           </form>
         </UiCard>
 
         <UiDataTable
-          v-model:sort="sort" :columns="columns" :rows="rows" row-key="id" class="ina__section"
-          :caption="showHidden ? 'Tindakan yang menyangkut individu' : 'Tindakan perbaikan'"
+          v-model:sort="sort" :columns="columns" :rows="rows" row-key="id" class="ina__section ina__table"
+          :caption="showHidden ? 'Tindakan yang menyangkut individu' : 'Tindakan perbaikan'" caption-hidden
           :empty-text="showHidden ? 'Tidak ada tindakan yang menyangkut individu.' : 'Belum ada tindakan perbaikan.'"
+          :row-to="editTo" row-link-key="title"
         >
-          <template v-if="manage" #toolbar>
-            <UiButton v-if="!formOpen" size="sm" data-testid="ina-tambah" @click="openForm()">Tambah tindakan</UiButton>
-            <UiButton v-if="hiddenCount || showHidden" variant="text" size="sm" data-testid="ina-tersembunyi" @click="toggleHidden">
-              {{ showHidden ? 'Kembali ke daftar utama' : `Lihat ${hiddenCount} tindakan yang menyangkut individu` }}
-            </UiButton>
-          </template>
+          <template #cell-title="{ row }"><span class="ina__title">{{ row.title }}</span></template>
           <template #cell-category="{ row }">
             <UiChip tone="improvement">{{ CATEGORY_LABEL[asAction(row).category] }}{{ asAction(row).subLabel ? ` · ${asAction(row).subLabel}` : '' }}</UiChip>
           </template>
@@ -282,16 +321,10 @@ const REPORTED_TONE = { done: 'success', in_progress: 'info', blocked: 'critical
             </template>
             <UiStatus v-else :tone="STATUS_TONE[asAction(row).status]">{{ STATUS_LABEL[asAction(row).status] }}</UiStatus>
           </template>
-          <template #cell-aksi="{ row }">
-            <div class="ina__row">
-              <UiButton variant="text" size="sm" @click="openForm(asAction(row))">Ubah</UiButton>
-              <UiButton v-if="canVerify(asAction(row))" variant="tonal" size="sm" @click="assign(asAction(row))">Verifikasi lewat AI</UiButton>
-            </div>
-          </template>
         </UiDataTable>
 
-        <UiNote class="ina__section">
-          Akses: HR melihat semua tindakan. Atasan langsung melihat tindakan timnya hanya bila HR memberinya akses. Temuan yang menyangkut individu tidak ditampilkan di sini; hanya masalah proses dan sistem.
+        <UiNote class="ina__section ina__access">
+          <b>Akses:</b> HR melihat semua tindakan. Atasan langsung melihat tindakan timnya hanya bila HR memberinya akses. Temuan yang menyangkut individu tidak ditampilkan di sini; hanya masalah proses dan sistem.
         </UiNote>
 
         <UiCard v-if="manage && aiOn" class="ina__section" data-testid="ina-verifikasi">
@@ -332,6 +365,16 @@ const REPORTED_TONE = { done: 'success', in_progress: 'info', blocked: 'critical
 </template>
 
 <style scoped>
+.ina__head { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; justify-content: space-between; margin-top: 24px; }
+.ina__head .el-h2 { margin: 0; }
+.ina__access { font-size: 13px; }
+.ina__title { font-weight: 500; }
+/* IN-7: tujuh kolom muat di 1280-1440; teks kolom pendek tidak dilipat */
+.ina__table :deep(td), .ina__table :deep(th) { padding-left: 12px; padding-right: 12px; }
+/* Kategori, Asal gap, dan Status tidak dilipat; Pemilik, Jabatan, dan Tenggat (chip lewat tenggat turun ke baris baru) boleh */
+.ina__table :deep(td:nth-child(2)), .ina__table :deep(td:nth-child(5)), .ina__table :deep(td:nth-child(7)) { white-space: nowrap; }
+.ina__table :deep(td:nth-child(6) .el-chip) { margin-top: 4px; }
+.ina__table :deep(td:first-child) { min-width: 220px; }
 .ina__lead { margin: 0 0 16px; }
 .ina__section { margin-top: 16px; }
 .ina__sub { margin-top: 12px; }

@@ -15,6 +15,7 @@ const errors = ref<{ message: string }[]>([])
 const notice = ref('')
 const due = ref(defaultDue())
 const busy = ref(false)
+const themes = ref<number | null>(null)
 
 async function load() {
   try {
@@ -40,8 +41,9 @@ const kpis = computed(() => {
   return [
     { label: 'Pimpinan ditugaskan', value: `${k.leadersAssigned} dari ${k.leadersEligible}`, note: 'oleh HR' },
     { label: 'Wawancara pimpinan selesai', value: `${k.leadersCompleted} dari ${k.leadersEligible}`, note: 'menjadi dasar persyaratan' },
-    { label: 'Karyawan ditugaskan', value: String(k.employeesAssigned), note: 'oleh atasan masing-masing' },
-    { label: 'Karyawan selesai', value: `${k.employeesCompleted} dari ${k.employeesAssigned}`, note: 'dari yang ditugaskan' },
+    { label: 'Karyawan selesai', value: `${k.employeesCompleted} dari ${k.employeesAssigned}`, note: 'ditugaskan oleh atasan masing-masing' },
+    // Paritas P5 AH-1: kartu ke-4 dari sintesis (SynthesisCard memuatnya sendiri dan melapor lewat @loaded)
+    { label: 'Tema tersintesis', value: themes.value === null ? '-' : String(themes.value), note: 'visi, misi, dan nilai' },
   ]
 })
 const asRow = (r: Record<string, unknown>) => r as unknown as LeaderRow
@@ -89,7 +91,7 @@ const cancel = (row: LeaderRow) => run(async () => { await cca.cancelAssignment(
           </template>
         </UiDataTable>
       </UiCard>
-      <SynthesisCard />
+      <SynthesisCard @loaded="themes = $event" />
     </template>
   </div>
 </template>

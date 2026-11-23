@@ -249,7 +249,7 @@ test('P5 IN-4..IN-9: subjudul dan note KPI mockup, h2 di luar tabel, tujuh kolom
   await expect(page.getByText('Masalah non-pelatihan (SOP, alat, sistem, budaya) yang berjalan bersamaan dengan Training Needs agar solusi tepat sasaran.')).toBeVisible()
   const kpi = page.getByTestId('ina-kpi')
   await expect(kpi.locator('.el-kpi__note')).toHaveText(['1 lewat tenggat', 'klik status untuk ubah', 'perbaikan proses', 'perlu dukungan manajemen'])
-  await expect(page.getByRole('heading', { level: 2, name: 'Tindakan perbaikan' })).toBeVisible()
+  await expect(page.getByRole('heading', { level: 2, name: 'Tindakan perbaikan', exact: true })).toBeVisible()
   const table = page.getByRole('table', { name: 'Tindakan perbaikan' })
   await expect(table.getByRole('columnheader')).toHaveText(['Temuan', 'Kategori', 'Pemilik', 'Jabatan pemilik', 'Asal gap', 'Tenggat', 'Status'])
   await expect(table.getByRole('button', { name: /Ubah|Verifikasi lewat AI/ })).toHaveCount(0)
