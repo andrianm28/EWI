@@ -265,6 +265,25 @@ function langkah(app, masuk) {
       /** Respons mentah: 201 terkirim; 409 REMINDER_RECENT (dalam 24 jam) atau INVALID_STATE (selesai/batal); 400 tanpa penerima. */
       pengingat: (hr, id) => kirim('post', `/api/ld/trainings/${id}/reminders`, hr),
     },
+    /** B9 Improvement Needs. Langkah tulis memastikan sukses; baca mengembalikan respons mentah untuk cek penolakan. */
+    ina: {
+      async buatTindakan(hr, tindakan) {
+        return (await kirim('post', '/api/ina/actions', hr, tindakan).expect(201)).body.data;
+      },
+      daftarTindakan: (siapa) => kirim('get', '/api/ina/actions', siapa),
+      async beriAkses(hr, atasan) {
+        return (await kirim('put', `/api/ina/access/${atasan.id}`, hr).expect(200)).body.data;
+      },
+      async cabutAkses(hr, atasan) {
+        return (await kirim('delete', `/api/ina/access/${atasan.id}`, hr).expect(200)).body.data;
+      },
+      /** Respons mentah: daftar atasan beserta status izinnya. */
+      daftarAkses: (hr) => kirim('get', '/api/ina/access', hr),
+    },
+    /** B11 Admin Tenant. Respons mentah, supaya alur bisa memeriksa penolakan per peran (403 untuk bukan admin). */
+    adminTenant: {
+      ubahPengguna: (admin, pengguna, perubahan) => kirim('patch', `/api/tenant-admin/users/${pengguna.id}`, admin, perubahan),
+    },
   };
 }
 
