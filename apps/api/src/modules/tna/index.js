@@ -109,6 +109,11 @@ module.exports = {
     // --- Jadwalkan wawancara TNA untuk tim. Scope dari body, lalu settings tenant (default red_only) ---
     r.post('/projects/:projectId/interviews', hr, wrap(async (req, res) => {
       const { projectId } = req.params;
+      // R-1 (keputusan user 23 Nov 2026): saat penugasan dari gap menyala, undangan massal ini dipensiunkan supaya
+      // hanya ada satu jalur pembuat sesi TNA (POST /tna/assignments, spek B5 R10)
+      if (await flags.isEnabled(req.tenantId, FLAGS.TNA_INTERVIEW_ASSIGNMENT)) {
+        throw new HttpError(409, 'LEGACY_FLOW_RETIRED', 'Undangan massal sudah diganti penugasan dari gap. Tugaskan wawancara lewat halaman Training Needs.');
+      }
       if (!(await stores.projectsExtra.exists(req.tenantId, projectId))) throw notFound('Proyek tidak ditemukan');
       const conf = await settings.get(req.tenantId);
       const scope = (req.body || {}).scope || conf.tna.interviewScope;

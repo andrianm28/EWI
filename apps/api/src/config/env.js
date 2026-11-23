@@ -43,6 +43,15 @@ function loadConfig(env = process.env) {
       else errors.push('EWI_LOCAL_MASTER_KEY wajib diisi untuk ENCRYPTION_PROVIDER=local (buat: openssl rand -hex 32)');
     }
   }
+  // PK-16 / PD-10 ★B: di produksi semua login lewat link email. Login password hanya untuk dev/staging.
+  const isProd = env.NODE_ENV === 'production';
+  if (isProd && env.AUTH_PASSWORD_LOGIN === 'true') errors.push('AUTH_PASSWORD_LOGIN=true tidak diizinkan di produksi (PD-10)');
+  // Keputusan user 19 Nov (PD-10 B): login lewat OTP link email. Sandi lokal hanya bila dinyalakan eksplisit di dev/uji.
+  const allowLocalLogin = !isProd && envFlag(env.AUTH_PASSWORD_LOGIN, false);
+  const etaAdminEmails = (env.ETA_ADMIN_EMAILS || '').split(',').map((e) => e.trim().toLowerCase()).filter(Boolean);
+  if (etaAdminEmails.some((e) => !/^[^@\s]+@[^@\s]+$/.test(e))) errors.push('ETA_ADMIN_EMAILS berisi alamat email yang tidak valid');
+  const trustProxy = parseTrustProxy(env.TRUST_PROXY);
+  if (trustProxy === undefined) errors.push('TRUST_PROXY harus angka jumlah hop, true/false, atau daftar alamat');
   const uploadMaxMb = Number(env.EWI_UPLOAD_MAX_MB || 25);
   if (!Number.isFinite(uploadMaxMb) || uploadMaxMb < 1 || uploadMaxMb > 200) errors.push('EWI_UPLOAD_MAX_MB harus angka 1 sampai 200');
   const ai = loadAiConfig(env, errors);
@@ -92,6 +101,15 @@ function loadConfig(env = process.env) {
     db: Object.freeze({
       requireNonSuperuser: env.DB_REQUIRE_NON_SUPERUSER === 'true',
     }),
+    auth: Object.freeze({
+      // Login dengan sandi lokal: selalu mati di produksi; di luar produksi mati kecuali AUTH_PASSWORD_LOGIN diisi true
+      localLogin: allowLocalLogin,
+      // Admin ETA hanya boleh masuk bila emailnya ada di daftar ini. Di produksi daftar kosong = tidak ada Admin ETA.
+      etaAdminEmails: Object.freeze(etaAdminEmails),
+      etaAdminRequireList: isProd || etaAdminEmails.length > 0,
+    }),
+    // Express 'trust proxy' agar req.ip = IP klien di belakang nginx (dipakai batas laju per IP)
+    trustProxy,
     jwt: Object.freeze({
       secret,
       audience: env.EWI_JWT_AUDIENCE || 'ewi',
@@ -99,6 +117,22 @@ function loadConfig(env = process.env) {
       ttl: env.EWI_JWT_TTL || '8h',
     }),
   });
+}
+
+/** Nilai boolean dari env: 'true' / 'false', selain itu nilai bawaan. */
+function envFlag(raw, fallback) {
+  if (raw === 'true') return true;
+  if (raw === 'false') return false;
+  return fallback;
+}
+
+/** TRUST_PROXY: kosong/false = mati, true, angka hop, atau daftar alamat/subnet. undefined = tidak valid. */
+function parseTrustProxy(raw) {
+  if (raw === undefined || raw === '' || raw === 'false') return false;
+  if (raw === 'true') return true;
+  if (/^\d+$/.test(raw)) return Number(raw);
+  const list = raw.split(',').map((s) => s.trim()).filter(Boolean);
+  return list.every((s) => /^[0-9a-f:.]+(\/\d+)?$/i.test(s) || ['loopback', 'linklocal', 'uniquelocal'].includes(s)) ? list : undefined;
 }
 
 // PD-2b (user, 19 Nov 20.28 WIB): lokasi pemrosesan AI dipilih yang latensinya paling rendah ke Indonesia dan memenuhi

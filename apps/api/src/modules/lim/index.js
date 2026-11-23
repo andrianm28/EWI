@@ -82,7 +82,8 @@ async function planFields(body, { stores, tenantId, create }) {
       out.factors = body.factors.map((f) => text(f, 'Faktor lain', 300, { required: true }));
     }
   }
-  return out;
+  // isian yang tidak dikirim tidak ikut (undefined tidak boleh menimpa bawaan null saat membuat rencana)
+  return Object.fromEntries(Object.entries(out).filter(([, x]) => x !== undefined));
 }
 
 module.exports = {

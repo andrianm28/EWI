@@ -4,11 +4,10 @@ const request = require('supertest');
 const { createDb } = require('../../src/db');
 const { createStores } = require('../../src/db/stores');
 const { createApp } = require('../../src/app');
-const { createTokenService } = require('../../src/core/auth/tokens');
 const { memoryMailer } = require('../../src/integrations/mailer');
 const { memoryStorage } = require('../../src/integrations/storage');
 const { sign } = require('../../src/integrations/elitementor/webhook');
-const { makeConfig } = require('../helpers');
+const { makeConfig, sessionSigner } = require('../helpers');
 
 const run = process.env.DATABASE_URL ? describe : describe.skip;
 const PNG = Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), Buffer.alloc(32, 1)]);
@@ -42,7 +41,7 @@ run('Learning Delivery (Postgres)', () => {
     app = createApp({ config, stores, mailer, storage });
     appNoStorage = createApp({ config, stores, mailer, storage: null });
     appSmall = createApp({ config: { ...config, uploads: { maxBytes: 16 } }, stores, mailer, storage });
-    const tokens = createTokenService(config.jwt);
+    const tokens = sessionSigner(config, stores.authSessions);
     const slug = `ld-${Date.now()}`;
     orgId = Math.floor(Date.now() / 1000) % 2000000000;
     [[tenant]] = await db.query(`INSERT INTO tenants (slug, name, elitementor_organization_id) VALUES (:slug, 'LD uji', :orgId) RETURNING id`, { replacements: { slug, orgId } });
@@ -55,7 +54,7 @@ run('Learning Delivery (Postgres)', () => {
         { replacements: { t, email: `${key}@ld.test`, key, emp: `E-${key}`, role: r, status: key === 'nonaktif' ? 'disabled' : 'active' } },
       );
       u[key] = row.id;
-      tok[key] = tokens.sign({ id: row.id, tenantId: t, role: r, email: `${key}@ld.test` });
+      tok[key] = await tokens.sign({ id: row.id, tenantId: t, role: r, email: `${key}@ld.test` });
     }
     for (const t of [tenant.id, other.id]) {
       await db.query(`INSERT INTO entitlements (tenant_id, product) VALUES (:t, 'full_suite')`, { replacements: { t } });

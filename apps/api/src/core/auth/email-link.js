@@ -7,6 +7,8 @@ const crypto = require('crypto');
 const express = require('express');
 const { badRequest, unauthorized } = require('../errors');
 const { requireRole, ROLES } = require('../rbac');
+const { limitByIp } = require('./rate-limit');
+const { finishLogin } = require('./login');
 
 const TTL = { login: 15 * 60 * 1000, invite: 7 * 24 * 60 * 60 * 1000 };
 const RATE = { windowMs: 15 * 60 * 1000, max: 3 };
@@ -32,14 +34,18 @@ function message({ purpose, name, tenantName, url }) {
 
 function createEmailLinkService({ stores, mailer, appBaseUrl, now = () => new Date() }) {
   return {
-    async issue(user, purpose, { createdBy, tenantName } = {}) {
+    /** Simpan link (boleh di dalam transaksi) lalu kembalikan send(); email dikirim setelah COMMIT (B12). */
+    async prepare(user, purpose, { createdBy, tenantName, transaction } = {}) {
       const token = crypto.randomBytes(32).toString('base64url');
       await stores.loginLinks.create({
         tenantId: user.tenantId, userId: user.id, tokenHash: hash(token), purpose,
         expiresAt: new Date(now().getTime() + TTL[purpose]), createdBy,
-      });
+      }, transaction ? { transaction } : undefined);
       const url = `${appBaseUrl}/masuk#token=${token}`;
-      await mailer.send({ to: user.email, ...message({ purpose, name: user.name, tenantName, url }) });
+      return { send: () => mailer.send({ to: user.email, ...message({ purpose, name: user.name, tenantName, url }) }) };
+    },
+    async issue(user, purpose, opts = {}) {
+      await (await this.prepare(user, purpose, opts)).send();
     },
     async recentCount(user) {
       return stores.loginLinks.countSince(user.tenantId, user.id, new Date(now().getTime() - RATE.windowMs));
@@ -51,28 +57,54 @@ function createEmailLinkService({ stores, mailer, appBaseUrl, now = () => new Da
   };
 }
 
-/** Rute publik: minta link & tukar token. */
-function emailLinkRoutes({ users, links, tokens, audit }) {
+/** true untuk kejadian pertama kunci ini dalam jendela limiter auditOnce (tanpa limiter: selalu true). */
+function firstInWindow(limits, key) {
+  if (!limits || !limits.auditOnce) return true;
+  try { limits.auditOnce.consume(key); return true; } catch { return false; }
+}
+
+/**
+ * Rute publik: minta link & tukar token.
+ * PK-16: batas per akun (RATE, di database) ditambah batas per IP (`limits.linkIp`, `limits.verifyIp`);
+ * kebijakan login (daftar email Admin ETA) dicek saat link dikirim dan saat ditukar; penukaran membuat sesi.
+ */
+function emailLinkRoutes({ users, links, sessions, policy, audit, limits, attempts }) {
   const r = express.Router();
   const GENERIC = 'Bila email terdaftar di organisasi ini, link masuk sudah dikirim. Periksa kotak masuk Anda.';
+  const INVALID = 'Link masuk tidak valid, sudah dipakai, atau kedaluwarsa. Minta link baru.';
 
-  r.post('/', wrap(async (req, res) => {
+  r.post('/', limitByIp(limits.linkIp, 'link'), wrap(async (req, res) => {
     const { tenant, email } = req.body || {};
     if (!tenant || !email) throw badRequest('Organisasi dan email wajib diisi');
     const user = await users.findByEmail(String(tenant).trim(), String(email).trim().toLowerCase());
-    // Jawaban sama untuk email terdaftar atau tidak (mencegah enumerasi akun)
-    if (user && (await links.recentCount(user)) < RATE.max) {
-      await links.issue(user, 'login', { tenantName: users.tenantName ? await users.tenantName(user.tenantId) : null });
+    // Jawaban sama untuk email terdaftar atau tidak, atau tidak diizinkan (mencegah enumerasi akun)
+    // B1: percobaan untuk akun yang dikenal dicatat di audit tenant; email tak dikenal tidak (lihat attempts.js)
+    if (user) {
+      const blocked = !policy.allows(user) ? 'policy' : ((await links.recentCount(user)) >= RATE.max ? 'rate' : null);
+      if (blocked) {
+        // Review egm: penolakan dicatat sekali per akun per jendela, supaya audit append-only
+        // tidak bisa dibanjiri oleh orang yang hanya tahu satu email.
+        if (firstInWindow(limits, `audit:link:${blocked}:${user.id}`)) {
+          await attempts.record(user, { method: 'email_link', outcome: 'blocked', reason: blocked });
+        }
+      } else {
+        await links.issue(user, 'login', { tenantName: users.tenantName ? await users.tenantName(user.tenantId) : null });
+        await attempts.record(user, { method: 'email_link', outcome: 'link_sent' });
+      }
+    } else {
+      // tidak ditunggu: waktu jawaban email tak dikenal tidak bertambah satu query
+      attempts.unknownAccount(users, String(tenant).trim(), 'email_link');
     }
     res.status(202).json({ message: GENERIC });
   }));
 
-  r.post('/verify', wrap(async (req, res) => {
+  r.post('/verify', limitByIp(limits.verifyIp, 'verify'), wrap(async (req, res) => {
     const user = await links.consume((req.body || {}).token);
-    if (!user) throw unauthorized('Link masuk tidak valid, sudah dipakai, atau kedaluwarsa. Minta link baru.');
-    await audit.record({ tenantId: user.tenantId, user }, 'login', 'auth.email_link', { purpose: user.purpose });
+    if (!user) await attempts.record({}, { method: 'email_link', outcome: 'invalid_link' });
+    if (!user || !policy.allows(user)) throw unauthorized(INVALID);
+    const done = await finishLogin({ user, method: 'email_link', req, sessions, audit, auditMeta: { purpose: user.purpose } });
     const pub = { id: user.id, tenantId: user.tenantId, email: user.email, name: user.name, role: user.role };
-    res.json({ token: tokens.sign(user), user: pub });
+    return res.json({ token: done.token, user: pub });
   }));
 
   return r;

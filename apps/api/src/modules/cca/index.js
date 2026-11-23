@@ -1,7 +1,7 @@
 'use strict';
 // Core Competencies (CCA). Kompetensi inti perusahaan dari visi, misi, dan nilai korporasi; hasil program nilai
 // dari laporan program; penugasan wawancara AI berjenjang (HR -> pimpinan -> karyawan).
-// Spek: docs/designs/b10-core-competencies.md. Percakapan dan sintesis wawancara menyusul setelah mesin wawancara B6.
+// Spek: docs/designs/b10-core-competencies.md. Percakapan, ringkasan, dan sintesis wawancara (tahap 2) di interview.js.
 const express = require('express');
 const { requireRole, visibleEmployeeScope, ROLES } = require('../../core/rbac');
 const { FLAGS, requireFlag } = require('../../core/flags');
@@ -10,6 +10,7 @@ const v = require('../imports/values');
 const { importRouter } = require('../imports');
 const { buildOverview, GROUP_KINDS } = require('./readiness');
 const { validateProgramConfig, buildReport, normalizeManualReport, buildManualReport, KEY_RE } = require('./program-report');
+const { mountInterview } = require('./interview');
 
 const wrap = (fn) => (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
 
@@ -69,7 +70,7 @@ const idParam = (req, label) => {
 module.exports = {
   key: 'cca',
   title: 'Core Competencies',
-  router({ stores, flags, audit } = {}) {
+  router({ stores, flags, audit, ai, aiConfig } = {}) {
     const r = express.Router();
     const hr = requireRole(ROLES.HR_ADMIN);
     const programOf = (req) => loadProgram(stores, req);
@@ -356,8 +357,11 @@ module.exports = {
       const summary = a.status === 'completed' ? await stores.cca.getAssignmentSummary(req.tenantId, a.id) : null;
       if (!summary) throw notFound('Ringkasan belum tersedia');
       await audit.readIndividual(req, 'cca.interview_summary', { employeeIds: [a.assigneeId], objectType: 'cca_assignment', objectIds: [a.id] });
-      res.json({ data: { ...publicAssignment(a), assigneeId: a.assigneeId, summary } });
+      // sikap per persyaratan tidak ikut: hanya masuk sintesis agregat
+      res.json({ data: { ...publicAssignment(a), assigneeId: a.assigneeId, themes: summary.themes } });
     }));
+
+    mountInterview(r, { stores, ai, aiConfig, audit, interview });
 
     return r;
   },

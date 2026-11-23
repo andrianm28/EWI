@@ -1,10 +1,10 @@
 // B3: ringkasan dashboard HR dan dashboard tim atasan. Spek: docs/designs/b3-dashboard.md.
 const request = require('supertest');
 const { createApp } = require('../../src/app');
-const { createTokenService } = require('../../src/core/auth/tokens');
+const { memorySessionStore } = require('../../src/core/auth/sessions');
 const { memoryAuditStore } = require('../../src/core/audit');
 const { markHot, median, agreement } = require('../../src/modules/dashboard/summary');
-const { makeConfig, makeStores } = require('../helpers');
+const { makeConfig, makeStores, sessionSigner } = require('../helpers');
 
 const T = 't-1';
 const ALL_ON = { 'dashboard.main': true, 'module.dna': true, 'module.tna': true };
@@ -109,10 +109,11 @@ function fakeStores({ flags = ALL_ON, entitlements = ['dna', 'tna'], grant = fal
 function setup(opts) {
   const fake = fakeStores(opts);
   const config = makeConfig();
-  const app = createApp({ config, stores: { ...fake.stores, audit: fake.audit } });
-  const tokens = createTokenService(config.jwt);
-  const as = (id, role, tenantId = T) => ({ Authorization: `Bearer ${tokens.sign({ id, tenantId, role, email: `${id}@elgos.test` })}` });
-  return { ...fake, app, get: (id, role, tenantId) => request(app).get('/api/dashboard').set(as(id, role, tenantId)) };
+  const authSessions = memorySessionStore();
+  const app = createApp({ config, stores: { ...fake.stores, audit: fake.audit, authSessions } });
+  const tokens = sessionSigner(config, authSessions);
+  const as = async (id, role, tenantId = T) => ({ Authorization: `Bearer ${await tokens.sign({ id, tenantId, role, email: `${id}@elgos.test` })}` });
+  return { ...fake, app, get: async (id, role, tenantId) => request(app).get('/api/dashboard').set(await as(id, role, tenantId)) };
 }
 
 describe('GET /api/dashboard', () => {
@@ -260,9 +261,10 @@ describe('GET /api/dashboard', () => {
   it('audit HR gagal: dashboard gagal (gagal-tertutup)', async () => {
     const fake = fakeStores();
     const config = makeConfig();
-    const app = createApp({ config, stores: { ...fake.stores, audit: { async insert() { throw new Error('audit mati'); } } } });
-    const tokens = createTokenService(config.jwt);
-    const res = await request(app).get('/api/dashboard').set({ Authorization: `Bearer ${tokens.sign({ id: 'u-hr', tenantId: T, role: 'hr_admin', email: 'h@elgos.test' })}` });
+    const authSessions = memorySessionStore();
+    const app = createApp({ config, stores: { ...fake.stores, audit: { async insert() { throw new Error('audit mati'); } }, authSessions } });
+    const tokens = sessionSigner(config, authSessions);
+    const res = await request(app).get('/api/dashboard').set({ Authorization: `Bearer ${await tokens.sign({ id: 'u-hr', tenantId: T, role: 'hr_admin', email: 'h@elgos.test' })}` });
     expect(res.status).toBe(500);
     expect(res.body.data).toBeUndefined();
   });
@@ -297,9 +299,10 @@ describe('GET /api/dashboard', () => {
   it('audit gagal: dashboard gagal (gagal-tertutup)', async () => {
     const fake = fakeStores();
     const config = makeConfig();
-    const app = createApp({ config, stores: { ...fake.stores, audit: { async insert() { throw new Error('audit mati'); } } } });
-    const tokens = createTokenService(config.jwt);
-    const res = await request(app).get('/api/dashboard').set({ Authorization: `Bearer ${tokens.sign({ id: 'u-spv', tenantId: T, role: 'supervisor', email: 's@elgos.test' })}` });
+    const authSessions = memorySessionStore();
+    const app = createApp({ config, stores: { ...fake.stores, audit: { async insert() { throw new Error('audit mati'); } }, authSessions } });
+    const tokens = sessionSigner(config, authSessions);
+    const res = await request(app).get('/api/dashboard').set({ Authorization: `Bearer ${await tokens.sign({ id: 'u-spv', tenantId: T, role: 'supervisor', email: 's@elgos.test' })}` });
     expect(res.status).toBe(500);
     expect(res.body.data).toBeUndefined();
   });

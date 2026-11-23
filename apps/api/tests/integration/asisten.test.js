@@ -4,11 +4,10 @@ const request = require('supertest');
 const { createDb } = require('../../src/db');
 const { createStores } = require('../../src/db/stores');
 const { createApp } = require('../../src/app');
-const { createTokenService } = require('../../src/core/auth/tokens');
 const { createStubProvider } = require('../../src/ai/stub-provider');
 const { AiError } = require('../../src/ai/errors');
 const { runJob } = require('../../src/jobs');
-const { makeConfig } = require('../helpers');
+const { makeConfig, sessionSigner } = require('../helpers');
 
 const run = process.env.DATABASE_URL ? describe : describe.skip;
 
@@ -43,7 +42,7 @@ run('B17 Asisten ELGOS (Postgres)', () => {
     config = makeConfig();
     db = createDb({ databaseUrl: process.env.DATABASE_URL, dbSchema: process.env.DB_SCHEMA || 'ewi' });
     stores = createStores(db);
-    tokens = createTokenService(config.jwt);
+    tokens = sessionSigner(config, stores.authSessions);
     const stamp = Date.now();
     [[tenant]] = await db.query(`INSERT INTO tenants (slug, name) VALUES (:slug, 'Asisten uji') RETURNING id`, { replacements: { slug: `b17-${stamp}` } });
     [[other]] = await db.query(`INSERT INTO tenants (slug, name) VALUES (:slug, 'Tenant lain') RETURNING id`, { replacements: { slug: `b17x-${stamp}` } });
@@ -53,7 +52,7 @@ run('B17 Asisten ELGOS (Postgres)', () => {
         { replacements: { t, email: `${key}@b17.test`, name, emp: `E-${key}`, role } },
       );
       u[key] = row.id;
-      tok[key] = tokens.sign({ id: row.id, tenantId: t, role, email: `${key}@b17.test` });
+      tok[key] = await tokens.sign({ id: row.id, tenantId: t, role, email: `${key}@b17.test` });
     };
     await add('hr', 'hr_admin', 'Hana HR'); await add('spv', 'supervisor', 'Sari Atasan'); await add('sme', 'sme', 'Sena SME');
     await add('ani', 'learner', 'Ani Lestari'); await add('beni', 'learner', 'Beni Saputra'); await add('dodi', 'learner', 'Dodi Luar');

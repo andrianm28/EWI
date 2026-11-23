@@ -5,9 +5,8 @@ const request = require('supertest');
 const { createDb } = require('../../src/db');
 const { createStores } = require('../../src/db/stores');
 const { createApp } = require('../../src/app');
-const { createTokenService } = require('../../src/core/auth/tokens');
 const { createStubProvider } = require('../../src/ai/stub-provider');
-const { makeConfig } = require('../helpers');
+const { makeConfig, sessionSigner } = require('../helpers');
 
 const run = process.env.DATABASE_URL ? describe : describe.skip;
 
@@ -36,7 +35,7 @@ run('PK-14 review hasil AI (Postgres)', () => {
     config = makeConfig();
     db = createDb({ databaseUrl: process.env.DATABASE_URL, dbSchema: process.env.DB_SCHEMA || 'ewi' });
     stores = createStores(db);
-    tokens = createTokenService(config.jwt);
+    tokens = sessionSigner(config, stores.authSessions);
     [[tenant]] = await db.query(`INSERT INTO tenants (slug, name) VALUES (:slug, 'Review uji') RETURNING id`, { replacements: { slug: `rv-${Date.now()}` } });
     const add = async (key, role) => {
       const [[row]] = await db.query(
@@ -44,7 +43,7 @@ run('PK-14 review hasil AI (Postgres)', () => {
         { replacements: { t: tenant.id, email: `${key}@rv.test`, name: key, emp: `E-${key}`, role } },
       );
       u[key] = row.id;
-      tok[key] = tokens.sign({ id: row.id, tenantId: tenant.id, role, email: `${key}@rv.test` });
+      tok[key] = await tokens.sign({ id: row.id, tenantId: tenant.id, role, email: `${key}@rv.test` });
     };
     await add('hr', 'hr_admin');
     await add('spv', 'supervisor');

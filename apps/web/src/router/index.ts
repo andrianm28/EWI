@@ -109,7 +109,7 @@ router.beforeEach(async (to) => {
   if (to.meta.public) return true
   if (!session.isAuthenticated) return { name: 'login' }
   if (!session.access) {
-    try { await session.loadAccess() } catch { session.logout(); return { name: 'login' } }
+    try { await session.loadAccess() } catch { session.clear(); return { name: 'login', query: { alasan: 'sesi-habis', ke: to.fullPath } } }
   }
 
   // Tautan langsung ke layar tampilan lain memindahkan tampilan bila akun memilikinya
@@ -119,7 +119,8 @@ router.beforeEach(async (to) => {
     if (!other) return { name: homeFor(session.activeView, session) }
     // Tampilan baru pindah hanya bila gerbang rutenya lolos; navigasi yang ditolak tidak mengubah tampilan
     if (!passesGates(to.meta, to.params, session)) return { name: homeFor(session.activeView, session) }
-    session.setView(other)
+    // B2: ganti tampilan bisa memanggil API (ganti peran aktif); bila ditolak, tetap di tampilan sekarang
+    try { await session.setView(other) } catch { return { name: homeFor(session.activeView, session) } }
   }
 
   const home = homeFor(session.activeView, session)

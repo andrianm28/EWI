@@ -132,7 +132,8 @@ async function jalankanQaMalam({ db, config, ai, persona, env = process.env, mak
   cekKonfigurasi(ai, config.ai);
   const daftar = persona.map((p) => ({ alur: 'selesai', ...p }));
   const perekam = buatPerekam(ai, { maksToken });
-  const aksi = langkah(createApp({ config, stores: createStores(db), ai: perekam }), pembuatMasuk(config));
+  let st;
+  const aksi = langkah(createApp({ config, stores: (st = createStores(db)), ai: perekam }), pembuatMasuk(config, st.authSessions));
   const slug = `qa-${Date.now()}-${crypto.randomBytes(3).toString('hex')}`;
   const tenantIds = [];
   const hasil = [];

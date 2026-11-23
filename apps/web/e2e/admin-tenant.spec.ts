@@ -18,6 +18,8 @@ const JOBS = [
 async function login(page: Page, role = 'tenant_admin', flags: Record<string, boolean> = FLAGS) {
   const user = { id: 'u-1', tenantId: 't-1', email: `${role}@demo.test`, role }
   await page.route('**/api/auth/tenants', (r) => r.fulfill({ json: { data: [] } }))
+  // PK-16: form kata sandi hanya tampil bila API mengizinkan (dev/staging)
+  await page.route('**/api/auth/methods', (r) => r.fulfill({ json: { password: true, emailLink: true } }))
   await page.route('**/api/auth/login', (r) => r.fulfill({ json: { token: 't', user } }))
   await page.route('**/api/auth/me', (r) => r.fulfill({ json: { user } }))
   await page.route('**/api/me/access', (r) => r.fulfill({ json: { submodules: ['dna', 'tna'], flags } }))
@@ -25,7 +27,7 @@ async function login(page: Page, role = 'tenant_admin', flags: Record<string, bo
   await page.goto('/login')
   await page.getByLabel('Organisasi').fill('demo')
   await page.getByLabel('Email').fill(user.email)
-  await page.getByLabel('Password').fill(`pw-${Date.now()}`)
+  await page.getByLabel('Kata sandi').fill(`pw-${Date.now()}`)
   await page.getByRole('button', { name: 'Masuk' }).click()
   await expect(page.getByRole('button', { name: 'Keluar' })).toBeVisible()
 }

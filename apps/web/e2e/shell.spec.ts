@@ -13,6 +13,8 @@ async function loginAs(page: Page, o: Opts = {}) {
   const user = { id: 'u-1', tenantId: 't-1', email: `${role}@demo.test`, role, ...(o.roles ? { roles: o.roles } : {}), ...(o.tenantName ? { tenantName: o.tenantName } : {}) }
   if (o.routes) await page.addInitScript((r) => localStorage.setItem('elgos.test-routes', JSON.stringify(r)), o.routes)
   await page.route('**/api/auth/tenants', (r) => r.fulfill({ json: { data: [] } }))
+  // PK-16: form password hanya tampil bila API mengizinkan (dev/staging)
+  await page.route('**/api/auth/methods', (r) => r.fulfill({ json: { password: true, emailLink: true } }))
   await page.route('**/api/auth/login', (r) => r.fulfill({ json: { token: 't', user } }))
   await page.route('**/api/auth/me', (r) => r.fulfill({ json: { user } }))
   await page.route('**/api/me/access', (r) => r.fulfill({ json: { submodules: SUBMODULES, ...(o.products === null ? {} : { products: o.products ?? ['full_suite'] }), flags: { ...FLAGS, ...o.flags } } }))
@@ -20,7 +22,7 @@ async function loginAs(page: Page, o: Opts = {}) {
   await page.goto('/login')
   await page.getByLabel('Organisasi').fill('demo')
   await page.getByLabel('Email').fill(user.email)
-  await page.getByLabel('Password').fill(`pw-${Date.now()}`)
+  await page.getByLabel('Kata sandi').fill(`pw-${Date.now()}`)
   await page.getByRole('button', { name: 'Masuk' }).click()
   await expect(page.getByRole('button', { name: 'Keluar' })).toBeVisible()
 }
@@ -98,6 +100,14 @@ test('Admin ETA: tampilan Super Admin dengan baris konsol platform', async ({ pa
   await expect(nav(page).getByRole('link')).toHaveText(['Beranda', 'Developmental Needs', 'Training Needs'])
   await expect(page.getByTestId('identitas')).toContainText('Super Admin')
   await expect(page.getByText('Konsol platform ELGOS · semua tenant')).toBeVisible()
+})
+
+test('Admin ETA dengan platform.console menyala: mendarat di Tenant (B12), menu konsol menggantikan butir peralihan', async ({ page }) => {
+  await page.route('**/api/platform/**', (r) => r.fulfill({ json: { data: { kpis: { tenants: 0, activeTenants: 0, modulesAvailable: 8 }, tenants: [], editable: {}, display: {}, encryptionProvider: 'local' } } }))
+  await loginAs(page, { role: 'eta_admin', flags: { 'platform.console': true } })
+  await expect(page).toHaveURL(/\/tenants$/)
+  await expect(nav(page).getByRole('link')).toHaveText(['Tenant', 'Konfigurasi platform'])
+  await expect(page.getByTestId('identitas')).toContainText('Super Admin')
 })
 
 test('ganti tampilan: HR pindah ke Karyawan (saya), menu berganti, pilihan bertahan setelah muat ulang', async ({ page }) => {

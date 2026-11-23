@@ -4,8 +4,7 @@ const ExcelJS = require('exceljs');
 const { createDb } = require('../../src/db');
 const { createStores } = require('../../src/db/stores');
 const { createApp } = require('../../src/app');
-const { createTokenService } = require('../../src/core/auth/tokens');
-const { makeConfig } = require('../helpers');
+const { makeConfig, sessionSigner } = require('../helpers');
 
 const run = process.env.DATABASE_URL ? describe : describe.skip;
 
@@ -28,8 +27,9 @@ run('Impor file R3-3 (Postgres)', () => {
   beforeAll(async () => {
     const config = makeConfig();
     db = createDb({ databaseUrl: process.env.DATABASE_URL, dbSchema: process.env.DB_SCHEMA || 'ewi' });
-    app = createApp({ config, stores: createStores(db) });
-    const tokens = createTokenService(config.jwt);
+    const stores = createStores(db);
+    app = createApp({ config, stores });
+    const tokens = sessionSigner(config, stores.authSessions);
     const slug = `imp-${Date.now()}`;
     [[tenant]] = await db.query(`INSERT INTO tenants (slug, name) VALUES (:slug, 'Impor uji') RETURNING id`, { replacements: { slug } });
     [[other]] = await db.query(`INSERT INTO tenants (slug, name) VALUES (:slug, 'Lain') RETURNING id`, { replacements: { slug: `${slug}-x` } });
@@ -38,7 +38,7 @@ run('Impor file R3-3 (Postgres)', () => {
         `INSERT INTO users (tenant_id, email, name, employee_id, role, status) VALUES (:t, :email, :key, :emp, :role, 'active') RETURNING id`,
         { replacements: { t, email: `${key}@imp.test`, key, emp: key === 'spv0' ? 'E-0900' : `X-${key}`, role } },
       );
-      tok[key] = tokens.sign({ id: row.id, tenantId: t, role, email: `${key}@imp.test` });
+      tok[key] = await tokens.sign({ id: row.id, tenantId: t, role, email: `${key}@imp.test` });
     }
     for (const t of [tenant.id, other.id]) {
       await db.query(`INSERT INTO entitlements (tenant_id, product) VALUES (:t, 'full_suite')`, { replacements: { t } });

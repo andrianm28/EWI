@@ -4,8 +4,7 @@ const request = require('supertest');
 const { createDb } = require('../../src/db');
 const { createStores } = require('../../src/db/stores');
 const { createApp } = require('../../src/app');
-const { createTokenService } = require('../../src/core/auth/tokens');
-const { makeConfig } = require('../helpers');
+const { makeConfig, sessionSigner } = require('../helpers');
 
 const run = process.env.DATABASE_URL ? describe : describe.skip;
 
@@ -24,7 +23,7 @@ run('B10 Core Competencies (Postgres)', () => {
     db = createDb({ databaseUrl: process.env.DATABASE_URL, dbSchema: process.env.DB_SCHEMA || 'ewi' });
     stores = createStores(db);
     app = createApp({ config, stores });
-    const tokens = createTokenService(config.jwt);
+    const tokens = sessionSigner(config, stores.authSessions);
     const slug = `cca-${Date.now()}`;
     [[tenant]] = await db.query(`INSERT INTO tenants (slug, name) VALUES (:slug, 'CCA uji') RETURNING id`, { replacements: { slug } });
     [[other]] = await db.query(`INSERT INTO tenants (slug, name) VALUES (:slug, 'Lain') RETURNING id`, { replacements: { slug: `${slug}-x` } });
@@ -35,7 +34,7 @@ run('B10 Core Competencies (Postgres)', () => {
          VALUES (:t, :email, :name, :emp, :role, 'active', :sup, :jobRole) RETURNING id`,
         { replacements: { t, email: `${key}@cca.test`, name: key, emp: `E-${key}`, role, sup, jobRole } });
       u[key] = row.id;
-      tok[key] = tokens.sign({ id: row.id, tenantId: t, role, email: `${key}@cca.test` });
+      tok[key] = await tokens.sign({ id: row.id, tenantId: t, role, email: `${key}@cca.test` });
     };
     await add('hr', 'hr_admin');
     await add('eta', 'eta_admin');
@@ -342,7 +341,7 @@ run('B10 Core Competencies (Postgres)', () => {
     it('ringkasan: peserta sendiri dan HR untuk tier pimpinan; ringkasan karyawan tidak dibuka per orang; baca dicatat audit', async () => {
       const a = (await get('/assignments', 'a')).body.data.mine.employee;
       const own = await get(`/assignments/${a.id}/summary`, 'a');
-      expect(own.body.data.summary).toBe('Jawaban karyawan a.');
+      expect(own.body.data.themes).toEqual([{ theme: null, question: null, answer: 'Jawaban karyawan a.' }]);
       const hrOnEmployee = await get(`/assignments/${a.id}/summary`);
       expect(hrOnEmployee.status).toBe(403);
       expect(hrOnEmployee.body.error.code).toBe('SUMMARY_RESTRICTED');
@@ -351,7 +350,7 @@ run('B10 Core Competencies (Postgres)', () => {
       expect((await get(`/assignments/${a.id}/summary`, 'luar')).status).toBe(404);
 
       const leader = await get(`/assignments/${spvAssignment.id}/summary`);
-      expect(leader.body.data).toMatchObject({ tier: 'leader', summary: 'Ringkasan pimpinan: fokus otomasi.' });
+      expect(leader.body.data).toMatchObject({ tier: 'leader', themes: [{ theme: null, question: null, answer: 'Ringkasan pimpinan: fokus otomasi.' }] });
       const b = (await get('/assignments', 'b')).body.data.mine.employee;
       expect((await get(`/assignments/${b.id}/summary`, 'b')).status).toBe(404); // belum selesai
 
@@ -386,7 +385,7 @@ run('B10 Core Competencies (Postgres)', () => {
         values: [{ name: 'Credible', score: 90 }, { name: 'Competent', score: 100 }],
         components: [{ name: 'Kuis', score: 90 }, { name: 'Asesmen akhir', score: 100 }],
       })]);
-      expect(self.interviewAssignments).toEqual([expect.objectContaining({ tier: 'employee', status: 'completed', summary: 'Jawaban karyawan a.' })]);
+      expect(self.interviewAssignments).toEqual([expect.objectContaining({ tier: 'employee', status: 'completed', summary: { themes: [{ theme: null, question: null, answer: 'Jawaban karyawan a.' }], stances: [] } })]);
       const byHr = (await exp('hr')).body.data.coreCompetencies;
       expect(byHr.interviewAssignments).toHaveLength(1);
       expect(JSON.stringify(byHr)).not.toContain('Jawaban');

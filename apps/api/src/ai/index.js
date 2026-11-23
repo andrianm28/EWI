@@ -13,6 +13,10 @@
 //     -> { findings: [{ category training|non_training, title, detail, competencyId?, performanceRecordId?, confidence? }], usage }
 //   assistantReply({ view, roleLabel, facts, pages: [{ key, label }], question })                     (B17)
 //     -> { answer: string | null, page: string | null, refused: boolean, usage }      (answer null = tidak tahu)
+//   ccaQuestion({ tier, theme, position, sources, requirements: [{ name }], turns })                                       (B10 tahap 2)
+//     -> { question: { text, options[<=3] }, usage }                    (operasi next_question)
+//   summarizeCca({ tier, turns, requirements: [{ id, name, sourceTitle }] })
+//     -> { themes: [{ theme, question, answer }], stances: [{ requirementId, stance }], usage }   (operasi summarize_cca)
 //   UsageRecord = { operation, provider, model, inputTokens, outputTokens, latencyMs }   (satu per panggilan model, R3-6)
 //
 // context = { competencies, triggers } sudah diminimalkan oleh pemanggil (lihat aiContext di modul interviews):

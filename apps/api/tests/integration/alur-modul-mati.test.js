@@ -26,7 +26,8 @@ run('Alur modul mati dan entitlement', () => {
   beforeAll(async () => {
     db = createDb({ databaseUrl: process.env.DATABASE_URL, dbSchema: process.env.DB_SCHEMA || 'ewi' });
     const config = makeConfig();
-    a = langkah(createApp({ config, stores: createStores(db), ai: createStubProvider() }), pembuatMasuk(config));
+    let st;
+    a = langkah(createApp({ config, stores: (st = createStores(db)), ai: createStubProvider() }), pembuatMasuk(config, st.authSessions));
     // Live tanpa TNA dan modul 2–5: hanya DNA yang menyala.
     await tenantDengan('tanpa-tna', { flags: ['module.dna'] });
     // Semua flag menyala, tetapi tenant hanya melanggan DNA dan TNA satuan (bukan full_suite).

@@ -4,8 +4,7 @@ const request = require('supertest');
 const { createDb } = require('../../src/db');
 const { createStores } = require('../../src/db/stores');
 const { createApp } = require('../../src/app');
-const { createTokenService } = require('../../src/core/auth/tokens');
-const { makeConfig } = require('../helpers');
+const { makeConfig, sessionSigner } = require('../helpers');
 
 const run = process.env.DATABASE_URL ? describe : describe.skip;
 
@@ -28,7 +27,7 @@ run('B3 dashboard utama (Postgres)', () => {
       { t: t[tenant], e: `${key}@dash.test`, n: key, emp: `E-${key}`, role, status, spv: supervisor ? u[supervisor] : null },
     );
     u[key] = row.id;
-    tok[key] = createTokenService(makeConfig().jwt).sign({ id: row.id, tenantId: t[tenant], role, email: `${key}@dash.test` });
+    tok[key] = await sessionSigner(makeConfig(), createStores(db).authSessions).sign({ id: row.id, tenantId: t[tenant], role, email: `${key}@dash.test` });
   }
   /** Sesi TNA selesai dengan temuan hasil job AI. reviews: daftar [status, reviewer|null, jam setelah sesi selesai]. */
   async function sessionWithFindings(tenant, project, who, reviews, category = 'training') {

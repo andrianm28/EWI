@@ -1,6 +1,6 @@
 <script setup lang="ts">
 // Rute `aiv`: atasan melihat wawancara pimpinannya dan menugaskan tim; karyawan melihat penugasannya sendiri.
-// Atasan hanya melihat status tim, tidak pernah isi jawaban.
+// Atasan hanya melihat status tim, tidak pernah isi jawaban. Peserta menjalankan wawancaranya di InterviewSession (tahap 2).
 import { computed, onMounted, ref } from 'vue'
 import { ApiError } from '@/api/client'
 import { cca, fmtDate, STATUS_LABEL, type Assignment, type Assignments, type AssignmentStatus, type TeamRow } from '@/api/cca'
@@ -9,6 +9,7 @@ import { useSessionStore } from '@/stores/session'
 import { UiButton, UiCard, UiChip, UiDataTable, UiErrorSummary, UiField, UiNote, type UiColumn } from '@/ui'
 import { defaultDue, todayIso } from './due'
 import InterviewFlow from './InterviewFlow.vue'
+import InterviewSession from './InterviewSession.vue'
 import './cc.css'
 
 const session = useSessionStore()
@@ -36,6 +37,10 @@ const mineEmployee = computed(() => data.value?.mine.employee ?? null)
 
 const TONE: Record<AssignmentStatus, 'neutral' | 'review' | 'success'> = { none: 'neutral', assigned: 'review', in_progress: 'review', completed: 'success', cancelled: 'neutral' }
 const statusOf = (a: Assignment | null): AssignmentStatus => a?.status ?? 'none'
+// Sesi yang sedang dibuka peserta (penugasannya sendiri)
+const openId = ref<string | null>(null)
+const ACTION: Partial<Record<AssignmentStatus, string>> = { assigned: 'Mulai wawancara', in_progress: 'Lanjutkan wawancara', completed: 'Lihat ringkasan' }
+async function finished() { await load() }
 const COLUMNS: UiColumn[] = [
   { key: 'name', label: 'Anggota tim', sortable: true },
   { key: 'jobRoleName', label: 'Jabatan', sortable: true },
@@ -84,6 +89,8 @@ async function assign(rows: TeamRow[]) {
               Topik: visi, misi, dan nilai korporasi. Batas waktu {{ fmtDate(mineLeader.dueDate) }}. Sekitar {{ mineLeader.durationMinutes }} menit; jawaban diringkas AI sebelum dikirim ke HR.
             </p>
             <p v-else class="el-muted">HR belum menugaskan wawancara pimpinan kepada Anda.</p>
+            <UiButton v-if="mineLeader && ACTION[mineLeader.status] && openId !== mineLeader.id" style="margin-top: 12px" @click="openId = mineLeader.id">{{ ACTION[mineLeader.status] }}</UiButton>
+            <InterviewSession v-if="mineLeader && openId === mineLeader.id" :key="mineLeader.id" :assignment-id="mineLeader.id" style="margin-top: 16px" @finished="finished" />
           </UiCard>
           <UiCard>
             <h3 class="el-h3">Teruskan wawancara ke tim Anda</h3>
@@ -116,10 +123,11 @@ async function assign(rows: TeamRow[]) {
               <li>Dipakai untuk rencana belajar, bukan penilaian kinerja.</li>
               <li>Atasan hanya melihat status selesai atau belum.</li>
             </ul>
+            <UiButton v-if="ACTION[mineEmployee.status] && openId !== mineEmployee.id" @click="openId = mineEmployee.id">{{ ACTION[mineEmployee.status] }}</UiButton>
+            <InterviewSession v-if="openId === mineEmployee.id" :key="mineEmployee.id" :assignment-id="mineEmployee.id" style="margin-top: 16px" @finished="finished" />
           </template>
         </UiCard>
 
-        <UiNote>Percakapan wawancara AI belum tersedia di versi ini. Halaman ini baru menampilkan penugasan dan statusnya.</UiNote>
       </template>
     </div>
   </AppShell>

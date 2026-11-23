@@ -36,6 +36,7 @@ run('role aplikasi non-superuser (Postgres)', () => {
     await owner.transaction(async (transaction) => {
       await owner.query("SET LOCAL ewi.audit_maintenance = 'on'", { transaction });
       await owner.query('DELETE FROM tenant_keys WHERE tenant_id = :t', { replacements: { t: tenantId }, transaction });
+      await owner.query(`DELETE FROM platform_audit_logs WHERE meta->>'uji' = :r`, { replacements: { r: role }, transaction });
       await owner.query('DELETE FROM tenants WHERE id = :t', { replacements: { t: tenantId }, transaction });
     });
     await applyAppRole({ query: (sql) => owner.query(sql, { type: sql.trim().startsWith('SELECT') ? QueryTypes.SELECT : QueryTypes.RAW }), schema, role, mode: 'revoke' });
@@ -60,6 +61,15 @@ run('role aplikasi non-superuser (Postgres)', () => {
     await expect(app.query(`UPDATE audit_logs SET resource = 'x' WHERE tenant_id = :t`, { replacements: { t: tenantId } })).rejects.toThrow(/permission denied/);
     await expect(app.query('DELETE FROM audit_logs WHERE tenant_id = :t', { replacements: { t: tenantId } })).rejects.toThrow(/permission denied/);
     await expect(app.query('TRUNCATE audit_logs')).rejects.toThrow(/permission denied/);
+  });
+
+  it('platform_audit_logs (B12): boleh INSERT dan SELECT; UPDATE, DELETE, TRUNCATE ditolak oleh hak', async () => {
+    await app.query(`INSERT INTO platform_audit_logs (action, resource, target_tenant_id, meta) VALUES ('update', 'tenant.module', :t, :m::jsonb)`,
+      { replacements: { t: tenantId, m: JSON.stringify({ uji: role }) } });
+    expect((await sel(app, `SELECT count(*)::int AS n FROM platform_audit_logs WHERE meta->>'uji' = :r`, { r: role }))[0].n).toBe(1);
+    await expect(app.query(`UPDATE platform_audit_logs SET resource = 'tenant' WHERE meta->>'uji' = :r`, { replacements: { r: role } })).rejects.toThrow(/permission denied/);
+    await expect(app.query(`DELETE FROM platform_audit_logs WHERE meta->>'uji' = :r`, { replacements: { r: role } })).rejects.toThrow(/permission denied/);
+    await expect(app.query('TRUNCATE platform_audit_logs')).rejects.toThrow(/permission denied/);
   });
 
   it('saklar pemeliharaan audit tidak menolong role aplikasi', async () => {

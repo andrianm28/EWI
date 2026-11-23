@@ -4,8 +4,7 @@ const request = require('supertest');
 const { createDb } = require('../../src/db');
 const { createStores } = require('../../src/db/stores');
 const { createApp } = require('../../src/app');
-const { createTokenService } = require('../../src/core/auth/tokens');
-const { makeConfig } = require('../helpers');
+const { makeConfig, sessionSigner } = require('../helpers');
 
 const run = process.env.DATABASE_URL ? describe : describe.skip;
 
@@ -27,8 +26,9 @@ run('B16 Career & Promotion (Postgres)', () => {
   beforeAll(async () => {
     const config = makeConfig();
     db = createDb({ databaseUrl: process.env.DATABASE_URL, dbSchema: process.env.DB_SCHEMA || 'ewi' });
-    app = createApp({ config, stores: createStores(db) });
-    tokens = createTokenService(config.jwt);
+    const stores = createStores(db);
+    app = createApp({ config, stores });
+    tokens = sessionSigner(config, stores.authSessions);
     const slug = `b16-${Date.now()}`;
     [[tenant]] = await db.query(`INSERT INTO tenants (slug, name) VALUES (:slug, 'ELGOS B16') RETURNING id`, { replacements: { slug } });
     [[otherTenant]] = await db.query(`INSERT INTO tenants (slug, name) VALUES (:slug, 'Lain') RETURNING id`, { replacements: { slug: `${slug}-x` } });
@@ -38,7 +38,7 @@ run('B16 Career & Promotion (Postgres)', () => {
         { replacements: { t, email: `${key}@b16.test`, name: key, emp: `E-${key}`, role } },
       );
       u[key] = row.id;
-      tok[key] = tokens.sign({ id: row.id, tenantId: t, role, email: `${key}@b16.test` });
+      tok[key] = await tokens.sign({ id: row.id, tenantId: t, role, email: `${key}@b16.test` });
     };
     for (const [k, r] of [['hr', 'hr_admin'], ['hr2', 'hr_admin'], ['eta', 'eta_admin'], ['spv', 'supervisor'], ['spv2', 'supervisor'], ['lead', 'role_leader'],
       ['ani', 'learner'], ['budi', 'learner'], ['cici', 'learner'], ['dedi', 'learner'], ['eko', 'learner'], ['fani', 'learner'], ['gita', 'learner'], ['hadi', 'learner'], ['ika', 'learner']]) await add(k, r);
@@ -220,9 +220,11 @@ run('B16 Career & Promotion (Postgres)', () => {
     expect(res.body.error.code).toBe('WAITING_SUPERVISOR');
     await q(`UPDATE users SET role = 'role_leader' WHERE id = :id`, { id: u.spv2 });
     const stale = await post(`/decisions/${u.dedi}/supervisor`, 'spv2', { decision: 'recommend' });
-    expect(stale.status).toBe(403);
-    expect(stale.body.error.code).toBe('ROLE_FORBIDDEN');
+    // B2: perubahan peran menutup sesi lama sejak autentikasi (401), sebelum gerbang peran
+    expect(stale.status).toBe(401);
+    expect(stale.body.error.code).toBe('UNAUTHORIZED');
     await q(`UPDATE users SET role = 'supervisor' WHERE id = :id`, { id: u.spv2 });
+    tok.spv2 = await tokens.sign({ id: u.spv2, tenantId: tenant.id, role: 'supervisor', email: 'spv2@b16.test' }); // B2: masuk lagi setelah peran dipulihkan
   });
 
   it('atasan menunda lalu mengganti menjadi rekomendasi: satu baris, catatan terenkripsi, audit bermeta nama', async () => {
@@ -315,11 +317,12 @@ run('B16 Career & Promotion (Postgres)', () => {
     await post(`/decisions/${u.dedi}/supervisor`, 'spv2', { decision: 'recommend' }).expect(200);
     // pemisahan tugas: yang merekomendasi tidak boleh menyetujui (mis. peran diubah menjadi HR)
     await q(`UPDATE users SET role = 'hr_admin' WHERE id = :id`, { id: u.spv2 });
-    tok.spv2hr = tokens.sign({ id: u.spv2, tenantId: tenant.id, role: 'hr_admin', email: 'spv2@b16.test' });
+    tok.spv2hr = await tokens.sign({ id: u.spv2, tenantId: tenant.id, role: 'hr_admin', email: 'spv2@b16.test' });
     const self = await post(`/decisions/${u.dedi}/hr`, 'spv2hr', { decision: 'approve' });
     expect(self.status).toBe(403);
     expect(self.body.error.code).toBe('ROLE_FORBIDDEN');
     await q(`UPDATE users SET role = 'supervisor' WHERE id = :id`, { id: u.spv2 });
+    tok.spv2 = await tokens.sign({ id: u.spv2, tenantId: tenant.id, role: 'supervisor', email: 'spv2@b16.test' }); // B2: masuk lagi setelah peran dipulihkan
     const [openRow] = await q('SELECT id FROM lna_promotion_decisions WHERE user_id = :u AND hr_decision IS NULL', { u: u.dedi });
     await place('dedi', L.senior);
     // balapan: rute sudah membaca siklus sebelum posisi berubah; store menolak di bawah kunci karena jenjang asal tidak cocok lagi (C9)

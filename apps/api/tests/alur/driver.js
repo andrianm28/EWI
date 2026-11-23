@@ -4,8 +4,8 @@
 // memperbaiki driver ini di PR yang sama, karena test alur dan QA malam ikut gerbang `npm test`.
 // Penyiapan tenant, pengguna, entitlement, dan flag memakai SQL; selebihnya lewat API (supertest).
 const request = require('supertest');
+const { sessionSigner } = require('../helpers');
 const { sign } = require('../../src/integrations/elitementor/webhook');
-const { createTokenService } = require('../../src/core/auth/tokens');
 const { currentConsentVersion } = require('../../src/core/consent');
 const { FLAGS } = require('../../src/core/flags');
 const { TENANT_LAIN, PERIODE } = require('./data');
@@ -57,10 +57,17 @@ async function tambahPengguna(db, tenantId, { nama, email, employeeId, peran, at
   return { id: row.id, tenantId, email, nama, employeeId, peran };
 }
 
-/** Header masuk untuk seorang pengguna. Saat sesi menggantikan token (PR #20), hanya fungsi ini yang berubah. */
-function pembuatMasuk(config) {
-  const tokens = createTokenService(config.jwt);
-  return (p) => ({ Authorization: `Bearer ${tokens.sign({ id: p.id, tenantId: p.tenantId, role: p.peran, email: p.email })}` });
+/**
+ * Header masuk untuk seorang pengguna. Sejak PK-16/B1 token hanya berlaku bila baris sesinya aktif, jadi tiap
+ * pengguna mendapat satu sesi sungguhan (disimpan per id) lewat store `authSessions`.
+ */
+function pembuatMasuk(config, authSessions) {
+  const tokens = sessionSigner(config, authSessions);
+  const cache = new Map();
+  return async (p) => {
+    if (!cache.has(p.id)) cache.set(p.id, await tokens.sign({ id: p.id, tenantId: p.tenantId, role: p.peran, email: p.email }));
+    return { Authorization: `Bearer ${cache.get(p.id)}` };
+  };
 }
 
 /** Menghapus tenant uji; audit_logs append-only, jadi lewat mode pemeliharaan (pola poc-dna-tna.test.js). Tabel lain ikut lewat ON DELETE CASCADE. */
@@ -74,15 +81,24 @@ async function hapusTenant(db, ids) {
 
 const kodeGalat = (res) => (res.body && res.body.error && res.body.error.code) || `HTTP_${res.status}`;
 
+/** Langkah alur lewat API saja (tanpa menulis store langsung). */
 function langkah(app, masuk) {
+  // Header masuk didapat secara async (sesi), jadi permintaan dibangun saat ditunggu; `.expect()` tetap bisa dirantai.
   const kirim = (method, path, siapa, body) => {
-    const r = request(app)[method](path).set(masuk(siapa));
-    return body === undefined ? r : r.send(body);
+    const harapan = [];
+    const jalan = async () => {
+      let r = request(app)[method](path).set(await masuk(siapa));
+      if (body !== undefined) r = r.send(body);
+      for (const h of harapan) r = r.expect(...h);
+      return r;
+    };
+    const permintaan = { expect: (...h) => { harapan.push(h); return permintaan; }, then: (ok, gagal) => jalan().then(ok, gagal) };
+    return permintaan;
   };
   const setuju = (karyawan, sid) => kirim('post', `/api/tna/sessions/${sid}/consent`, karyawan, { consentVersion: currentConsentVersion('tna') });
   /** Unggah lalu commit CSV lewat pengimpor bersama submodul (baris tanpa header). Mengembalikan hasil impor. */
   const imporCsv = async (siapa, submodul, jenis, header, baris) => {
-    const up = await request(app).post(`/api/${submodul}/imports/${jenis}?filename=${jenis}.csv`).set(masuk(siapa))
+    const up = await request(app).post(`/api/${submodul}/imports/${jenis}?filename=${jenis}.csv`).set(await masuk(siapa))
       .set('Content-Type', 'application/octet-stream').send(Buffer.from(`${[header, ...baris].join('\n')}\n`)).expect(201);
     return (await kirim('post', `/api/${submodul}/imports/batches/${up.body.data.id}/commit`, siapa, {}).expect(200)).body.data.result;
   };
@@ -117,7 +133,7 @@ function langkah(app, masuk) {
        * saran pemetaan, lalu simpan dengan `opsi`. Mengembalikan ringkasan batch ({ status, result }).
        */
       async impor(hr, jenis, baris, opsi = {}) {
-        const up = await request(app).post(`/api/dna/imports/${jenis}?filename=${jenis}.csv`).set(masuk(hr))
+        const up = await request(app).post(`/api/dna/imports/${jenis}?filename=${jenis}.csv`).set(await masuk(hr))
           .set('Content-Type', 'application/octet-stream').send(Buffer.from(`${baris.join('\n')}\n`)).expect(201);
         return (await kirim('post', `/api/dna/imports/batches/${up.body.data.id}/commit`, hr, { options: opsi }).expect(200)).body.data;
       },
@@ -264,6 +280,61 @@ function langkah(app, masuk) {
       },
       /** Respons mentah: 201 terkirim; 409 REMINDER_RECENT (dalam 24 jam) atau INVALID_STATE (selesai/batal); 400 tanpa penerima. */
       pengingat: (hr, id) => kirim('post', `/api/ld/trainings/${id}/reminders`, hr),
+    },
+    cca: {
+      /** B10 (flag cca.interview): HR menugaskan tier pimpinan; pimpinan menugaskan bawahan langsungnya. */
+      async tugaskan(siapa, assigneeIds, dueDate) {
+        return (await kirim('post', '/api/cca/assignments', siapa, { assigneeIds, dueDate }).expect(201)).body.data;
+      },
+      /** Tampilan penugasan sesuai peran: { role: hr|leader|employee, mine, ... }. */
+      async penugasan(siapa) {
+        return (await kirim('get', '/api/cca/assignments', siapa).expect(200)).body.data;
+      },
+      /** Ringkasan wawancara yang boleh dibaca (peserta sendiri, atau HR untuk tier pimpinan). */
+      async ringkasan(siapa, assignmentId) {
+        return (await kirim('get', `/api/cca/assignments/${assignmentId}/summary`, siapa).expect(200)).body.data;
+      },
+      /**
+       * B10 tahap 2: peserta menyetujui teks persetujuan berlaku, menjawab empat pertanyaan, membuat ringkasan, lalu
+       * mengirimnya. `jawaban` = satu teks (dipakai untuk keempat pertanyaan) atau daftar empat teks. Mengembalikan tema ringkasan.
+       */
+      async selesaikanWawancara(pengguna, assignmentId, jawaban) {
+        const base = `/api/cca/assignments/${assignmentId}`;
+        const daftar = Array.isArray(jawaban) ? jawaban : Array(4).fill(jawaban);
+        await kirim('post', `${base}/consent`, pengguna, { consentVersion: currentConsentVersion('cca') }).expect(200);
+        for (const text of daftar) await kirim('post', `${base}/turns`, pengguna, { text }).expect(200);
+        const ringkasan = (await kirim('post', `${base}/summary`, pengguna).expect(201)).body.data;
+        await kirim('post', `${base}/summary/confirm`, pengguna).expect(200);
+        return ringkasan.themes;
+      },
+    },
+    lim: {
+      /** B15: rencana pengukuran (HR). */
+      async buatRencana(hr, rencana) {
+        return (await kirim('post', '/api/lim/plans', hr, rencana).expect(201)).body.data;
+      },
+      /** Rencana yang terlihat sesuai cakupan (atasan: hanya rencana berisi anggota timnya). */
+      async daftarRencana(siapa) {
+        return (await kirim('get', '/api/lim/plans', siapa).expect(200)).body.data;
+      },
+      /** Isian skor (HR: pre/post/kinerja; atasan: kinerja bawahan langsung). Mengembalikan { saved, rejected }. */
+      async isiSkor(siapa, planId, entries) {
+        return (await kirim('put', `/api/lim/plans/${planId}/measurements`, siapa, { entries }).expect(200)).body.data;
+      },
+      /** Skor per karyawan per kompetensi (HR). */
+      async skor(hr, planId) {
+        return (await kirim('get', `/api/lim/plans/${planId}/measurements`, hr).expect(200)).body.data;
+      },
+      async ringkasan(siapa, planId) {
+        return (await kirim('get', `/api/lim/plans/${planId}/overview`, siapa).expect(200)).body.data;
+      },
+      async antrean(hr, planId) {
+        return (await kirim('get', `/api/lim/plans/${planId}/queue`, hr).expect(200)).body.data;
+      },
+      /** Jadwal wawancara ulang per karyawan; date null membatalkan. */
+      async jadwalkan(hr, planId, userIds, date) {
+        return (await kirim('post', `/api/lim/plans/${planId}/queue/schedule`, hr, { userIds, date }).expect(200)).body.data;
+      },
     },
     /** B9 Improvement Needs. Langkah tulis memastikan sukses; baca mengembalikan respons mentah untuk cek penolakan. */
     ina: {
