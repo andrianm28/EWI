@@ -91,12 +91,16 @@ function emailLinkRoutes({ users, links, sessions, policy, audit, limits, attemp
         await links.issue(user, 'login', { tenantName: users.tenantName ? await users.tenantName(user.tenantId) : null });
         await attempts.record(user, { method: 'email_link', outcome: 'link_sent' });
       }
+    } else {
+      // tidak ditunggu: waktu jawaban email tak dikenal tidak bertambah satu query
+      attempts.unknownAccount(users, String(tenant).trim(), 'email_link');
     }
     res.status(202).json({ message: GENERIC });
   }));
 
   r.post('/verify', limitByIp(limits.verifyIp, 'verify'), wrap(async (req, res) => {
     const user = await links.consume((req.body || {}).token);
+    if (!user) await attempts.record({}, { method: 'email_link', outcome: 'invalid_link' });
     if (!user || !policy.allows(user)) throw unauthorized(INVALID);
     const done = await finishLogin({ user, method: 'email_link', req, sessions, audit, auditMeta: { purpose: user.purpose } });
     const pub = { id: user.id, tenantId: user.tenantId, email: user.email, name: user.name, role: user.role };

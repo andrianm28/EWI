@@ -61,6 +61,7 @@ function authRoutes({ users, sessions, policy, audit, requireAuth, limits, attem
         limits.passwordAccount.record(accountKey);
         // Hanya akun yang dikenal yang masuk audit tenant (lihat attempts.js)
         if (user) await attempts.record(user, { method: 'password', outcome: 'failed' });
+        else attempts.unknownAccount(users, slug, 'password'); // tidak ditunggu
         throw unauthorized('Email atau password salah');
       }
       if (!policy.allows(user)) {

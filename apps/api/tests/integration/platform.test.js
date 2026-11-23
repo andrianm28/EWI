@@ -380,4 +380,28 @@ run('B12 Super Admin (Postgres)', () => {
         expect((await get(path)).status).toBe(400);
       });
   });
+  describe('hitungan percobaan dari jalur login', () => {
+    const counts = async () => Object.fromEntries((await q(
+      `SELECT outcome, sum(count)::int AS n FROM platform_attempt_counters WHERE hour = date_trunc('hour', now()) GROUP BY 1`))
+      .map((r) => [r.outcome, r.n]));
+    const settle = async (before, outcome, n = 1) => {
+      for (let i = 0; i < 20; i += 1) {
+        if (((await counts())[outcome] || 0) >= (before[outcome] || 0) + n) return true;
+        await new Promise((r) => setTimeout(r, 25));
+      }
+      return false;
+    };
+
+    it('organisasi tak dikenal, akun tak dikenal, dan link tidak valid dihitung tanpa audit tenant', async () => {
+      const before = await counts();
+      const auditBefore = (await q('SELECT count(*)::int AS n FROM audit_logs WHERE tenant_id = :t', { t: T.eta }))[0].n;
+      expect((await request(app).post('/api/auth/email-link').send({ tenant: `tidak-ada-${stamp}`, email: 'x@y.test' })).status).toBe(202);
+      expect((await request(app).post('/api/auth/email-link').send({ tenant: `b12-eta-${stamp}`, email: `orang-asing-${stamp}@b12.test` })).status).toBe(202);
+      expect((await request(app).post('/api/auth/email-link/verify').send({ token: 'x'.repeat(43) })).status).toBe(401);
+      expect(await settle(before, 'unknown_org')).toBe(true);
+      expect(await settle(before, 'unknown_account')).toBe(true);
+      expect(await settle(before, 'invalid_link')).toBe(true);
+      expect((await q('SELECT count(*)::int AS n FROM audit_logs WHERE tenant_id = :t', { t: T.eta }))[0].n).toBe(auditBefore);
+    });
+  });
 });

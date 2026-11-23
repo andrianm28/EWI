@@ -73,7 +73,9 @@ function createApp({ config, stores, ai, catalog, mailer, rateLimits, readiness,
   // R2-2: store audit wajib di luar test; in-memory hanya untuk test yang tidak menyediakannya.
   if (!stores.audit && config.nodeEnv !== 'test') throw new Error('stores.audit wajib (R2-2)');
   const audit = createAuditService(stores.audit || memoryAuditStore());
-  const attempts = createAttemptLog(audit);
+  // B12: log audit platform dibuat di sini karena jalur login menaikkan hitungan percobaan tanpa tenant
+  const platformLog = stores.platformLog ? createPlatformLog({ store: stores.platformLog }) : null;
+  const attempts = createAttemptLog(audit, { platformLog });
   const mail = mailer || createMailer(config.mail || {});
   const links = createEmailLinkService({ stores, mailer: mail, appBaseUrl: config.appBaseUrl });
   const deps = {
@@ -127,7 +129,6 @@ function createApp({ config, stores, ai, catalog, mailer, rateLimits, readiness,
 
   // B12: konsol Super Admin, dipasang sebelum /api supaya auth tidak berjalan dua kali (ADR 0002)
   if (stores.platform) {
-    const platformLog = createPlatformLog({ store: stores.platformLog });
     const platformSettings = createPlatformSettings({ store: stores.platformSettings, platformLog });
     const settingsView = createSettingsView({ platformSettings, store: stores.platform, encryption: config.encryption.provider, ai: config.ai });
     const platform = createPlatformService({
