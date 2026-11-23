@@ -30,3 +30,4 @@
 /* P5 AA-2: kartu wawancara pimpinan, teks kiri dan tombol kanan */
 .cc-leadcard { display: flex; justify-content: space-between; align-items: center; gap: 16px; }
 @media (max-width: 600px) { .cc-leadcard { flex-wrap: wrap; } }
+.cc-confirm { font-weight: 500; }

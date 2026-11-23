@@ -110,22 +110,41 @@ const route = useRoute()
 const router = useRouter()
 const editTo = (row: Record<string, unknown>) => (manage.value ? { query: { ...route.query, ubah: String(row.id) } } : null)
 const formEl = ref<{ $el: HTMLElement } | null>(null)
+const formTitle = ref<HTMLElement | null>(null)
+// id yang sudah dicari di daftar "menyangkut individu", supaya pencarian tidak berulang
+let hiddenChecked = ''
 function dropUbah() {
   if (route.query.ubah === undefined) return
   const query = { ...route.query }; delete query.ubah; void router.replace({ query })
 }
-function openFromQuery() {
+async function openFromQuery() {
   const id = typeof route.query.ubah === 'string' ? route.query.ubah : ''
-  if (!id || !manage.value) return
+  if (!id || !level.value) return
+  // Triase P5: hanya level manage yang bisa mengubah; level lain membuang ?ubah
+  if (!manage.value) { dropUbah(); return }
   const a = actions.value.find((x) => x.id === id)
-  if (!a) { if (level.value) dropUbah(); return }
+  if (!a) {
+    // Tindakan yang menyangkut individu tidak ada di daftar utama: cek daftar itu dulu sebelum membuang id
+    if (!showHidden.value && hiddenChecked !== id) {
+      hiddenChecked = id
+      try {
+        if ((await ina.actions(true)).data.some((x) => x.id === id)) { showHidden.value = true; await load(); return }
+      } catch { /* jatuh ke dropUbah */ }
+    }
+    dropUbah()
+    return
+  }
   if (editing.value?.id !== id || !formOpen.value) {
     openForm(a)
-    void nextTick(() => formEl.value?.$el?.scrollIntoView?.({ block: 'nearest' }))
+    // Fokus ke judul formulir (tabindex -1) lalu gulir, seperti panel CC
+    void nextTick(() => {
+      formEl.value?.$el?.scrollIntoView?.({ block: 'nearest' })
+      formTitle.value?.focus({ preventScroll: true })
+    })
   }
 }
 watch([actions, () => route.query.ubah], ([, id], [, old]) => {
-  if (id) openFromQuery()
+  if (id) void openFromQuery()
   else if (old && editing.value?.id === old) formOpen.value = false
 })
 function closeForm() { formOpen.value = false; dropUbah() }
@@ -251,7 +270,7 @@ const REPORTED_TONE = { done: 'success', in_progress: 'info', blocked: 'critical
         </div>
 
         <UiCard v-if="formOpen" ref="formEl" class="ina__section" data-testid="ina-form">
-          <h2 class="el-h3">{{ editing ? 'Ubah tindakan' : 'Tambah tindakan' }}</h2>
+          <h2 ref="formTitle" class="el-h3" tabindex="-1">{{ editing ? 'Ubah tindakan' : 'Tambah tindakan' }}</h2>
           <form novalidate @submit.prevent="submit">
             <UiErrorSummary :errors="formErrors" />
             <div class="el-grid el-grid-2">
@@ -302,14 +321,14 @@ const REPORTED_TONE = { done: 'success', in_progress: 'info', blocked: 'critical
         >
           <template #cell-title="{ row }"><span class="ina__title">{{ row.title }}</span></template>
           <template #cell-category="{ row }">
-            <UiChip tone="improvement">{{ CATEGORY_LABEL[asAction(row).category] }}{{ asAction(row).subLabel ? ` · ${asAction(row).subLabel}` : '' }}</UiChip>
+            <UiChip tone="improvement" class="ina__nowrap">{{ CATEGORY_LABEL[asAction(row).category] }}{{ asAction(row).subLabel ? ` · ${asAction(row).subLabel}` : '' }}</UiChip>
           </template>
           <template #cell-ownerName="{ row }">{{ asAction(row).ownerName ?? 'Belum ditentukan' }}</template>
           <template #cell-ownerJobRoleName="{ row }">{{ asAction(row).ownerJobRoleName ?? '' }}</template>
-          <template #cell-sourceRef="{ row }">{{ asAction(row).sourceRef ?? '' }}</template>
+          <template #cell-sourceRef="{ row }"><span class="ina__nowrap">{{ asAction(row).sourceRef ?? '' }}</span></template>
           <template #cell-dueDate="{ row }">
             {{ formatDate(asAction(row).dueDate) }}
-            <UiChip v-if="asAction(row).overdue" tone="critical">Lewat tenggat</UiChip>
+            <UiChip v-if="asAction(row).overdue" tone="critical" class="ina__overdue">Lewat tenggat</UiChip>
           </template>
           <template #cell-status="{ row }">
             <template v-if="manage">
@@ -344,7 +363,7 @@ const REPORTED_TONE = { done: 'success', in_progress: 'info', blocked: 'critical
               <UiButton v-if="['assigned', 'in_progress'].includes((row as unknown as Verification).status)" variant="text" size="sm" @click="cancelVerification(row as unknown as Verification)">Batalkan</UiButton>
             </template>
           </UiDataTable>
-          <p v-else class="el-muted ina__sub">Belum ada verifikasi. Pilih "Verifikasi lewat AI" pada tindakan yang punya pemilik.</p>
+          <p v-else class="el-muted ina__sub">Belum ada verifikasi. Klik baris tindakan yang punya pemilik, lalu pilih "Verifikasi lewat AI".</p>
         </UiCard>
 
         <UiCard v-if="manage" class="ina__section" data-testid="ina-akses">
@@ -368,13 +387,13 @@ const REPORTED_TONE = { done: 'success', in_progress: 'info', blocked: 'critical
 .ina__head { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; justify-content: space-between; margin-top: 24px; }
 .ina__head .el-h2 { margin: 0; }
 .ina__access { font-size: 13px; }
-.ina__title { font-weight: 500; }
 /* IN-7: tujuh kolom muat di 1280-1440; teks kolom pendek tidak dilipat */
 .ina__table :deep(td), .ina__table :deep(th) { padding-left: 12px; padding-right: 12px; }
-/* Kategori, Asal gap, dan Status tidak dilipat; Pemilik, Jabatan, dan Tenggat (chip lewat tenggat turun ke baris baru) boleh */
-.ina__table :deep(td:nth-child(2)), .ina__table :deep(td:nth-child(5)), .ina__table :deep(td:nth-child(7)) { white-space: nowrap; }
-.ina__table :deep(td:nth-child(6) .el-chip) { margin-top: 4px; }
-.ina__table :deep(td:first-child) { min-width: 220px; }
+/* Kategori dan Asal gap tidak dilipat (Status berupa select selebar tetap); Pemilik, Jabatan, dan Tenggat boleh,
+   chip lewat tenggat turun ke baris baru. Kelas per kolom lewat slot sel, bukan nth-child (triase P5). */
+.ina__nowrap { white-space: nowrap; }
+.ina__overdue { margin-top: 4px; }
+.ina__title { display: inline-block; min-width: 200px; font-weight: 500; }
 .ina__lead { margin: 0 0 16px; }
 .ina__section { margin-top: 16px; }
 .ina__sub { margin-top: 12px; }

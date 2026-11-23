@@ -1,6 +1,6 @@
 <script setup lang="ts">
 // Persyaratan kompetensi per sumber (visi dan misi, atau nilai korporasi): KPI kesiapan, tabel gap, dan kelola oleh HR.
-import { computed, onMounted, reactive, ref, watch } from 'vue'
+import { computed, nextTick, onMounted, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { cca, CLASS_LABEL, fmt, type GroupKey, type Overview, type OverviewGroup, type OverviewRow, type SourceKind } from '@/api/cca'
 import { UiButton, UiCard, UiChip, UiDataTable, UiErrorSummary, UiField, UiKpiCard, UiNote, UiProgressBar, type UiColumn } from '@/ui'
@@ -27,16 +27,29 @@ const editTo = (r: Record<string, unknown>) => ({ query: { ...route.query, ubah:
 function openFromQuery() {
   const id = typeof route.query.ubah === 'string' ? route.query.ubah : ''
   const g = id ? data.value?.groups.find((x) => x.rows.some((r) => r.id === id)) : undefined
-  if (g && editor.id !== id) edit(g, g.rows.find((r) => r.id === id)!)
+  if (g && editor.id !== id) {
+    edit(g, g.rows.find((r) => r.id === id)!)
+    // Triase P5: fokus ke judul panel (tabindex -1) dan gulir ke panel, supaya pembaca layar dan papan ketik tahu panel terbuka
+    void nextTick(() => {
+      const h = document.getElementById(`cc-editor-judul-${g.id}`)
+      h?.scrollIntoView?.({ block: 'nearest' })
+      h?.focus({ preventScroll: true })
+    })
+  }
   else if (id && data.value && !g) dropUbah() // id tidak dikenal (mis. baris sudah dihapus)
 }
 watch(data, openFromQuery)
 watch(() => route.query.ubah, (id, old) => { if (id) openFromQuery(); else if (old && editor.id === old) closeEditor() })
 
+// Triase P5: penjaga klik ganda (PATCH ganda) selama permintaan berjalan
+const busy = ref(false)
 async function run(fn: () => Promise<void>, done: string) {
-  errors.value = []; notice.value = ''
-  try { await fn(); await load(); notice.value = done } catch (e) { errors.value = [{ message: (e as Error).message }] }
+  if (busy.value) return
+  errors.value = []; notice.value = ''; busy.value = true
+  try { await fn(); await load(); notice.value = done } catch (e) { errors.value = [{ message: (e as Error).message }] } finally { busy.value = false }
 }
+// Tolak butuh konfirmasi di tempat (bukan window.confirm): id baris yang menunggu konfirmasi
+const confirmReject = ref('')
 
 const columns = computed<UiColumn[]>(() => [
   { key: 'name', label: isVm.value ? 'Persyaratan kompetensi (turunan)' : 'Indikator perilaku', sortable: true },
@@ -76,6 +89,7 @@ const editor = reactive({ sourceId: '', id: '', name: '', definition: '', target
 const num = (s: string) => (String(s).trim() === '' ? null : Number(String(s).replace(',', '.')))
 function addTo(g: OverviewGroup) { Object.assign(editor, { sourceId: g.id, id: '', name: '', definition: '', target: '80', actual: '' }); dropUbah() }
 function edit(g: OverviewGroup, r: OverviewRow) {
+  confirmReject.value = ''
   Object.assign(editor, { sourceId: g.id, id: r.id, name: r.name, definition: r.definition ?? '', target: String(r.targetScore), actual: r.actualScore === null ? '' : String(r.actualScore) })
 }
 function dropUbah() {
@@ -157,7 +171,7 @@ const setStatus = (r: OverviewRow, status: 'validated' | 'rejected') =>
         </UiDataTable>
 
         <form v-if="editor.sourceId === g.id" class="cc-form" style="margin-top: 16px" data-testid="cc-editor" @submit.prevent="saveRow">
-          <h3 class="el-h3 cc-form__wide">{{ editor.id ? 'Ubah' : 'Tambah' }} {{ rowWord }}</h3>
+          <h3 :id="`cc-editor-judul-${g.id}`" class="el-h3 cc-form__wide" tabindex="-1">{{ editor.id ? 'Ubah' : 'Tambah' }} {{ rowWord }}</h3>
           <p v-if="editingRow" class="cc-form__wide cc-row" style="justify-content: flex-start; margin: 0 0 8px">
             <span class="el-muted">Status validasi:</span>
             <UiChip :tone="editingRow.status === 'validated' ? 'success' : 'review'">{{ editingRow.status === 'validated' ? 'Tervalidasi' : 'Menunggu validasi HR' }}</UiChip>
@@ -167,12 +181,19 @@ const setStatus = (r: OverviewRow, status: 'validated' | 'rejected') =>
           <UiField :id="`req-target-${g.id}`" v-slot="{ attrs }" label="Target" hint="Angka 0-100"><input v-bind="attrs" v-model="editor.target" class="el-input" inputmode="decimal" required /></UiField>
           <UiField :id="`req-aktual-${g.id}`" v-slot="{ attrs }" label="Aktual (isian HR)" hint="Kosongkan bila belum diukur"><input v-bind="attrs" v-model="editor.actual" class="el-input" inputmode="decimal" /></UiField>
           <div class="cc-actions cc-form__wide" style="margin-top: 16px">
-            <UiButton type="submit">Simpan</UiButton>
-            <template v-if="editingRow">
-              <UiButton v-if="editingRow.status !== 'validated'" variant="tonal" @click="setStatus(editingRow, 'validated')">Validasi<span class="el-sr-only"> {{ editingRow.name }}</span></UiButton>
-              <UiButton variant="outlined" @click="setStatus(editingRow, 'rejected')">Tolak<span class="el-sr-only"> {{ editingRow.name }}</span></UiButton>
+            <template v-if="editingRow && confirmReject === editingRow.id">
+              <span role="alert" class="cc-confirm">Tolak "{{ editingRow.name }}"? Persyaratan yang ditolak tidak lagi dihitung.</span>
+              <UiButton :disabled="busy" @click="setStatus(editingRow, 'rejected')">Ya, tolak<span class="el-sr-only"> {{ editingRow.name }}</span></UiButton>
+              <UiButton variant="text" @click="confirmReject = ''">Batal tolak</UiButton>
             </template>
-            <UiButton variant="text" @click="closeEditor">Batal</UiButton>
+            <template v-else>
+              <UiButton type="submit" :disabled="busy">Simpan</UiButton>
+              <template v-if="editingRow">
+                <UiButton v-if="editingRow.status !== 'validated'" variant="tonal" :disabled="busy" @click="setStatus(editingRow, 'validated')">Validasi<span class="el-sr-only"> {{ editingRow.name }}</span></UiButton>
+                <UiButton variant="outlined" :disabled="busy" @click="confirmReject = editingRow.id">Tolak<span class="el-sr-only"> {{ editingRow.name }}</span></UiButton>
+              </template>
+              <UiButton variant="text" @click="closeEditor">Batal</UiButton>
+            </template>
           </div>
         </form>
         <div v-else class="cc-actions" style="margin-top: 12px">
