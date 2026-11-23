@@ -168,6 +168,20 @@ run('Aturan bisnis wajib live (Postgres)', () => {
     expect((await request(app).post(`/api/tna/findings/${hr.body.data[0].id}/plan`).set(as('hr')).send({})).status).toBe(404);
     const spvFindings = (await request(app).get('/api/tna/findings').set(as('spv'))).body.data;
     expect(spvFindings.every((f) => f.category === 'training')).toBe(true);
+
+    // Audit 23 Nov (P1): saat Improvement Needs menyala, GET /findings tidak boleh membocorkan temuan non-training
+    // ke atasan (tanpa izin HR) atau ke karyawan; kategori itu hanya untuk HR/Super Admin dan lewat /findings/non-training.
+    await flag('module.ina', true);
+    await flag('ina.dashboard', true);
+    for (const who of ['spv', 'dimas']) {
+      const rows = (await request(app).get('/api/tna/findings').set(as(who))).body.data;
+      expect(rows.length).toBeGreaterThan(0);
+      expect(rows.every((f) => f.category === 'training')).toBe(true);
+    }
+    const hrAll = (await request(app).get('/api/tna/findings').set(as('hr'))).body.data;
+    expect(hrAll.some((f) => f.category === 'non_training')).toBe(true);
+    await flag('module.ina', false);
+    await flag('ina.dashboard', false);
     findingId = spvFindings[0].id;
   });
 
