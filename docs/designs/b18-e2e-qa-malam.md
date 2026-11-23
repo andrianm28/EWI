@@ -172,19 +172,21 @@ Dari fungsi `N` di mockup. Dengan semua flag dan entitlement menyala, menu tiap 
 | Admin Tenant | Pengguna & peran; Jabatan & kamus kompetensi; Impor data & integrasi |
 | Super Admin | Tenant; Konfigurasi platform |
 
-Mockup menampilkan Improvement Needs untuk atasan tanpa syarat. K1 sudah diputuskan, jadi test mengikuti K1: tanpa akses dari HR, butir itu tidak bisa dibuka. Apakah butirnya disembunyikan atau tampil terkunci mengikuti spek B9/B2.
+Mockup menampilkan Improvement Needs untuk atasan tanpa syarat. K1 sudah diputuskan: butirnya tetap tampil, dan tanpa akses dari HR layarnya menampilkan pesan terkunci (`NO_INA_ACCESS`, layar B9). Pesan itu diuji di `improvement-needs.spec.ts`.
 
 Variasi yang diuji:
 
 - satu flag modul mati: butir modul itu tidak bisa dibuka (tersembunyi atau berlabel "Belum aktif", mengikuti shell B0; tampilan sekarang memakai "Belum aktif");
 - entitlement submodul tidak ada, flag menyala: sama seperti di atas.
 
-`[⚠️ BELUM TERVERIFIKASI]` Pemetaan butir menu ke flag, sementara dari brief: Core Competencies dan Wawancara visi & nilai ke `module.cca`; Developmental Needs ke `module.dna`; Training Needs dan Wawancara akar masalah ke `module.tna`; Improvement Needs ke `module.ina` dan `ina.dashboard`; Library dan Program & Course ke `module.li`; Learning Delivery ke `module.ld`; Learning Impact Measurement ke `module.lim`; Career & Promotion ke `promotion.recommendation`; Rencana belajar belum jelas. Kunci peran di API sesudah B2 juga belum pasti (sekarang `hr_admin`, `supervisor`, `learner`, `eta_admin`; `roles.js` juga punya `pimpinan`). Keduanya dibaca dari PR B0 dan B2 saat test ditulis.
+Pemetaan butir menu ke gerbang, terverifikasi dari `apps/web/src/shell/menu.ts` dan `src/screens/*/routes.ts` (23 Nov, scbrmb `be5591d`): Core Competencies, Wawancara AI, dan Wawancara visi & nilai ke submodul `cca`; Developmental Needs ke `dna`; Training Needs dan Wawancara akar masalah ke `tna`; Improvement Needs ke `ina` + flag `ina.dashboard`; Library, Program & Course, dan Permintaan & pengembangan ke `module.li` + `full_suite`; Learning Delivery ke `module.ld` + `full_suite`; Learning Impact Measurement ke `module.lim` + `full_suite`; Career & Promotion ke `promotion.recommendation` + submodul `dna`; Dashboard ke `dashboard.main`; layar Admin Tenant ke `admin.tenant`; layar Super Admin ke `platform.console`. Kunci peran API sesudah B2: `hr_admin`, `supervisor`, `learner`, `tenant_admin`, `eta_admin` (`PERAN_API` di `support/sesi.ts`).
+
+Baris Karyawan masih `test.fixme`: layar "Hasil saya" (rute `my`) dan "Rencana belajar" (rute `li`) dari spek B8 belum dibangun di web, jadi karyawan masih mendarat di Beranda lama dengan butir peralihan Developmental Needs dan Training Needs. Karena store sesi baru menawarkan tampilan tambahan setelah layar berandanya ada, HR, atasan, dan Admin Tenant juga belum bisa pindah ke "Karyawan (saya)". Baris ini diaktifkan oleh PR yang membangun kedua layar itu.
 
 ### 4.4 Batas akses (`batas-akses.spec.ts`)
 
 - HR dan atasan membuka sesi wawancara: transkrip tidak tampil (PO-6). Sudah diuji di `poc-dna-tna.spec.ts`; dipindah ke sini hanya bila layar sesi pindah ke shell baru.
-- Atasan tanpa akses dari HR: URL Improvement Needs dialihkan (K1).
+- Atasan tanpa akses dari HR: layar Improvement Needs menampilkan pesan terkunci tanpa baris tindakan (K1, layar B9). Sudah diuji di `improvement-needs.spec.ts`, jadi tidak digandakan.
 - Super Admin: tidak ada layar yang menampilkan isi jawaban wawancara.
 - Karyawan membuka URL layar HR, Admin Tenant, atau Super Admin: dialihkan ke berandanya.
 - Flag modul mati: URL langsung ke layar modul dialihkan. `gating.spec.ts` sudah menguji ini untuk modul lama; spec ini menambah modul baru, tidak menggandakan.
@@ -358,7 +360,8 @@ QA malam dan driver (mulai 20 Nov):
 
 Setelah B0, B1, B2 digabung:
 
-- [ ] `apps/web/e2e/alur/menu-peran.spec.ts`, `batas-akses.spec.ts`, `jalur-utama.spec.ts`
+- [x] `apps/web/e2e/alur/menu-peran.spec.ts` (baris Karyawan `test.fixme` sampai layar B8 `my`/`li` ada) dan `batas-akses.spec.ts` (23 Nov)
+- [ ] `apps/web/e2e/alur/jalur-utama.spec.ts`
 
 Per paket yang digabung: baris alurnya di bagian 3.3 (oleh thread paket) dan persona operasi AI-nya di bagian 5.1 (oleh thread integrasi).
 
