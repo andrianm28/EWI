@@ -1,7 +1,7 @@
 <script setup lang="ts">
 // Pengembangan modul (mockup, layar `lidev`): tujuan → rancangan materi → asesmen → tinjau dan ajukan ke SME.
-import { computed, onMounted, ref } from 'vue'
-import { useRoute, useRouter } from 'vue-router'
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
+import { onBeforeRouteLeave, useRoute, useRouter } from 'vue-router'
 import AppShell from '@/components/AppShell.vue'
 import './li.css'
 import { ApiError } from '@/api/client'
@@ -21,10 +21,31 @@ const reviewNote = ref('')
 const STEPS = [{ key: 'tujuan', label: 'Tujuan pembelajaran' }, { key: 'materi', label: 'Rancangan materi' }, { key: 'asesmen', label: 'Asesmen' }, { key: 'ajukan', label: 'Tinjau dan ajukan' }]
 // LI-33: label tombol lanjut menyebut langkah berikutnya (mockup)
 const NEXT_LABEL: Record<string, string> = { tujuan: 'Lanjut: rancang materi', materi: 'Lanjut: asesmen', asesmen: 'Lanjut: tinjau dan ajukan' }
-const go = (d: number) => { step.value = STEPS[STEPS.findIndex((s) => s.key === step.value) + d]!.key }
+// K-P6-5: "Simpan perubahan" ada di menu sekunder, jadi perubahan disimpan otomatis saat pindah langkah dan saat
+// meninggalkan layar (tanpa dialog). Bila simpan gagal, langkah/rute tidak berpindah dan galat tampil.
+async function go(d: number) {
+  if (dirty.value) { await save(AUTO_SAVED); if (error.value) return }
+  step.value = STEPS[STEPS.findIndex((s) => s.key === step.value) + d]!.key
+}
+const AUTO_SAVED = 'Perubahan disimpan otomatis.'
+const content = (d: Draft) => JSON.stringify({ objectives: d.objectives, sessions: d.sessions, assessments: d.assessments })
+const saved = ref('')
+const dirty = computed(() => !!draft.value && editable.value && content(draft.value) !== saved.value)
+onBeforeRouteLeave(async () => {
+  if (!dirty.value) return true
+  await save(AUTO_SAVED)
+  return !error.value
+})
+// menutup tab atau memuat ulang: hanya peringatan bawaan peramban
+const onUnload = (e: BeforeUnloadEvent) => { if (dirty.value) e.preventDefault() }
+onMounted(() => window.addEventListener('beforeunload', onUnload))
+onBeforeUnmount(() => window.removeEventListener('beforeunload', onUnload))
 
 onMounted(async () => {
-  try { draft.value = (await li.draft(String(route.params.id))).data } catch (e) { error.value = e instanceof ApiError ? e.message : 'Draf tidak bisa dimuat' }
+  try {
+    draft.value = (await li.draft(String(route.params.id))).data
+    saved.value = content(draft.value)
+  } catch (e) { error.value = e instanceof ApiError ? e.message : 'Draf tidak bisa dimuat' }
 })
 
 // sama dengan aturan server: tujuan terukur bila memuat angka kriteria
@@ -48,16 +69,30 @@ const checks = computed(() => {
 
 async function act(fn: () => Promise<{ data: Draft }>, done: string) {
   busy.value = true; error.value = ''; notice.value = ''
-  try { draft.value = { ...draft.value!, ...(await fn()).data }; notice.value = done } catch (e) { error.value = e instanceof ApiError ? e.message : 'Tindakan gagal' } finally { busy.value = false }
+  try {
+    draft.value = { ...draft.value!, ...(await fn()).data }
+    saved.value = content(draft.value)
+    notice.value = done
+  } catch (e) { error.value = e instanceof ApiError ? e.message : 'Tindakan gagal' } finally { busy.value = false }
 }
-const save = () => act(() => li.saveDraft(draft.value!.id, { objectives: draft.value!.objectives, sessions: draft.value!.sessions, assessments: draft.value!.assessments }), 'Perubahan disimpan.')
+const save = (done = 'Perubahan disimpan.') => act(() => li.saveDraft(draft.value!.id, { objectives: draft.value!.objectives, sessions: draft.value!.sessions, assessments: draft.value!.assessments }), done)
+const confirmDelete = ref(false)
+// N1: cakupan asesmen "n dari m tujuan" (m = tujuan bertipe sama)
+function coverage(a: Draft['assessments'][number]) {
+  const total = draft.value?.objectives.filter((o) => o.kind === a.kind).length ?? 0
+  return total ? `${a.objectives} dari ${total} tujuan tercakup` : `${a.objectives} tujuan tercakup`
+}
 async function submit() {
   await save()
   if (!error.value) await act(() => li.submitDraft(draft.value!.id), 'Draf diajukan untuk tinjauan SME.')
 }
 async function remove() {
   busy.value = true; error.value = ''
-  try { await li.deleteDraft(draft.value!.id); await router.push({ name: 'req' }) }
+  try {
+    await li.deleteDraft(draft.value!.id)
+    saved.value = content(draft.value!) // draf sudah dihapus: jangan simpan otomatis saat keluar
+    await router.push({ name: 'req' })
+  }
   catch (e) { error.value = e instanceof ApiError ? e.message : 'Draf tidak bisa dihapus' } finally { busy.value = false }
 }
 const review = (decision: 'approved' | 'returned') => act(
@@ -119,7 +154,7 @@ const review = (decision: 'approved' | 'returned') => act(
             <h2 class="el-h2">Asesmen</h2>
             <p class="el-muted">Setiap tujuan memiliki instrumen dan kriteria lulus yang jelas.</p>
             <div v-for="(a, i) in draft.assessments" :key="i" class="li-obj">
-              <p class="li-row"><b>{{ a.title }}</b><UiChip tone="success">{{ a.objectives }} tujuan tercakup</UiChip></p>
+              <p class="li-row"><b>{{ a.title }}</b><UiChip tone="success">{{ coverage(a) }}</UiChip></p>
               <UiField :id="`asesmen-${i}`" v-slot="{ attrs }" :label="`Instrumen dan kriteria lulus ${a.title}`">
                 <textarea v-bind="attrs" v-model="a.detail" class="el-input" rows="2" :readonly="!editable" />
               </UiField>
@@ -158,8 +193,15 @@ const review = (decision: 'approved' | 'returned') => act(
           <details v-if="editable" class="li-more">
             <summary>Kelola draf</summary>
             <div class="li-actions">
-              <UiButton variant="outlined" size="sm" :disabled="busy" @click="save">Simpan perubahan</UiButton>
-              <UiButton variant="text" size="sm" :disabled="busy" @click="remove">Hapus draf</UiButton>
+              <UiButton variant="outlined" size="sm" :disabled="busy || !dirty" @click="save()">Simpan perubahan</UiButton>
+              <UiButton v-if="!confirmDelete" variant="text" size="sm" :disabled="busy" @click="confirmDelete = true">Hapus draf</UiButton>
+            </div>
+            <div v-if="confirmDelete" class="li-row li-confirm" role="group" aria-label="Konfirmasi hapus draf">
+              <span>Yakin hapus draf ini? Draf yang dihapus tidak bisa dikembalikan.</span>
+              <span class="li-chips">
+                <UiButton size="sm" :disabled="busy" @click="remove">Ya, hapus</UiButton>
+                <UiButton variant="text" size="sm" :disabled="busy" @click="confirmDelete = false">Batal</UiButton>
+              </span>
             </div>
           </details>
           <UiAuditLine class="li-gap" :items="['Draf awal dari templat ELGOS', 'Sumber: DACUM Tool 1 dan Tool 2', 'Perlu persetujuan SME sebelum dipakai']" />
@@ -180,5 +222,6 @@ const review = (decision: 'approved' | 'returned') => act(
 .li-checks .is-ok .el-icon { color: var(--el-success); }
 .li-checks .is-warn .el-icon { color: var(--el-warning); }
 .li-more { margin-top: 12px; }
+.li-confirm { margin-top: 12px; padding: 12px 16px; border-radius: 12px; background: var(--el-critical-container); color: var(--el-on-critical-container); }
 .li-more summary { cursor: pointer; color: var(--el-primary); font-weight: 500; font-size: 14px; }
 </style>

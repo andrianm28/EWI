@@ -74,7 +74,7 @@ async function develop(moduleId: string) {
         </div>
         <h3 class="el-h3 li-gap">Disarankan dikembangkan sendiri</h3>
         <p class="el-muted li-small">Modul spesifik proses perusahaan yang belum punya sumber ({{ res.data.candidates.length }} modul).</p>
-        <div v-for="c in res.data.candidates" :key="c.id" class="li-req li-row">
+        <div v-for="c in res.data.candidates" :key="c.id" class="li-req li-row" :data-testid="`kandidat-${c.code}`">
           <span><span class="el-mono">{{ c.code }}</span> {{ c.name }} <UiChip v-if="c.priority" tone="critical">{{ priorityLabel(c) }}</UiChip></span>
           <UiButton variant="text" size="sm" :disabled="busy" @click="develop(c.id)">Kembangkan</UiButton>
         </div>
