@@ -325,6 +325,19 @@ if confirm "Apply infra/live/shared sekarang dari laptop ini?"; then
 fi
 set_var QA_MALAM_BEDROCK_REGION "$QA_BEDROCK_REGION"
 set_var QA_MALAM_BEDROCK_MODEL_ID "${QA_INFERENCE_PROFILE_ID:-$QA_BEDROCK_MODEL_ID}"
+open_url "https://aws.amazon.com/bedrock/pricing/"
+step "Cari harga model QA di region $QA_BEDROCK_REGION (USD per 1 juta token, input dan output)."
+ask QA_MALAM_AI_PRICE_INPUT_PER_MTOK "Harga input per 1 juta token (USD, mis. 3):"
+ask QA_MALAM_AI_PRICE_OUTPUT_PER_MTOK "Harga output per 1 juta token (USD, mis. 15):"
+ask QA_MALAM_MAX_TOKENS "Batas token per run (opsional, kosong = bawaan workflow):"
+write_env QA_MALAM_AI_PRICE_INPUT_PER_MTOK "$QA_MALAM_AI_PRICE_INPUT_PER_MTOK"
+write_env QA_MALAM_AI_PRICE_OUTPUT_PER_MTOK "$QA_MALAM_AI_PRICE_OUTPUT_PER_MTOK"
+set_var QA_MALAM_AI_PRICE_INPUT_PER_MTOK "$QA_MALAM_AI_PRICE_INPUT_PER_MTOK"
+set_var QA_MALAM_AI_PRICE_OUTPUT_PER_MTOK "$QA_MALAM_AI_PRICE_OUTPUT_PER_MTOK"
+if [[ -n "$QA_MALAM_MAX_TOKENS" ]]; then
+  write_env QA_MALAM_MAX_TOKENS "$QA_MALAM_MAX_TOKENS"
+  set_var QA_MALAM_MAX_TOKENS "$QA_MALAM_MAX_TOKENS"
+fi
 step "Konfirmasi email langganan SNS dan AWS Budgets yang masuk ke penerima peringatan."
 pause
 

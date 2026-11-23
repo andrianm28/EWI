@@ -159,7 +159,8 @@ opt-in), Singapura bila Claude tidak tersedia di Jakarta. Ketersediaan dicek saa
 
 Langkah tangan admin (akun, region, bootstrap, akses model, variabel repo, apply) dibungkus wizard
 `bash infra/setup-akun-elgos.sh` dari laptop admin. Variabel repo hasilnya: `QA_MALAM_ROLE_ARN`,
-`QA_MALAM_BEDROCK_REGION`, `QA_MALAM_BEDROCK_MODEL_ID`. Cadangan bila akun terlambat: satu run manual
+`QA_MALAM_BEDROCK_REGION`, `QA_MALAM_BEDROCK_MODEL_ID`, `QA_MALAM_AI_PRICE_INPUT_PER_MTOK`,
+`QA_MALAM_AI_PRICE_OUTPUT_PER_MTOK`, opsional `QA_MALAM_MAX_TOKENS`. Cadangan bila akun terlambat: satu run manual
 oleh Andrian 26 Nov.
 
 ## Setup sekali
