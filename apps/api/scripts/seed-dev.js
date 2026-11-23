@@ -83,7 +83,8 @@ const bcrypt = require('bcryptjs');
     [t.id, JSON.stringify({ interviewScope: 'all_members', interviewJobRoleId: role.id })]);
   await c.query(`DELETE FROM entitlements WHERE tenant_id = $1`, [t.id]);
   await c.query(`INSERT INTO entitlements (tenant_id, product, source) VALUES ($1, 'full_suite', 'seed')`, [t.id]);
-  for (const key of ['module.dna', 'module.tna']) {
+  // learner.home: beranda karyawan B8 (Hasil saya, Rencana belajar) menyala di tenant dev
+  for (const key of ['module.dna', 'module.tna', 'learner.home']) {
     await c.query(`INSERT INTO feature_flags (tenant_id, key, enabled) VALUES ($1, $2, true)
                    ON CONFLICT (tenant_id, key) DO UPDATE SET enabled = true`, [t.id, key]);
   }
