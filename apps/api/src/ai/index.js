@@ -17,6 +17,10 @@
 //     -> { question: { text, options[<=3] }, usage }                    (operasi next_question)
 //   summarizeCca({ tier, turns, requirements: [{ id, name, sourceTitle }] })
 //     -> { themes: [{ theme, question, answer }], stances: [{ requirementId, stance }], usage }   (operasi summarize_cca)
+//   limQuestion({ competency|null, competencies, kind scenario|verify|apply, position, total, turns })                  (B15 tahap 3)
+//     -> { question: { text, options[<=3] }, usage }                    (operasi lim_question)
+//   summarizeLim({ competencies: [{ id, name, definition, indicators }], turns })
+//     -> { scores: [{ competencyId, score 0-100, reason<=200 }], usage }   (operasi summarize_lim)
 //   UsageRecord = { operation, provider, model, inputTokens, outputTokens, latencyMs }   (satu per panggilan model, R3-6)
 //
 // context = { competencies, triggers } sudah diminimalkan oleh pemanggil (lihat aiContext di modul interviews):

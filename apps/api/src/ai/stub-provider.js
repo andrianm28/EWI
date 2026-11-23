@@ -1,7 +1,7 @@
 'use strict';
 // Penyedia AI tiruan yang deterministik (tanpa LLM). Bawaan untuk test dan di luar produksi (PK-06).
 // Skor yang dihasilkan selalu ber-confidence rendah dan wajib dinilai ulang.
-const { CCA_STANCES, ccaDefaultQuestion } = require('./prompts');
+const { CCA_STANCES, ccaDefaultQuestion, limDefaultQuestion } = require('./prompts');
 
 const STUB_NOTE = 'Skor sementara dari penyedia AI tiruan (stub); perlu dinilai ulang.';
 const NON_TRAINING_HINTS = ['sop', 'tools', 'tool', 'aplikasi', 'sistem', 'akses', 'jaringan', 'prosedur'];
@@ -142,6 +142,14 @@ function createStubProvider() {
         return { requirementId: r.id, stance: 'not_covered' };
       });
       return { themes, stances, usage: usage('summarize_cca') };
+    },
+
+    // B15 tahap 3: pertanyaan bawaan per jenis; skor tetap 60 (perlu dinilai ulang)
+    async limQuestion({ competency, kind }) {
+      return { question: limDefaultQuestion(kind, competency), usage: usage('lim_question') };
+    },
+    async summarizeLim({ competencies }) {
+      return { scores: competencies.map((c) => ({ competencyId: c.id, score: 60, reason: STUB_NOTE })), usage: usage('summarize_lim') };
     },
 
     async assistantReply(args) {
