@@ -117,7 +117,7 @@ describe('tautan sesi dan temuan ke gap (R6, R8)', () => {
       recordsById,
       sessions: [
         { id: 's1', intervieweeId: 'a', status: 'completed', focusKind: 'competency', focusCompetencyId: C1 },
-        { id: 's2', intervieweeId: 'b', status: 'scheduled', inviteExpiresAt: '2026-11-25T00:00:00Z', focusKind: 'competency', focusCompetencyId: C1 },
+        { id: 's2', intervieweeId: 'b', projectId: 'p1', assignedBy: 'hr1', status: 'scheduled', inviteExpiresAt: '2026-11-25T00:00:00Z', focusKind: 'competency', focusCompetencyId: C1 },
         { id: 's3', intervieweeId: 'c', status: 'scheduled', inviteExpiresAt: '2026-11-19T00:00:00Z', focusKind: 'competency', focusCompetencyId: C1 },
         { id: 's4', intervieweeId: 'a', status: 'completed', focusKind: null, triggerRecordIds: ['r1', 'hilang'] },
         { id: 's5', intervieweeId: 'd', status: 'in_progress', focusKind: 'okr', focusMetricType: 'sla', focusMetricKey: 'waktu respons', focusPeriod: '2026-11' },
@@ -126,7 +126,9 @@ describe('tautan sesi dan temuan ke gap (R6, R8)', () => {
     });
     expect(links.get(`c:${C1}`)).toMatchObject({ interviewedCount: 1, assignedCount: 1 }); // kedaluwarsa dan dibatalkan tidak dihitung
     expect(links.get(okrKey)).toMatchObject({ interviewedCount: 1, assignedCount: 1 });
-    expect(links.get(`c:${C1}`).byUser.get('b')).toMatchObject({ id: 's2', status: 'scheduled' });
+    // kontrak layar (bagian 16): proyek dan penugas ikut, supaya layar tahu sesi mana yang bisa dibatalkan
+    expect(links.get(`c:${C1}`).byUser.get('b')).toEqual({ id: 's2', status: 'scheduled', inviteExpiresAt: '2026-11-25T00:00:00Z', projectId: 'p1', assignedBy: 'hr1', open: true });
+    expect(links.get(`c:${C1}`).byUser.get('a')).toMatchObject({ assignedBy: null, open: false });
   });
 
   it('temuan ditautkan lewat kompetensi, baris kinerja, atau fokus sesi', () => {

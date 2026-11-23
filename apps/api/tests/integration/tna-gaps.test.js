@@ -191,6 +191,7 @@ run('B5 Training Needs: gap dan penugasan (Postgres)', () => {
     expect(d.employees.map((e) => e.id).sort()).toEqual([u.a, u.b, u.spv].sort());
     expect(d.employees.find((e) => e.id === u.spv)).toMatchObject({ self: true, assignable: false, value: 2, gap: 1 });
     expect(d.employees.find((e) => e.id === u.a)).toMatchObject({ self: false, assignable: true, value: 1, target: 3, gap: 2, session: null });
+    expect(d.employees.find((e) => e.id === u.a).jobRoleId).toEqual(expect.any(String)); // kontrak layar: mode all_job_role
     const [audit] = await q(`SELECT meta FROM audit_logs WHERE tenant_id = :t AND resource = 'tna.gap_detail' AND user_id = :userId`, { t: T.main.id, userId: u.spv });
     expect(audit.meta.employeeIds.sort()).toEqual([u.a, u.b, u.spv].sort());
 
@@ -204,6 +205,8 @@ run('B5 Training Needs: gap dan penugasan (Postgres)', () => {
     expect((await request(app).get(`/api/tna/gaps/detail?kind=competency&competencyId=${T.cDraft}`).set(as('hr'))).status).toBe(404);
     expect((await request(app).get('/api/tna/gaps/detail?kind=competency&competencyId=bukan-uuid').set(as('hr'))).status).toBe(400);
     expect((await request(app).get('/api/tna/gaps/detail?kind=lain').set(as('hr'))).status).toBe(400);
+    // drift report 19 Nov: periode > 32 karakter di detail gap OKR juga 400, sama dengan endpoint papan
+    expect((await request(app).get(`/api/tna/gaps/detail?kind=okr&metricType=sla&name=Kepuasan&period=${'x'.repeat(33)}`).set(as('hr'))).status).toBe(400);
     expect((await request(app).get('/api/tna/gaps/summary?jobRoleId=x').set(as('hr'))).status).toBe(400);
   });
 
@@ -227,7 +230,7 @@ run('B5 Training Needs: gap dan penugasan (Postgres)', () => {
     const okr = (await request(app).get('/api/tna/gaps/okr').set(as('hr'))).body.data.rows[0];
     expect(okr).toMatchObject({ assignedCount: 3, interviewedCount: 0, classification: 'pending' });
     const detail = (await request(app).get(`/api/tna/gaps/detail?${okrQuery}`).set(as('hr'))).body.data;
-    expect(detail.employees.find((e) => e.id === u.a).session).toMatchObject({ id: sa.id, status: 'scheduled' });
+    expect(detail.employees.find((e) => e.id === u.a).session).toMatchObject({ id: sa.id, status: 'scheduled', projectId: T.main.projectId, assignedBy: u.hr, open: true }); // kontrak layar: tombol Batalkan
   });
 
   it('karyawan melihat tenggat, durasi, topik, dan penugas di daftar sesinya; perpanjangan HR menggeser tenggat', async () => {

@@ -33,7 +33,7 @@ function competencyBlock(competencies) {
 }
 
 function triggerBlock(triggers, focus = null) {
-  // B6 (A10): sesi yang ditugaskan untuk gap kompetensi tidak membahas target kerja
+  // B6 (A10, D5): sesi untuk gap kompetensi atau OKR tanpa target meleset milik karyawan ini memakai topik fokus
   if (!triggers.length && focus && focus.label) {
     const label = clip(focus.label, 120);
     if (focus.kind === 'okr') return `Topik wawancara: target kerja "${label}" yang meleset di tim karyawan ini (karyawan ini sendiri tidak tercatat meleset).`;
@@ -42,7 +42,7 @@ function triggerBlock(triggers, focus = null) {
   if (!triggers.length) return '(Tidak ada target yang meleset. Karyawan diwawancarai karena seluruh anggota Job Role ikut TNA.)';
   return triggers.map((t) => {
     const unit = t.unit ? ` ${clip(t.unit, 20)}` : '';
-    const dir = t.direction === 'lower_better' ? ' (makin kecil makin baik)' : '';
+    const dir = t.direction === 'lower' ? ' (makin kecil makin baik)' : '';
     return `- ${t.code}: ${clip(t.metricType ? `${t.metricType.toUpperCase()} ` : '', 10)}"${clip(t.name, 200)}"`
       + ` periode ${clip(t.period || 'ini', 40)}: target ${fmtNum(t.target)}${unit}, realisasi ${fmtNum(t.actual)}${unit}${dir}.`;
   }).join('\n');

@@ -36,7 +36,7 @@ test('POC Desember: DNA dan TNA terbuka, INA belum aktif', async ({ page }) => {
   await expect(page.getByTestId('card-ina')).toContainText('Belum aktif')
 
   await page.getByTestId('card-tna').getByRole('link', { name: 'Buka' }).click()
-  await expect(page.getByRole('heading', { level: 1, name: /TNA/ })).toBeVisible()
+  await expect(page.getByRole('heading', { level: 1, name: 'Training Needs' })).toBeVisible() // B5: judul mengikuti mockup
 
   await page.goto('/m/ina')
   await expect(page).toHaveURL(/\/$/)
@@ -100,7 +100,7 @@ test('sesi dicabut di server: kembali ke login dengan pesan, lalu ke halaman sem
   // HR mencabut sesi: panggilan API berikutnya dijawab 401
   await page.route(/\/api\/(dna|tna)\//, (route) => route.fulfill({ status: 401, json: { error: { code: 'UNAUTHORIZED', message: 'Sesi tidak valid atau kedaluwarsa' } } }))
   await page.getByTestId('card-tna').getByRole('link', { name: 'Buka' }).click()
-  await expect(page).toHaveURL(/\/login\?alasan=sesi-habis&ke=(%2F|\/)m(%2F|\/)tna$/)
+  await expect(page).toHaveURL(/\/login\?alasan=sesi-habis&ke=(%2F|\/)tna$/)
   await expect(page.getByTestId('session-expired')).toHaveText('Sesi Anda sudah berakhir. Silakan masuk lagi.')
 
   await page.route(/\/api\/(dna|tna)\//, (route) => route.fulfill({ json: { data: [] } }))
@@ -108,7 +108,7 @@ test('sesi dicabut di server: kembali ke login dengan pesan, lalu ke halaman sem
   await page.getByLabel('Email').fill('hr@demo.test')
   await page.getByLabel('Kata sandi').fill(`pw-${Date.now()}`)
   await page.getByRole('button', { name: 'Masuk' }).click()
-  await expect(page).toHaveURL(/\/m\/tna$/)
+  await expect(page).toHaveURL(/\/tna$/)
 })
 
 test('sesi kedaluwarsa (exp JWT lewat) saat halaman terbuka: diarahkan ke login', async ({ page }) => {

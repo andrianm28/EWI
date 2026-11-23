@@ -5,13 +5,20 @@
 // Penyiapan tenant, pengguna, entitlement, dan flag memakai SQL; selebihnya lewat API (supertest).
 const request = require('supertest');
 const { sessionSigner } = require('../helpers');
+const { sign } = require('../../src/integrations/elitementor/webhook');
 const { currentConsentVersion } = require('../../src/core/consent');
 const { FLAGS } = require('../../src/core/flags');
 const { TENANT_LAIN, PERIODE } = require('./data');
 
-/** Membuat tenant uji dengan entitlement (bawaan full_suite) dan flag yang diminta. */
-async function siapkanTenant(db, { slug, nama = 'PT Contoh', flags = [FLAGS.MODULE_DNA, FLAGS.MODULE_TNA], produk = ['full_suite'] }) {
-  const [[tenant]] = await db.query('INSERT INTO tenants (slug, name) VALUES (:slug, :nama) RETURNING id', { replacements: { slug, nama } });
+/**
+ * Membuat tenant uji dengan entitlement (bawaan full_suite) dan flag yang diminta.
+ * `organisasiEm`: id organisasi EliteMentor, dipakai webhook untuk menemukan tenant (bawaan tidak ada).
+ */
+async function siapkanTenant(db, { slug, nama = 'PT Contoh', flags = [FLAGS.MODULE_DNA, FLAGS.MODULE_TNA], produk = ['full_suite'], organisasiEm = null }) {
+  const [[tenant]] = await db.query(
+    'INSERT INTO tenants (slug, name, elitementor_organization_id) VALUES (:slug, :nama, :organisasiEm) RETURNING id',
+    { replacements: { slug, nama, organisasiEm } },
+  );
   for (const product of produk) {
     await db.query('INSERT INTO entitlements (tenant_id, product) VALUES (:t, :product)', { replacements: { t: tenant.id, product } });
   }
@@ -19,6 +26,26 @@ async function siapkanTenant(db, { slug, nama = 'PT Contoh', flags = [FLAGS.MODU
     await db.query('INSERT INTO feature_flags (tenant_id, key, enabled) VALUES (:t, :key, true)', { replacements: { t: tenant.id, key } });
   }
   return { id: tenant.id, slug };
+}
+
+/**
+ * Menjalankan `fn` selama flag atau produk tenant dimatikan, lalu memulihkannya walau `fn` gagal.
+ * `{ flag }` mematikan satu feature flag; `{ produk }` mencabut satu entitlement (mis. 'full_suite').
+ */
+async function selamaMati(db, tenantId, { flag, produk }, fn) {
+  const t = tenantId;
+  const setel = (on) => (flag
+    ? db.query(`INSERT INTO feature_flags (tenant_id, key, enabled) VALUES (:t, :flag, :on)
+                ON CONFLICT (tenant_id, key) DO UPDATE SET enabled = EXCLUDED.enabled`, { replacements: { t, flag, on } })
+    : db.query(on ? 'INSERT INTO entitlements (tenant_id, product) VALUES (:t, :produk)' : 'DELETE FROM entitlements WHERE tenant_id = :t AND product = :produk', { replacements: { t, produk } }));
+  await setel(false);
+  try { return await fn(); } finally { await setel(true); }
+}
+
+/** Menyalakan flag tenant (mis. em.webhook_sync yang bawaannya mati). */
+async function nyalakanFlag(db, tenantId, flag) {
+  await db.query(`INSERT INTO feature_flags (tenant_id, key, enabled) VALUES (:t, :flag, true)
+                  ON CONFLICT (tenant_id, key) DO UPDATE SET enabled = true`, { replacements: { t: tenantId, flag } });
 }
 
 async function tambahPengguna(db, tenantId, { nama, email, employeeId, peran, atasanId = null }) {
@@ -68,10 +95,23 @@ function langkah(app, masuk) {
     return permintaan;
   };
   const setuju = (karyawan, sid) => kirim('post', `/api/tna/sessions/${sid}/consent`, karyawan, { consentVersion: currentConsentVersion('tna') });
+  /** Unggah lalu commit CSV lewat pengimpor bersama submodul (baris tanpa header). Mengembalikan hasil impor. */
+  const imporCsv = async (siapa, submodul, jenis, header, baris) => {
+    const up = await request(app).post(`/api/${submodul}/imports/${jenis}?filename=${jenis}.csv`).set(await masuk(siapa))
+      .set('Content-Type', 'application/octet-stream').send(Buffer.from(`${[header, ...baris].join('\n')}\n`)).expect(201);
+    return (await kirim('post', `/api/${submodul}/imports/batches/${up.body.data.id}/commit`, siapa, {}).expect(200)).body.data.result;
+  };
   const jawab = (karyawan, sid, text) => kirim('post', `/api/tna/sessions/${sid}/turns`, karyawan, { text });
   return {
     /** Respons mentah untuk memeriksa status penolakan (403/404) tanpa langkah modul. */
     mentah: (method, path, siapa, body) => kirim(method, path, siapa, body),
+    /** Mengirim event webhook EliteMentor bertanda tangan HMAC (tanpa sesi pengguna). Respons mentah. */
+    webhookEm(rahasia, event) {
+      const body = JSON.stringify(event);
+      const ts = String(Math.floor(Date.now() / 1000));
+      return request(app).post('/api/integrations/elitementor/webhook').set('Content-Type', 'application/json')
+        .set('X-EM-Timestamp', ts).set('X-EM-Signature', sign(rahasia, ts, body)).send(body);
+    },
     /** Menunggu job analisis yang sedang antre selesai (dipicu saat sesi ditutup). */
     tungguAnalisis: () => app.locals.analysis.drain(),
     async buatProyek(hr, nama) {
@@ -86,6 +126,36 @@ function langkah(app, masuk) {
       },
       async tempatkan(hr, pengguna, role, level = role.levels[0]) {
         await kirim('put', `/api/dna/employees/${pengguna.id}/position`, hr, { jobRoleId: role.id, careerLevelId: level.id }).expect(200);
+      },
+      /**
+       * Impor file DNA lewat layar impor: unggah CSV (`baris` = baris teks, baris pertama judul kolom) dengan
+       * saran pemetaan, lalu simpan dengan `opsi`. Mengembalikan ringkasan batch ({ status, result }).
+       */
+      async impor(hr, jenis, baris, opsi = {}) {
+        const up = await request(app).post(`/api/dna/imports/${jenis}?filename=${jenis}.csv`).set(await masuk(hr))
+          .set('Content-Type', 'application/octet-stream').send(Buffer.from(`${baris.join('\n')}\n`)).expect(201);
+        return (await kirim('post', `/api/dna/imports/batches/${up.body.data.id}/commit`, hr, { options: opsi }).expect(200)).body.data;
+      },
+      /** B4: kamus per jabatan beserta job function (flag dna.development). */
+      async kamus(siapa, roleId) {
+        return (await kirim('get', `/api/dna/job-roles/${roleId}/dictionary`, siapa).expect(200)).body.data;
+      },
+      /** B4: HR mengesahkan kamus jabatan. Mengembalikan { approved }. */
+      async sahkanKamus(hr, roleId) {
+        return (await kirim('post', `/api/dna/job-roles/${roleId}/dictionary/approve`, hr).expect(200)).body.data;
+      },
+      /** B4 Developmental Needs. Respons mentah, karena alurnya juga memeriksa penolakan per peran. */
+      pengembangan: {
+        ringkasan: (siapa, roleId) => kirim('get', `/api/dna/development/overview${roleId ? `?jobRoleId=${roleId}` : ''}`, siapa),
+        kebutuhan: (siapa, roleId) => kirim('get', `/api/dna/development/employees?jobRoleId=${roleId}`, siapa),
+        rencana: (siapa, pegawai) => kirim('get', `/api/dna/employees/${pegawai.id}/development-plan`, siapa),
+      },
+      /** B16 Career & Promotion (flag promotion.recommendation). Respons mentah. */
+      karier: {
+        peta: (siapa) => kirim('get', '/api/dna/career/map', siapa),
+        keputusan: (siapa) => kirim('get', '/api/dna/career/decisions', siapa),
+        putusanAtasan: (atasan, karyawan, decision, note) => kirim('post', `/api/dna/career/decisions/${karyawan.id}/supervisor`, atasan, { decision, note }),
+        putusanHr: (hr, karyawan, decision, note) => kirim('post', `/api/dna/career/decisions/${karyawan.id}/hr`, hr, { decision, note }),
       },
     },
     tna: {
@@ -132,6 +202,83 @@ function langkah(app, masuk) {
         return (await kirim('get', `/api/tna/findings?projectId=${projectId}`, siapa).expect(200)).body.data;
       },
       transkrip: (siapa, sid) => kirim('get', `/api/tna/sessions/${sid}/transcript`, siapa),
+      /** B6: membaca ringkasan (hanya orang yang diwawancarai) dan mengulang wawancara. Respons mentah. */
+      bacaRingkasan: (siapa, sid) => kirim('get', `/api/tna/sessions/${sid}/summary`, siapa),
+      ulangi: (karyawan, sid) => kirim('post', `/api/tna/sessions/${sid}/restart`, karyawan),
+      async sesiSaya(karyawan) {
+        return (await kirim('get', '/api/tna/sessions', karyawan).expect(200)).body.data;
+      },
+      async sesi(siapa, sid) {
+        return (await kirim('get', `/api/tna/sessions/${sid}`, siapa).expect(200)).body.data;
+      },
+    },
+    /** B5 (flag tna.gap_board, tna.interview_assignment): papan gap dan penugasan wawancara dari satu gap. */
+    gap: {
+      async okr(siapa, period) {
+        return (await kirim('get', `/api/tna/gaps/okr${period ? `?period=${period}` : ''}`, siapa).expect(200)).body.data.rows;
+      },
+      async ringkasan(siapa) {
+        return (await kirim('get', '/api/tna/gaps/summary', siapa).expect(200)).body.data;
+      },
+      async detail(siapa, ref) {
+        return (await kirim('get', `/api/tna/gaps/detail?${new URLSearchParams(ref)}`, siapa).expect(200)).body.data;
+      },
+      /** Referensi gap dari baris papan (sama dengan gapRefOf di layar). */
+      refDari: (row) => (row.kind === 'competency' ? { kind: 'competency', competencyId: row.competencyId } : { kind: 'okr', metricType: row.metricType, name: row.name, period: row.period }),
+      tugaskan: (siapa, body) => kirim('post', '/api/tna/assignments', siapa, body),
+      batalkan: (siapa, sid) => kirim('post', `/api/tna/assignments/${sid}/cancel`, siapa),
+    },
+    li: {
+      /** B13: unggah lalu commit CSV library modul KSA (baris tanpa header). Mengembalikan ringkasan hasil impor. */
+      imporModul: (hr, baris) => imporCsv(hr, 'li', 'li_modules', 'Kode Modul,Nama Modul,Level,Rumpun,Tujuan,Jabatan,Kompetensi,Tipe Butir,Butir', baris),
+      /** Katalog course Moodle (impor PK-18 lewat TNA), sumber `catalogItemId` saat modul dipasang. Baris: 'Kode,Judul'. */
+      async imporCourse(hr, baris) {
+        await imporCsv(hr, 'tna', 'catalog_courses', 'Kode Course,Judul Course', baris);
+        return (await kirim('get', '/api/li/catalog', hr).expect(200)).body.data;
+      },
+      /** Library modul (body lengkap: data, kpis, pareto). `query` contoh: 'priority=pareto'. */
+      async pustaka(siapa, query = '') {
+        return (await kirim('get', `/api/li/modules${query ? `?${query}` : ''}`, siapa).expect(200)).body;
+      },
+      async minta(hr, moduleId) {
+        return (await kirim('post', `/api/li/modules/${moduleId}/request`, hr, {}).expect(201)).body.data;
+      },
+      /** Memajukan permintaan vendor satu langkah ({ status, catalogItemId? }). */
+      async majukan(hr, requestId, body) {
+        return (await kirim('patch', `/api/li/requests/${requestId}`, hr, body).expect(200)).body.data;
+      },
+    },
+    ld: {
+      /** B14: pelatihan offline isian HR ({ title, startsOn, venue?, ... }). */
+      async buatPelatihan(hr, body) {
+        return (await kirim('post', '/api/ld/trainings', hr, body).expect(201)).body.data;
+      },
+      /** Daftar pelatihan; membaca daftar juga menyinkronkan pelatihan online dari katalog LMS. */
+      async daftar(hr, query = '') {
+        return (await kirim('get', `/api/ld/trainings${query ? `?${query}` : ''}`, hr).expect(200)).body.data;
+      },
+      async detail(hr, id) {
+        return (await kirim('get', `/api/ld/trainings/${id}`, hr).expect(200)).body.data;
+      },
+      /** Menambah peserta ({ userIds?, jobRoleId? }). */
+      async tambahPeserta(hr, id, body) {
+        return (await kirim('put', `/api/ld/trainings/${id}/participants`, hr, body).expect(200)).body.data;
+      },
+      async kehadiran(hr, id, entries) {
+        return (await kirim('put', `/api/ld/trainings/${id}/attendance`, hr, { entries }).expect(200)).body.data;
+      },
+      /** Cara asesmen ({ mode: 'vendor_manual' } atau { mode: 'elitementor', assessmentRef }). */
+      async asesmen(hr, id, body) {
+        return (await kirim('put', `/api/ld/trainings/${id}/assessment`, hr, body).expect(200)).body.data;
+      },
+      async skor(hr, id, entries) {
+        return (await kirim('put', `/api/ld/trainings/${id}/scores`, hr, { entries }).expect(200)).body.data;
+      },
+      async dashboard(hr) {
+        return (await kirim('get', '/api/ld/dashboard', hr).expect(200)).body.data;
+      },
+      /** Respons mentah: 201 terkirim; 409 REMINDER_RECENT (dalam 24 jam) atau INVALID_STATE (selesai/batal); 400 tanpa penerima. */
+      pengingat: (hr, id) => kirim('post', `/api/ld/trainings/${id}/reminders`, hr),
     },
   };
 }
@@ -149,4 +296,4 @@ async function siapkanTenantKenari(db, a, slug) {
   return { id: t.id, projectId };
 }
 
-module.exports = { siapkanTenant, tambahPengguna, pembuatMasuk, hapusTenant, langkah, siapkanTenantKenari, kodeGalat };
+module.exports = { siapkanTenant, selamaMati, nyalakanFlag, tambahPengguna, pembuatMasuk, hapusTenant, langkah, siapkanTenantKenari, kodeGalat };

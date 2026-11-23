@@ -1,4 +1,5 @@
 'use strict';
+const { isFrozen } = require('./frozen-sql');
 // B9 Improvement Needs: tindakan perbaikan dan verifikasi AI. Setiap query memfilter tenant_id; id dari klien
 // selalu dicari ulang dalam tenant. Teks bebas dienkripsi per tenant (R2-3).
 const { QueryTypes } = require('sequelize');
@@ -151,7 +152,8 @@ function createInaStores(sequelize, { cipher } = {}) {
     /** Temuan untuk dijadikan tindakan: harus milik tenant ini. */
     async finding(tenantId, id) {
       return one(`SELECT f.id, f.category, f.user_id AS "userId", f.competency_id AS "competencyId",
-                         f.performance_record_id AS "performanceRecordId", f.review_status AS "reviewStatus", f.status
+                         f.performance_record_id AS "performanceRecordId", f.review_status AS "reviewStatus", f.status,
+                         ${isFrozen('f')} AS frozen
                     FROM lna_findings f WHERE f.tenant_id = :tenantId AND f.id = :id`, { tenantId, id });
     },
     async competencyName(tenantId, id) {

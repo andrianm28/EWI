@@ -184,6 +184,8 @@ module.exports = {
       if (has(body, 'findingId') && body.findingId !== null) {
         finding = isUuid(body.findingId) ? await db.finding(req.tenantId, body.findingId) : null;
         if (!finding) throw badRequest('Temuan tidak ditemukan di organisasi ini');
+        // keputusan user 19 Nov: temuan dari wawancara yang persetujuannya ditarik dibekukan
+        if (finding.frozen) throw conflict('CONSENT_WITHDRAWN', 'Karyawan menarik persetujuan wawancara ini. Temuan dan rencananya dibekukan.');
         if (finding.category !== 'non_training') throw badRequest('Hanya temuan di luar pelatihan yang bisa dijadikan tindakan perbaikan');
         if (!['approved', 'edited'].includes(finding.reviewStatus)) throw badRequest('Temuan ini belum ditinjau HR');
         // temuan wawancara selalu berasal dari satu karyawan: HR wajib memutuskan apakah tindakannya menyangkut individu
