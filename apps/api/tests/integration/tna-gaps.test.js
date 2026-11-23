@@ -125,6 +125,15 @@ run('B5 Training Needs: gap dan penugasan (Postgres)', () => {
     await flag(T.other.id, 'tna.interview_assignment', true);
   });
 
+  it('R-1 (keputusan user 23 Nov): undangan massal lama ditolak saat penugasan dari gap menyala, tanpa sesi baru', async () => {
+    const before = (await sessionsOf(T.main.projectId)).length;
+    const res = await request(app).post(`/api/tna/projects/${T.main.projectId}/interviews`).set(as('hr')).send({ scope: 'red_only' });
+    expect(res.status).toBe(409);
+    expect(res.body.error.code).toBe('LEGACY_FLOW_RETIRED');
+    expect(res.body.error.message).toMatch(/Training Needs/);
+    expect((await sessionsOf(T.main.projectId)).length).toBe(before);
+  });
+
   it('karyawan (learner) ditolak di semua endpoint gap dan penugasan', async () => {
     for (const path of ['/api/tna/gaps/summary', '/api/tna/gaps/competencies', '/api/tna/gaps/okr', `/api/tna/gaps/detail?${okrQuery}`]) {
       const res = await request(app).get(path).set(as('a'));
