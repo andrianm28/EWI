@@ -66,7 +66,7 @@ services:
       KMS_REGION: ap-southeast-1
       MAIL_PROVIDER: ses
       MAIL_REGION: ap-southeast-1
-      # PD-1 A (PK-06): AI teks lewat Bedrock in-region Singapura; BEDROCK_MODEL_ID di .env
+      # PD-1 A (PK-06): AI teks lewat Bedrock endpoint Singapura (profil global Sonnet 5.5, 23 Nov); BEDROCK_MODEL_ID di .env
       AI_PROVIDER: bedrock
       BEDROCK_REGION: ap-southeast-1
       AWS_REGION: ap-southeast-1
