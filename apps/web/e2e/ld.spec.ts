@@ -18,7 +18,7 @@ const people: { userId: string; name: string; email: string; jobRoleName: string
   { userId: 'u-r', name: 'Rina', email: 'rina@demo.test', jobRoleName: 'Engineer', status: 'enrolled', attendance: null, score: null, scoreSource: null },
 ]
 
-async function setup(page: Page, calls: { method: string; url: string; body: unknown }[] = []) {
+async function setup(page: Page, calls: { method: string; url: string; body: unknown }[] = [], opts: { webhookSync?: boolean } = {}) {
   const user = { id: 'u-1', tenantId: 't-1', email: 'hr@demo.test', role: 'hr_admin' }
   await page.route('**/api/auth/tenants', (r) => r.fulfill({ json: { data: [] } }))
   // PK-16: form kata sandi hanya tampil bila API mengizinkan (dev/staging)
@@ -46,7 +46,7 @@ async function setup(page: Page, calls: { method: string; url: string; body: unk
       } } })
     }
     if (path === '/trainings' && req.method() === 'GET') return r.fulfill({ json: { data: [ONLINE, OFFLINE, ...created] } })
-    if (path === '/options') return r.fulfill({ json: { data: { vendorName: 'Mahaka Institute', storageReady: true, webhookSync: false, jobRoles: [{ id: 'jr-1', name: 'Engineer', people: 2 }], employees: [{ id: 'u-s', name: 'Sari', email: 's@demo.test', jobRoleName: null }] } } })
+    if (path === '/options') return r.fulfill({ json: { data: { vendorName: 'Mahaka Institute', storageReady: true, webhookSync: opts.webhookSync ?? false, jobRoles: [{ id: 'jr-1', name: 'Engineer', people: 2 }], employees: [{ id: 'u-s', name: 'Sari', email: 's@demo.test', jobRoleName: null }] } } })
     if (path === '/trainings' && req.method() === 'POST') { const t = { ...OFFLINE, id: 't-3', title: body.title }; created.push(t); return r.fulfill({ status: 201, json: { data: t } }) }
     if (path === '/trainings/t-1' && req.method() === 'PATCH') return r.fulfill({ json: { data: ONLINE } })
     if (path === '/trainings/t-1/reminders') return r.fulfill({ status: 201, json: { data: { recipients: 3, sent: 3, failed: 0 } } })
@@ -226,4 +226,57 @@ test('P7 LD-9/11/12/13/14/15: offline berkartu, kelengkapan berdetail, peserta, 
   await expect(d.getByRole('button', { name: 'Unggah foto atau video' })).toBeVisible()
   await page.getByLabel('Pilih berkas foto atau video').setInputFiles({ name: 'klip.mp4', mimeType: 'video/mp4', buffer: Buffer.from([0, 0, 0, 0]) })
   await expect.poll(() => calls.find((c) => c.url.includes('/documents'))?.url).toContain('kind=video&filename=klip.mp4')
+})
+
+test('triase P7: info halaman di role=status; Lihat saran memindah fokus ke judul Saran tindakan', async ({ page }) => {
+  await setup(page)
+  const SOON_ONLINE = { ...ONLINE, id: 't-4', title: 'Kelas Cloud', group: 'upcoming', status: 'scheduled', startsOn: '2026-12-01', endsOn: '2026-12-05', progressPct: 0, health: 'on_track' }
+  await page.route(/\/api\/ld\/trainings$/, (r) => r.fulfill({ json: { data: [ONLINE, OFFLINE, SOON_ONLINE] } }))
+  await page.goto('/ld')
+  await page.getByRole('button', { name: 'Kirim pengingat' }).click()
+  await expect(page.getByRole('status').filter({ hasText: 'Pengingat dikirim ke 3 dari 3 peserta.' })).toBeVisible()
+  await page.getByRole('tab', { name: 'Akan datang' }).click()
+  await page.getByRole('button', { name: 'Lihat saran Kelas Cloud' }).click()
+  await expect(page.getByRole('tab', { name: 'Ringkasan' })).toHaveAttribute('aria-selected', 'true')
+  await expect(page.getByRole('heading', { level: 2, name: 'Saran tindakan untuk HR' })).toBeFocused()
+})
+
+test('triase P7: asesmen lewat EliteMentor, ubah peserta, tandai selesai dan batalkan dari Kelola pelatihan', async ({ page }) => {
+  const calls: { method: string; url: string; body: unknown }[] = []
+  await setup(page, calls, { webhookSync: true })
+  await page.goto('/ld')
+  await page.getByRole('tab', { name: 'Pelatihan offline' }).click()
+  const d = page.getByTestId('detail-pelatihan')
+  await expect(d).toContainText('Workshop RCA')
+  // EliteMentor: tombol membuka kolom kode (aria-expanded) dan memindah fokus ke sana
+  const em = d.getByRole('button', { name: 'Jalankan lewat EliteMentor' })
+  await expect(em).toHaveAttribute('aria-expanded', 'false')
+  await em.click()
+  await expect(em).toHaveAttribute('aria-expanded', 'true')
+  await expect(d.getByLabel('Kode asesmen di EliteMentor')).toBeFocused()
+  await d.getByLabel('Kode asesmen di EliteMentor').fill('EM-77')
+  await d.getByRole('button', { name: 'Simpan kode asesmen' }).click()
+  await expect.poll(() => calls.find((c) => c.url.endsWith('/assessment'))?.body).toEqual({ mode: 'elitementor', assessmentRef: 'EM-77' })
+  // Ubah daftar peserta: tambah per jabatan dan per orang
+  await d.getByText('Ubah daftar peserta').click()
+  await d.getByLabel('Tambah per jabatan').selectOption('jr-1')
+  await d.getByRole('button', { name: 'Tambah semua' }).click()
+  await expect.poll(() => calls.filter((c) => c.url.endsWith('/participants')).map((c) => c.body)).toEqual([{ jobRoleId: 'jr-1' }])
+  await d.getByLabel('Tambah karyawan').selectOption('u-s')
+  await d.getByRole('button', { name: 'Tambah', exact: true }).click()
+  await expect.poll(() => calls.filter((c) => c.url.endsWith('/participants')).map((c) => c.body)).toEqual([{ jobRoleId: 'jr-1' }, { userIds: ['u-s'] }])
+  // Kelola pelatihan
+  await d.getByText('Kelola pelatihan').click()
+  await d.getByRole('button', { name: 'Tandai selesai' }).click()
+  await expect.poll(() => calls.filter((c) => c.method === 'PATCH').map((c) => c.body)).toContainEqual({ status: 'done', sessionsDone: 1 })
+  await d.getByRole('button', { name: 'Batalkan pelatihan' }).click()
+  await expect.poll(() => calls.filter((c) => c.method === 'PATCH').map((c) => c.body)).toContainEqual({ status: 'cancelled' })
+  // LD-12 copy mockup: judul Materi pelatihan, Ubah untuk peserta, Tambah untuk dokumentasi, sub jabatan
+  const rows = d.getByRole('list', { name: 'Kelengkapan data' })
+  await expect(rows.getByRole('listitem').filter({ hasText: 'Materi pelatihan' })).toHaveCount(1)
+  await expect(rows.getByRole('listitem').filter({ hasText: 'Daftar peserta' })).toContainText('2 peserta dari jabatan Engineer')
+  await expect(rows.getByRole('button', { name: 'Ubah Daftar peserta' })).toBeVisible()
+  await expect(rows.getByRole('button', { name: 'Tambah Dokumentasi' })).toBeVisible()
+  // materi PDF diakui di copy unggah
+  await expect(d).toContainText('Materi pelatihan (PDF) juga bisa diunggah')
 })

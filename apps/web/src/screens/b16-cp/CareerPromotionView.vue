@@ -177,7 +177,7 @@ function ruleFor(i: number): string {
           </div>
           <UiDataTable :columns="MAP_COLUMNS" :rows="people" row-key="id" caption="Karyawan dan status jenjang" caption-hidden empty-text="Belum ada karyawan.">
             <!-- CP-4 / K-P7-3: baris dipilih lewat tombol nama (keyboard), baris terpilih disorot -->
-            <template #cell-name="{ row }"><button type="button" class="cp-pick" :aria-pressed="row.id === selected" :aria-label="`Pilih ${row.name ?? ''}`" @click="selected = String(row.id)">{{ row.name ?? '(tanpa nama)' }}</button><div class="el-muted" style="font-size:12px">{{ row.jobRoleName ?? 'Tanpa jabatan' }}</div></template>
+            <template #cell-name="{ row }"><button type="button" class="cp-pick" :aria-current="row.id === selected ? 'true' : undefined" :aria-label="`Pilih ${row.name ?? ''}`" @click="selected = String(row.id)">{{ row.name ?? '(tanpa nama)' }}</button><div class="el-muted" style="font-size:12px">{{ row.jobRoleName ?? 'Tanpa jabatan' }}</div></template>
             <template #cell-division="{ value }">{{ value ?? 'Tanpa divisi' }}</template>
             <template #cell-level="{ row }"><UiChip v-if="row.level" tone="training">{{ row.level.name }}</UiChip><span v-else class="el-muted">–</span></template>
             <template #cell-programs="{ row }">
@@ -262,7 +262,7 @@ function ruleFor(i: number): string {
                 </span>
                 <!-- CP-10: catatan audit dipertahankan di pola sekunder -->
                 <details class="cp-note">
-                  <summary>Tambah catatan</summary>
+                  <summary>Tambah catatan<span class="el-sr-only"> untuk {{ row.employee.name }}</span></summary>
                   <label class="el-sr-only" :for="`note-${row.id}`">Catatan untuk {{ row.employee.name }}</label>
                   <input :id="`note-${row.id}`" v-model="notes[row.id]" class="el-input" maxlength="2000" placeholder="Catatan (opsional)" />
                 </details>
@@ -286,7 +286,7 @@ function ruleFor(i: number): string {
 .cp-pick { border: 0; background: none; padding: 0; font: inherit; font-weight: 500; color: inherit; cursor: pointer; text-align: left; }
 .cp-pick:hover { text-decoration: underline; }
 /* baris terpilih latar abu (mockup #ECEFF5) */
-[data-testid='cp-map'] tr:has(.cp-pick[aria-pressed='true']) td { background: var(--el-surface-2); }
+[data-testid='cp-map'] tr:has(.cp-pick[aria-current='true']) td { background: var(--el-surface-2); }
 .cp-note > summary { cursor: pointer; color: var(--el-primary); font-size: 13px; }
 .cp-note .el-input { margin-top: 6px; }
 </style>

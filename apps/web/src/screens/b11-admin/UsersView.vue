@@ -5,6 +5,7 @@ import AppShell from '@/components/AppShell.vue'
 import { ApiError } from '@/api/client'
 import { tenantAdmin, type AdminUser, type JobRole, type RoleOption } from '@/api/tenantAdmin'
 import { useSessionStore } from '@/stores/session'
+import AdminLinks from './AdminLinks.vue'
 import { UiButton, UiCard, UiChip, UiDataTable, UiErrorSummary, UiField, UiNote, UiStatus, type UiColumn, type UiSortState } from '@/ui'
 
 const session = useSessionStore()
@@ -112,6 +113,7 @@ const setStatus = (u: AdminUser, status: 'active' | 'disabled') => act(async () 
 
 <template>
   <AppShell>
+    <AdminLinks current="users" />
     <h1 class="el-h1">Pengguna &amp; peran</h1>
     <p class="el-muted adm__lead">Admin tenant mengelola akun dan peran di perusahaannya saja. Data tidak terlihat oleh tenant lain.</p>
 

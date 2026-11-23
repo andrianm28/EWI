@@ -10,7 +10,7 @@ export const HEALTH: Record<Health, { text: string; tone: Tone }> = {
 export const MODE: Record<Training['mode'], { text: string; tone: Tone }> = { online: { text: 'Online', tone: 'training' }, offline: { text: 'Offline', tone: 'improvement' } }
 export const TIER_LABEL: Record<string, string> = { basic: 'Basic', intermediate: 'Intermediate', advanced: 'Advanced' }
 export const CHECK_LABEL: Record<CheckKey, string> = {
-  schedule: 'Jadwal dan tempat', materials: 'Materi', participants: 'Daftar peserta', attendance: 'Daftar kehadiran', assessment: 'Asesmen dan hasil', documentation: 'Dokumentasi',
+  schedule: 'Jadwal dan tempat', materials: 'Materi pelatihan', participants: 'Daftar peserta', attendance: 'Daftar kehadiran', assessment: 'Asesmen dan hasil', documentation: 'Dokumentasi',
 }
 export const CHECK_SHORT: Record<CheckKey, string> = { schedule: 'Jadwal', materials: 'Materi', participants: 'Peserta', attendance: 'Kehadiran', assessment: 'Asesmen', documentation: 'Dokumentasi' }
 export const ASSESSMENT: Record<AssessmentStatus, { label: string; text: string }> = {

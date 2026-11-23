@@ -50,6 +50,8 @@ const kpis = computed(() => {
 })
 // CV-2 / K-P7-4: ambang hijau/merah skor per nilai = band tertinggi program (mis. Strong Culture Alignment), atau nilai lulus
 const valueTarget = computed(() => Math.max(program.value?.config.passScore ?? 0, ...(program.value?.config.bands ?? []).map((b) => b.min)))
+// tanpa skor (belum ada peserta selesai) bar netral, bukan hijau atau merah
+const valueTone = (avg: number | null) => (avg == null ? 'primary' : avg >= valueTarget.value ? 'success' : 'critical')
 const statusTone = (k: string) => (k === 'not_passed' ? 'critical' : k === 'in_progress' ? 'review' : 'success')
 const empty = computed(() => !!report.value && report.value.kpis.registered === 0)
 
@@ -124,7 +126,7 @@ const divisionRows = computed(() => (report.value?.divisions ?? []).map((d) => (
             <h3 class="el-h3">Skor per nilai (peserta yang selesai)</h3>
             <div v-for="v in report.values" :key="v.name" class="cc-meter">
               <div class="cc-row"><b>{{ v.name }}</b><span class="el-mono">{{ fmt(v.avgCompleted) }} <span class="el-muted">· semua peserta {{ fmt(v.avgAll) }}</span></span></div>
-              <UiProgressBar :value="v.avgCompleted ?? 0" :tone="(v.avgCompleted ?? 0) >= valueTarget ? 'success' : 'critical'" :label="`Skor ${v.name}`" />
+              <UiProgressBar :value="v.avgCompleted ?? 0" :tone="valueTone(v.avgCompleted)" :label="`Skor ${v.name}`" />
             </div>
             <div class="el-muted cc-small" style="margin-top: 8px">Skor semua peserta lebih rendah karena kegiatan yang belum selesai dihitung 0.</div>
           </UiCard>

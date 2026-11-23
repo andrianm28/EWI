@@ -190,3 +190,11 @@ test('sesi selesai yang persetujuannya kemudian ditarik juga menyebut penarikan'
   await expect(page.getByText('Persetujuan Anda untuk wawancara ini sudah ditarik.')).toBeVisible()
   await expect(page.getByText('Ringkasan sudah dikirim ke HR untuk ditinjau.')).toHaveCount(0)
 })
+
+test('triase P7: penghitung pertanyaan tidak melewati batas walau AI mengirim penutup', async ({ page }) => {
+  const turns = Array.from({ length: 11 }, (_, i) => ({ speaker: (i % 2 ? 'human' : 'ai') as 'ai' | 'human', text: i % 2 ? `Jawaban ${i}` : `Tanya ${i}`, at: '' }))
+  await setup(page, { state: { status: 'in_progress', turns } })
+  await page.goto('/iv/s1')
+  await expect(page.getByText('Pertanyaan 5 dari 5')).toBeVisible()
+  await expect(page.getByText('Pertanyaan 6 dari 5')).toHaveCount(0)
+})

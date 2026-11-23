@@ -1,6 +1,6 @@
 <script setup lang="ts">
 // Learning Delivery (mockup Pak Eji, layar `ld`): Ringkasan, Sedang berjalan, Akan datang, Pelatihan offline.
-import { computed, onMounted, ref } from 'vue'
+import { computed, nextTick, onMounted, ref } from 'vue'
 import AppShell from '@/components/AppShell.vue'
 import { ApiError } from '@/api/client'
 import { UiBreadcrumb, UiButton, UiCard, UiChip, UiDataTable, UiField, UiKpiCard, UiNote, UiProgressBar, UiSegmented, UiTabs, type UiColumn } from '@/ui'
@@ -58,6 +58,7 @@ function readinessTip(t: Training) {
 }
 /** Subjudul baris akan datang (LD-8): vendor · tempat. */
 const soonSub = (t: Training) => [t.vendorName ?? SOURCE_LABEL[t.source], t.venue ?? (t.mode === 'offline' ? 'tempat belum diisi' : null)].filter(Boolean).join(' · ')
+async function toSaran() { tab.value = 'ringkasan'; await nextTick(); document.getElementById('ld-saran')?.focus() }
 function open(id: string) { openId.value = id; tab.value = 'offline' }
 async function runAction(a: Dashboard['actions'][number]) {
   const t = rows.value.find((x) => x.id === a.trainingId)
@@ -77,7 +78,7 @@ async function runAction(a: Dashboard['actions'][number]) {
     <h1 class="el-h1">Learning Delivery</h1>
     <p class="el-muted ld-sub">Pelatihan yang sedang dan akan berjalan. Pelatihan online diambil otomatis dari ELGOS, EliteMentor, atau LMS; pelatihan offline diinput ke ELGOS.</p>
     <UiNote v-if="error" tone="critical" data-testid="galat">{{ error }}</UiNote>
-    <UiNote v-if="notice" tone="success" data-testid="info">{{ notice }}</UiNote>
+    <div v-if="notice" role="status"><UiNote tone="success" data-testid="info">{{ notice }}</UiNote></div>
     <UiTabs id="ld" v-model="tab" :tabs="TABS" label="Bagian Learning Delivery" class="ld-gap" />
 
     <div v-if="tab === 'ringkasan' && dash" id="ld-panel-ringkasan" role="tabpanel" aria-labelledby="ld-tab-ringkasan">
@@ -98,7 +99,7 @@ async function runAction(a: Dashboard['actions'][number]) {
           </div>
         </UiCard>
         <UiCard as="section" aria-label="Saran tindakan untuk HR">
-          <h2 class="el-h3">Saran tindakan untuk HR</h2>
+          <h2 id="ld-saran" class="el-h3" tabindex="-1">Saran tindakan untuk HR</h2>
           <p v-if="!dash.actions.length" class="el-muted">Belum ada saran tindakan.</p>
           <div v-for="a in dash.actions" :key="a.key" class="ld-item ld-row">
             <div class="ld-min"><p class="ld-strong">{{ a.title }}</p><p class="el-muted ld-xs">{{ a.detail }}</p></div>
@@ -149,7 +150,7 @@ async function runAction(a: Dashboard['actions'][number]) {
         </template>
         <template #cell-aksi="{ row }">
           <UiButton v-if="asTraining(row).source === 'manual'" variant="tonal" size="sm" @click="open(asTraining(row).id)">Kelola<span class="el-sr-only"> {{ asTraining(row).title }}</span></UiButton>
-          <UiButton v-else variant="tonal" size="sm" @click="tab = 'ringkasan'">Lihat saran<span class="el-sr-only"> {{ asTraining(row).title }}</span></UiButton>
+          <UiButton v-else variant="tonal" size="sm" @click="toSaran">Lihat saran<span class="el-sr-only"> {{ asTraining(row).title }}</span></UiButton>
         </template>
       </UiDataTable>
     </div>

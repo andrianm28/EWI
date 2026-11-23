@@ -117,7 +117,7 @@ test('2. Buat tenant: Periksa memberi slug, slug ganda diperingatkan, simpan, un
   await expect(page.getByTestId('slug-hasil')).toContainText('pt-contoh-baru')
   await page.getByRole('button', { name: 'Buat tenant', exact: true }).click()
   await expect(page.getByRole('status')).toContainText('email undangan gagal terkirim')
-  await expect(page.getByRole('status').locator('.el-note--success')).toBeVisible()
+  await expect(page.getByRole('status').locator('.el-note--warning')).toBeVisible()
   const row = page.getByRole('table', { name: 'Daftar tenant' }).getByRole('row').filter({ hasText: 'PT Contoh Baru' })
   await expect(row).toContainText('Menunggu admin')
   await row.getByRole('button', { name: 'Kirim ulang undangan' }).click()
