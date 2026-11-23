@@ -1,5 +1,5 @@
 import { test, expect, type Page } from '@playwright/test'
-import { loginSebagai, semuaModulKecuali, SEMUA_MODUL, type Peran } from '../support/sesi'
+import { loginSebagai, semuaModulDengan, SEMUA_MODUL, type Peran } from '../support/sesi'
 
 // B18 4.4 (docs/designs/b18-e2e-qa-malam.md): batas akses di tingkat tampilan (router). Alamat yang dibuka langsung
 // tidak boleh membuka layar peran lain atau modul yang mati. Penegakan sesungguhnya ada di API (test integrasi paket).
@@ -59,7 +59,7 @@ const MODUL_MATI: { peran: Peran; flag: string; alamat: string[] }[] = [
 
 for (const k of MODUL_MATI) {
   test(`${k.peran}, flag ${k.flag} mati: alamat langsung ke layarnya dialihkan ke beranda`, async ({ page }) => {
-    await loginSebagai(page, k.peran, semuaModulKecuali({ [k.flag]: false }))
+    await loginSebagai(page, k.peran, semuaModulDengan({ [k.flag]: false }))
     await dialihkanKeBeranda(page, k.peran, k.alamat)
   })
 }

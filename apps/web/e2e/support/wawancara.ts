@@ -1,7 +1,8 @@
-import { cocok, type Penangan, type ResponsApi, type Terkirim } from './api'
+import { cocok, responsData as data, type Penangan, type ResponsApi, type Terkirim } from './api'
 
 // B6 Wawancara akar masalah: mock berstate untuk sesi s1, dipakai iv.spec.ts dan alur/jalur-utama.spec.ts.
-// Data karangan tangan mengikuti kontrak di docs/designs/b6-wawancara-akar-masalah.md, bukan fixture tangkapan.
+// Data karangan tangan mengikuti kontrak di docs/designs/b6-wawancara-akar-masalah.md, bukan fixture tangkapan;
+// alur yang sama terhadap API sungguhan: apps/api/tests/integration/alur-gap-wawancara.test.js.
 
 export interface StateSesi {
   status: string; summaryAt: string | null; restartCount: number; summaryConfirmedAt: string | null; summaryDisputed: boolean
@@ -18,7 +19,7 @@ export interface OpsiSesiWawancara {
   summary?: ResponsApi
 }
 
-export const TEMUAN_RINGKASAN = [
+const TEMUAN_RINGKASAN = [
   { title: 'Belum paham langkah eskalasi insiden', detail: 'Mengaku belum pernah dilatih eskalasi.', category: 'training', confidence: 0.8 },
   { title: 'Alat pemantauan sering lambat', detail: 'Dasbor butuh 5 menit untuk dimuat.', category: 'non_training', confidence: null },
 ]
@@ -38,7 +39,6 @@ function summaryStateOf(s: StateSesi) {
 export function sesiWawancara(o: OpsiSesiWawancara): { penangan: Penangan; terkirim: Terkirim[] } {
   const terkirim: Terkirim[] = []
   const s: StateSesi = { status: 'scheduled', summaryAt: null, restartCount: 0, summaryConfirmedAt: null, summaryDisputed: false, turns: [], ...o.state }
-  const data = (d: unknown, status = 200): ResponsApi => ({ status, json: { data: d } })
   const ringkasan = () => ({ findings: TEMUAN_RINGKASAN, createdAt: s.summaryAt, confirmedAt: null, state: 'pending' })
   const penangan: Penangan = (req) => {
     if (cocok(req, 'GET /tna/sessions')) return data([

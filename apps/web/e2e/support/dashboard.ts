@@ -1,3 +1,5 @@
+import { cocok, responsData, type Penangan } from './api'
+
 // B3 Dashboard utama (HR): respons GET /api/dashboard, dipakai dashboard.spec.ts dan alur/jalur-utama.spec.ts.
 // Data karangan tangan mengikuti kontrak di docs/designs/b3-dashboard.md, bukan fixture tangkapan.
 
@@ -34,3 +36,6 @@ export const DASHBOARD_HR = {
     { key: 'competencies_unapproved', count: 3 },
   ],
 }
+
+/** Penangan GET /api/dashboard dengan DASHBOARD_HR. */
+export const penanganDashboardHr: Penangan = (req) => (cocok(req, 'GET /dashboard') ? responsData(DASHBOARD_HR) : undefined)

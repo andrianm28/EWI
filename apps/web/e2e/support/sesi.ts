@@ -82,8 +82,8 @@ export const SEMUA_MODUL: OpsiSesi = {
   },
 }
 
-/** SEMUA_MODUL dengan beberapa flag ditimpa, mis. satu modul dimatikan. */
-export function semuaModulKecuali(flags: Record<string, boolean>, opsi: Omit<OpsiSesi, 'flags'> = {}): OpsiSesi {
+/** SEMUA_MODUL dengan beberapa flag ditimpa: satu modul dimatikan, atau flag fitur yang bawaannya mati dinyalakan. */
+export function semuaModulDengan(flags: Record<string, boolean>, opsi: Omit<OpsiSesi, 'flags'> = {}): OpsiSesi {
   return { ...opsi, flags: { ...SEMUA_MODUL.flags, ...flags } }
 }
 

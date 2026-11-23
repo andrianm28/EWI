@@ -1,19 +1,18 @@
 import { test, expect, type Page } from '@playwright/test'
-import { loginSebagai, type Peran } from './support/sesi'
-import { mockApi, permintaanBelumDimock, type ResponsApi } from './support/api'
-import { papanGapTna, C1, E1, P1 } from './support/tna-gap'
+import { loginSebagai } from './support/sesi'
+import { mockApi, permintaanBelumDimock } from './support/api'
+import { papanGapTna, ID_KOMPETENSI, ID_DIMAS, ID_PROYEK, type OpsiPapanGap } from './support/tna-gap'
 
 // B5 Training Needs: papan gap, detail gap, dan penugasan wawancara. Spek: docs/designs/b5-training-needs.md bagian 16.
 // API di-mock; flag papan dan penugasan bawaan mati di produksi, di sini dinyalakan per test.
 
-interface Opts { peran?: Peran; flags?: Record<string, boolean>; assign?: ResponsApi; cancel?: ResponsApi }
+type Opts = Partial<OpsiPapanGap> & { flags?: Record<string, boolean> }
 
 /** Masuk lewat support/ B18 (loginSebagai + mockApi). Mengembalikan daftar permintaan tulis yang dikirim layar. */
-async function setup(page: Page, o: Opts = {}) {
-  const peran = o.peran ?? 'hr'
-  const { penangan, terkirim } = papanGapTna({ peran, assign: o.assign, cancel: o.cancel })
+async function setup(page: Page, { peran = 'hr', flags, ...papan }: Opts = {}) {
+  const { penangan, terkirim } = papanGapTna({ ...papan, peran })
   await mockApi(page, penangan)
-  await loginSebagai(page, peran, { submodules: ['cca', 'dna', 'tna', 'ina'], flags: o.flags })
+  await loginSebagai(page, peran, { submodules: ['cca', 'dna', 'tna', 'ina'], flags })
   return terkirim
 }
 
@@ -77,7 +76,7 @@ test('HR: klik gap membuka detail, lalu tugaskan wawancara untuk karyawan terpil
   await form.getByRole('button', { name: 'Tugaskan wawancara' }).click()
   await expect(page.getByRole('status')).toContainText('1 wawancara ditugaskan')
   expect(sent.find((s) => s.path === '/assignments')?.body).toEqual({
-    projectId: P1, gap: { kind: 'competency', competencyId: C1 }, mode: 'affected', employeeIds: [E1], dueDate: '2026-12-05', durationMinutes: 15,
+    projectId: ID_PROYEK, gap: { kind: 'competency', competencyId: ID_KOMPETENSI }, mode: 'affected', employeeIds: [ID_DIMAS], dueDate: '2026-12-05', durationMinutes: 15,
   })
 })
 
@@ -86,7 +85,7 @@ test('HR: galat penugasan dari API ditampilkan', async ({ page }) => {
     flags: { ...BOARD, 'tna.interview_assignment': true },
     assign: { status: 400, json: { error: { code: 'DUE_DATE_OUT_OF_RANGE', message: 'Tenggat paling cepat besok dan paling lama 30 hari lagi' } } },
   })
-  await page.goto(`/tna/gap?kind=competency&competencyId=${C1}`)
+  await page.goto(`/tna/gap?kind=competency&competencyId=${ID_KOMPETENSI}`)
   const form = page.getByRole('form', { name: 'Tugaskan wawancara' })
   await form.getByLabel('Tenggat').fill('2026-12-05')
   await form.getByRole('button', { name: 'Tugaskan wawancara' }).click()
@@ -95,7 +94,7 @@ test('HR: galat penugasan dari API ditampilkan', async ({ page }) => {
 
 test('HR: tenggat kosong ditolak di peramban, galat menaut ke field', async ({ page }) => {
   const sent = await setup(page, { flags: { ...BOARD, 'tna.interview_assignment': true } })
-  await page.goto(`/tna/gap?kind=competency&competencyId=${C1}`)
+  await page.goto(`/tna/gap?kind=competency&competencyId=${ID_KOMPETENSI}`)
   const form = page.getByRole('form', { name: 'Tugaskan wawancara' })
   await form.getByRole('button', { name: 'Tugaskan wawancara' }).click()
   await expect(page.getByRole('alert').getByRole('link', { name: 'Pilih tenggat wawancara' })).toBeVisible()
@@ -105,7 +104,7 @@ test('HR: tenggat kosong ditolak di peramban, galat menaut ke field', async ({ p
 
 test('atasan: penugasan dari HR tidak bisa dibatalkan, tombol tinjauan HR tidak ada', async ({ page }) => {
   await setup(page, { peran: 'atasan', flags: { ...BOARD, 'tna.interview_assignment': true } })
-  await page.goto(`/tna/gap?kind=competency&competencyId=${C1}`)
+  await page.goto(`/tna/gap?kind=competency&competencyId=${ID_KOMPETENSI}`)
   await expect(page.getByRole('heading', { level: 1, name: 'Analisis insiden' })).toBeVisible()
   await expect(page.getByRole('link', { name: 'Langsung ke tinjauan HR' })).toHaveCount(0)
   await expect(page.getByRole('radio', { name: 'Semua karyawan di jabatan' })).toHaveCount(0)
@@ -117,7 +116,7 @@ test('HR membatalkan penugasan; penolakan API tampil di ringkasan galat', async 
     flags: { ...BOARD, 'tna.interview_assignment': true },
     cancel: { status: 409, json: { error: { code: 'INVALID_STATE', message: 'Wawancara sudah dimulai, penugasan tidak bisa dibatalkan' } } },
   })
-  await page.goto(`/tna/gap?kind=competency&competencyId=${C1}`)
+  await page.goto(`/tna/gap?kind=competency&competencyId=${ID_KOMPETENSI}`)
   await page.getByRole('button', { name: 'Batalkan penugasan Sari' }).click()
   await expect(page.getByRole('alert')).toContainText('Wawancara sudah dimulai')
   expect(sent.some((s) => s.path === '/api/tna/assignments/s-open/cancel')).toBe(true)
@@ -125,7 +124,7 @@ test('HR membatalkan penugasan; penolakan API tampil di ringkasan galat', async 
 
 test('flag penugasan mati: detail gap tanpa formulir penugasan', async ({ page }) => {
   await setup(page, { flags: BOARD })
-  await page.goto(`/tna/gap?kind=competency&competencyId=${C1}`)
+  await page.goto(`/tna/gap?kind=competency&competencyId=${ID_KOMPETENSI}`)
   await expect(page.getByRole('heading', { level: 1, name: 'Analisis insiden' })).toBeVisible()
   await expect(page.getByRole('form', { name: 'Tugaskan wawancara' })).toHaveCount(0)
 })

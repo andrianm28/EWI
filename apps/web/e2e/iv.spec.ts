@@ -1,19 +1,20 @@
 import { test, expect, type Page } from '@playwright/test'
 import { loginSebagai, type Peran } from './support/sesi'
-import { mockApi, permintaanBelumDimock, type ResponsApi } from './support/api'
-import { sesiWawancara, type StateSesi } from './support/wawancara'
+import { mockApi, permintaanBelumDimock } from './support/api'
+import { sesiWawancara, type OpsiSesiWawancara } from './support/wawancara'
 
 // B6 Wawancara akar masalah: daftar sesi dan alur persetujuan → wawancara → ringkasan → selesai.
 // Spek: docs/designs/b6-wawancara-akar-masalah.md bagian 15. API di-mock.
 
 const SUMMARY_ON = { 'tna.interview_summary': true }
 
+type Opts = Omit<OpsiSesiWawancara, 'pemilik'> & { peran?: Peran; flags?: Record<string, boolean> }
+
 /** Masuk lewat support/ B18 (loginSebagai + mockApi) dengan sesi s1 berstate. Mengembalikan permintaan tulis yang dikirim layar. */
-async function setup(page: Page, o: { peran?: Peran; flags?: Record<string, boolean>; state?: Partial<StateSesi>; interviewee?: boolean; summary?: ResponsApi } = {}) {
-  const peran = o.peran ?? 'karyawan'
-  const { penangan, terkirim } = sesiWawancara({ pemilik: `u-${peran}`, state: o.state, interviewee: o.interviewee, summary: o.summary })
+async function setup(page: Page, { peran = 'karyawan', flags, ...sesi }: Opts = {}) {
+  const { penangan, terkirim } = sesiWawancara({ ...sesi, pemilik: `u-${peran}` })
   await mockApi(page, penangan)
-  await loginSebagai(page, peran, { submodules: ['cca', 'dna', 'tna', 'ina'], flags: o.flags })
+  await loginSebagai(page, peran, { submodules: ['cca', 'dna', 'tna', 'ina'], flags })
   return terkirim
 }
 

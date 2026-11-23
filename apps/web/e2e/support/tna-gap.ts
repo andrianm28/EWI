@@ -1,13 +1,17 @@
-import { cocok, type Penangan, type ResponsApi, type Terkirim } from './api'
+import { cocok, responsData as data, type Penangan, type ResponsApi, type Terkirim } from './api'
 import { PERAN_API, type Peran } from './sesi'
 
 // B5 Training Needs: mock papan gap, detail gap, dan penugasan wawancara, dipakai tna-gap.spec.ts dan
-// alur/jalur-utama.spec.ts. Data karangan tangan mengikuti kontrak di docs/designs/b5-training-needs.md, bukan fixture tangkapan.
+// alur/jalur-utama.spec.ts. Data karangan tangan mengikuti kontrak di docs/designs/b5-training-needs.md, bukan fixture tangkapan;
+// alur yang sama terhadap API sungguhan: apps/api/tests/integration/alur-gap-wawancara.test.js.
 
-export const C1 = '11111111-1111-4111-8111-111111111111'
-export const E1 = 'e1111111-1111-4111-8111-111111111111'
-const E2 = 'e2222222-2222-4222-8222-222222222222'
-export const P1 = 'p1111111-1111-4111-8111-111111111111'
+/** Kompetensi Analisis insiden, satu-satunya baris gap kompetensi. */
+export const ID_KOMPETENSI = '11111111-1111-4111-8111-111111111111'
+/** Karyawan Dimas, bisa ditugaskan wawancara (Sari sudah punya sesi terbuka). */
+export const ID_DIMAS = 'e1111111-1111-4111-8111-111111111111'
+const ID_SARI = 'e2222222-2222-4222-8222-222222222222'
+/** Proyek aktif Pilot L1. */
+export const ID_PROYEK = 'p1111111-1111-4111-8111-111111111111'
 
 const SUMMARY = {
   period: '2026-11', periods: ['2026-11', '2026-10'],
@@ -15,7 +19,7 @@ const SUMMARY = {
   classification: { training: 1, non_training: 0, review: 1, pending: 1 }, unapprovedCompetencies: 2,
 }
 const COMP = {
-  key: `c:${C1}`, kind: 'competency', competencyId: C1, name: 'Analisis insiden', target: 3, actual: 2.25, gap: 0.75,
+  key: `c:${ID_KOMPETENSI}`, kind: 'competency', competencyId: ID_KOMPETENSI, name: 'Analisis insiden', target: 3, actual: 2.25, gap: 0.75,
   targetPct: 75, actualPct: 56, gapPct: 19, assessed: 4, peopleWithGap: 3, peopleTotal: 5, cumulativeShare: 0.41,
   classification: 'pending', interviewed: false, interviewedCount: 0, assignedCount: 1,
 }
@@ -30,9 +34,9 @@ const DETAIL = {
   hypotheses: [{ text: 'Materi pelatihan belum mencakup langkah ini.', verified: false }],
   jobRoles: ['Service Delivery L1'],
   employees: [
-    { id: E1, name: 'Dimas', jobRoleId: 'jr1', jobRoleName: 'Service Delivery L1', value: 2, target: 3, gap: 1, self: false, assignable: true, session: null },
-    { id: E2, name: 'Sari', jobRoleId: 'jr1', jobRoleName: 'Service Delivery L1', value: 2, target: 3, gap: 1, self: false, assignable: true,
-      session: { id: 's-open', status: 'scheduled', inviteExpiresAt: '2026-12-01T16:59:59.000Z', projectId: P1, assignedBy: 'u-hr', open: true } },
+    { id: ID_DIMAS, name: 'Dimas', jobRoleId: 'jr1', jobRoleName: 'Service Delivery L1', value: 2, target: 3, gap: 1, self: false, assignable: true, session: null },
+    { id: ID_SARI, name: 'Sari', jobRoleId: 'jr1', jobRoleName: 'Service Delivery L1', value: 2, target: 3, gap: 1, self: false, assignable: true,
+      session: { id: 's-open', status: 'scheduled', inviteExpiresAt: '2026-12-01T16:59:59.000Z', projectId: ID_PROYEK, assignedBy: 'u-hr', open: true } },
   ],
 }
 
@@ -47,7 +51,6 @@ export interface OpsiPapanGap {
 /** Penangan papan gap B5 dan pengelolaan TNA lama di halaman yang sama. Permintaan tulis dicatat di `terkirim`. */
 export function papanGapTna(o: OpsiPapanGap): { penangan: Penangan; terkirim: Terkirim[] } {
   const terkirim: Terkirim[] = []
-  const data = (d: unknown, status = 200): ResponsApi => ({ status, json: { data: d } })
   const penangan: Penangan = (req) => {
     if (cocok(req, 'GET /:sm/imports/templates') || cocok(req, 'GET /:sm/imports/batches')) return data([])
     // Pengelolaan TNA lama
@@ -55,7 +58,7 @@ export function papanGapTna(o: OpsiPapanGap): { penangan: Penangan; terkirim: Te
     if (cocok(req, 'GET /tna/findings')) return data([{ id: 'f1', userId: 'd', userName: 'Dimas', title: 'Kesulitan analisis insiden', status: 'open', competencyName: null, metricName: null, target: null, actual: null }])
     if (cocok(req, 'GET /tna/pareto') || cocok(req, 'GET /tna/plan-items') || cocok(req, 'GET /tna/sessions')) return data([])
     if (cocok(req, 'GET /tna/job-roles')) return { json: { data: [{ id: 'jr1', name: 'Service Delivery L1' }], defaults: { scope: 'red_only', jobRoleId: null } } }
-    if (cocok(req, 'GET /projects')) return data([{ id: P1, name: 'Pilot L1', status: 'active' }, { id: 'p-closed', name: 'Lama', status: 'closed' }])
+    if (cocok(req, 'GET /projects')) return data([{ id: ID_PROYEK, name: 'Pilot L1', status: 'active' }, { id: 'p-closed', name: 'Lama', status: 'closed' }])
     // Papan gap B5
     if (cocok(req, 'GET /tna/gaps/summary')) return data(SUMMARY)
     if (cocok(req, 'GET /tna/gaps/competencies')) return data({ rows: [COMP], unapprovedCompetencies: 2 })
@@ -63,7 +66,7 @@ export function papanGapTna(o: OpsiPapanGap): { penangan: Penangan; terkirim: Te
     if (cocok(req, 'GET /tna/gaps/detail')) return data(DETAIL)
     if (cocok(req, 'POST /tna/assignments')) {
       terkirim.push({ path: '/assignments', body: req.body })
-      return o.assign ?? data({ assigned: [{ sessionId: 's-new', employeeId: E1, inviteExpiresAt: '2026-12-05T16:59:59.000Z', durationMinutes: 15, replaced: false }], skipped: [] }, 201)
+      return o.assign ?? data({ assigned: [{ sessionId: 's-new', employeeId: ID_DIMAS, inviteExpiresAt: '2026-12-05T16:59:59.000Z', durationMinutes: 15, replaced: false }], skipped: [] }, 201)
     }
     if (cocok(req, 'POST /tna/assignments/:id/cancel')) {
       terkirim.push({ path: `/api${req.path}`, body: null })
