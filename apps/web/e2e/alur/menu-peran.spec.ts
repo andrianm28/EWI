@@ -24,7 +24,7 @@ const MATRIKS: { peran: Peran; grup: string[]; menu: string[] }[] = [
       'Dashboard utama',
       'Core Competencies', 'Developmental Needs', 'Training Needs', 'Improvement Needs',
       'Library', 'Program & Course', 'Permintaan & pengembangan',
-      'Learning Delivery', 'Learning Impact Measurement', 'Career & Promotion',
+      'Learning Delivery', 'Learning Impact Measurement', 'Career & Promotion', 'Permintaan data karyawan',
     ],
   },
   {
@@ -57,7 +57,7 @@ test('HR, satu flag modul mati: butir modul itu hilang, butir lain tetap', async
   await loginSebagai(page, 'hr', semuaModulKecuali({ 'module.tna': false }))
   await expect(await butirMenu(page)).toHaveText([
     'Dashboard utama', 'Core Competencies', 'Developmental Needs', 'Improvement Needs',
-    'Library', 'Program & Course', 'Permintaan & pengembangan', 'Learning Delivery', 'Learning Impact Measurement', 'Career & Promotion',
+    'Library', 'Program & Course', 'Permintaan & pengembangan', 'Learning Delivery', 'Learning Impact Measurement', 'Career & Promotion', 'Permintaan data karyawan',
   ])
 })
 
@@ -70,6 +70,6 @@ test('submodul tidak dilanggan walau flag menyala: butirnya hilang (Developmenta
   await loginSebagai(page, 'hr', { ...SEMUA_MODUL, submodules: ['cca', 'tna', 'ina', 'li', 'ld'] })
   await expect(await butirMenu(page)).toHaveText([
     'Dashboard utama', 'Core Competencies', 'Training Needs', 'Improvement Needs',
-    'Library', 'Program & Course', 'Permintaan & pengembangan', 'Learning Delivery', 'Learning Impact Measurement',
+    'Library', 'Program & Course', 'Permintaan & pengembangan', 'Learning Delivery', 'Learning Impact Measurement', 'Permintaan data karyawan',
   ])
 })

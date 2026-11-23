@@ -6,14 +6,12 @@ import { useRouter } from 'vue-router'
 import AppShell from '@/components/AppShell.vue'
 import { ApiError } from '@/api/client'
 import { COURSE_STATUS_LABEL, lna, type LearningCard, type LearningDelivery } from '@/api/lna'
-import { homeFor } from '@/router'
-import { useSessionStore } from '@/stores/session'
+import { leaveIfDisabled } from './gate'
 import { UiButton, UiCard, UiChip, UiErrorSummary } from '@/ui'
 import { launchLabel, planStatusLabel } from './view'
 import './b8.css'
 
-const NEEDS_MODULE = 'Modul sedang disiapkan'
-const session = useSessionStore()
+const NEEDS_MODULE_LABEL = 'Modul sedang disiapkan'
 const router = useRouter()
 const cards = ref<LearningCard[] | null>(null)
 const delivery = ref<LearningDelivery | null>(null)
@@ -27,11 +25,7 @@ async function load() {
     cards.value = r.data
     delivery.value = r.delivery
   } catch (e) {
-    if (e instanceof ApiError && e.code === 'FEATURE_DISABLED') {
-      await session.loadAccess().catch(() => {})
-      await router.replace({ name: homeFor(session.activeView) })
-      return
-    }
+    if (await leaveIfDisabled(e, router)) return
     error.value = e instanceof ApiError ? e.message : 'Rencana belajar tidak bisa dimuat'
   } finally { loading.value = false }
 }
@@ -40,7 +34,7 @@ onMounted(load)
 
 <template>
   <AppShell>
-    <h1 class="b8-h1">Rencana belajar</h1>
+    <h1 class="el-h1">Rencana belajar</h1>
     <p v-if="delivery" class="el-muted b8-sub">
       Modul dan course untuk Anda berdasarkan gap kompetensi dan hasil wawancara.
       <template v-if="delivery.target === 'elitementor'">Pilih salah satu, EliteMentor langsung membantu Anda belajar.</template>
@@ -49,7 +43,7 @@ onMounted(load)
     <p v-if="loading && !cards" class="el-muted" role="status">Memuat rencana belajar…</p>
     <template v-if="error">
       <UiErrorSummary :errors="[{ message: error }]" />
-      <UiButton variant="outlined" size="sm" @click="load">Coba lagi</UiButton>
+      <UiButton variant="outlined" size="sm" :disabled="loading" @click="load">Coba lagi</UiButton>
     </template>
     <p v-if="cards && !cards.length" class="el-muted">Belum ada rencana belajar. Modul akan muncul di sini setelah HR menyetujui hasil wawancara Anda.</p>
     <div v-if="cards?.length" class="b8-grid">
@@ -59,9 +53,9 @@ onMounted(load)
           <UiChip v-if="c.mode">{{ c.mode }}</UiChip>
           <UiChip :tone="c.status === 'completed' ? 'success' : 'neutral'">{{ planStatusLabel(c) }}</UiChip>
           <UiChip v-if="c.courseStatus === 'failed'" tone="critical">{{ COURSE_STATUS_LABEL.failed }}</UiChip>
-          <UiChip v-if="c.needsModule && c.title !== NEEDS_MODULE" tone="review">{{ NEEDS_MODULE }}</UiChip>
+          <UiChip v-if="c.needsModule && c.title !== NEEDS_MODULE_LABEL" tone="review">{{ NEEDS_MODULE_LABEL }}</UiChip>
         </div>
-        <h3>{{ c.title }}</h3>
+        <h2>{{ c.title }}</h2>
         <p v-if="c.description" class="el-muted">{{ c.description }}</p>
         <p v-if="c.reason && c.reason !== c.title" class="b8-small">Alasan: {{ c.reason }}</p>
         <p class="el-muted b8-small">{{ c.where.label }}</p>

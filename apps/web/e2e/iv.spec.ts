@@ -227,3 +227,10 @@ test('sesi yang persetujuannya ditarik menyebut penarikan, bukan sekadar dibatal
   await expect(page.getByText('Sesi ini dibatalkan.')).toHaveCount(0)
   await expect(page.getByRole('region', { name: 'Transkrip' })).toContainText('Saya belum pernah dilatih eskalasi.')
 })
+
+test('sesi selesai yang persetujuannya kemudian ditarik juga menyebut penarikan', async ({ page }) => {
+  await setup(page, { state: { status: 'completed', summaryConfirmedAt: '2026-11-19T03:00:00.000Z', turns: TRANSKRIP }, withdrawnAt: '2026-11-20T03:00:00.000Z' })
+  await page.goto('/iv/s1')
+  await expect(page.getByText('Persetujuan Anda untuk wawancara ini sudah ditarik.')).toBeVisible()
+  await expect(page.getByText('Ringkasan sudah dikirim ke HR untuk ditinjau.')).toHaveCount(0)
+})

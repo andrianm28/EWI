@@ -11,7 +11,7 @@ const { badRequest, forbidden, notFound, HttpError } = require('../../core/error
 const { currentConsentVersion, isAcceptedConsentVersion } = require('../../core/consent');
 const { inviteExpiry, isExpired, extendedExpiry, parseExtendDays, OPEN_STATUSES, EXTEND_MAX_DAYS } = require('./invitation');
 const { FLAGS, requireFlag } = require('../../core/flags');
-const { MAX_RESTARTS, NOTE_MIN, NOTE_MAX, questionLimit, publicSummary, sessionView, summaryStateOf, parseConfirmation } = require('./summary');
+const { MAX_RESTARTS, NOTE_MIN, NOTE_MAX, questionLimit, publicSummary, sessionView, listView, summaryStateOf, parseConfirmation } = require('./summary');
 
 const wrap = (fn) => (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
 
@@ -45,7 +45,8 @@ function interviewRouter({ submodule, stores, ai, aiConfig = {}, audit, analysis
 
   r.get('/', wrap(async (req, res) => {
     const scope = await scopeFor(req, stores.people);
-    res.json({ data: await stores.interviews.list(req.tenantId, submodule, scope, { projectId: req.query.projectId }) });
+    const rows = await stores.interviews.list(req.tenantId, submodule, scope, { projectId: req.query.projectId });
+    res.json({ data: listView(rows, { userId: req.user.id, hr: req.user.role === ROLES.HR_ADMIN }) });
   }));
 
   // DNA: HR menjadwalkan asesmen per karyawan. TNA dibuat massal lewat POST /tna/projects/:id/interviews.
@@ -78,7 +79,7 @@ function interviewRouter({ submodule, stores, ai, aiConfig = {}, audit, analysis
     const s = await loadVisible(req);
     // B6 (A11): kolom ringkasan mentah tidak pernah ikut; peran lain hanya melihat langkah dan status ringkasan
     if (!isInterviewee(req, s)) {
-      return res.json({ data: { ...sessionView(s), turns: undefined, transcriptVisible: false } });
+      return res.json({ data: { ...sessionView(s, { withdrawal: req.user.role === ROLES.HR_ADMIN }), turns: undefined, transcriptVisible: false } });
     }
     const turns = await stores.interviews.turns(req.tenantId, s.id);
     const view = sessionView(s, { interviewee: true, answerCount: turns.filter((t) => t.speaker === 'human').length, aiConfig });

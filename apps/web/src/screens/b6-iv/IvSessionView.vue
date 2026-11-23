@@ -188,15 +188,14 @@ const audit = computed(() => {
           </form>
         </template>
 
+        <p v-else-if="s.consentWithdrawnAt && (step === 'done' || step === 'closed')">Persetujuan Anda untuk wawancara ini sudah ditarik.</p>
         <template v-else-if="step === 'done'">
           <p v-if="s.summaryState === 'confirmed' || s.summaryState === 'disputed'">Ringkasan sudah dikirim ke HR untuk ditinjau.</p>
           <p v-else>Wawancara ini sudah selesai.</p>
         </template>
-        <p v-else-if="s.consentWithdrawnAt">Persetujuan Anda untuk wawancara ini sudah ditarik.</p>
         <p v-else>Sesi ini dibatalkan.</p>
         <!-- B8: transkrip read-only setelah sesi selesai/dibatalkan; API hanya mengirim turns ke yang diwawancarai (PO-6 A) -->
-        <section v-if="(step === 'done' || step === 'closed') && turns.length" aria-labelledby="iv-transkrip" class="iv-mt">
-          <h2 id="iv-transkrip" class="iv-h2">Transkrip</h2>
+        <section v-if="(step === 'done' || step === 'closed') && turns.length" aria-label="Transkrip" class="iv-mt">
           <PercakapanWawancara :turns="turns" :can-answer="false" />
         </section>
       </UiCard>

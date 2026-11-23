@@ -7,4 +7,6 @@ import type { RouteRecordRaw } from 'vue-router'
 export default [
   { path: '/my', name: 'my', component: () => import('./MyResultsView.vue'), meta: { views: ['karyawan'], flag: 'learner.home', title: 'Hasil saya' } },
   { path: '/li', name: 'li', component: () => import('./LearningPlanView.vue'), meta: { views: ['karyawan'], flag: 'learner.home', submodule: 'tna', title: 'Rencana belajar' } },
+  // Antrean HR untuk permintaan data karyawan (keputusan user 23 Nov). Peran sama dengan requireRole(HR_ADMIN) di API (Admin ETA ikut lolos).
+  { path: '/permintaan-data', name: 'dsr', component: () => import('./DataRequestsHrView.vue'), meta: { views: ['hr'], roles: ['hr_admin', 'eta_admin'], title: 'Permintaan data karyawan' } },
 ] satisfies RouteRecordRaw[]

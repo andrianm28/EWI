@@ -6,7 +6,8 @@ import { mockApi, cocok } from './support/api'
 // Spek: docs/designs/b8-karyawan.md "Layar HR: Permintaan data". API di-mock.
 
 interface Kirim { method: string; path: string; body: unknown }
-const ROWS = () => [
+interface Baris { id: string; userId: string; userName: string; type: string; status: string; reason: string | null; createdAt: string; dueAt: string | null; overdue: boolean; resolvedAt: string | null; resolvedByName: string | null }
+const ROWS = (): Baris[] => [
   { id: 'r1', userId: 'u-ani', userName: 'Ani', type: 'delete_data', status: 'open', reason: 'Resign', createdAt: '2026-11-18T03:00:00.000Z', dueAt: '2026-11-21T03:00:00.000Z', overdue: true, resolvedAt: null, resolvedByName: null },
   { id: 'r2', userId: 'u-beni', userName: 'Beni', type: 'withdraw_consent', status: 'open', reason: null, createdAt: '2026-11-22T03:00:00.000Z', dueAt: null, overdue: false, resolvedAt: null, resolvedByName: null },
   { id: 'r3', userId: 'u-hr', userName: 'Saya HR', type: 'withdraw_consent', status: 'open', reason: null, createdAt: '2026-11-22T04:00:00.000Z', dueAt: null, overdue: false, resolvedAt: null, resolvedByName: null },

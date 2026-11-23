@@ -1,6 +1,6 @@
 // Fungsi murni layar B8 (label dan pilihan tombol), dipakai "Hasil saya" dan "Rencana belajar".
 // Spek: docs/designs/b8-karyawan.md "Layar web".
-import type { LearningCard, MyCompetencyStatus, MyResults } from '@/api/lna'
+import type { DataRequestType, LearningCard, MyCompetencyStatus, MyResults } from '@/api/lna'
 
 type Tone = 'success' | 'warning' | 'critical' | 'neutral'
 
@@ -15,6 +15,10 @@ export const COMPETENCY_STATUS: Record<MyCompetencyStatus, { label: string; tone
 const num = new Intl.NumberFormat('id-ID', { maximumFractionDigits: 2 })
 /** Angka dengan koma desimal (id-ID). */
 export const formatNumber = (n: number) => num.format(n)
+
+export function competencyStatus(status: string): { label: string; tone: Tone } {
+  return COMPETENCY_STATUS[status as MyCompetencyStatus] ?? COMPETENCY_STATUS.not_assessed
+}
 
 export function scoreText(score: number | null, required: number): string {
   return `${score === null ? '—' : formatNumber(score)} / ${formatNumber(required)}`
@@ -54,14 +58,18 @@ export function inviteAction(inv: Pick<Invitation, 'canStart' | 'canContinue'>):
   return null
 }
 
-export const REQUEST_STATUS_LABEL: Record<string, string> = { open: 'Terbuka', done: 'Selesai', cancelled: 'Dibatalkan' }
+export const REQUEST_STATUS_LABEL: Record<'open' | 'done' | 'cancelled', string> = { open: 'Terbuka', done: 'Selesai', cancelled: 'Dibatalkan' }
 
-/** Peran akun (bukan tampilan aktif) yang tidak boleh meminta hapus lewat Data saya; sama dengan DELETE /employees/:userId. */
-export function isAdminAccount(roles: string[]): boolean {
-  return roles.some((r) => r === 'hr_admin' || r === 'eta_admin')
+/**
+ * Akun ber-peran utama HR atau Admin ETA tidak meminta hapus lewat Data saya; sama dengan pemeriksaan API
+ * (peran utama akun, bukan peran aktif B2) dan DELETE /employees/:userId.
+ */
+export function isAdminAccount(user: { role: string; primaryRole?: string } | null): boolean {
+  const main = user?.primaryRole || user?.role
+  return main === 'hr_admin' || main === 'eta_admin'
 }
 
-export const REQUEST_LABEL: Record<string, string> = {
+export const REQUEST_LABEL: Record<DataRequestType, string> = {
   withdraw_consent: 'Tarik persetujuan wawancara',
   delete_data: 'Hapus data',
 }

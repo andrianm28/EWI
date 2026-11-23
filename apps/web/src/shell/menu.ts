@@ -40,6 +40,8 @@ export const MENU: MenuItem[] = [
   { key: 'ld', label: 'Learning Delivery', icon: 'school', views: ['hr'], flag: 'module.ld' },
   { key: 'lim', label: 'Learning Impact Measurement', icon: 'monitoring', views: ['hr', 'atasan'], flag: 'module.lim' },
   { key: 'cp', label: 'Career & Promotion', icon: 'workspace_premium', views: ['hr', 'atasan'], flag: 'promotion.recommendation' },
+  // B8: hak subjek data karyawan, tanpa flag (sama dengan API-nya)
+  { key: 'dsr', label: 'Permintaan data karyawan', icon: 'policy', views: ['hr'] },
   { key: 'my', label: 'Hasil saya', icon: 'person', views: ['karyawan'] },
   { key: 'aiv', label: 'Wawancara visi & nilai', icon: 'record_voice_over', views: ['karyawan'], submodule: 'cca' },
   { key: 'iv', label: 'Wawancara akar masalah', icon: 'forum', views: ['karyawan'], submodule: 'tna' },

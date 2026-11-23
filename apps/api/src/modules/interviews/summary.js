@@ -48,17 +48,18 @@ function publicSummary(findings) {
 const SHARED_FIELDS = [
   'id', 'projectId', 'submodule', 'intervieweeId', 'jobRoleId', 'status', 'mode', 'consentAt', 'consentVersion', 'triggerRecordIds',
   'startedAt', 'endedAt', 'inviteExpiresAt', 'inviteExtendedCount', 'durationMinutes', 'focusKind', 'focusLabel', 'assignedBy', 'assignedByName',
-  // B8: tanda penarikan persetujuan (spek b8-karyawan.md "Aturan baca": interviews.list dan get mengembalikannya)
-  'consentWithdrawnAt',
 ];
 
 /**
  * Sesi untuk respons GET (A11). Kolom ringkasan mentah dibuang; semua peran mendapat `step` dan `summaryState`.
  * Orang yang diwawancarai mendapat tambahan untuk stepper dan footer audit.
  */
-function sessionView(session, { interviewee = false, answerCount = 0, aiConfig = {}, now = new Date() } = {}) {
+function sessionView(session, { interviewee = false, withdrawal = false, answerCount = 0, aiConfig = {}, now = new Date() } = {}) {
   const view = {};
   for (const k of SHARED_FIELDS) if (session[k] !== undefined) view[k] = session[k];
+  // B8: tanda penarikan persetujuan hanya untuk yang diwawancarai dan HR (withdrawal). Atasan dan Super Admin tidak
+  // melihatnya: persetujuan harus bebas dari tekanan atasan (UU PDP).
+  if ((interviewee || withdrawal) && session.consentWithdrawnAt !== undefined) view.consentWithdrawnAt = session.consentWithdrawnAt;
   view.step = stepOf(session, now);
   view.summaryState = summaryStateOf(session);
   if (!interviewee) return view;
@@ -68,6 +69,15 @@ function sessionView(session, { interviewee = false, answerCount = 0, aiConfig =
     summaryAt: session.summaryAt || null, summaryConfirmedAt: session.summaryConfirmedAt || null,
     aiLabel: AI_LABEL, sessionCode: String(session.id).slice(0, 8).toUpperCase(),
   };
+}
+
+/** Baris daftar sesi: consentWithdrawnAt dibuang kecuali untuk HR dan sesi milik pengguna sendiri (aturan sessionView). */
+function listView(rows, { userId, hr }) {
+  return rows.map((r) => {
+    if (hr || r.intervieweeId === userId) return r;
+    const { consentWithdrawnAt, ...rest } = r; // eslint-disable-line no-unused-vars
+    return rest;
+  });
 }
 
 /** Body konfirmasi: { accurate?: boolean, note?: string }. Tidak sesuai wajib bercatatan (A5b). */
@@ -81,5 +91,5 @@ function parseConfirmation(body) {
 }
 
 module.exports = {
-  MAX_RESTARTS, SHORT_SESSION_QUESTIONS, NOTE_MIN, NOTE_MAX, AI_LABEL, stepOf, summaryStateOf, questionLimit, publicSummary, sessionView, parseConfirmation,
+  MAX_RESTARTS, SHORT_SESSION_QUESTIONS, NOTE_MIN, NOTE_MAX, AI_LABEL, stepOf, summaryStateOf, questionLimit, publicSummary, sessionView, listView, parseConfirmation,
 };

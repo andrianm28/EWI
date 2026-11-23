@@ -64,9 +64,10 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const REQUEST_TYPES = ['withdraw_consent', 'delete_data'];
 const REQUEST_STATUSES = ['open', 'done', 'cancelled'];
 const isAdmin = (role) => [ROLES.HR_ADMIN, ROLES.ETA_ADMIN].includes(role);
-// Peran akun, bukan peran aktif: dengan B2 HR yang berganti ke tampilan karyawan memakai peran aktif `learner`,
-// padahal DELETE /:userId tetap menolak akunnya. Permintaan seperti itu tidak akan pernah bisa dipenuhi.
-const isAdminAccount = (user) => [user.role, user.primaryRole, ...(user.roles || [])].some(isAdmin);
+// Peran utama akun (users.role), bukan peran aktif: dengan B2 HR yang berganti ke tampilan karyawan memakai peran aktif
+// `learner`, padahal DELETE /:userId menolak akun ber-peran utama HR/Admin ETA, jadi permintaannya tidak akan pernah bisa
+// dipenuhi. Sama persis dengan pemeriksaan `person.role` di DELETE /:userId.
+const isAdminAccount = (user) => isAdmin(user.primaryRole || user.role);
 
 function employeeRouter({ stores, flags, audit }) {
   const r = express.Router();

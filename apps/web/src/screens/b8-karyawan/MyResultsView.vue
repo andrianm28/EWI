@@ -8,8 +8,9 @@ import { ApiError } from '@/api/client'
 import { formatWib, lna, type MyResults } from '@/api/lna'
 import DataSaya from './DataSaya.vue'
 import { UiButton, UiCard, UiDataTable, UiErrorSummary, UiNote, UiStatus, type UiColumn } from '@/ui'
-import { COMPETENCY_STATUS, inviteAction, planSummary, scoreText } from './view'
-import { homeFor, routeOpen } from '@/router'
+import { competencyStatus, inviteAction, planSummary, scoreText } from './view'
+import { routeOpen } from '@/router'
+import { leaveIfDisabled } from './gate'
 import { useSessionStore } from '@/stores/session'
 import './b8.css'
 
@@ -19,22 +20,25 @@ const error = ref('')
 const loading = ref(true)
 const router = useRouter()
 
+let seq = 0
 async function load() {
+  const mine = ++seq
   loading.value = true; error.value = ''
-  try { res.value = (await lna.myResults()).data } catch (e) {
+  try {
+    const r = (await lna.myResults()).data
+    if (mine === seq) res.value = r
+  } catch (e) {
+    if (mine !== seq) return
     // Flag dimatikan selama sesi: akses dimuat ulang lalu pindah ke beranda tampilan
-    if (e instanceof ApiError && e.code === 'FEATURE_DISABLED') {
-      await session.loadAccess().catch(() => {})
-      await router.replace({ name: homeFor(session.activeView) })
-      return
-    }
+    if (await leaveIfDisabled(e, router)) return
     error.value = e instanceof ApiError ? e.message : 'Hasil Anda tidak bisa dimuat'
-  } finally { loading.value = false }
+  } finally { if (mine === seq) loading.value = false }
 }
 onMounted(load)
 
 // Tarik persetujuan hanya bila ada yang bisa ditarik: undangan terbuka atau wawancara yang belum ditarik
-const canWithdraw = computed(() => !!res.value?.invitations?.length || !!res.value?.interviews?.some((i) => !i.consentWithdrawnAt))
+// Bila hasil gagal dimuat, tombol tetap ada: hak subjek data tidak bergantung pada /my/results (API idempoten)
+const canWithdraw = computed(() => !res.value || !!res.value.invitations?.length || !!res.value.interviews?.some((i) => !i.consentWithdrawnAt))
 
 const position = computed(() => {
   const p = res.value?.person
@@ -55,11 +59,11 @@ const rows = computed(() => (res.value?.competencies?.items ?? []).map((c) => ({
 
 <template>
   <AppShell>
-    <h1 class="b8-h1">Hasil saya</h1>
+    <h1 class="el-h1">Hasil saya</h1>
     <p v-if="loading && !res" class="el-muted" role="status">Memuat hasil Anda…</p>
     <template v-if="error">
       <UiErrorSummary :errors="[{ message: error }]" />
-      <UiButton variant="outlined" size="sm" @click="load">Coba lagi</UiButton>
+      <UiButton variant="outlined" size="sm" :disabled="loading" @click="load">Coba lagi</UiButton>
     </template>
     <template v-if="res">
       <p class="el-muted b8-sub">{{ position }}</p>
@@ -69,14 +73,14 @@ const rows = computed(() => (res.value?.competencies?.items ?? []).map((c) => ({
           <template v-if="inv.inviteExpiresAt"> Tenggat {{ formatWib(inv.inviteExpiresAt) }} WIB.</template>
           <div class="b8-gap-s">
             <UiButton v-if="inviteAction(inv)" size="sm" :to="{ name: 'iv-session', params: { id: inv.sessionId } }">{{ inviteAction(inv) }}</UiButton>
-            <span v-else>Undangan sudah lewat tenggat. Hubungi HR untuk undangan baru.</span>
+            <span v-else>Undangan sudah berakhir. Minta HR memperpanjang undangan Anda.</span>
           </div>
         </UiNote>
       </section>
       <UiDataTable v-if="res.competencies" :columns="columns" :rows="rows" row-key="id" caption="Kompetensi Anda" caption-hidden
         empty-text="Kompetensi untuk jabatan Anda belum diatur.">
         <template #cell-status="{ row }">
-          <UiStatus :tone="COMPETENCY_STATUS[row.status as keyof typeof COMPETENCY_STATUS].tone">{{ COMPETENCY_STATUS[row.status as keyof typeof COMPETENCY_STATUS].label }}</UiStatus>
+          <UiStatus :tone="competencyStatus(String(row.status)).tone">{{ competencyStatus(String(row.status)).label }}</UiStatus>
         </template>
       </UiDataTable>
       <UiCard v-if="res.plan" data-testid="my-plan" class="b8-gap">

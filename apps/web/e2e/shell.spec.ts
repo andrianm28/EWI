@@ -31,7 +31,8 @@ const nav = (page: Page) => page.getByRole('navigation', { name: 'Navigasi utama
 
 test('HR: menu berisi Beranda dan grup Learning Needs Analysis; modul yang flag-nya mati tidak tampil', async ({ page }) => {
   await loginAs(page, { routes: [{ name: 'lim', flag: 'module.lim' }] })
-  await expect(nav(page).getByRole('link')).toHaveText(['Beranda', 'Developmental Needs', 'Training Needs'])
+  // 'Permintaan data karyawan' (B8) tanpa flag: hak subjek data tidak bergantung pada flag
+  await expect(nav(page).getByRole('link')).toHaveText(['Beranda', 'Developmental Needs', 'Training Needs', 'Permintaan data karyawan'])
   await expect(nav(page).getByRole('button', { name: 'Learning Needs Analysis' })).toHaveAttribute('aria-expanded', 'true')
   await expect(nav(page).getByRole('link', { name: 'Beranda' })).toHaveAttribute('aria-current', 'page')
   await expect(page.getByTestId('judul-layar')).toHaveText('Beranda')
@@ -47,7 +48,7 @@ test('HR: butir muncul begitu rutenya terdaftar dan flag-nya menyala', async ({ 
   })
   // Improvement Needs memakai rute asli B9 (nama 'ina'); API-nya cukup dijawab kosong
   await page.route(/\/api\/ina\//, (r) => r.fulfill({ json: { data: [] } }))
-  await expect(nav(page).getByRole('link')).toHaveText(['Beranda', 'Developmental Needs', 'Training Needs', 'Improvement Needs', 'Learning Impact Measurement'])
+  await expect(nav(page).getByRole('link')).toHaveText(['Beranda', 'Developmental Needs', 'Training Needs', 'Improvement Needs', 'Learning Impact Measurement', 'Permintaan data karyawan'])
   await nav(page).getByRole('link', { name: 'Improvement Needs' }).click()
   await expect(page).toHaveURL(/\/ina$/)
   await expect(page.getByTestId('judul-layar')).toHaveText('Improvement Needs')
@@ -141,7 +142,7 @@ test('layar beranda di balik flag mati: tetap Beranda lama, butir peralihan bert
     routes: [{ name: 'dash', views: ['hr', 'atasan'], flag: 'dashboard.main' }, { name: 'my', views: ['karyawan'], flag: 'my.results' }],
   })
   await expect(page).toHaveURL(/\/$/)
-  await expect(nav(page).getByRole('link')).toHaveText(['Beranda', 'Developmental Needs', 'Training Needs'])
+  await expect(nav(page).getByRole('link')).toHaveText(['Beranda', 'Developmental Needs', 'Training Needs', 'Permintaan data karyawan'])
   await expect(page.getByRole('group', { name: 'Tampilan' })).toHaveCount(0)
   await page.goto('/uji/dash')
   await expect(page).toHaveURL(/\/$/)
@@ -150,7 +151,7 @@ test('layar beranda di balik flag mati: tetap Beranda lama, butir peralihan bert
 test('layar beranda di balik flag menyala: menjadi beranda dan Beranda lama hilang dari menu', async ({ page }) => {
   await loginAs(page, { flags: { 'dashboard.main': true }, routes: [{ name: 'dash', views: ['hr', 'atasan'], flag: 'dashboard.main' }] })
   await expect(page).toHaveURL(/\/uji\/dash$/)
-  await expect(nav(page).getByRole('link')).toHaveText(['Dashboard utama', 'Developmental Needs', 'Training Needs'])
+  await expect(nav(page).getByRole('link')).toHaveText(['Dashboard utama', 'Developmental Needs', 'Training Needs', 'Permintaan data karyawan'])
 })
 
 test('meta.roles: peran asli di luar daftar tidak mendapat butir menu dan tidak bisa membuka rutenya', async ({ page }) => {

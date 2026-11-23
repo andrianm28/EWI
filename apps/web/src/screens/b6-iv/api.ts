@@ -7,6 +7,8 @@ export type SummaryState = 'confirmed' | 'disputed' | 'unchecked' | 'pending' | 
 export interface Turn { speaker: 'ai' | 'human'; text: string; at: string }
 export interface ListSession {
   id: string; intervieweeId: string; status: string; inviteExpiresAt?: string | null; focusLabel?: string | null; durationMinutes?: number | null
+  /** B8: persetujuan ditarik; hanya dikirim ke HR dan yang diwawancarai. */
+  consentWithdrawnAt?: string | null
 }
 export interface SessionView {
   id: string; status: string; step?: Step; summaryState?: SummaryState; focusLabel?: string | null; inviteExpiresAt?: string | null
@@ -45,6 +47,7 @@ export function stepOf(s: SessionView, now = Date.now()): Step {
 /** Label status di daftar sesi (B6 bagian 15). */
 export function listStatus(s: ListSession, now = Date.now()) {
   if (s.status === 'scheduled') return s.inviteExpiresAt && new Date(s.inviteExpiresAt).getTime() <= now ? 'Berakhir' : 'Belum mulai'
+  if (s.consentWithdrawnAt) return 'Persetujuan ditarik'
   return ({ in_progress: 'Berjalan', completed: 'Selesai', abandoned: 'Dibatalkan' } as Record<string, string>)[s.status] ?? s.status
 }
 export const isOpenListSession = (s: ListSession) => listStatus(s) === 'Belum mulai' || s.status === 'in_progress'

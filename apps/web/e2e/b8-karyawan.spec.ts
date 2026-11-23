@@ -71,7 +71,7 @@ test('undangan berjalan bisa dilanjutkan; undangan lewat tanpa tombol', async ({
   })
   const undangan = page.getByTestId('my-invitations')
   await expect(undangan.getByRole('link', { name: 'Lanjutkan wawancara' })).toHaveAttribute('href', '/iv/s2')
-  await expect(undangan.getByText('Undangan sudah lewat tenggat. Hubungi HR untuk undangan baru.')).toBeVisible()
+  await expect(undangan.getByText('Undangan sudah berakhir. Minta HR memperpanjang undangan Anda.')).toBeVisible()
   await expect(undangan.getByRole('link')).toHaveCount(1)
 })
 
