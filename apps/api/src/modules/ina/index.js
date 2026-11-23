@@ -9,6 +9,7 @@ const { badRequest, notFound, forbidden, HttpError } = require('../../core/error
 const { LEVELS, inaAccess, requireLevel } = require('./access');
 const { CATEGORIES, STATUSES, canTransition, isOpen, isOverdue, kpis, isDate, isUuid, normId } = require('./domain');
 const { createVerificationAi } = require('./verification-ai');
+const { isAcceptedConsentVersion } = require('../../core/consent');
 
 const wrap = (fn) => (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
 const conflict = (code, msg, extra) => Object.assign(new HttpError(409, code, msg), extra ? { details: extra } : {});
@@ -367,6 +368,9 @@ module.exports = {
     r.post('/verifications/:id/consent', ...verif, wrap(async (req, res) => {
       const v = await loadOwn(req);
       const consentVersion = text(req.body || {}, 'consentVersion', 'Versi persetujuan', 32, { required: true });
+      if (!isAcceptedConsentVersion('ina', consentVersion)) {
+        throw new HttpError(400, 'CONSENT_VERSION_INVALID', 'Versi persetujuan tidak berlaku. Muat ulang halaman lalu setujui teks terbaru.');
+      }
       const question = await verifier.nextQuestion({ action: aiAction(v), askedCount: 0, turns: [] });
       if (!(await db.moveVerification(req.tenantId, v.id, ['assigned'], 'in_progress', { consentVersion }))) {
         throw conflict('INVALID_STATE', 'Verifikasi ini sudah dimulai atau sudah ditutup');

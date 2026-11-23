@@ -7,12 +7,15 @@
 // tujuan pemetaan pemahaman visi, misi, dan nilai; bukan penilaian kinerja), menunggu legal.
 // B15 tahap 3 (23 Nov): wawancara ulang AI memakai draf lim-consent-id-v1.0 (turunan teks TNA v1.0, tujuan mengukur
 // apakah hasil pelatihan masih terpakai untuk menilai dampak program; bukan dasar penilaian kinerja individu), menunggu legal.
+// B9 (audit 23 Nov): verifikasi tindakan perbaikan oleh AI memakai draf ina-verifikasi-v1.0 (versi yang sudah dikirim web
+// di apps/web/src/api/ina.ts), menunggu legal. Sebelumnya versi apa pun diterima tanpa dicek.
 // Setiap perubahan isi menaikkan versi; versi lama dihapus dari daftar bila karyawan wajib setuju ulang.
 const CONSENT_VERSIONS = Object.freeze({
   tna: Object.freeze(['tna-consent-id-v1.0']),
   dna: Object.freeze([]),
   cca: Object.freeze(['cca-consent-id-v1.0']),
   lim: Object.freeze(['lim-consent-id-v1.0']),
+  ina: Object.freeze(['ina-verifikasi-v1.0']),
 });
 
 const currentConsentVersion = (submodule) => {
