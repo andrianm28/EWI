@@ -27,3 +27,26 @@ Titik tetap: `3cf564f` (awal worktree). Commit: `2265284` spek, `e434df2` test m
 - Lingkup: layar LIM tidak tersentuh; tidak ada perilaku di luar spek.
 
 Ringkasan: Standards 1 diperbaiki + 4 diterima; Spec 2 diperbaiki + 2 diterima. Terburuk per sumbu: Standards = galat umum tertutup modal (sudah diperbaiki); Spec = checklist file tidak lengkap (sudah diperbaiki).
+
+## Review independen (sesi induk, 23 Nov)
+
+Dua reviewer independen atas P8 dari sesi induk. Triase test-first di `paritas-p8`: merah `788a318`, hijau `32565ff`.
+
+| # | Bobot | Temuan | Triase |
+| --- | --- | --- | --- |
+| 1 | sedang | `ivCrumbs` hanya memeriksa butir `tna` hr/atasan; butir peralihan karyawan/admin/super terabaikan, karyawan kehilangan tautan | `[✅ DIPERBAIKI]` `menuContext(session)` dan `menuShows(key, ctx)` di `shell/menu.ts` (semua entri MENU berkunci sama); dipakai `AppDrawer.vue` dan `crumbs.ts`. e2e: karyawan dengan menu peralihan dan HR bertaut; karyawan dengan Hasil saya tidak |
+| 2 | sedang | Dialog B10 tertutup sebelum permintaan selesai: `busy` tidak berlaku, galat API di balik dialog | `[✅ DIPERBAIKI]` Pola TnaGapView: dialog tetap terbuka sampai berhasil, galat API di `UiErrorSummary` dalam dialog (`errors` prop `AssignDueDialog`), tutup hanya saat berhasil. e2e HR dan atasan |
+| 3 | sedang | `novalidate` meloloskan tanggal lewat; tenggat tidak di-reset saat dibuka ulang | `[✅ DIPERBAIKI]` Validasi `due < todayIso()` ("Batas waktu paling cepat hari ini"), reset ke +14 hari dan hapus galat tiap dibuka, galat field hilang saat input berubah. e2e: kosong dan lewat tanpa POST, bawaan +14 hari, buka ulang kembali ke bawaan |
+| 4 | sedang | Fokus setelah tutup hilang bila tombol pembuka dihapus `v-if` setelah `load()` | `[✅ DIPERBAIKI]` `focusIfLost` (`b10/focus.ts`): bila fokus jatuh ke `<body>`, pindah ke pemberitahuan `role=status` (`tabindex=-1`). e2e: fokus kembali ke CTA TNA setelah Tutup/Esc, Tab tetap di dialog, fokus ke pemberitahuan saat baris hilang |
+| 5 | rendah | `format.ts` tanpa penjaga NaN/Infinity, `-0`, tanda minus campur; `−${formatScore(gap)}` memberi "−-5"/"−0" | `[✅ DIPERBAIKI]` `Number.isFinite` → "–", `-0` → "0", minus selalu U+2212; `gapScore` di `b5-tna/labels.ts` memberi tanda dari nilai (TnaGapView, TnaScreen). e2e nilai 1.250 dan gap 0/−5. Spek R4 mencatat pemisah ribuan dan pembulatan 2 desimal |
+| 6 | rendah | `openAssign` menghapus galat muat di ref `error` yang sama | `[✅ DIPERBAIKI]` `loadError` terpisah (detail, data penugasan), selalu di halaman. e2e |
+| 7 | rendah | `UiDialog` fokus awal di "Tutup"; latar `rgb` keras | `[✅ DIPERBAIKI]` Fokus awal di field pertama; Tab berputar di dalam dialog (Tab dari elemen terakhir sebelumnya keluar ke UI peramban); token baru `--el-scrim` di `style.css`, dipakai `UiDialog` dan scrim `AppShell` |
+| 8 | rendah | B0 §4 masih "dialog belum disediakan" | `[✅ DIPERBAIKI]` Baris `UiDialog` (props, a11y), catatan format angka, token `--el-scrim` di tabel token |
+| 9 | rendah | `aiLabel` dari API mati di klien | `[✅ DIPERBAIKI]` Dihapus dari tipe `b6-iv/api.ts`; spek B6 mencatat label ditetapkan di klien. Mock e2e `aiLabel` berisi ID penyedia; e2e memastikan tidak tampil |
+| 10 | rendah | "Batas {tanggal}" tampil juga untuk selesai/batal | `[✅ DIPERBAIKI]` Hanya `assigned`/`in_progress`. e2e empat status |
+| 11 | rendah | Belum ada e2e atasan "Tugaskan semua"; uji R16 tidak memastikan kartu `my-plan` tampil | `[✅ DIPERBAIKI]` e2e atasan "Tugaskan semua" (dua anggota belum ditugaskan); R16 memastikan kartu kosong tampil lebih dulu. Petunjuk ProgramForm (opsional) tidak ditambah |
+| 12 | rendah | Kata spek R11; perubahan di luar lingkup tidak tercatat | `[✅ DIPERBAIKI]` R11 "UI hanya Advanced; impor menormalkan alias Advance" (`imports/kinds/common.js`); checklist mencatat `expect.poll` dan warna `.tna-cta`, plus berkas triase |
+
+Keputusan user 23 Nov (kartu keputusan): "Wawancara untuk Anda" kembali di `/tna` untuk atasan saat papan menyala, di bawah papan (`TnaMySessions.vue`; K-P5-4 dicabut, spek B5 diperbarui); Asisten ELGOS tidak tampil di tampilan `super` (spek B17 web diperbarui). Keduanya dengan e2e.
+
+Audit PR 39 (thread lain): 39-2 filter gap `GET /tna/review` di balik `tna.review_workspace` (403 `FEATURE_DISABLED`, pola `requireFlag`), 39-3 predikat gap di `stores.tna.reviewQueue` (merah `35fff62`, hijau `f27eff5`), 39-5 salinan mockup dihapus dari tree, 39-1 artefak e2e CI saat gagal + pelacak TL-1 (`7295d3c`).
