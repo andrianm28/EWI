@@ -19,9 +19,9 @@ Acuan domain: [b13-learning-intervention.md](../b13-learning-intervention.md), B
 | LI-6 | "{tampil} dari {total} modul" teks muted di atas daftar, di luar kartu |
 | LI-7 | Baris modul: grid `70px minmax(0,1fr) auto`; kode mono 12px kiri (tidak terpotong); nama 500 + "Rumpun · Level" muted 12px; chip `K n`/`S n`/`A n` netral, chip jabatan (tone training) atau "{n} jabatan" bila >1, chip Pareto critical; status chip kanan (UiChip, bukan UiStatus global). Baris terpilih latar abu `--el-surface-2` (mockup `#ECEFF5`). Baris = `<button aria-current>` di dalam `ul` (perilaku lama) |
 | LI-8 | Status "Belum ada sumber" → "Belum tersedia" (labels.ts, berlaku juga di Program) |
-| LI-9 | Kepala detail: chip kode (netral mono) / level (training) / rumpun (netral) di atas judul; chip status + chip Pareto; kalimat "Termasuk modul yang bersama-sama menyumbang sekitar {p} total gap{ jabatan X} (kumulatif sampai urutan ini). Sediakan lebih dulu." Modul tanpa prioritas: "Belum ada data gap untuk modul ini, sehingga belum masuk perhitungan Pareto." (hanya bila Pareto tersedia) |
+| LI-9 | Kepala detail: chip kode (netral mono) / level (training) / rumpun (netral) di atas judul; chip status + chip Pareto; kalimat "Termasuk modul yang bersama-sama menyumbang sekitar {p} total gap{ jabatan X} (kumulatif sampai urutan ini). Sediakan lebih dulu." Modul tanpa prioritas: "Tidak termasuk modul prioritas Pareto." (hanya bila ada modul prioritas; API tidak membedakan modul tanpa data gap dari modul di luar 80%, jadi kalimat mockup "Belum ada data gap…" tidak bisa dipastikan benar) |
 | LI-10 | Jabatan sebagai chip training; butir KSA berupa daftar 13px dengan garis kiri |
-| LI-11 | Copy sumber dua varian mockup (dev / vendor), termasuk "Usulan awal, dapat diubah." |
+| LI-11 | Copy sumber dua varian mockup (dev / vendor), termasuk "Usulan awal, dapat diubah." Contoh topik "(kontrak, SLA, EliNotes, alur layanan)" tidak diambil karena data tenant demo |
 | LI-12 | Ikon `auto_awesome` (ditambahkan ke `ui/icons.ts`); tombol aksi sebaris (`li-actions` tanpa wrap ≥ 400px) |
 | LI-14 | Pemilih jabatan Program = tombol kartu outlined (`.li-pick`, garis `--el-primary` bila terpilih, `aria-pressed`) berisi nama + chip "Kamus tersedia" (success) / "Belum tersedia" (neutral) |
 | LI-15 | Intro Program dinamis "…untuk {jabatan}, tersusun dari…"; `UiNote` info "Program ini untuk jabatan {X}. Susunan Basic, Intermediate, dan Advanced mengikuti kamus kompetensinya. Course yang sama dapat dipakai ulang di program jabatan lain." sebelum tab |
@@ -34,6 +34,7 @@ Acuan domain: [b13-learning-intervention.md](../b13-learning-intervention.md), B
 | LI-22 | Intro Permintaan "…dengan bantuan agen ELGOS…" |
 | LI-23 | Hitungan kepala kartu jadi chip kanan: `review` "{n}", `training` "{n} draf" |
 | LI-25 | Kandidat: tombol teks "Kembangkan" |
+| (X-2 lokal) | Status permintaan vendor dan chip Pareto kandidat di Permintaan ikut memakai `UiChip` (K-P6-2) |
 | LI-27 | Draf dua kolom: grid `240px minmax(0,1fr)`; kiri `UiCard tonal` berisi `UiStepper` + catatan Pendekatan (12px muted); kanan kartu konten. Satu kolom di bawah 900px |
 | LI-28 (sebagian) | Chip kode/level/rumpun di atas judul. Copy "Agen ELGOS menyusun…" tidak diambil (PK-3); chip status draf tetap (data alur SME) |
 | LI-30 | Note langkah 1: copy mockup bila semua terukur, copy app bila belum |

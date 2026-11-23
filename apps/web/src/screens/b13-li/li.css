@@ -32,6 +32,8 @@
 .li-list li:last-child .li-item { border-bottom: 0; }
 .li-item:hover { background: var(--el-surface-1); }
 .li-item[aria-current='true'] { background: var(--el-surface-2); }
+/* gelap: surface-2 sama dengan surface-card, jadi baris terpilih memakai tingkat berikutnya */
+:root[data-theme='dark'] .li-item[aria-current='true'] { background: var(--el-surface-3); }
 .li-item:focus-visible { outline: 2px solid var(--el-primary); outline-offset: -2px; }
 .li-code { font-size: 12px; }
 .li-item__body { display: flex; flex-direction: column; min-width: 0; }
