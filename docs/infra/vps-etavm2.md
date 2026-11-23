@@ -152,13 +152,15 @@ adanya dan nginx web (`location /api/voice/`, timeout 1 jam). Keluar ke
 Keputusan user 19 Nov: akun Bedrock siap 24 Nov, QA malam 24–26 Nov untuk Go/No-Go 27 Nov.
 `infra/live/shared/qa-malam.tf` membuat role `elgos-qa-malam` (OIDC dari environment GitHub
 `qa-malam` yang hanya boleh dari `main`, izin hanya `bedrock:InvokeModel` pada model QA, ditambah
-inference profile bila memakai profil `apac.`) dan budget `elgos-qa-malam` (★ US$100/bulan, peringatan
+inference profile bila memakai profil) dan budget `elgos-qa-malam` (★ US$100/bulan, peringatan
 50%/80%/prakiraan 100%, seluruh akun). Role terpisah dari user aplikasi (KMS/SES) dan tidak dibuat
-selama `qa_bedrock_model_id` kosong. Region mengikuti PD-2b: Jakarta `ap-southeast-3` (region
-opt-in), Singapura bila Claude tidak tersedia di Jakarta. Ketersediaan dicek saat akun ada.
+selama `qa_bedrock_model_id` kosong. Hasil cek 23 Nov di akun ELGOS 267191325899: di Jakarta
+`ap-southeast-3` Claude hanya tersedia lewat profil `global.anthropic.*` (pemrosesan lintas region dunia,
+tanpa profil `apac.`); di Singapura `anthropic.claude-sonnet-5` tersedia ON_DEMAND. Keputusan user 23 Nov:
+QA malam dan aplikasi memakai **ap-southeast-1 + anthropic.claude-sonnet-5** tanpa profil (PD-2b).
 
 Langkah tangan admin (akun, region, bootstrap, akses model, variabel repo, apply) dibungkus wizard
-`bash infra/setup-akun-elgos.sh` dari laptop admin. Variabel repo hasilnya: `QA_MALAM_ROLE_ARN`,
+`bash infra/setup-akun-elgos.sh` (23 Nov dijalankan di etavm2 dengan `aws login --remote`). Variabel repo hasilnya: `QA_MALAM_ROLE_ARN`,
 `QA_MALAM_BEDROCK_REGION`, `QA_MALAM_BEDROCK_MODEL_ID`, `QA_MALAM_AI_PRICE_INPUT_PER_MTOK`,
 `QA_MALAM_AI_PRICE_OUTPUT_PER_MTOK`, opsional `QA_MALAM_MAX_TOKENS`. Cadangan bila akun terlambat: satu run manual
 oleh Andrian 26 Nov.
