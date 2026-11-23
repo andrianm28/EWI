@@ -88,6 +88,26 @@ function createPlatformService({ db, store, flags, entitlements, audit, platform
       const tenant = (await store.listTenants()).find((t) => t.id === result.tenantId);
       return { tenant: { id: tenant.id, slug: tenant.slug, name: tenant.name, status: tenant.status }, slug: result.slug, invitation };
     },
+    /** Kirim ulang undangan ke pengelola yang masih invited. Link + audit + log dalam satu transaksi; email setelah COMMIT. */
+    async reinvite(actor, tenantId) {
+      const target = await store.pendingAdmin(tenantId);
+      if (!target) {
+        if (await store.hasActiveAdmin(tenantId)) throw new HttpError(409, 'ADMIN_ALREADY_ACTIVE', 'Admin tenant sudah aktif; undangan tidak perlu dikirim ulang');
+        throw new HttpError(404, 'NO_PENDING_ADMIN', 'Tidak ada admin tenant yang menunggu undangan');
+      }
+      const who = targetAudit(actor, tenantId);
+      const pending = await db.transaction(async (transaction) => {
+        const p = await links.prepare(target, 'invite', { createdBy: actor.userId, tenantName: target.tenantName, transaction });
+        await audit.record({ tenantId, user: who.user }, 'create', 'invitation', { ...who.meta, count: 1, userIds: [target.id] }, { transaction });
+        await platformLog.record({ actor, action: 'create', resource: 'tenant.invitation', targetTenantId: tenantId,
+          meta: { userId: target.id } }, { transaction });
+        return p;
+      });
+      try { await pending.send(); } catch {
+        throw new HttpError(502, 'MAIL_FAILED', 'Email undangan gagal terkirim. Link tersimpan; coba kirim ulang beberapa saat lagi.');
+      }
+      return { invitation: 'sent' };
+    },
     async listTenants() {
       const rows = await store.listTenants();
       const tenants = await Promise.all(rows.map(async (t) => ({

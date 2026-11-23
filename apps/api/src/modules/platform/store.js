@@ -28,6 +28,21 @@ function createPlatformStore(db) {
           FROM tenants t
          ORDER BY t.created_at DESC`, { roles: MANAGER_ROLES });
     },
+    /** Sasaran kirim ulang: pengelola invited yang belum pernah login, tenant_admin lebih dulu, lalu yang terlama. */
+    async pendingAdmin(tenantId) {
+      const [row] = await q(`
+        SELECT u.id, u.tenant_id AS "tenantId", u.email, u.name, t.name AS "tenantName"
+          FROM users u JOIN user_roles ur ON ur.user_id = u.id AND ur.tenant_id = u.tenant_id
+          JOIN tenants t ON t.id = u.tenant_id
+         WHERE u.tenant_id = :tenantId AND ur.role IN (:roles) AND u.status = 'invited' AND u.last_login_at IS NULL
+         ORDER BY CASE WHEN ur.role = 'tenant_admin' THEN 0 ELSE 1 END, u.created_at
+         LIMIT 1`, { tenantId, roles: MANAGER_ROLES });
+      return row || null;
+    },
+    async hasActiveAdmin(tenantId) {
+      return (await q(`SELECT 1 FROM users u JOIN user_roles ur ON ur.user_id = u.id AND ur.tenant_id = u.tenant_id
+         WHERE u.tenant_id = :tenantId AND ur.role IN (:roles) AND u.status = 'active' LIMIT 1`, { tenantId, roles: MANAGER_ROLES })).length > 0;
+    },
     async tenantExists(tenantId) {
       return (await q('SELECT 1 FROM tenants WHERE id = :tenantId', { tenantId })).length > 0;
     },

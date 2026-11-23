@@ -132,7 +132,7 @@ function createApp({ config, stores, ai, catalog, mailer, rateLimits, readiness,
       onboardingClient: (fn) => withOnboardingClient(config, fn),
     });
     app.use('/api/platform', auth, tenantContext(), requireRole(),
-      requireFlag(flags, FLAGS.PLATFORM_CONSOLE, 'Konsol platform belum diaktifkan'), platformRouter({ service: platform }));
+      requireFlag(flags, FLAGS.PLATFORM_CONSOLE, 'Konsol platform belum diaktifkan'), platformRouter({ service: platform, limits }));
   }
 
   const api = express.Router();
@@ -186,6 +186,8 @@ function defaultRateLimits() {
     verifyIp: createRateLimiter({ windowMs, max: 20 }),
     // Review egm: baris audit "ditolak karena batas" paling banyak satu per akun per jendela
     auditOnce: createRateLimiter({ windowMs, max: 1 }),
+    // B12: kirim ulang undangan dari konsol Super Admin, per tenant
+    platformReinvite: createRateLimiter({ windowMs, max: 3, message: 'Undangan untuk tenant ini sudah dikirim 3 kali dalam 15 menit. Coba lagi nanti.' }),
   };
 }
 

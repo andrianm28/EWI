@@ -239,4 +239,45 @@ run('B12 Super Admin (Postgres)', () => {
       expect(await tenantBySlug(slugOf('surat'))).toMatchObject({ status: 'active' });
     });
   });
+  describe('kirim ulang undangan', () => {
+    const invite = (key) => post(`/tenants/${T[key]}/invite`, {});
+
+    it('link baru ke Admin Tenant invited; audit tenant dan log platform; email setelah COMMIT', async () => {
+      await tenant('ulang'); await user('ulang', 'ulangAdm', 'tenant_admin', { status: 'invited', login: false });
+      const before = mailer.sent.length;
+      const res = await invite('ulang');
+      expect([res.status, res.body.data]).toEqual([200, { invitation: 'sent' }]);
+      expect(mailer.sent.slice(before).map((m) => m.to)).toEqual([`ulangAdm-${stamp}@b12.test`]);
+      expect(await q('SELECT purpose, created_by AS "createdBy" FROM login_links WHERE tenant_id = :t', { t: T.ulang }))
+        .toEqual([{ purpose: 'invite', createdBy: id.super }]);
+      const [a] = await q("SELECT meta FROM audit_logs WHERE tenant_id = :t AND resource = 'invitation'", { t: T.ulang });
+      expect(a.meta).toMatchObject({ actor: 'Super Admin ELGOS', actorUserId: id.super, via: 'api/platform', userIds: [id.ulangAdm] });
+      expect(await q("SELECT action FROM platform_audit_logs WHERE target_tenant_id = :t AND resource = 'tenant.invitation'", { t: T.ulang }))
+        .toEqual([{ action: 'create' }]);
+    });
+
+    it('Admin Tenant sudah aktif 409 ADMIN_ALREADY_ACTIVE; tanpa pengelola 404 NO_PENDING_ADMIN', async () => {
+      const active = await invite('aktif');
+      expect([active.status, active.body.error.code]).toEqual([409, 'ADMIN_ALREADY_ACTIVE']);
+      const none = await invite('draf');
+      expect([none.status, none.body.error.code]).toEqual([404, 'NO_PENDING_ADMIN']);
+    });
+
+    it('mailer gagal: 502 MAIL_FAILED, link tetap tersimpan', async () => {
+      await tenant('gagalKirim'); await user('gagalKirim', 'gagalAdm', 'hr_admin', { status: 'invited', login: false });
+      const send = mailer.send;
+      mailer.send = async () => { throw new Error('SES mati'); };
+      try {
+        const res = await invite('gagalKirim');
+        expect([res.status, res.body.error.code]).toEqual([502, 'MAIL_FAILED']);
+      } finally { mailer.send = send; }
+      expect(await q('SELECT purpose FROM login_links WHERE tenant_id = :t', { t: T.gagalKirim })).toEqual([{ purpose: 'invite' }]);
+    });
+
+    it('lebih dari 3 kiriman per tenant per 15 menit: 429', async () => {
+      await tenant('batas'); await user('batas', 'batasAdm', 'tenant_admin', { status: 'invited', login: false });
+      for (let i = 0; i < 3; i += 1) expect((await invite('batas')).status).toBe(200);
+      expect((await invite('batas')).status).toBe(429);
+    });
+  });
 });

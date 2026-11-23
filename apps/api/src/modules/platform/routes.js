@@ -15,7 +15,7 @@ function slugify(name) {
 
 const wrap = (fn) => (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
 
-function platformRouter({ service }) {
+function platformRouter({ service, limits = {} }) {
   const r = express.Router();
 
   r.param('tenantId', (_req, _res, next, value) => {
@@ -37,6 +37,11 @@ function platformRouter({ service }) {
     res.status(dryRun ? 200 : 201).json({ data: out });
   }));
   r.get('/tenants', wrap(async (_req, res) => res.json({ data: await service.listTenants() })));
+  r.post('/tenants/:tenantId/invite', wrap(async (req, res) => {
+    // batas per tenant, terpisah dari batas link per akun; undangan saat tenant dibuat tidak dihitung
+    if (limits.platformReinvite) limits.platformReinvite.consume(`platform:reinvite:${req.params.tenantId}`);
+    res.json({ data: await service.reinvite(actorOf(req), req.params.tenantId) });
+  }));
   r.get('/tenants/:tenantId/modules', wrap(async (req, res) => res.json({ data: await service.listModules(req.params.tenantId) })));
   r.put('/tenants/:tenantId/modules/:moduleKey', wrap(async (req, res) => {
     const row = await service.setModule(actorOf(req), req.params.tenantId, req.params.moduleKey, (req.body || {}).enabled);
