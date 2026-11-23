@@ -240,11 +240,11 @@ function createStores(sequelize, { encryption } = {}) {
     },
     // R3-2: link masuk via email (hanya hash token yang disimpan)
     loginLinks: {
-      async create({ tenantId, userId, tokenHash, purpose, expiresAt, createdBy }) {
+      async create({ tenantId, userId, tokenHash, purpose, expiresAt, createdBy }, { transaction } = {}) {
         await sequelize.query(
           `INSERT INTO login_links (tenant_id, user_id, token_hash, purpose, expires_at, created_by)
            VALUES (:tenantId, :userId, :tokenHash, :purpose, :expiresAt, :createdBy)`,
-          { replacements: { tenantId, userId, tokenHash, purpose, expiresAt, createdBy: createdBy || null } },
+          { replacements: { tenantId, userId, tokenHash, purpose, expiresAt, createdBy: createdBy || null }, transaction },
         );
       },
       async countSince(tenantId, userId, since) {

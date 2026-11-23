@@ -39,6 +39,8 @@ const tenantAdmin = require('./modules/tenant-admin');
 const { createStorage } = require('./integrations/storage');
 const { createLdSync } = require('./modules/ld/sync');
 const { createPlatformService } = require('./modules/platform/service');
+const { createProvider } = require('./core/crypto');
+const { withOnboardingClient } = require('./core/tenant/client');
 const { platformRouter } = require('./modules/platform/routes');
 const { createPlatformLog } = require('./core/platform-log');
 const { requireRole } = require('./core/rbac');
@@ -124,7 +126,11 @@ function createApp({ config, stores, ai, catalog, mailer, rateLimits, readiness,
   // B12: konsol Super Admin, dipasang sebelum /api supaya auth tidak berjalan dua kali (ADR 0002)
   if (stores.platform) {
     const platformLog = createPlatformLog({ store: stores.platformLog });
-    const platform = createPlatformService({ db: stores.db, store: stores.platform, flags, entitlements, audit, platformLog });
+    const platform = createPlatformService({
+      db: stores.db, store: stores.platform, flags, entitlements, audit, platformLog, links,
+      provider: createProvider(config.encryption), production: config.nodeEnv === 'production',
+      onboardingClient: (fn) => withOnboardingClient(config, fn),
+    });
     app.use('/api/platform', auth, tenantContext(), requireRole(),
       requireFlag(flags, FLAGS.PLATFORM_CONSOLE, 'Konsol platform belum diaktifkan'), platformRouter({ service: platform }));
   }

@@ -34,14 +34,18 @@ function message({ purpose, name, tenantName, url }) {
 
 function createEmailLinkService({ stores, mailer, appBaseUrl, now = () => new Date() }) {
   return {
-    async issue(user, purpose, { createdBy, tenantName } = {}) {
+    /** Simpan link (boleh di dalam transaksi) lalu kembalikan send(); email dikirim setelah COMMIT (B12). */
+    async prepare(user, purpose, { createdBy, tenantName, transaction } = {}) {
       const token = crypto.randomBytes(32).toString('base64url');
       await stores.loginLinks.create({
         tenantId: user.tenantId, userId: user.id, tokenHash: hash(token), purpose,
         expiresAt: new Date(now().getTime() + TTL[purpose]), createdBy,
-      });
+      }, transaction ? { transaction } : undefined);
       const url = `${appBaseUrl}/masuk#token=${token}`;
-      await mailer.send({ to: user.email, ...message({ purpose, name: user.name, tenantName, url }) });
+      return { send: () => mailer.send({ to: user.email, ...message({ purpose, name: user.name, tenantName, url }) }) };
+    },
+    async issue(user, purpose, opts = {}) {
+      await (await this.prepare(user, purpose, opts)).send();
     },
     async recentCount(user) {
       return stores.loginLinks.countSince(user.tenantId, user.id, new Date(now().getTime() - RATE.windowMs));

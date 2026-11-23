@@ -2,8 +2,12 @@
 // B12: logika konsol Super Admin di balik antarmuka kecil. Rute hanya memetakan HTTP ke satu method.
 const { QueryTypes } = require('sequelize');
 const { MODULES, byKey, rowFor } = require('./modules');
-const { ensureEntitlement } = require('../../core/tenant/onboarding');
-const { notFound, badRequest } = require('../../core/errors');
+const { ensureEntitlement, onboardTenant, OnboardingError, TenantExistsError } = require('../../core/tenant/onboarding');
+const { inviteAdmins } = require('../../core/tenant/invite');
+const { HttpError, notFound, badRequest } = require('../../core/errors');
+
+const ACTOR_LABEL = 'Super Admin ELGOS';
+const VIA = 'api/platform';
 
 /** Adapter `{ query(sql, params) -> { rows } }` (parameter $n, gaya pg) di atas transaksi Sequelize. */
 const txQuery = (db, transaction) => ({
@@ -16,10 +20,14 @@ const txQuery = (db, transaction) => ({
 const targetAudit = (actor, targetTenantId) => ({
   tenantId: targetTenantId,
   user: { role: 'eta_admin' },
-  meta: { actor: 'Super Admin ELGOS', actorUserId: actor.userId, via: 'api/platform' },
+  meta: { actor: ACTOR_LABEL, actorUserId: actor.userId, via: VIA },
 });
 
-function createPlatformService({ db, store, flags, entitlements, audit, platformLog }) {
+/**
+ * onboardingClient(fn): menjalankan fn(pgClient) di koneksi khusus onboarding (core/tenant/client.js).
+ * provider: penyedia kunci induk (local/kms); links: layanan email-link (prepare/send).
+ */
+function createPlatformService({ db, store, flags, entitlements, audit, platformLog, links, provider, production = false, onboardingClient }) {
   async function listModules(tenantId) {
     const [detail, submodules] = await Promise.all([flags.detail(tenantId), entitlements.submodules(tenantId)]);
     return MODULES.map((m) => rowFor(m, detail, submodules));
@@ -46,6 +54,39 @@ function createPlatformService({ db, store, flags, entitlements, audit, platform
         await platformLog.record({ actor, action: 'update', resource: 'tenant.module', targetTenantId: tenantId, meta }, { transaction });
       });
       return (await listModules(tenantId)).find((row) => row.key === m.key);
+    },
+    /**
+     * Buat tenant baru lewat onboarding mode create. input = { name, slug, adminEmail, adminName?, id? }.
+     * dryRun: { slug, exists, report }. Selain itu { tenant, slug, invitation: 'sent'|'failed' }.
+     */
+    async createTenant(actor, input, { dryRun = false } = {}) {
+      const spec = { id: input.id || undefined, slug: input.slug, name: input.name, products: [],
+        users: [{ email: input.adminEmail, role: 'tenant_admin', name: input.adminName }] };
+      const by = { userId: actor.userId, label: ACTOR_LABEL, via: VIA };
+      let result;
+      try {
+        result = await onboardingClient((client) => onboardTenant({
+          db: client, provider, spec, production, dryRun, mode: 'create', actor: by,
+          beforeCommit: async (c, r) => {
+            const { text, values } = platformLog.insertSql({ actor, action: 'create', resource: 'tenant',
+              targetTenantId: r.tenantId, meta: { slug: r.slug, name: r.name } });
+            await c.query(text, values);
+          },
+        }));
+      } catch (e) {
+        if (e instanceof OnboardingError || e instanceof TenantExistsError) throw new HttpError(e.status, e.code, e.message);
+        throw e;
+      }
+      if (dryRun) return { slug: result.slug, exists: result.exists, report: result.report };
+
+      let invitation = 'sent';
+      try {
+        const r = await inviteAdmins({ query: (sql, params) => txQuery(db).query(sql, params), links,
+          tenantId: result.tenantId, tenantName: result.name, emails: result.users.map((u) => u.email), actor: by });
+        if (r.failed || !r.sent) invitation = 'failed';
+      } catch { invitation = 'failed'; }
+      const tenant = (await store.listTenants()).find((t) => t.id === result.tenantId);
+      return { tenant: { id: tenant.id, slug: tenant.slug, name: tenant.name, status: tenant.status }, slug: result.slug, invitation };
     },
     async listTenants() {
       const rows = await store.listTenants();

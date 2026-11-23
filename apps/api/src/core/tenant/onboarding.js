@@ -12,13 +12,23 @@ const SLUG_RE = /^[a-z0-9](?:[a-z0-9-]{0,62}[a-z0-9])?$/;
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const PRODUCTS = ['full_suite', 'cca', 'dna', 'tna', 'ina'];
 // Onboarding hanya membuat akun pengelola. Karyawan masuk lewat impor (templat employees).
-const ADMIN_ROLES = ['hr_admin', 'eta_admin', 'pimpinan'];
+const ADMIN_ROLES = ['tenant_admin', 'hr_admin', 'eta_admin', 'pimpinan'];
 const KNOWN_FLAGS = new Set(Object.values(FLAGS));
 
 class OnboardingError extends Error {
   constructor(message, details = []) {
     super(details.length ? `${message}:\n- ${details.join('\n- ')}` : message);
     this.code = 'ONBOARDING_INVALID';
+    this.status = 400;
+  }
+}
+
+/** B12 mode create: slug atau id sudah dipakai tenant lain. */
+class TenantExistsError extends Error {
+  constructor(message) {
+    super(message);
+    this.code = 'TENANT_EXISTS';
+    this.status = 409;
   }
 }
 
@@ -38,7 +48,6 @@ function normalizeSpec(raw, { requireId = false } = {}) {
   if (!name || name.length > 255) errors.push('name wajib, maksimal 255 karakter');
 
   const products = Array.isArray(spec.products) ? [...new Set(spec.products.map(String))] : [];
-  if (!products.length) errors.push('products wajib berisi minimal satu dari: ' + PRODUCTS.join(', '));
   for (const p of products) if (!PRODUCTS.includes(p)) errors.push(`produk tidak dikenal: ${p}`);
 
   // flags: daftar flag yang dinyalakan, atau objek { flag: true|false }
@@ -62,7 +71,7 @@ function normalizeSpec(raw, { requireId = false } = {}) {
     seen.add(email);
     users.push({ email, role, name: typeof u.name === 'string' && u.name.trim() ? u.name.trim() : null });
   }
-  if (!users.some((u) => u.role === 'hr_admin')) errors.push('users wajib berisi minimal satu hr_admin');
+  if (!users.some((u) => u.role === 'tenant_admin' || u.role === 'hr_admin')) errors.push('users wajib berisi minimal satu tenant_admin atau hr_admin');
 
   let settings = null;
   if (spec.settings !== undefined) {
@@ -96,7 +105,17 @@ async function ensureEntitlement(db, tenantId, product, source) {
   return true;
 }
 
-async function onboardTenant({ db, provider, spec: rawSpec, production = false, dryRun = false }) {
+const SCRIPT_ACTOR = Object.freeze({ userId: null, label: null, via: 'scripts/onboard-tenant.js' });
+
+/**
+ * Opsi B12 (konsol Super Admin):
+ * - actor { userId, label, via }: pelaku di baris audit (bawaan: skrip operator).
+ * - beforeCommit(db, result): dijalankan di dalam transaksi sebelum COMMIT (tidak saat dryRun).
+ * - mode 'create': tenant yang sudah ada (slug atau id) ditolak TenantExistsError sebelum KMS;
+ *   dryRun tidak melempar dan memberi exists: true. Bawaan 'upsert' (skrip boleh dijalankan ulang).
+ */
+async function onboardTenant({ db, provider, spec: rawSpec, production = false, dryRun = false,
+  actor = SCRIPT_ACTOR, beforeCommit = null, mode = 'upsert' }) {
   if (production && provider.name !== 'kms') {
     throw new OnboardingError('Produksi wajib ENCRYPTION_PROVIDER=kms: onboarding ditolak');
   }
@@ -107,6 +126,12 @@ async function onboardTenant({ db, provider, spec: rawSpec, production = false, 
   // Cek tenant yang sudah ada sebelum menyentuh KMS, agar konflik id/slug ditolak lebih dulu.
   const bySlug = (await db.query('SELECT id, slug, name FROM tenants WHERE slug = $1', [spec.slug])).rows[0];
   const byId = spec.id ? (await db.query('SELECT id, slug, name FROM tenants WHERE id = $1', [spec.id])).rows[0] : null;
+  if (mode === 'create' && (bySlug || byId)) {
+    const taken = bySlug ? `Slug ${spec.slug}` : `ID ${spec.id}`;
+    if (!dryRun) throw new TenantExistsError(`${taken} sudah dipakai tenant lain`);
+    return { tenantId: (bySlug || byId).id, slug: spec.slug, name: spec.name, dryRun, exists: true,
+      report: [{ step: 'tenant', status: 'ada', detail: `${taken} sudah dipakai tenant lain` }], users: spec.users };
+  }
   if (bySlug && spec.id && bySlug.id !== spec.id) {
     throw new OnboardingError(`Slug ${spec.slug} sudah dipakai tenant lain (${bySlug.id})`);
   }
@@ -136,7 +161,19 @@ async function onboardTenant({ db, provider, spec: rawSpec, production = false, 
   try {
     // 1. Tenant
     if (!existing) {
-      await db.query('INSERT INTO tenants (id, slug, name) VALUES ($1, $2, $3)', [tenantId, spec.slug, spec.name]);
+      let inserted;
+      try {
+        inserted = (await db.query('INSERT INTO tenants (id, slug, name) VALUES ($1, $2, $3) ON CONFLICT DO NOTHING RETURNING id',
+          [tenantId, spec.slug, spec.name])).rows[0];
+      } catch (e) {
+        if (e.code === '23505' && mode === 'create') throw new TenantExistsError(`Slug ${spec.slug} sudah dipakai tenant lain`);
+        throw e;
+      }
+      // balapan dua request: tenant lain menang di antara pemeriksaan dan insert
+      if (!inserted) {
+        if (mode === 'create') throw new TenantExistsError(`Slug ${spec.slug} sudah dipakai tenant lain`);
+        throw new OnboardingError(`Slug ${spec.slug} atau id ${tenantId} baru saja dipakai tenant lain; jalankan ulang`);
+      }
       add('tenant', 'dibuat', `${spec.slug} (${tenantId})`);
     } else if (existing.name !== spec.name) {
       await db.query('UPDATE tenants SET name = $2, updated_at = now() WHERE id = $1', [tenantId, spec.name]);
@@ -196,15 +233,17 @@ async function onboardTenant({ db, provider, spec: rawSpec, production = false, 
     if (changed.length) {
       await db.query(
         `INSERT INTO audit_logs (tenant_id, user_id, action, resource, meta) VALUES ($1, NULL, $2, 'tenant.onboarding', $3::jsonb)`,
-        [tenantId, existing ? 'update' : 'create', JSON.stringify({ via: 'scripts/onboard-tenant.js', changes: changed })]);
+        [tenantId, existing ? 'update' : 'create', JSON.stringify({
+          ...(actor.label ? { actor: actor.label, actorUserId: actor.userId } : {}), via: actor.via, changes: changed })]);
     }
 
+    if (!dryRun && beforeCommit) await beforeCommit(db, { tenantId, slug: spec.slug, name: spec.name, report });
     await db.query(dryRun ? 'ROLLBACK' : 'COMMIT');
   } catch (e) {
     await db.query('ROLLBACK').catch(() => {});
     throw e;
   }
-  return { tenantId, slug: spec.slug, name: spec.name, dryRun, report, users: spec.users };
+  return { tenantId, slug: spec.slug, name: spec.name, dryRun, exists: Boolean(existing), report, users: spec.users };
 }
 
-module.exports = { normalizeSpec, onboardTenant, ensureEntitlement, OnboardingError, ADMIN_ROLES, PRODUCTS };
+module.exports = { normalizeSpec, onboardTenant, ensureEntitlement, OnboardingError, TenantExistsError, ADMIN_ROLES, PRODUCTS };
