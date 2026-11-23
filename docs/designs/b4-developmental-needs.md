@@ -31,7 +31,7 @@ Mockup Pak Eji, layar "Developmental Needs" (`s.dna` di `project/Main.dc.html`):
 | Tab Ringkasan: pegawai per tahap pengembangan | distribusi tahap | `GET /dna/development/overview` |
 | Tab Ringkasan: status kamus (Tool 1, Tool 2, Tool 3, menunggu pengesahan HR) | status kamus | `GET /dna/development/overview` |
 | Tab Kamus kompetensi: job function, tabel Kode · Kompetensi · Rumpun · Level · Target, filter level | kamus per job function | `GET /dna/job-roles/:id/dictionary` |
-| Tab Kurikulum BIA | modul per tingkat | `GET /dna/job-roles/:id/curriculum` |
+| Tab Kurikulum Basic · Intermediate · Advanced | modul per tingkat | `GET /dna/job-roles/:id/curriculum` |
 | Tab Kebutuhan pengembangan pegawai: tabel pegawai (tahap, modul tercapai, fokus) | daftar pegawai | `GET /dna/development/employees` |
 | Kartu "Rencana pengembangan: <pegawai>" (3 kolom BIA, status per modul, saran) | rencana per pegawai | `GET /dna/employees/:userId/development-plan` |
 
@@ -174,7 +174,7 @@ Satu-satunya daftar status terbuka spek ini.
 
 - Rute `dna` (`/dna`) memakai `meta.views` kelima tampilan (`hr`, `atasan`, `karyawan`, `admin`, `super`) sesuai aturan B0 nomor 6, sehingga butir menu peralihan karyawan tetap ada. `beforeEnter` memanggil `b4Open()`: layar B4 hanya dibuka bila flag `dna.development` menyala, akun punya peran `hr_admin`/`supervisor`/`eta_admin`, dan tampilan aktif `hr`/`atasan`/`super`. Selain itu diarahkan ke `dna-poc`.
 - `dna-poc` (`/m/dna`, `views/DnaView.vue`, `menuKey: 'dna'`) adalah halaman POC lama (impor, gap per karyawan, mulai wawancara). Pemiliknya `screens/b4-dna/routes.ts`; dihapus saat B8 (`my`, hasil karyawan) dan B11 (`cfg`, impor) terpasang. Tautan "Buka" di Beranda tetap ke `/m/dna`.
-- Empat tab mockup: Ringkasan, Kamus kompetensi (job function sebagai tombol filter, segmen level), Kurikulum BIA, Kebutuhan pegawai (tabel + rencana). Label status modul: Tercapai, Perlu dikembangkan, Belum dibuka, Belum dinilai. Chip jabatan: Kamus tersedia / Belum tersedia.
+- Empat tab mockup: Ringkasan, Kamus kompetensi (job function sebagai tombol filter, segmen level), Kurikulum Basic · Intermediate · Advanced, Kebutuhan pengembangan pegawai (tabel + rencana); label tab mengikuti mockup sejak paritas P5 (DN-3). Label status modul: Tercapai, Perlu dikembangkan, Belum dibuka, Belum dinilai. Chip jabatan: Kamus tersedia / Belum tersedia.
 - Tambahan di luar mockup: tombol "Sahkan kamus" untuk HR (A8) dan catatan cakupan (A4): "Baru x dari y modul yang dinilai" di kartu rencana, dan "dinilai x dari y" di tabel pegawai bila belum semua modul dinilai.
 - Kartu "Agen AI · Validasi kamus kompetensi" tidak dibangun (§2, milik B6/B10).
 
