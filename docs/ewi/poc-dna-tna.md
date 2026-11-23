@@ -49,7 +49,7 @@ Visibilitas (RG-3) berlaku di semua endpoint data karyawan: learner dirinya, ata
 
 | Keputusan | Perilaku sekarang | Tempat mengganti |
 |---|---|---|
-| T3 komponen AI | PK-06: `AI_PROVIDER=bedrock` (Amazon Bedrock, Claude; PD-1 ★A belum dijawab; lokasi PD-2b: Jakarta, Singapura, atau profil apac.) wajib di produksi; `stub` deterministik tetap bawaan untuk test dan di luar produksi. Pemakaian token per panggilan di `ai_usage_logs` (R3-6). Rincian: [ai-teks.md](ai-teks.md) | `src/ai/` (`AI_PROVIDER`, `BEDROCK_MODEL_ID`) |
+| T3 komponen AI | PK-06: `AI_PROVIDER=bedrock` (Amazon Bedrock, Claude; PD-1 ★A belum dijawab; lokasi PD-2b: Jakarta, Singapura, atau profil apac.; hasil 23 Nov: Singapura `ap-southeast-1`, `anthropic.claude-sonnet-5`) wajib di produksi; `stub` deterministik tetap bawaan untuk test dan di luar produksi. Pemakaian token per panggilan di `ai_usage_logs` (R3-6). Rincian: [ai-teks.md](ai-teks.md) | `src/ai/` (`AI_PROVIDER`, `BEDROCK_MODEL_ID`) |
 | RG-1a sumber kamus kompetensi | Semua sumber boleh masuk, dicatat di kolom `source` | `src/modules/dna` |
 | RG-1b sumber status lulus | Hanya input manual HR; Sync Back belum disambungkan | `lna_program_completions.source` |
 | RG-1c alur wawancara SME/DACUM | `POST /api/dna/dacum/sessions` -> 501 `DECISION_PENDING` | `src/modules/dna` |

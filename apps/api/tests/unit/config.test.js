@@ -60,6 +60,10 @@ describe('loadConfig', () => {
       expect(loadConfig({ ...t, BEDROCK_MODEL_ID: 'm' }).ai.region).toBe('ap-southeast-1');
       // Jakarta tetap diterima bila diisi eksplisit (mis. kelak Claude tersedia in-region di sana)
       expect(loadConfig({ ...t, BEDROCK_MODEL_ID: 'm', BEDROCK_REGION: 'ap-southeast-3' }).ai.processing).toBe('in-region:ap-southeast-3');
+      // qa-malam.yml mengirim string kosong bila variabel repo belum diisi
+      expect(loadConfig({ ...t, BEDROCK_MODEL_ID: 'm', BEDROCK_REGION: '' }).ai.region).toBe('ap-southeast-1');
+      // Daftar yang hanya mengizinkan Jakarta wajib mengisi BEDROCK_REGION
+      expect(() => loadConfig({ ...t, BEDROCK_MODEL_ID: 'm', AI_ALLOWED_REGIONS: 'ap-southeast-3' })).toThrow(/BEDROCK_REGION harus salah satu dari ap-southeast-3/);
       expect(loadConfig({ ...t, BEDROCK_MODEL_ID: 'm', BEDROCK_REGION: 'ap-southeast-1' }).ai.processing).toBe('in-region:ap-southeast-1');
       expect(loadConfig({ ...t, BEDROCK_MODEL_ID: 'apac.anthropic.x', BEDROCK_REGION: 'ap-southeast-1' }).ai.processing).toBe('cross-region:apac');
       expect(() => loadConfig({ ...t, BEDROCK_MODEL_ID: 'm', BEDROCK_REGION: 'us-east-1' })).toThrow(/ap-southeast-3, ap-southeast-1/);
