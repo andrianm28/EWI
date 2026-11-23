@@ -48,3 +48,68 @@ test('karyawan mendarat di Hasil saya dengan skor vs target dan status kompetens
   await expect(tabel.getByRole('row', { name: /TC-I1.*Otomasi infrastruktur.*1 \/ 4.*Belum/ })).toBeVisible()
   await expect(tabel.getByRole('row', { name: /ST-A2.*Komunikasi pelanggan.*— \/ 2.*Belum dinilai/ })).toBeVisible()
 })
+
+test('menu karyawan sesuai mockup, tanpa butir peralihan; undangan membuka sesi', async ({ page }) => {
+  await masuk(page)
+  const nav = page.getByRole('navigation', { name: 'Navigasi utama' })
+  await expect(nav.getByRole('link')).toHaveText(['Hasil saya', 'Wawancara visi & nilai', 'Wawancara akar masalah', 'Rencana belajar'])
+  const undangan = page.getByTestId('my-invitations')
+  await expect(undangan).toContainText('bukan untuk penilaian kinerja')
+  await expect(undangan).toContainText('Tenggat')
+  await undangan.getByRole('link', { name: 'Mulai wawancara' }).click()
+  await expect(page).toHaveURL(/\/iv\/s1$/)
+})
+
+test('undangan berjalan bisa dilanjutkan; undangan lewat tanpa tombol', async ({ page }) => {
+  await masuk(page, 'karyawan', {}, {
+    invitations: [
+      { sessionId: 's2', submodule: 'tna', status: 'in_progress', inviteExpiresAt: '2026-11-01T16:59:59.000Z', expired: true, canStart: false, canContinue: true, consentVersionRequired: null },
+      { sessionId: 's3', submodule: 'tna', status: 'scheduled', inviteExpiresAt: '2026-11-01T16:59:59.000Z', expired: true, canStart: false, canContinue: false, consentVersionRequired: null },
+    ],
+  })
+  const undangan = page.getByTestId('my-invitations')
+  await expect(undangan.getByRole('link', { name: 'Lanjutkan wawancara' })).toHaveAttribute('href', '/iv/s2')
+  await expect(undangan.getByText('Undangan sudah lewat tenggat. Hubungi HR untuk undangan baru.')).toBeVisible()
+  await expect(undangan.getByRole('link')).toHaveCount(1)
+})
+
+test('kartu Rencana belajar saya: kosong memakai teks mockup; terisi menampilkan jumlah per status dan tautan', async ({ page }) => {
+  await masuk(page)
+  const kartu = page.getByTestId('my-plan')
+  await expect(kartu).toContainText('akan muncul di sini setelah HR menyetujui hasil wawancara')
+  await expect(kartu.getByRole('link')).toHaveCount(0)
+
+  const lain = await page.context().newPage()
+  await masuk(lain, 'karyawan', {}, { plan: { total: 3, byStatus: { new: 1, in_progress: 1, completed: 1 } } })
+  const isi = lain.getByTestId('my-plan')
+  await expect(isi).toContainText('Belum dimulai: 1')
+  await expect(isi).toContainText('Sedang berjalan: 1')
+  await expect(isi).toContainText('Selesai: 1')
+  await expect(isi.getByRole('link', { name: 'Lihat rencana belajar' })).toHaveAttribute('href', '/li')
+})
+
+test('bagian null tersembunyi; TNA mati menyembunyikan Rencana belajar dan /li kembali ke Hasil saya', async ({ page }) => {
+  await masuk(page, 'karyawan', { submodules: ['dna'] }, { competencies: null, invitations: null, interviews: null, plan: null })
+  await expect(page.getByRole('heading', { level: 1, name: 'Hasil saya' })).toBeVisible()
+  await expect(page.getByRole('table')).toHaveCount(0)
+  await expect(page.getByTestId('my-plan')).toHaveCount(0)
+  await expect(page.getByTestId('my-invitations')).toHaveCount(0)
+  await expect(page.getByRole('navigation', { name: 'Navigasi utama' }).getByRole('link', { name: 'Rencana belajar' })).toHaveCount(0)
+  await page.goto('/li')
+  await expect(page).toHaveURL(/\/my$/)
+})
+
+test('flag learner.home mati: karyawan tetap di Beranda lama tanpa butir Hasil saya', async ({ page }) => {
+  await loginSebagai(page, 'karyawan')
+  await expect(page).toHaveURL(/\/$/)
+  await expect(page.getByRole('navigation', { name: 'Navigasi utama' }).getByRole('link', { name: 'Hasil saya' })).toHaveCount(0)
+})
+
+test('HR dengan flag menyala melihat "Karyawan (saya)" dan mendarat di Hasil saya', async ({ page }) => {
+  await mockApi(page, (req) => (cocok(req, 'GET /dashboard') ? data({}) : undefined))
+  await masuk(page, 'hr')
+  const views = page.getByRole('group', { name: 'Tampilan' })
+  await views.getByRole('button', { name: 'Karyawan (saya)' }).click()
+  await expect(page).toHaveURL(/\/my$/)
+  await expect(page.getByRole('heading', { level: 1, name: 'Hasil saya' })).toBeVisible()
+})
