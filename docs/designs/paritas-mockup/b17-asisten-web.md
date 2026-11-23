@@ -38,6 +38,21 @@ Referensi foto: `node catalog.cjs` dengan `{ asOpen: true }` untuk hr, atasan, k
 11. **Teks polos**: jawaban ditampilkan lewat interpolasi `{{ }}` (kontrak B17), tanpa `v-html`.
 12. Input dibatasi `maxlength="500"` (batas API); kiriman kosong setelah di-trim diabaikan. Enter mengirim (form submit).
 13. Token `--el-*` saja; mode gelap ikut token. Kelas berawalan `b17-`.
+14. **Respons basi dibuang**: intro dan jawaban yang tiba setelah kunci store berubah (ganti tampilan atau keluar di tengah permintaan) tidak ditulis ke percakapan baru.
+15. Tombol "Buka" adalah `UiButton` biasa yang memanggil `router.push` (bukan `RouterLink`), supaya penanda "kembalikan fokus ke input" dipasang sebelum navigasi.
+
+## Review spek (langkah 2)
+
+Tool `Agent` tidak tersedia di sesi subagent yang membangun tahap ini, jadi `egm:egm-design` dan `egm:egm-implementation-readiness` tidak bisa dijalankan sebagai subagent baru. Pengganti: review mandiri memakai daftar periksa kedua agen (kontrak API, state, galat, aksesibilitas, gerbang, test). Triase:
+
+| Temuan | Keputusan |
+| --- | --- |
+| Permintaan yang masih berjalan saat tampilan berganti bisa menulis jawaban ke percakapan tampilan baru | Perbaiki: keputusan 14 |
+| `RouterLink` di dalam `UiButton` tidak memberi kait sebelum navigasi untuk mengatur fokus | Perbaiki: keputusan 15 |
+| Esc saat fokus di luar panel tidak menutup panel | Tolak: panel non-modal; Esc milik elemen yang sedang difokus (drawer di layar sempit memakai Esc document) |
+| `AssistantView` di `api/assistant.ts` tanpa `super`, komentar kunci halaman menyebut `aiv` padahal API mengirim `iv` | Perbaiki di file itu (tipe saja, tanpa perubahan perilaku) |
+| Admin Tenant di mockup punya asisten | Tunda (keputusan 3), butuh penyusun fakta admin di B17/B11 |
+| Perlu review sekunder oleh egm saat sesi induk menggabungkan | Tunda ke sesi induk |
 
 ## Test (e2e, `apps/web/e2e/asisten.spec.ts`, API di-mock)
 
