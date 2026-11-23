@@ -106,6 +106,8 @@ test('karyawan bertanya, mendapat jawaban dengan tombol Buka, panel tetap terbuk
   const ask = diterima.find((r) => r.method === 'POST')!
   expect(ask.body).toEqual({ question: 'Apa rencana belajar saya?', view: 'karyawan' })
 
+  // Rencana belajar dimuat tanpa galat (ringkasan galat halaman itu sendiri sengaja mengambil fokus)
+  await mockApi(page, (req) => (cocok(req, 'GET /my/learning-plan') ? { json: { data: [], delivery: null } } : undefined))
   await p.getByRole('button', { name: 'Buka Rencana belajar' }).click()
   await expect(page).toHaveURL(/\/li$/)
   await expect(panel(page)).toBeVisible()
