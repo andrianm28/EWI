@@ -173,15 +173,18 @@ run('Aturan bisnis wajib live (Postgres)', () => {
     // ke atasan (tanpa izin HR) atau ke karyawan; kategori itu hanya untuk HR/Super Admin dan lewat /findings/non-training.
     await flag('module.ina', true);
     await flag('ina.dashboard', true);
-    for (const who of ['spv', 'dimas']) {
-      const rows = (await request(app).get('/api/tna/findings').set(as(who))).body.data;
-      expect(rows.length).toBeGreaterThan(0);
-      expect(rows.every((f) => f.category === 'training')).toBe(true);
+    try {
+      for (const who of ['spv', 'dimas']) {
+        const rows = (await request(app).get('/api/tna/findings').set(as(who))).body.data;
+        expect(rows.length).toBeGreaterThan(0);
+        expect(rows.every((f) => f.category === 'training')).toBe(true);
+      }
+      const hrAll = (await request(app).get('/api/tna/findings').set(as('hr'))).body.data;
+      expect(hrAll.some((f) => f.category === 'non_training')).toBe(true);
+    } finally {
+      await flag('module.ina', false);
+      await flag('ina.dashboard', false);
     }
-    const hrAll = (await request(app).get('/api/tna/findings').set(as('hr'))).body.data;
-    expect(hrAll.some((f) => f.category === 'non_training')).toBe(true);
-    await flag('module.ina', false);
-    await flag('ina.dashboard', false);
     findingId = spvFindings[0].id;
   });
 

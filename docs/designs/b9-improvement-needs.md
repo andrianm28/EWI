@@ -207,7 +207,7 @@ Memakai store PM-6 dari PR #12. Beda perilaku yang disengaja: daftar temuan TNA 
 | `GET /verifications` | manage | `{ data: [verification] }` 500 terbaru, dengan `summary` dan `reportedStatus`, **tanpa** transkrip |
 | `GET /verifications/mine` | siapa pun | Verifikasi milik pemanggil (yang dibatalkan HR tidak ditampilkan) |
 | `GET /verifications/:id` | pemilik: dengan `turns`; manage: tanpa `turns` | Orang lain 404 |
-| `POST /verifications/:id/consent` | pemilik | Body `{ consentVersion }` wajib. `assigned → in_progress`, jawab `{ ..., question, done: false }` |
+| `POST /verifications/:id/consent` | pemilik | Body `{ consentVersion }` wajib. Audit 23 Nov: versi harus ada di registry `core/consent` (`ina-verifikasi-v1.0`), selain itu 400 `CONSENT_VERSION_INVALID`. `assigned → in_progress`, jawab `{ ..., question, done: false }` |
 | `POST /verifications/:id/turns` | pemilik | Body `{ text }` (1–4.000 karakter). Jawab `{ question, done: false }`; jawaban ketiga menutup percakapan otomatis dan menjawab verifikasi + `done: true` |
 | `POST /verifications/:id/complete` | pemilik | Mengakhiri lebih awal; butuh minimal satu jawaban |
 | `POST /verifications/:id/withdraw` | pemilik | Menarik diri: `assigned`/`in_progress → withdrawn`, semua giliran dihapus |

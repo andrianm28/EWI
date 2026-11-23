@@ -393,6 +393,20 @@ run('Admin Tenant B11 (Postgres)', () => {
       expect(res.body.error.code).toBe('ROLE_FORBIDDEN');
     });
 
+    it('hr_admin interim tidak bisa mengubah atau menonaktifkan akun yang Admin Tenant lewat daftar peran', async () => {
+      await addUser(B.id, 'secAdminB', 'learner');
+      await db.query('INSERT INTO user_roles (tenant_id, user_id, role) VALUES (:t, :u, \'tenant_admin\')', { replacements: { t: B.id, u: id.secAdminB } });
+      const res = await patch(`/users/${id.secAdminB}`, { status: 'disabled' }, 'adminB');
+      expect(res.status).toBe(403);
+      expect(res.body.error.code).toBe('ROLE_FORBIDDEN');
+    });
+
+    it('daftar peran untuk hr_admin interim tidak menawarkan Admin Tenant', async () => {
+      const keys = (await get('/roles', 'adminB')).body.data.map((r) => r.key);
+      expect(keys).not.toContain('tenant_admin');
+      expect(keys).toContain('hr_admin');
+    });
+
     it('Admin Tenant dari daftar peran (user_roles), bukan peran utama, tetap lolos gerbang', async () => {
       await addUser(B.id, 'multiB', 'learner');
       await db.query('INSERT INTO user_roles (tenant_id, user_id, role) VALUES (:t, :u, \'tenant_admin\')', { replacements: { t: B.id, u: id.multiB } });

@@ -115,7 +115,7 @@ module.exports = {
     }
 
     // ---------- Pengguna & peran ----------
-    r.get('/roles', (_req, res) => res.json({ data: assignableRoles().map((key) => ({ key, label: roleLabel(key) })) }));
+    r.get('/roles', (req, res) => res.json({ data: assignableRoles(req.user).map((key) => ({ key, label: roleLabel(key) })) }));
 
     r.get('/users', wrap(async (req, res) => {
       const status = req.query.status ? String(req.query.status) : null;
@@ -150,7 +150,7 @@ module.exports = {
     r.patch('/users/:id', wrap(async (req, res) => {
       const current = await loadUser(req);
       if (current.role === ROLES.ETA_ADMIN) throw forbidden('ROLE_FORBIDDEN', 'Akun Super Admin tidak bisa diubah dari layar Admin Tenant');
-      assertCanManage(req.user, current);
+      assertCanManage(req.user, await db.actor(req.tenantId, current.id));
       const body = req.body || {};
       const patch = {};
       if (has(body, 'name')) {

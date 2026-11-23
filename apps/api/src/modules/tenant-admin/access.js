@@ -29,6 +29,8 @@ function isTenantAdmin(user) {
   return role === ROLES.ETA_ADMIN || role === TENANT_ADMIN || INTERIM_ADMIN_ROLES.includes(role);
 }
 
+const isInterimAdmin = (user) => !!user && INTERIM_ADMIN_ROLES.includes(user.role);
+
 const denied = () => forbidden('ROLE_FORBIDDEN', 'Layar ini hanya untuk Admin Tenant');
 
 /**
@@ -51,21 +53,22 @@ function requireTenantAdmin(store) {
 }
 
 /** Peran yang boleh diberikan admin tenant: semua kecuali Super Admin (eta_admin). */
-const assignableRoles = () => ALL_ROLES.filter((r) => r !== ROLES.ETA_ADMIN);
+const assignableRoles = (actor = null) => ALL_ROLES.filter((r) => r !== ROLES.ETA_ADMIN && !(r === TENANT_ADMIN && isInterimAdmin(actor)));
 /**
  * Audit 23 Nov: pengelola interim (peran aktif di INTERIM_ADMIN_ROLES, mis. hr_admin) tidak boleh memberi peran
  * Admin Tenant atau mengubah akun Admin Tenant. Tanpa batas ini HR bisa menaikkan siapa pun (termasuk email yang ia
  * kuasai) menjadi admin tenant, melewati aturan B2 "hanya Admin Tenant yang memberi peran". Menghapus masa interim
  * sendiri menunggu keputusan user/Andrian (docs/designs/b11-admin-tenant.md bagian 4.2).
  */
-const isInterimAdmin = (user) => !!user && INTERIM_ADMIN_ROLES.includes(user.role);
 function assertCanGrant(actor, role) {
   if (role === TENANT_ADMIN && isInterimAdmin(actor)) {
     throw forbidden('ROLE_FORBIDDEN', 'Peran Admin Tenant hanya bisa diberikan oleh Admin Tenant');
   }
 }
+/** target: { role, roles? } dari tenantAdmin.actor (roles = peran utama + user_roles). */
 function assertCanManage(actor, target) {
-  if (target && target.role === TENANT_ADMIN && isInterimAdmin(actor)) {
+  const roles = target ? (Array.isArray(target.roles) ? target.roles : [target.role]) : [];
+  if (roles.includes(TENANT_ADMIN) && isInterimAdmin(actor)) {
     throw forbidden('ROLE_FORBIDDEN', 'Akun Admin Tenant hanya bisa diubah oleh Admin Tenant');
   }
 }
