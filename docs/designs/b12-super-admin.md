@@ -1,8 +1,8 @@
 # B12 · Super Admin: tenant, modul, dan konfigurasi platform
 
 - **Penulis:** Claude (thread T2), untuk review Andrian
-- **Status:** Draft (spek v5, setelah egm-review tahap 5–8; tahap 9 menyusul)
-- **Tanggal:** 2026-11-19
+- **Status:** Draft (spek v6, setelah egm-review tahap 5–9; 2FA diputuskan tidak dipakai)
+- **Tanggal:** 2026-11-19, revisi 2026-11-23
 - **Paket:** B12 dalam brief bangun penuh 19 Nov (bagian T2). Menumpuk di atas B1 ([`b1-login.md`](b1-login.md)) dan B2 ([`b2-peran.md`](b2-peran.md)) di branch yang sama.
 - **ADR:** [`docs/adr/0002-konsol-platform-lintas-tenant.md`](../adr/0002-konsol-platform-lintas-tenant.md) (diusulkan). Istilah: bagian "Platform" di [`CONTEXT.md`](../../CONTEXT.md).
 
@@ -51,14 +51,14 @@ Paket ini membangun dua layar Super Admin dari mockup final, yaitu **Tenant** da
 - Membuat kunci KMS dari API. Produksi memakai KMS (`deploy/vps/docker-compose.yml`: `ENCRYPTION_PROVIDER: kms`), dan onboarding mewajibkan UUID tenant yang aliasnya sudah dibuat Terraform (`tenant_ids` di `infra/live/<env>`). Langkah Terraform tetap dilakukan thread infra sebelum tenant dibuat di layar.
 - Status bisnis manual tenant seperti "Pilot disiapkan" di data demo mockup, serta menangguhkan/mengaktifkan tenant dari layar (kolom `tenants.status` hanya dibaca).
 - Menghapus tenant, mengganti slug, atau merotasi kunci enkripsi dari layar.
-- Saklar 2FA (lihat Open Questions).
+- Saklar 2FA: user memutuskan 19 Nov 22.08 WIB "Tanpa 2FA, cukup link email"; kode 2FA sudah dilepas dari B1.
 - Pemilihan model AI per tenant. Baris "Model AI wawancara" menampilkan penyedia dan model dari konfigurasi server.
 - Penghapusan audit otomatis setelah 12 bulan. Data audit tertua dibuat Nov 2026, jadi job retensi baru dibutuhkan Nov 2027 `[⏳ DITERIMA]`.
 - Layar untuk peran lain (Admin Tenant adalah B11, PR #17).
 
 ## Open Questions
 
-- **2FA** (kartu keputusan di thread T2, 19 Nov; rekomendasi "Tanpa 2FA, cukup link email"). Spek ini memakai rekomendasi itu: tidak ada saklar 2FA. Baris "Verifikasi dua langkah" menghitung tenant yang flag `auth.mfa`-nya (flag B1, default mati) menyala; bila nol, tampil "Tidak dipakai (login lewat link email, PD-10)". Butir `[⏳ DITERIMA]` B1 §6 "pemaksaan MFA wajib ditentukan di konfigurasi platform B12" tetap terbuka dan pemiliknya thread T2: ditutup sebagai "tidak dipakai" bila pemilik produk memilih rekomendasi, atau dibangun di PR lanjutan T2 bila memilih lain.
+Tidak ada. Satu-satunya pertanyaan terbuka (2FA) sudah diputuskan user 19 Nov: tanpa 2FA. Baris "Verifikasi dua langkah" di Konfigurasi platform berisi teks tetap "Tidak dipakai (login lewat link email, PD-10)".
 - `[⚠️ BELUM TERVERIFIKASI]` **Entitlement saat modul dinyalakan.** Spek ini: menyalakan modul CCA/DNA/TNA/INA juga menambah entitlement `source='platform'` bila tenant belum punya entitlement aktif untuk produk itu atau `full_suite`; mematikan hanya mematikan flag. Perlu dikonfirmasi Andrian (alternatif di §Alternatives Considered E).
 
 ## Critical User Journeys (CUJs)
@@ -115,7 +115,7 @@ Paket ini membangun dua layar Super Admin dari mockup final, yaitu **Tenant** da
 
 ### Akses dan flag
 
-- Router baru `platformRouter` (`src/modules/platform/routes.js`) dipasang di **`/api/platform` sebelum router `/api` umum**, supaya request tidak melewati `auth` dan pemeriksaan sesi dua kali. Urutan gerbang: `auth` → `tenantContext()` → `onlyEtaAdmin` → `requireFlag(platform.console)`. Peran diperiksa sebelum flag, jadi pengguna selain Super Admin selalu mendapat `ROLE_FORBIDDEN` dan tidak mengetahui keadaan flag. `onlyEtaAdmin` dipindah dari `core/flags/admin-routes.js` ke `core/rbac/guards.js` agar dipakai bersama.
+- Router baru `platformRouter` (`src/modules/platform/routes.js`) dipasang di **`/api/platform` sebelum router `/api` umum**, supaya request tidak melewati `auth` dan pemeriksaan sesi dua kali. Urutan gerbang: `auth` → `tenantContext()` → `requireRole()` → `requireFlag(platform.console)`. `requireRole()` tanpa argumen di `core/rbac/index.js` sudah hanya meloloskan `eta_admin` dengan `ROLE_FORBIDDEN`, jadi tidak perlu guard baru (review tahap 9 CD-N1). Peran diperiksa sebelum flag, jadi pengguna selain Super Admin selalu mendapat `ROLE_FORBIDDEN` dan tidak mengetahui keadaan flag. Router diakhiri 404 sendiri supaya path platform yang tidak dikenal tidak jatuh ke router `/api` dan menjalankan `auth` dua kali.
 - Flag baru (default mati, aturan 3):
   - `platform.console`, diperiksa pada tenant tempat Super Admin login;
   - `auth.session_idle`, per tenant: menyalakan penegakan sesi diam untuk tenant itu.
@@ -139,6 +139,54 @@ Semua di bawah `/api/platform`, jawaban sukses `{ data }`. Galat umum: 403 `ROLE
 | `GET /log` | `?limit=1..200` (bawaan 50) | baris log audit platform terbaru | – | `platformLog.recent` |
 | `GET /attempts` | `?days=1..31` (bawaan 7) | `[{ day, outcome, count }]` | – | `platformLog.attemptsByDay` |
 
+### Bentuk jawaban
+
+Ditambahkan dari review tahap 9 (IR-B1), supaya API dan klien web memakai bentuk yang sama. Tanggal ISO 8601, angka sebagai number, status sebagai kode (label di web).
+
+```ts
+type TenantStatus = 'suspended' | 'active' | 'pending_admin' | 'draft'
+// GET /tenants
+{ kpis: { tenants: number, activeTenants: number /* status 'active' */, modulesAvailable: number /* dari 8 */ },
+  tenants: Array<{ id: string, slug: string, name: string, status: TenantStatus,
+    adminEmail: string | null, users: number, activeModules: number, createdAt: string }> }
+// POST /tenants
+{ tenant: { id: string, slug: string, name: string, status: TenantStatus }, slug: string, invitation: 'sent' | 'failed' }
+// POST /tenants?dryRun=1
+{ slug: string, exists: boolean, report: Array<{ step: string, status: string, detail: string }> }
+// GET /tenants/:id/modules dan PUT .../modules/:key (satu baris)
+{ key: string, name: string, available: boolean, earlyAccess: boolean, entitled: boolean | null,
+  flagOn: boolean, killSwitch: boolean, effective: boolean }
+// GET/PUT /settings
+{ editable: { sessionIdleMinutes: number, aiHrAgreementTarget: number },
+  display: { encryption: 'local' | 'kms', aiModel: { provider: string, model: string },
+    ssoTenants: number, idleEnforcedTenants: number, idleEnforcement: 'not_yet' | 'per_tenant' },
+  encryptionProvider: 'local' | 'kms' }
+// GET /ai-quality
+Array<{ tenantId: string, name: string, reviewed: number, approved: number, agreement: number | null,
+  meetsTarget: boolean | null /* null bila reviewed < 10 */, enoughData: boolean,
+  daily: Array<{ day: string /* YYYY-MM-DD Asia/Jakarta */, reviewed: number, approved: number, agreement: number | null, enoughData: boolean }> }>
+// GET /ai-cost
+Array<{ tenantId: string, name: string, week: string /* Senin, YYYY-MM-DD */, sessions: number, calls: number,
+  tokensIn: number, tokensOut: number, costUsd: number, costMissing: boolean }>
+// GET /log
+Array<{ id: string, at: string, actorEmail: string | null, action: 'create' | 'update', resource: string,
+  targetTenantName: string | null, meta: object }>
+// GET /attempts
+Array<{ day: string, outcome: 'unknown_org' | 'unknown_account' | 'invalid_link', count: number }>
+```
+
+CSV `GET /ai-cost?format=csv`: `Content-Type: text/csv; charset=utf-8`, `Content-Disposition: attachment; filename="biaya-ai-mingguan.csv"`, header `minggu,tenant,sesi,panggilan,token_masuk,token_keluar,biaya_usd,biaya_belum_tercatat`. Hanya minggu dan tenant yang punya pemakaian yang muncul (tanpa baris nol). Kutipan memakai `csvCell` dari `modules/imports/template.js` (diekspor) ditambah awalan `'` untuk sel formula.
+
+`adminEmail` dan kunci peran dibaca dari `user_roles` (B2), bukan `users.role`.
+
+### Transaksi
+
+Ditambahkan dari review tahap 9 (IR-B2, CD-B2). Setiap tulisan platform jadi atau batal bersama audit tenant dan log audit platform:
+
+- **Buat tenant**: transaksi milik onboarding di satu `pg.Client` (`withOnboardingClient`). Log audit platform ditulis di kait `beforeCommit` dengan `platformLog.insertSql(entry)` yang mengembalikan `{ text, values }` berparameter `$n`.
+- **Kirim ulang, saklar modul, ubah konfigurasi**: `db.transaction(async (transaction) => …)` Sequelize. `audit.record(..., { transaction })` sudah ada; `platformLog.record(entry, { transaction })`, `loginLinks.create(row, { transaction })`, `flags.setTenantFlag(..., { transaction })`, dan `ensureEntitlement` lewat adapter `txQuery(transaction)` (`$n` → replacements) ikut transaksi itu.
+- **Email dikirim setelah COMMIT.** Layanan link mendapat `prepare(user, purpose, { transaction })` yang menyimpan baris link dan mengembalikan `send()`; `issue()` yang ada menjadi `prepare` lalu `send`. Gagal kirim setelah COMMIT tidak membatalkan apa pun: buat tenant menjawab `invitation: 'failed'`, kirim ulang menjawab 502 `MAIL_FAILED` dan linknya tetap tersimpan (tidak terpakai, kedaluwarsa sendiri).
+
 ### Status tenant (diturunkan dari kolom yang ada)
 
 Dicek berurutan; setiap tenant mendapat tepat satu status:
@@ -154,26 +202,28 @@ Dicek berurutan; setiap tenant mendapat tepat satu status:
 
 ### Delapan modul tenant
 
-Registri tetap `src/modules/platform/modules.js`, urutan mengikuti mockup:
+Registri tetap `src/modules/platform/modules.js`, urutan mengikuti mockup. Kunci di path (`:moduleKey`) adalah kolom Kunci; nama flag diambil dari `FLAGS` (bukan string baru):
 
-| Modul | Flag | Entitlement | Label "Akses awal" |
-| --- | --- | --- | --- |
-| Core Competencies | `module.cca` | `cca` | ya |
-| Developmental Needs | `module.dna` | `dna` | |
-| Training Needs | `module.tna` | `tna` | |
-| Improvement Needs | `module.ina` | `ina` | |
-| Learning Intervention | flag B13 | – | |
-| Learning Delivery | flag B14 | – | |
-| Learning Impact Measurement | flag B15 | – | |
-| Career & Promotion | `promotion.recommendation` | – | |
+
+| Kunci | Modul | Flag | Entitlement | Label "Akses awal" |
+| --- | --- | --- | --- | --- |
+| `cca` | Core Competencies | `module.cca` | `cca` | ya |
+| `dna` | Developmental Needs | `module.dna` | `dna` | |
+| `tna` | Training Needs | `module.tna` | `tna` | |
+| `ina` | Improvement Needs | `module.ina` | `ina` | |
+| `li` | Learning Intervention | `module.li` | – | |
+| `ld` | Learning Delivery | `module.ld` | – | |
+| `lim` | Learning Impact Measurement | `module.lim` | – | |
+| `promotion` | Career & Promotion | `promotion.recommendation` | – | |
 
 Aturan panel modul:
 
 - "Akses awal" hanya label mockup (modul dalam tahap akses awal); tidak memberi akses. Tenant baru dibuat tanpa modul (`products: []`).
-- Modul tersedia bila flag-nya terdaftar di `FLAGS`. Pada base branch ini: `module.cca`, `module.dna`, `module.tna`, `module.ina`, `promotion.recommendation` (flag G2-A yang sudah ada, bukan pola `module.*`). Flag B13/B14/B15 ditulis ke registri saat paket itu digabung, satu baris per modul `[⚠️ BELUM TERVERIFIKASI]`. Kartu "Modul tersedia" menghitung modul yang tersedia; penyebut "x / 8" tetap delapan.
-- Menyalakan modul yang belum tersedia menjawab 400 `MODULE_UNAVAILABLE`.
+- Modul tersedia bila flag-nya terdaftar di `FLAGS`. Sejak integrasi 8907053 kedelapan flag sudah terdaftar (`module.li/ld/lim` dari B13–B15, `promotion.recommendation` dari G2-A), jadi pemeriksaan ini hanya pengaman bila flag dihapus. Kartu "Modul tersedia" menghitung modul yang tersedia; penyebut "x / 8" tetap delapan.
+- Menyalakan modul yang belum tersedia menjawab 400 `MODULE_UNAVAILABLE`; kunci yang tidak ada di registri menjawab 404.
+- Rumus kolom (review tahap 9 IR-M4): `entitled` = `true`/`false` untuk modul berentitlement, `null` untuk modul tanpa entitlement; `effective` = `flagOn && !killSwitch && entitled !== false`; "Modul aktif" di daftar tenant = jumlah modul dengan `effective`.
 - Kolom panel dibaca dari layanan yang sudah ada, tanpa SQL baru: `entitled` dari `entitlements.submodules(tenantId)` (jadi `full_suite` dihitung), `flagOn`/`killSwitch`/`effective` dari `flags.detail(tenantId)`. Layar menampilkan "Akses", "Aktif", dan tanda kill switch, supaya layar menampilkan keadaan apa adanya.
-- `setModule` memakai jalur tulis yang sama dengan `core/flags/admin-routes.js` (sesuai brief "memakai `flags/admin-routes`"): `ensureEntitlement` (bila menyala), `flags.setTenantFlag`, `audit.record` untuk tenant sasaran, lalu log audit platform, berurutan. Atomisitasnya sama dengan rute flag hari ini `[⏳ DITERIMA]`: bila audit gagal, request gagal (R2-2) tetapi flag yang sudah ditulis tidak dibatalkan; mengulang saklar aman karena idempoten. Fungsi bersama `ensureEntitlement(db, tenantId, product, source)` (dari onboarding) tidak menambah baris bila produk itu atau `full_suite` sudah aktif.
+- `setModule` memakai jalur tulis yang sama dengan `core/flags/admin-routes.js` (sesuai brief "memakai `flags/admin-routes`"): `ensureEntitlement` (bila menyala), `flags.setTenantFlag`, `audit.record` untuk tenant sasaran, lalu log audit platform, berurutan. Keempat tulisan berjalan dalam satu transaksi (§Transaksi), jadi audit atau log yang gagal membatalkan saklar. Fungsi `ensureEntitlement(query, tenantId, product, source)` diekstrak dari langkah 4 onboarding; `query(sql, params)` memakai parameter posisi `$n`, jadi bisa dipakai pg.Client onboarding maupun adapter transaksi Sequelize (lihat §Transaksi). Tidak menambah baris bila produk itu atau `full_suite` sudah aktif.
 - Pelaku di audit tenant sasaran: `user_id` kosong (akun Super Admin milik tenant lain), `meta.actor = 'Super Admin ELGOS'`, `meta.actorUserId`, `meta.via = 'api/platform'`.
 
 ### Membuat tenant
@@ -184,12 +234,13 @@ Aturan panel modul:
    - `products` boleh kosong;
    - parameter `actor` (`{ userId, label, via }`) menggantikan nilai tetap `user_id NULL` dan `via: 'scripts/onboard-tenant.js'` di baris audit;
    - kait `beforeCommit(db, result)` dijalankan di dalam transaksi sebelum COMMIT (rute menulis log audit platform di sini);
-   - **mode `create`**: insert tenant memakai `ON CONFLICT DO NOTHING RETURNING`; bila tenant (slug atau id) sudah ada, onboarding melempar `TENANT_EXISTS` di dalam transaksi tanpa mengubah apa pun. Pelanggaran unik dari dua request bersamaan juga dipetakan ke `TENANT_EXISTS`. Skrip tetap memakai mode bawaan (boleh dijalankan ulang).
+   - **mode `create`**: pemeriksaan slug/id yang sudah ada (sebelum `BEGIN`, sebelum panggilan KMS) melempar `TENANT_EXISTS` (409) untuk slug **atau** id yang sudah dipakai, menggantikan `OnboardingError` 400 "Slug sudah dipakai" khusus di mode ini. Insert tenant memakai `ON CONFLICT DO NOTHING RETURNING`; balapan dua request (insert kosong atau `23505`) juga `TENANT_EXISTS`. `dryRun` di mode `create` tidak melempar: jawabannya `exists: true`, supaya tombol Periksa bisa memberi tahu. `beforeCommit` tidak dijalankan saat `dryRun`. Skrip tetap memakai mode bawaan (boleh dijalankan ulang).
+   - pemetaan galat di rute: `OnboardingError` → 400 dengan pesannya (kelas itu diberi `status = 400`, sehingga skrip tidak berubah), `TENANT_EXISTS` → `conflict()` 409.
 3. Onboarding memegang transaksinya sendiri di satu koneksi Postgres khusus (`withOnboardingClient`, diekstrak dari skrip).
-4. Undangan dikirim lewat layanan link yang sudah ada setelah COMMIT. Gagal kirim tidak membatalkan tenant (`invitation: 'failed'`, pulihkan lewat CUJ 2).
+4. Undangan: setelah COMMIT, rute mencari akun yang baru dibuat (`users` per tenant dan email) lalu `links.prepare(...)` + `send()`. `sendInvites` di skrip diganti fungsi bersama `inviteAdmins` di `core/tenant/invite.js` yang dipakai skrip dan rute. Gagal kirim tidak membatalkan tenant (`invitation: 'failed'`, pulihkan lewat CUJ 2).
 5. Audit tenant (`tenant.onboarding`) dan log audit platform (`tenant` `create`) ikut ROLLBACK bila salah satu gagal (R2-2).
 
-**Kirim ulang undangan** (`reinvite`): sasaran = akun `tenant_admin` (selain itu `hr_admin`) berstatus `invited` dan `last_login_at IS NULL`, yang dibuat paling awal. Logika menerbitkan link sama dengan rute `/api/invitations` yang ada. Batas 3 per tenant per 15 menit (limiter yang ada). Audit tenant `create invitation` dan log audit platform `create tenant.invitation` dalam satu transaksi dengan penerbitan link.
+**Kirim ulang undangan** (`reinvite`): sasaran dicari dengan query baru `platform/store.pendingAdmin(tenantId)`: akun dengan peran `tenant_admin` (selain itu `hr_admin`) di `user_roles`, `status = 'invited'`, `last_login_at IS NULL`, dibuat paling awal. (`users.listInvitees` tidak bisa dipakai karena mengecualikan peran istimewa.) Tidak ada sasaran: 409 `ADMIN_ALREADY_ACTIVE` bila ada pengelola aktif, selain itu 404 `NO_PENDING_ADMIN`. Batas: limiter baru `platformReinvite` di `defaultRateLimits` (memori, 3 per 15 menit, kunci `platform:reinvite:<tenantId>`), terpisah dari batas link per akun; undangan saat tenant dibuat tidak dihitung. Link, audit tenant `create invitation`, dan log audit platform `create tenant.invitation` dalam satu transaksi; email setelah COMMIT (§Transaksi).
 
 ### Konfigurasi platform
 
@@ -212,10 +263,10 @@ Baris lain adalah teks tetap atau hitungan, tidak disimpan di tabel ini:
 | Kebijakan bawaan | Anonimisasi dashboard agregat | "Aktif" (ditegakkan B3) |
 | Kebijakan bawaan | Persetujuan karyawan wajib | "Aktif" (modul consent yang sudah ada) |
 | Autentikasi | SSO perusahaan per tenant | jumlah tenant dengan flag `auth.sso` menyala |
-| Autentikasi | Verifikasi dua langkah | lihat Open Questions |
+| Autentikasi | Verifikasi dua langkah | teks tetap "Tidak dipakai (login lewat link email, PD-10)" |
 | Autentikasi | Batas waktu sesi | isian `sessionIdleMinutes` + jumlah tenant dengan `auth.session_idle` menyala |
 
-Getter `platformSettings.get(key)` (`src/core/platform-settings/index.js`) dengan cache dalam proses yang dikosongkan saat `update`; paket lain membaca lewat getter ini. `PUT /settings` memvalidasi semua kunci sekaligus, menulis dalam satu transaksi, dan mencatat satu baris log audit platform per kunci yang berubah (`from`, `to`). Migrasi menulis dua baris bawaan. Nilai berlaku untuk semua tenant; layar menyatakan ini dan meminta konfirmasi saat batas sesi diturunkan.
+Getter `platformSettings.get(key)` (`src/core/platform-settings/index.js`) dengan cache dalam proses tanpa TTL yang dikosongkan saat `update` (satu proses API per lingkungan di etavm2, jadi tidak perlu sinkron antarproses `[⏳ DITERIMA]`); nilai disimpan sebagai number jsonb, bilangan bulat saja; paket lain membaca lewat getter ini. `PUT /settings` memvalidasi semua kunci sekaligus, menulis dalam satu transaksi, dan mencatat satu baris log audit platform per kunci yang berubah (`from`, `to`). Migrasi menulis dua baris bawaan. Nilai berlaku untuk semua tenant; layar menyatakan ini dan meminta konfirmasi saat batas sesi diturunkan.
 
 ### Sesi diam (tahap 2, commit terpisah)
 
@@ -224,8 +275,8 @@ Tahap ini menyentuh jalur auth yang dilalui setiap request, jadi dibangun dan di
 
 - **Aktivitas** = request API apa pun, ditambah tanda aktivitas web selama ada interaksi (paling sering sekali per 5 menit). Web tidak punya polling latar hari ini; request latar yang ditambah kemudian harus membawa penanda supaya tidak dihitung (dibuat bersama request latar pertama).
 - Kolom baru `auth_sessions.last_seen_at`, diisi `now()` saat migrasi, supaya jam diam mulai dari deploy.
-- `sessions.check(claims)`: bila diam melewati `sessionIdleMinutes` (dibaca dari baris sesi yang sudah dimuat) **dan** flag `auth.session_idle` tenant sesi menyala (flag hanya dibaca saat batas terlewati), sesi dicabut dan jawabannya `{ ok: false, code: 'SESSION_IDLE' }`; middleware menjawab 401 `SESSION_IDLE`. Selain itu `last_seen_at` diperbarui paling sering sekali per 60 detik per sesi.
-- Web: `api/client.ts` mengenali `SESSION_IDLE` dan mengarahkan ke login dengan pesan di CUJ 5.
+- `sessions.check(claims)`: bila `last_seen_at` (dari baris sesi yang sudah dimuat) lebih lama dari `platformSettings.get('sessionIdleMinutes')` menit **dan** flag `auth.session_idle` tenant sesi menyala (flag hanya dibaca saat batas terlewati), sesi dicabut (`revoke_reason = 'idle'`) dan jawabannya `{ ok: false, code: 'SESSION_IDLE' }`; middleware menjawab 401 `{ error: { code: 'SESSION_IDLE', message: 'Sesi berakhir karena tidak aktif. Silakan masuk lagi.' } }` (pesan per kode, bukan pesan `ROLE_VIEW_CHANGED`). Sentuh dan cabut hanya di `sessions.check` dari middleware, tidak di `switchRole`/`isActive`. Selain itu `last_seen_at` diperbarui paling sering sekali per 60 detik per sesi.
+- Web: `api/client.ts` meneruskan kode galat ke `onUnauthorized(code)`; `main.ts` mengarahkan `SESSION_IDLE` ke `/login?alasan=sesi-diam`, dan `LoginView.vue` menampilkan "Sesi Anda berakhir karena tidak aktif. Silakan masuk lagi." (tanpa angka menit, karena pengguna biasa tidak bisa membaca konfigurasi platform). Tanda aktivitas dipasang di `stores/session.ts` (memegang token): listener `keydown`, `pointerdown`, `scroll` menandai ada interaksi, dan timer 5 menit mengirim heartbeat hanya bila ada interaksi sejak heartbeat terakhir.
 
 ### Kesepakatan AI–HR (PM-2 bagian C)
 
@@ -237,15 +288,15 @@ Dari `ai_usage_logs`, per tenant per minggu ISO (Senin, Asia/Jakarta): jumlah se
 
 ### Log audit platform dan hitungan percobaan
 
-- **`platform_audit_logs`**: append-only seperti `audit_logs` (trigger yang sama menolak UPDATE/DELETE). Kolom: `actor_user_id`, `actor_tenant_id`, `action` (`create`, `update`), `resource` (`tenant`, `tenant.invitation`, `tenant.module`, `platform.setting`), `target_tenant_id` (boleh kosong), `meta` jsonb, `at`.
-- **`platform_attempt_counters (hour, outcome, count)`**: outcome `unknown_org`, `unknown_account`, `invalid_link`; dinaikkan dengan satu UPSERT. Baris bisa di-UPDATE (tidak append-only); diterima karena tidak memuat identitas, email, atau IP `[⏳ DITERIMA]`. Pertumbuhan paling banyak 24 × 3 baris per hari. Penulisan best-effort dan tidak ditunggu jawaban login, seperti `attempts.js` hari ini, supaya serangan tidak membuat login antre di satu baris.
+- **`platform_audit_logs`**: append-only. DDL lengkap di rencana implementasi. Fungsi trigger sendiri `platform_audit_logs_immutable()` (bukan fungsi `audit_logs`, yang memakai kolom `user_id`): menolak UPDATE/DELETE kecuali di mode pemeliharaan `ewi.audit_maintenance`, dan mengizinkan satu-satunya UPDATE yang mengubah `actor_user_id`/`actor_tenant_id`/`target_tenant_id` menjadi NULL (FK `ON DELETE SET NULL`), supaya menghapus akun atau tenant tidak terhalang (pelajaran migrasi `20261117000502`). Tabel masuk `AUDIT_TABLES` di `src/db/app-role.js`, jadi role aplikasi tidak punya UPDATE/DELETE/TRUNCATE.
+- **`platform_attempt_counters (hour, outcome, count)`**: outcome `unknown_org` (slug tidak ada, lewat `users.findTenantBySlug`), `unknown_account` (tenant ada tetapi tidak ada akun aktif dengan email itu, termasuk akun `invited`), `invalid_link`. Pemanggil mengirim `who` tanpa `tenantId` untuk ketiganya, jadi tidak ada baris di audit tenant; dinaikkan dengan satu UPSERT. Baris bisa di-UPDATE (tidak append-only); diterima karena tidak memuat identitas, email, atau IP `[⏳ DITERIMA]`. Pertumbuhan paling banyak 24 × 3 baris per hari. Penulisan best-effort dan tidak ditunggu jawaban login, seperti `attempts.js` hari ini, supaya serangan tidak membuat login antre di satu baris.
 
 ### Diagram
 
 ```text
 web (tampilan Super Admin)
   screens/b12-super-admin/
-    TenantsView  ── GET  /api/platform/tenants
+    TenantsView  ── GET  /api/platform/tenants, GET /api/platform/settings (encryptionProvider)
                  ── POST /api/platform/tenants[?dryRun=1]
                  ── POST /api/platform/tenants/:tenantId/invite
                  ── GET/PUT /api/platform/tenants/:tenantId/modules[/:moduleKey]
@@ -257,7 +308,7 @@ api
   /api/platform  auth → tenantContext → onlyEtaAdmin → requireFlag(platform.console)
      ├ platform service: tenants, users, entitlements, feature_flags, lna_findings, ai_usage_logs (agregat)
      │    onboard: core/tenant/onboarding.js (mode create + beforeCommit)
-     ├ platformSettings: platform_settings (cache 60 dtk)
+     ├ platformSettings: platform_settings (cache dalam proses, dikosongkan saat update)
      └ platformLog: platform_audit_logs, platform_attempt_counters
   sessions.check ── auth_sessions.last_seen_at, flag auth.session_idle, platformSettings.get('sessionIdleMinutes')
   attempts.record (tanpa tenant) ── platformLog.countAttempt(outcome)
@@ -344,49 +395,130 @@ Ringkasan ADR 0002: login ulang ke tiap tenant (ditolak: akun `eta_admin` harus 
 
 ## Detailed Implementation Plan
 
-### Migrasi (blok `20261119001200–99`)
+Semua path relatif ke root repo. (B) = berkas baru, (U) = ubah berkas yang ada. Revisi v6 setelah review egm tahap 9.
 
-- [ ] `apps/api/migrations/20261119001200-platform.js`: tabel `platform_settings (key varchar(64) PK, value jsonb NOT NULL, updated_by uuid NULL REFERENCES users ON DELETE SET NULL, updated_at timestamptz NOT NULL DEFAULT now())` berisi dua baris bawaan; tabel `platform_audit_logs` (kolom di §Log audit platform, indeks `at DESC`) dengan trigger append-only memakai fungsi dari migrasi `20261113000005`; tabel `platform_attempt_counters (hour timestamptz, outcome varchar(32) CHECK IN (...), count integer NOT NULL, PRIMARY KEY (hour, outcome))`; kolom `auth_sessions.last_seen_at timestamptz NOT NULL DEFAULT now()`. `entitlements.source` tidak punya CHECK (`20261111000001`), jadi `'platform'` tidak butuh perubahan skema. Hak akses role aplikasi mengikuti `20261117000200-app-role-grants.js`. `down` membalik semuanya.
+### Migrasi
+
+- [ ] (B) `apps/api/migrations/20261119001200-platform.js`, `up`:
+
+  ```sql
+  CREATE TABLE platform_settings (
+    key varchar(64) PRIMARY KEY,
+    value jsonb NOT NULL,
+    updated_by uuid NULL REFERENCES users(id) ON DELETE SET NULL,
+    updated_at timestamptz NOT NULL DEFAULT now()
+  );
+  INSERT INTO platform_settings (key, value) VALUES ('sessionIdleMinutes', '30'), ('aiHrAgreementTarget', '85');
+
+  CREATE TABLE platform_audit_logs (
+    id bigserial PRIMARY KEY,
+    actor_user_id uuid NULL REFERENCES users(id) ON DELETE SET NULL,
+    actor_tenant_id uuid NULL REFERENCES tenants(id) ON DELETE SET NULL,
+    action varchar(16) NOT NULL CHECK (action IN ('create', 'update')),
+    resource varchar(32) NOT NULL CHECK (resource IN ('tenant', 'tenant.invitation', 'tenant.module', 'platform.setting')),
+    target_tenant_id uuid NULL REFERENCES tenants(id) ON DELETE SET NULL,
+    meta jsonb NOT NULL DEFAULT '{}'::jsonb,
+    at timestamptz NOT NULL DEFAULT now()
+  );
+  CREATE INDEX platform_audit_logs_at_idx ON platform_audit_logs (at DESC);
+  -- platform_audit_logs_immutable(): tolak DELETE; tolak UPDATE kecuali (a) mode ewi.audit_maintenance,
+  -- atau (b) hanya kolom actor_user_id/actor_tenant_id/target_tenant_id yang berubah menjadi NULL.
+  CREATE TRIGGER platform_audit_logs_append_only BEFORE UPDATE OR DELETE ON platform_audit_logs
+    FOR EACH ROW EXECUTE FUNCTION platform_audit_logs_immutable();
+
+  CREATE TABLE platform_attempt_counters (
+    hour timestamptz NOT NULL,
+    outcome varchar(32) NOT NULL CHECK (outcome IN ('unknown_org', 'unknown_account', 'invalid_link')),
+    count integer NOT NULL DEFAULT 0,
+    PRIMARY KEY (hour, outcome)
+  );
+  ```
+
+  Lalu panggil ulang `applyAppRoleGrants` (pola `20261117000200`). `down` menghapus trigger, fungsi, dan ketiga tabel. `entitlements.source` tidak punya CHECK, jadi `'platform'` tidak butuh perubahan skema.
+- [ ] (B) **Tahap 2** `apps/api/migrations/20261119001210-session-last-seen.js`: `ALTER TABLE auth_sessions ADD COLUMN last_seen_at timestamptz NOT NULL DEFAULT now()`; `down` menghapusnya.
+- [ ] (U) `apps/api/src/db/app-role.js`: `AUDIT_TABLES = ['audit_logs', 'platform_audit_logs']`.
 
 ### API
 
-- [ ] `apps/api/src/core/flags/index.js`: `PLATFORM_CONSOLE: 'platform.console'`, `AUTH_SESSION_IDLE: 'auth.session_idle'`.
-- [ ] `apps/api/src/core/rbac/guards.js` (baru): `onlyEtaAdmin`; `core/flags/admin-routes.js` mengimpornya (perilaku sama).
-- [ ] `apps/api/src/core/tenant/onboarding.js`: `tenant_admin` di `ADMIN_ROLES`; syarat pengelola; `products` boleh kosong; `actor`; `beforeCommit`; mode `create`; `ensureEntitlement` diekspor dan mengenali `full_suite`.
-- [ ] `apps/api/src/core/tenant/client.js` (baru): `withOnboardingClient(config, fn)` dari `scripts/onboard-tenant.js` (pg.Client + `SET search_path`); skrip memakainya.
-- [ ] `apps/api/src/core/platform-settings/index.js` (baru): dua kunci, validasi, `get/all/update`, cache dalam proses yang dikosongkan saat update.
-- [ ] `apps/api/src/core/platform-log/index.js` (baru): `record(actor, action, resource, { targetTenantId, meta }, { db })`, `countAttempt(outcome)` (best-effort), `recent(limit)`, `attemptsByDay(days)`.
-- [ ] **Tahap 2** `apps/api/src/core/auth/sessions.js` + store di `apps/api/src/db/stores.js`: `findActive` mengembalikan `lastSeenAt`; pemeriksaan diam (flag dibaca hanya saat batas terlewati); sentuh paling sering 60 detik (`UPDATE auth_sessions SET last_seen_at = now() WHERE id = :id AND last_seen_at < now() - interval '60 seconds'`); memory store ikut.
-- [ ] **Tahap 2** `apps/api/src/core/auth/session-routes.js`: `POST /sessions/heartbeat` (204).
-- [ ] **Tahap 2** `apps/api/src/core/auth/middleware.js`: kode `SESSION_IDLE` diteruskan seperti `ROLE_VIEW_CHANGED`.
-- [ ] `apps/api/src/core/auth/attempts.js`: bila `who.tenantId` kosong dan `platformLog` ada, panggil `countAttempt(meta.outcome)` tanpa `await` di jalur jawaban. Pemanggil baru: `core/auth/email-link.js` (slug tak dikenal → `unknown_org`, email tak dikenal → `unknown_account`, token tak valid → `invalid_link`) dan `core/auth/routes.js` (login sandi non-produksi dengan tenant/akun tak dikenal).
-- [ ] `apps/api/src/modules/platform/modules.js` (baru): registri delapan modul.
-- [ ] `apps/api/src/modules/platform/service.js` (baru): `createPlatformService`.
-- [ ] `apps/api/src/modules/platform/store.js` (baru): query agregat Postgres (daftar tenant, kesepakatan AI–HR, biaya); modul memakai `flags.detail` dan `entitlements.submodules`.
-- [ ] `apps/api/src/modules/platform/routes.js` (baru): kontrak endpoint; batas query; CSV. Slug: NFKD lalu buang tanda diakritik, huruf kecil, karakter selain `a-z0-9` menjadi `-`, `-` berulang dipadatkan, `-` di ujung dibuang, dipotong 64; hasil kosong → 400 "Nama perusahaan harus memuat huruf atau angka".
-- [ ] `apps/api/src/app.js`: pasang `/api/platform` sebelum `/api`; `platformLog` ke `createAttemptLog`; `platformSettings` dan `flags` ke sesi.
-- [ ] `apps/api/src/core/rbac/menu.js`: butir `tenants` dan `platform` untuk tampilan `super` di balik `platform.console`.
+- [ ] (U) `apps/api/src/core/flags/index.js`: `PLATFORM_CONSOLE: 'platform.console'`; **tahap 2** `AUTH_SESSION_IDLE: 'auth.session_idle'`.
+- [ ] (U) `apps/api/src/core/flags/index.js` dan store flag di `apps/api/src/db/stores.js`: `setTenantFlag(tenantId, key, enabled, userId, { transaction })`.
+- [ ] (U) `apps/api/src/core/tenant/onboarding.js`:
+  - `tenant_admin` masuk `ADMIN_ROLES`; syarat minimal satu `tenant_admin` atau `hr_admin`; `products` boleh kosong;
+  - parameter `actor { userId, label, via }`, `beforeCommit(db, result)`, `mode: 'create'` (§Membuat tenant);
+  - `OnboardingError` mendapat `status = 400`; galat baru `TenantExistsError` (`code = 'TENANT_EXISTS'`, `status = 409`);
+  - ekspor `ensureEntitlement(query, tenantId, product, source)`.
+- [ ] (B) `apps/api/src/core/tenant/client.js`: `withOnboardingClient({ databaseUrl, dbSchema }, fn)` (pg.Client, `SET search_path`, selalu `end()`), diekstrak dari `apps/api/scripts/onboard-tenant.js`.
+- [ ] (B) `apps/api/src/core/tenant/invite.js`: `inviteAdmins({ query, links, tenantId, tenantName, emails, actor })` menggantikan `sendInvites` di skrip.
+- [ ] (U) `apps/api/scripts/onboard-tenant.js`: memakai `client.js` dan `invite.js`.
+- [ ] (U) `apps/api/src/core/auth/email-link.js`: `prepare(user, purpose, { createdBy, tenantName, transaction })` mengembalikan `{ send }`; `issue` = `prepare` lalu `send`.
+- [ ] (U) `apps/api/src/db/stores.js`: `loginLinks.create(row, { transaction })`; store Postgres `platformSettings`, `platformLog` (insert, recent, attemptsByDay, upsert counter) di kunci `stores.platformSettings`, `stores.platformLog`, `stores.platform` (agregat); **tahap 2** `authSessions.findActive` mengembalikan `lastSeenAt`, `authSessions.touch(id)` (`UPDATE … SET last_seen_at = now() WHERE id = :id AND last_seen_at < now() - interval '60 seconds'`).
+- [ ] (U) `apps/api/tests/helpers.js`: `makeStores` tanpa store platform tetap jalan (rute platform hanya dipasang bila `stores.platform` ada, pola `if (stores.loginLinks)`).
+- [ ] (B) `apps/api/src/core/platform-settings/index.js`: `createPlatformSettings({ store, platformLog })` dengan `get(key)`, `all()`, `update(actor, patch)`; validasi bilangan bulat dalam rentang; satu transaksi; satu log per kunci yang berubah.
+- [ ] (B) `apps/api/src/core/platform-log/index.js`: `createPlatformLog({ store })` dengan `record(entry, { transaction })`, `insertSql(entry)` → `{ text, values }`, `countAttempt(outcome)` (tidak dilempar, tidak ditunggu), `recent(limit)`, `attemptsByDay(days)`. `entry = { actor: { userId, tenantId }, action, resource, targetTenantId, meta }`.
+- [ ] (U) `apps/api/src/core/auth/attempts.js`: `createAttemptLog(audit, { platformLog })`; bila `who.tenantId` kosong, panggil `platformLog.countAttempt(meta.outcome)` tanpa `await`.
+- [ ] (U) `apps/api/src/core/auth/email-link.js` rute `POST /`: bila `findByEmail` kosong, `users.findTenantBySlug(slug)` membedakan `unknown_org` dan `unknown_account`; rute `/verify` dengan token tak valid → `invalid_link`. (U) `apps/api/src/core/auth/routes.js` login sandi non-produksi: aturan yang sama.
+- [ ] (U) `apps/api/src/modules/imports/template.js`: ekspor `csvCell`.
+- [ ] (B) `apps/api/src/modules/platform/modules.js`: registri delapan modul (`key`, `name`, `flag` dari `FLAGS`, `product`, `earlyAccess`); `rowFor(module, detail, entitled)` menerapkan rumus kolom.
+- [ ] (B) `apps/api/src/modules/platform/store.js`: `listTenants()` (satu query agregat; status turunan; peran dari `user_roles`), `pendingAdmin(tenantId)`, `hasActiveAdmin(tenantId)`, `aiQuality({ days })`, `aiCost({ weeks })`.
+- [ ] (B) `apps/api/src/modules/platform/service.js`: `createPlatformService({ db, store, flags, entitlements, audit, platformLog, platformSettings, links, users, provider, production, onboardingClient })`, method di §Antarmuka modul. `onboardingClient` = `(fn) => withOnboardingClient(config, fn)`; test integrasi memberi versi yang sama dengan `DATABASE_URL` test.
+- [ ] (B) `apps/api/src/modules/platform/routes.js`: `platformRouter({ service, platformSettings, platformLog, limits })`, kontrak endpoint, validasi query (`days` 1..90, `weeks` 1..26, `limit` 1..200, `days` attempts 1..31, selain itu 400), `:tenantId` bukan UUID atau tidak ada → 404, slug (aturan di bawah), CSV, 404 di akhir router.
+  - Slug: NFKD lalu buang diakritik, huruf kecil, karakter selain `a-z0-9` menjadi `-`, `-` berulang dipadatkan, potong 64, **lalu** buang `-` di ujung; kosong → 400 "Nama perusahaan harus memuat huruf atau angka".
+- [ ] (U) `apps/api/src/app.js`: buat `platformLog`, `platformSettings` (bila store ada), `provider = createProvider(config.encryption)`; `createAttemptLog(audit, { platformLog })`; pasang `/api/platform` sebelum `/api` dengan `auth`, `tenantContext()`, `requireRole()`, `requireFlag(FLAGS.PLATFORM_CONSOLE)`; limiter `platformReinvite`; **tahap 2** `platformSettings` dan `flags` ke `createSessionService`.
+- [ ] (U) **Tahap 2** `apps/api/src/core/auth/sessions.js`: `createSessionService({ …, idle: { minutes: () => platformSettings.get('sessionIdleMinutes'), enabled: (tenantId) => flags.isEnabled(tenantId, FLAGS.AUTH_SESSION_IDLE) } })`; pemeriksaan diam di `check`; memory store ikut.
+- [ ] (U) **Tahap 2** `apps/api/src/core/auth/session-routes.js`: `POST /sessions/heartbeat` → 204.
+- [ ] (U) **Tahap 2** `apps/api/src/core/auth/middleware.js`: pesan per kode (`SESSION_IDLE`, `ROLE_VIEW_CHANGED`).
+- [ ] (U) `apps/api/src/core/rbac/menu.js`: butir `tenants` dan `platform` di `MENUS.super` sudah ada; hanya tambah elemen flag `FLAGS.PLATFORM_CONSOLE` (API mengembalikan `enabled: false` saat mati; web menyembunyikan lewat gerbang rute).
 
 ### Web
 
-- [ ] `apps/web/src/api/platform.ts` (baru): klien bertipe.
-- [ ] `apps/web/src/screens/b12-super-admin/routes.ts` (baru): rute `tenants` (beranda tampilan Super Admin) dan `platform`, gerbang `views: ['super']`, `flag: 'platform.console'` (tabel menu `b0-fondasi-ui.md`).
-- [ ] `apps/web/src/screens/b12-super-admin/TenantsView.vue` (baru): tiga KPI, tabel tenant (status, kirim ulang undangan), panel modul (Akses, Aktif, kill switch), formulir "Buat tenant baru" (nama, email; kolom ID bila `encryptionProvider = 'kms'`; tombol Periksa → slug).
-- [ ] `apps/web/src/screens/b12-super-admin/PlatformView.vue` (baru): empat kartu mockup sesuai tabel kartu, dua isian dengan konfirmasi saat batas sesi diturunkan, kartu Kesepakatan AI–HR, Biaya token mingguan (unduh CSV), Log audit platform, Percobaan masuk tanpa tenant.
-- [ ] **Tahap 2** `apps/web/src/api/client.ts`: tangani `SESSION_IDLE`; tanda aktivitas (listener `keydown`, `pointerdown`, `scroll`, heartbeat paling sering 5 menit saat login).
-- [ ] `apps/web/e2e/super-admin.spec.ts` (baru) dengan API mock; perbarui `loginAs` di `e2e/poc-dna-tna.spec.ts` dan `e2e/gating.spec.ts`: Super Admin dengan `platform.console` menyala mendarat di `tenants`, bukan `/`.
+- [ ] (B) `apps/web/src/api/platform.ts`: klien bertipe sesuai §Bentuk jawaban.
+- [ ] (B) `apps/web/src/screens/b12-super-admin/routes.ts`: `/tenants` (nama `tenants`, beranda tampilan Super Admin) dan `/platform` (nama `platform`), `views: ['super']`, `flag: 'platform.console'`.
+- [ ] (B) `apps/web/src/screens/b12-super-admin/TenantsView.vue`: tiga KPI, tabel tenant (label status, kirim ulang undangan), panel modul (Akses, Aktif, tanda kill switch), formulir "Buat tenant baru" (nama, email; kolom ID bila `encryptionProvider = 'kms'`; Periksa → slug dan `exists`).
+- [ ] (B) `apps/web/src/screens/b12-super-admin/PlatformView.vue`: empat kartu mockup sesuai tabel kartu, dua isian (konfirmasi saat batas sesi diturunkan), Kesepakatan AI–HR, Biaya token mingguan (unduh CSV), Log audit platform, Percobaan masuk tanpa tenant.
+- [ ] (U) **Tahap 2** `apps/web/src/api/client.ts` (kode galat ke handler), `apps/web/src/main.ts` (`alasan=sesi-diam`), `apps/web/src/views/LoginView.vue` (pesan), `apps/web/src/stores/session.ts` (tanda aktivitas dan heartbeat).
+- [ ] (B) `apps/web/e2e/super-admin.spec.ts` (API mock, `loginSebagai(page, 'super', { flags: { 'platform.console': true } })`):
+  1. Super Admin mendarat di Tenant; KPI dan status tenant tampil sebagai teks.
+  2. Buat tenant: Periksa menampilkan slug; slug yang sudah ada memberi peringatan; simpan → baris baru "Menunggu admin"; `invitation: 'failed'` menampilkan pesan dan tombol kirim ulang.
+  3. Panel modul: nyalakan Training Needs; kill switch tampil sebagai teks; modul tanpa akses ditandai.
+  4. Konfigurasi platform: ubah batas sesi (menurunkan meminta konfirmasi), galat rentang tampil di ringkasan galat; baris 2FA "Tidak dipakai".
+  5. Kartu AI: "Data belum cukup" untuk n < 10; unduh CSV.
+  6. Flag mati: menu Tenant/Konfigurasi tidak tampil dan `/tenants` tidak bisa dibuka.
+- [ ] (U) `apps/web/e2e/shell.spec.ts` (Super Admin di baris 95–100): dengan `platform.console` menyala mendarat di `/tenants`.
+- [ ] (U) **Tahap 2** `apps/web/e2e/gating.spec.ts`: 401 `SESSION_IDLE` → `/login?alasan=sesi-diam` dengan pesan.
 
 ### Test yang ditulis lebih dulu (tdd)
 
-- [ ] `tests/integration/platform.test.js` (Postgres): 403 `ROLE_FORBIDDEN` untuk `tenant_admin`, `hr_admin`, `learner` (flag menyala dan mati); 403 `FEATURE_DISABLED` untuk Super Admin saat flag mati; status turunan termasuk `suspended` dan `disabled`; buat tenant (akun `tenant_admin` invited, undangan, audit tenant berpelaku, log platform, 409 slug ganda tanpa mengubah tenant lama, dryRun tidak menyimpan, kegagalan log platform membatalkan tenant); kirim ulang (409 aktif, 429); modul (flag, entitlement `platform`, `full_suite` tidak digandakan, kill switch tampil, audit tenant sasaran, `MODULE_UNAVAILABLE`); kunci terlarang tidak muncul.
-- [ ] `tests/integration/platform-settings.test.js`: validasi rentang, kunci tak dikenal 400, log per kunci, getter langsung memakai nilai baru setelah update.
-- [ ] `tests/integration/platform-ai.test.js`: kesepakatan 34/40 = 85% memenuhi; temuan tanpa `analysis_job_id` tidak dihitung; n < 10; biaya mingguan; CSV sama dengan JSON dan sel formula diberi awalan.
-- [ ] **Tahap 2** `tests/unit/sessions-idle.test.js`: flag mati → tidak pernah diam; flag menyala dan lewat batas → `SESSION_IDLE` dan dicabut; sentuh paling sering 60 detik; heartbeat menyentuh.
-- [ ] `tests/unit/attempts.test.js`: percobaan tanpa tenant menaikkan hitungan, tidak menulis audit tenant, kegagalan hitungan tidak mengubah jawaban.
-- [ ] `tests/unit/onboarding.test.js`: `tenant_admin` diterima; tanpa pengelola ditolak; `products` kosong; `actor` tercatat; `beforeCommit` gagal → ROLLBACK; mode `create` menolak tenant yang ada.
+- [ ] (B) `apps/api/tests/integration/platform.test.js` (Postgres):
+  - gerbang: 403 `ROLE_FORBIDDEN` untuk `tenant_admin`, `hr_admin`, `learner` (flag menyala dan mati); 403 `FEATURE_DISABLED` untuk Super Admin saat flag mati; `:tenantId` bukan UUID → 404; path tak dikenal → 404;
+  - daftar: status turunan (termasuk `suspended`, semua `disabled`), `adminEmail` dari `user_roles`, `activeModules` = modul `effective`;
+  - buat tenant: akun `tenant_admin` invited, undangan terkirim, audit tenant berpelaku, log platform; slug ganda dan id ganda → 409 tanpa mengubah tenant lama dan tanpa panggilan KMS; `dryRun` tidak menyimpan dan memberi `exists`; kegagalan log platform membatalkan tenant; mailer melempar → `invitation: 'failed'` dan tenant tetap ada; slug yang dipotong tidak berakhir `-`;
+  - kirim ulang: 409 `ADMIN_ALREADY_ACTIVE`, 404 `NO_PENDING_ADMIN`, 429 setelah 3 kali; link + dua audit dalam satu transaksi (audit gagal → tidak ada link);
+  - modul: flag, entitlement `source = 'platform'`, `full_suite` tidak digandakan, kill switch tampil, audit tenant sasaran, log platform; audit gagal → flag tidak berubah; kunci tak dikenal → 404;
+  - kunci terlarang (`answer`, `transcript`, `text`, `quote`, `summary`) tidak muncul di jawaban mana pun.
+- [ ] (B) `apps/api/tests/integration/platform-settings.test.js`: rentang dan bilangan bulat, kunci tak dikenal 400, satu log per kunci yang berubah, getter langsung memakai nilai baru.
+- [ ] (B) `apps/api/tests/integration/platform-ai.test.js`: 34/40 = 85% memenuhi; temuan tanpa `analysis_job_id` tidak dihitung; n < 10 → `meetsTarget: null`; biaya mingguan dengan `costMissing`; CSV sama dengan JSON, header tetap, sel formula diberi awalan; `days`/`weeks` di luar rentang → 400.
+- [ ] (B) `apps/api/tests/integration/platform-log.test.js`: UPDATE/DELETE ditolak trigger; menghapus tenant atau akun pelaku mengosongkan kolom FK tanpa galat; role aplikasi tidak punya UPDATE/DELETE (perluas `apps/api/tests/integration/db-app-role.test.js`).
+- [ ] (U) `apps/api/tests/integration/onboarding.test.js`: mode `create` menolak tenant yang ada (slug dan id) sebelum KMS, balapan `23505` → `TENANT_EXISTS`, `beforeCommit` gagal → ROLLBACK, `tenant_admin` diterima, `products` kosong, `actor` tercatat.
+- [ ] (U) `apps/api/tests/unit/onboarding.test.js`: validasi `normalizeSpec` (`tenant_admin`, tanpa pengelola ditolak, `products` kosong).
+- [ ] (B) `apps/api/tests/unit/attempts.test.js`: tanpa tenant menaikkan hitungan, tidak menulis audit tenant, kegagalan hitungan tidak mengubah jawaban; rute link membedakan `unknown_org`, `unknown_account`, `invalid_link`.
+- [ ] (U) `apps/api/tests/unit/roles.test.js` (test `buildMenu`): butir `tenants`/`platform` nonaktif saat `platform.console` mati.
+- [ ] (U) **Tahap 2** `apps/api/tests/unit/session-auth.test.js`: flag mati → tidak pernah diam; menyala dan lewat batas → 401 `SESSION_IDLE` lewat middleware dan sesi dicabut (`idle`); sentuh paling sering 60 detik; heartbeat menyentuh; `switchRole` tidak menyentuh.
 
 ### Dokumen
 
-- [ ] `docs/ewi/onboarding-tenant.md`: `tenant_admin`, layar Tenant sebagai jalur utama, langkah Terraform tetap.
-- [ ] `docs/designs/b18-e2e-qa-malam.md` tabel 3.3: baris alur "Super Admin membuat tenant → Admin Tenant menerima undangan → modul dinyalakan → HR melihat menu".
-- [ ] Spek ini: centang item; bagian Review spek, Review diff, Code review, Drift.
+- [ ] (U) `docs/ewi/onboarding-tenant.md`: `tenant_admin`, layar Tenant sebagai jalur utama, langkah Terraform tetap.
+- [ ] (U) `docs/designs/b18-e2e-qa-malam.md` tabel 3.3: baris alur "Super Admin membuat tenant → Admin Tenant menerima undangan → modul dinyalakan → HR melihat menu" (driver `tests/alur/driver.js`).
+- [ ] (U) Spek ini: centang item; bagian Review spek, Review diff, Code review, Drift.
+
+## Review spek (egm)
+
+| Tahap | Persona | Hasil | Triase |
+| --- | --- | --- | --- |
+| 5 | zoom-out, inventive-catalyst | ruang lingkup dipersempit (dua isian, status turunan, tanpa kolom baru di `tenants`) | diterima di v3–v4 |
+| 6 | comprehension | istilah Platform di `CONTEXT.md`, ADR 0002 | diterima |
+| 7 | design, structural, style | antarmuka modul kecil, sesi diam tahap 2 terpisah | diterima di v5 |
+| 8 | zoom-out menengah | tidak ada temuan baru yang menghalangi | – |
+| 9 | implementation-readiness | 2 Blocker, 7 Major, 9 Nit: bentuk jawaban, transaksi, DDL log platform, kunci modul, DI, limiter kirim ulang, sesi diam di web, mode create vs dryRun, celah test | semua diterima di v6 (§Bentuk jawaban, §Transaksi, rencana implementasi) |
+| 9 | codebase-details | 2 Blocker, 14 Major, 9 Nit: fungsi trigger tidak bisa dipakai ulang, atomisitas kirim ulang, grant role aplikasi, kontrak galat onboarding, berkas tahap 1 kurang, e2e salah berkas, `findTenantBySlug`, `ensureEntitlement`, `listInvitees`, `sendInvites`, sesi diam, menu/registri, path test | semua diterima di v6; N1 (`requireRole()` alih-alih guard baru), N4 (potong lalu buang `-`), N5 (`csvCell`), N6 (`conflict()` sudah ada di integrasi), N8 (404 di akhir router) |
+
+Gerbang interaktif egm dijalankan sebagai "terima otomatis" karena brief aturan 11 langkah 3 menyerahkan triase ke thread.
