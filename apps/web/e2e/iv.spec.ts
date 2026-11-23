@@ -30,7 +30,7 @@ function summaryStateOf(s: State) {
 }
 
 /** Masuk lewat support/ B18 (loginSebagai + mockApi) dengan sesi s1 berstate. Mengembalikan permintaan tulis yang dikirim layar. */
-async function setup(page: Page, o: { peran?: Peran; flags?: Record<string, boolean>; state?: Partial<State>; interviewee?: boolean; summary?: ResponsApi } = {}) {
+async function setup(page: Page, o: { peran?: Peran; flags?: Record<string, boolean>; state?: Partial<State>; interviewee?: boolean; summary?: ResponsApi; withdrawnAt?: string } = {}) {
   const peran = o.peran ?? 'karyawan'
   const me = `u-${peran}`
   const sent: Sent[] = []
@@ -48,7 +48,7 @@ async function setup(page: Page, o: { peran?: Peran; flags?: Record<string, bool
       return data({
         ...base, transcriptVisible: true, turns: s.turns, consentVersionRequired: 'tna-consent-id-v1.0',
         answerCount: s.turns.filter((t) => t.speaker === 'human').length, questionLimit: 5, restartCount: s.restartCount, restartsLeft: 2 - s.restartCount,
-        summaryAt: s.summaryAt, summaryConfirmedAt: s.summaryConfirmedAt, aiLabel: 'ELGOS-AI', sessionCode: 'S1ABCDEF',
+        summaryAt: s.summaryAt, summaryConfirmedAt: s.summaryConfirmedAt, aiLabel: 'ELGOS-AI', sessionCode: 'S1ABCDEF', consentWithdrawnAt: o.withdrawnAt ?? null,
       })
     }
     if (cocok(req, 'POST /tna/sessions/s1/consent')) {
@@ -204,4 +204,26 @@ test('alamat lama /m/tna/sessions/:id dialihkan ke /iv/:id', async ({ page }) =>
   await setup(page, { flags: SUMMARY_ON })
   await page.goto('/m/tna/sessions/s1')
   await expect(page).toHaveURL(/\/iv\/s1$/)
+})
+
+// B8: transkrip hanya untuk yang diwawancarai (PO-6 A) kini bisa dibaca setelah sesi selesai atau dibatalkan
+const TRANSKRIP = [
+  { speaker: 'ai' as const, text: 'Ceritakan analisis insiden terakhir yang Anda kerjakan.', at: '' },
+  { speaker: 'human' as const, text: 'Saya belum pernah dilatih eskalasi.', at: '' },
+]
+
+test('sesi selesai menampilkan transkrip read-only untuk yang diwawancarai', async ({ page }) => {
+  await setup(page, { state: { status: 'completed', turns: TRANSKRIP } })
+  await page.goto('/iv/s1')
+  const transkrip = page.getByRole('region', { name: 'Transkrip' })
+  await expect(transkrip).toContainText('Saya belum pernah dilatih eskalasi.')
+  await expect(transkrip.getByRole('textbox')).toHaveCount(0)
+})
+
+test('sesi yang persetujuannya ditarik menyebut penarikan, bukan sekadar dibatalkan', async ({ page }) => {
+  await setup(page, { state: { status: 'abandoned', turns: TRANSKRIP }, withdrawnAt: '2026-11-20T03:00:00.000Z' })
+  await page.goto('/iv/s1')
+  await expect(page.getByText('Persetujuan Anda untuk wawancara ini sudah ditarik.')).toBeVisible()
+  await expect(page.getByText('Sesi ini dibatalkan.')).toHaveCount(0)
+  await expect(page.getByRole('region', { name: 'Transkrip' })).toContainText('Saya belum pernah dilatih eskalasi.')
 })

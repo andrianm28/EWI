@@ -48,6 +48,8 @@ function publicSummary(findings) {
 const SHARED_FIELDS = [
   'id', 'projectId', 'submodule', 'intervieweeId', 'jobRoleId', 'status', 'mode', 'consentAt', 'consentVersion', 'triggerRecordIds',
   'startedAt', 'endedAt', 'inviteExpiresAt', 'inviteExtendedCount', 'durationMinutes', 'focusKind', 'focusLabel', 'assignedBy', 'assignedByName',
+  // B8: tanda penarikan persetujuan (spek b8-karyawan.md "Aturan baca": interviews.list dan get mengembalikannya)
+  'consentWithdrawnAt',
 ];
 
 /**

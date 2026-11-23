@@ -63,6 +63,11 @@ describe('langkah dan status ringkasan', () => {
     }
   });
 
+  it('sessionView mengirim consentWithdrawnAt ke semua peran yang boleh melihat sesi (B8: HR dan yang diwawancarai melihat penarikan)', () => {
+    const s = { id: 'abcdef12-0000-4000-8000-000000000000', status: 'abandoned', consentWithdrawnAt: past };
+    for (const view of [sessionView(s, { now }), sessionView(s, { interviewee: true, now })]) expect(view).toMatchObject({ consentWithdrawnAt: past });
+  });
+
   it('konfirmasi: tidak sesuai wajib bercatatan 10-1000 karakter', () => {
     expect(parseConfirmation(undefined)).toEqual({ disputed: false, note: null });
     expect(parseConfirmation({ accurate: true, note: 'diabaikan' })).toEqual({ disputed: false, note: null });
