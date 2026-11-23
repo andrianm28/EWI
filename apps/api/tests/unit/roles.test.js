@@ -62,5 +62,8 @@ describe('menu per tampilan (mockup fungsi N)', () => {
     expect(on('hr', full)).not.toContain('lib'); // module.li belum terdaftar
     expect(on('hr', { ...full, flags: { ...all, 'module.li': true } })).toContain('lib');
     expect(on('karyawan', { flags: { 'module.tna': true }, submodules: ['tna'] })).toEqual(['my', 'iv', 'li']);
+    // B12: butir Super Admin mengikuti platform.console
+    expect(on('super', full)).toEqual([]);
+    expect(on('super', { ...full, flags: { 'platform.console': true } })).toEqual(['tenants', 'platform']);
   });
 });
