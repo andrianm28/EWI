@@ -102,6 +102,14 @@ test('Admin ETA: tampilan Super Admin dengan baris konsol platform', async ({ pa
   await expect(page.getByText('Konsol platform ELGOS · semua tenant')).toBeVisible()
 })
 
+test('Admin ETA dengan platform.console menyala: mendarat di Tenant (B12), menu konsol menggantikan butir peralihan', async ({ page }) => {
+  await page.route('**/api/platform/**', (r) => r.fulfill({ json: { data: { kpis: { tenants: 0, activeTenants: 0, modulesAvailable: 8 }, tenants: [], editable: {}, display: {}, encryptionProvider: 'local' } } }))
+  await loginAs(page, { role: 'eta_admin', flags: { 'platform.console': true } })
+  await expect(page).toHaveURL(/\/tenants$/)
+  await expect(nav(page).getByRole('link')).toHaveText(['Tenant', 'Konfigurasi platform'])
+  await expect(page.getByTestId('identitas')).toContainText('Super Admin')
+})
+
 test('ganti tampilan: HR pindah ke Karyawan (saya), menu berganti, pilihan bertahan setelah muat ulang', async ({ page }) => {
   await loginAs(page, { roles: ['hr_admin'], tenantName: 'Demo Organisasi', routes: [{ name: 'my', views: ['karyawan'] }, { name: 'dash', views: ['hr', 'atasan'] }] })
   await expect(page).toHaveURL(/\/uji\/dash$/)
