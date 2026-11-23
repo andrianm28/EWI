@@ -357,3 +357,30 @@ test('P6 Draf: Simpan perubahan, simpan otomatis saat pindah langkah dan keluar,
   await expect(page).toHaveURL(/\/req$/)
   expect(calls.find((c) => c.method === 'DELETE')?.url).toBe('/drafts/d-1')
 })
+
+// Paritas P8 (docs/designs/paritas-mockup/p8-keputusan-r1-r22.md)
+test('P8 R8: rancangan modul memakai label jujur "Templat ELGOS"', async ({ page }) => {
+  await setup(page)
+  await page.goto('/req/draf/d-1')
+  await expect(page.getByText('Templat ELGOS menyusun draf dari tujuan pembelajaran di DACUM Tool 1 (job function) dan Tool 2 (KSA), dengan prinsip instructional design. Anda meninjau tiap tahap sebelum lanjut.')).toBeVisible()
+  await expect(page.locator('.el-audit')).toHaveText(/^Templat ELGOS\s*·\s*sumber: DACUM Tool 1 dan Tool 2\s*·\s*draf perlu persetujuan SME sebelum dipakai$/)
+  await expect(page.getByText('Agen ELGOS')).toHaveCount(0)
+})
+
+test('P8 R20: kalimat vendor menjadi petunjuk kecil di bawah tombol Minta; alur Permintaan sama dengan mockup', async ({ page }) => {
+  await setup(page)
+  await page.goto('/lib')
+  await expect(page.getByText('Tombol "Minta" hanya mencatat')).toHaveCount(0)
+  const detail = page.getByTestId('detail-modul')
+  const minta = detail.getByRole('button', { name: `Minta ke ${VENDOR}` })
+  const hint = detail.getByText(`Tombol Minta hanya mencatat permintaan di ELGOS; ELGOS tidak mengirim apa pun ke ${VENDOR}.`)
+  await expect(hint).toBeVisible()
+  await expect(hint).toHaveCSS('font-size', '12px')
+  await expect(minta).toHaveAttribute('aria-describedby', (await hint.getAttribute('id'))!)
+  expect((await hint.boundingBox())!.y).toBeGreaterThan((await minta.boundingBox())!.y)
+
+  await page.goto('/req')
+  await expect(page.getByText(`Alur: diminta → dikonfirmasi ${VENDOR} → modul dikirim → dipasang di EliteMentor.`, { exact: true })).toBeVisible()
+  const hintReq = page.getByText(`HR mencatat tiap langkah; ELGOS tidak mengirim apa pun ke ${VENDOR}.`, { exact: true })
+  await expect(hintReq).toHaveCSS('font-size', '12px')
+})

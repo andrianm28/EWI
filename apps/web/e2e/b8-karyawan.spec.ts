@@ -267,3 +267,17 @@ test('HR dengan peran dari API (B2) berganti ke Karyawan (saya) lewat switch-rol
   await expect(page).toHaveURL(/\/my$/)
   expect(ganti).toEqual([{ role: 'learner' }])
 })
+
+// Paritas P8 (docs/designs/paritas-mockup/p8-keputusan-r1-r22.md)
+test('P8 R3/R16/R17: status titik + teks, undangan tentang KPI belum tercapai, tanpa "Lihat contoh rekomendasi"', async ({ page }) => {
+  await masuk(page)
+  const tabel = page.getByRole('table')
+  const menguasai = tabel.getByRole('row', { name: /ST-B4/ }).getByRole('cell').last()
+  await expect(menguasai.locator('.b8-dot')).toHaveCount(1)
+  await expect(menguasai).toHaveText('Menguasai')
+  await expect(tabel.locator('.el-status')).toHaveCount(0)
+  const undangan = page.getByTestId('my-invitations')
+  await expect(undangan).toContainText('ada 1 wawancara singkat tentang target kerja (KPI) Anda yang belum tercapai.')
+  await expect(undangan).not.toContainText('hambatan kerja')
+  await expect(page.getByTestId('my-plan').getByRole('button', { name: 'Lihat contoh rekomendasi' })).toHaveCount(0)
+})

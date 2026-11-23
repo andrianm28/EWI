@@ -221,3 +221,18 @@ test('triase P7 ADM-1: HR yang membuka layar admin lewat alamat mendapat tautan 
   await expect(page.getByRole('heading', { level: 1, name: 'Jabatan & kamus kompetensi' })).toBeVisible()
   await expect(links.getByRole('link', { name: 'Jabatan & kamus kompetensi' })).toHaveAttribute('aria-current', 'page')
 })
+
+// Paritas P8 (docs/designs/paritas-mockup/p8-keputusan-r1-r22.md)
+test('P8 R3: status pengguna berupa chip terisi seperti mockup', async ({ page }) => {
+  await page.route('**/api/tenant-admin/**', (r) => {
+    const path = new URL(r.request().url()).pathname.replace(/^.*\/api\/tenant-admin/, '')
+    if (path === '/users') return json(r, { data: USERS, meta: { total: USERS.length, sso: true } })
+    if (path === '/roles') return json(r, { data: [{ key: 'learner', label: 'Karyawan' }] })
+    if (path === '/job-roles') return json(r, { data: JOBS })
+    return json(r, { error: { code: 'NOT_FOUND', message: 'tidak ada' } }, 404)
+  })
+  await login(page)
+  const baris = page.getByRole('row', { name: /Karyawan A/ })
+  await expect(baris.locator('.el-chip--success')).toHaveText('Aktif')
+  await expect(baris.locator('.el-status')).toHaveCount(0)
+})

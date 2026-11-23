@@ -198,3 +198,24 @@ test('triase P7: penghitung pertanyaan tidak melewati batas walau AI mengirim pe
   await expect(page.getByText('Pertanyaan 5 dari 5')).toBeVisible()
   await expect(page.getByText('Pertanyaan 6 dari 5')).toHaveCount(0)
 })
+
+// Paritas P8 (docs/designs/paritas-mockup/p8-keputusan-r1-r22.md)
+test('P8 R13/R18: input jawaban satu baris; audit memakai label produk "model ELGOS-AI (POC)"', async ({ page }) => {
+  await setup(page, { flags: SUMMARY_ON })
+  await page.goto('/iv/s1')
+  const audit = page.locator('.el-card .el-audit')
+  await expect(audit).toContainText('S1ABCDEF · model ELGOS-AI (POC) · log audit: persetujuan belum · 0 jawaban')
+  await page.getByTestId('consent-check').check()
+  await page.getByRole('button', { name: 'Lanjut ke wawancara' }).click()
+  const jawaban = page.getByLabel('Jawaban')
+  await expect(jawaban).toHaveJSProperty('tagName', 'INPUT')
+  await expect(jawaban).toHaveAttribute('placeholder', 'Ketik jawaban Anda')
+})
+
+test('P8 R15: daftar wawancara karyawan memakai breadcrumb mockup tanpa tautan', async ({ page }) => {
+  await setup(page)
+  await page.goto('/iv')
+  const crumb = page.getByRole('navigation', { name: 'Lokasi' })
+  await expect(crumb).toHaveText(/Training Needs\s*›\s*Wawancara akar masalah/)
+  await expect(crumb.getByRole('link')).toHaveCount(0)
+})

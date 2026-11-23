@@ -189,3 +189,25 @@ test('6. Flag mati: menu Tenant dan Konfigurasi tidak tampil, /tenants tidak bis
   await page.goto('/tenants')
   await expect(page).not.toHaveURL(/\/tenants$/)
 })
+
+// Paritas P8 (docs/designs/paritas-mockup/p8-keputusan-r1-r22.md)
+test('P8 R3: status tenant berupa chip terisi', async ({ page }) => {
+  await konsol(page)
+  await loginSebagai(page, 'super', { flags: ON })
+  const rows = page.getByRole('table', { name: 'Daftar tenant' }).getByRole('row')
+  await expect(rows.filter({ hasText: 'PT Elitery' }).locator('.el-chip--success')).toHaveText('Aktif')
+  await expect(rows.filter({ hasText: 'PT Beku' }).locator('.el-chip--review')).toHaveText('Ditangguhkan')
+  await expect(page.getByRole('table', { name: 'Daftar tenant' }).locator('.el-status')).toHaveCount(0)
+})
+
+test('P8 R18: kartu model AI memakai label produk dan chip kriteria pilot; ID penyedia hanya baris Super Admin', async ({ page }) => {
+  await konsol(page)
+  await loginSebagai(page, 'super', { flags: ON })
+  await nav(page).getByRole('link', { name: 'Konfigurasi platform' }).click()
+  const kartu = page.getByTestId('pf-model')
+  await expect(kartu.getByRole('heading', { name: 'Model AI wawancara' })).toBeVisible()
+  await expect(kartu).toContainText('Versi model dan skrip wawancara yang tersedia untuk tenant.')
+  await expect(kartu.locator('.el-chip').first()).toHaveText('ELGOS-AI (POC)')
+  await expect(kartu.locator('.el-chip--review')).toHaveText('Kesepakatan AI–HR ≥ 85% (kriteria pilot)')
+  await expect(kartu.getByTestId('pf-model-id')).toHaveText('ID penyedia (hanya Super Admin): bedrock · model-uji')
+})

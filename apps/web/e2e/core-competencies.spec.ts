@@ -370,3 +370,58 @@ test('P7 CV-2/CV-4/CV-5: bar skor nilai hijau/merah, tabel tanpa bingkai ganda, 
   await program.getByRole('link', { name: 'Wawancarai karyawan yang belum selesai' }).click()
   await expect(page).toHaveURL(/tab=aiv/)
 })
+
+// Paritas P8 (docs/designs/paritas-mockup/p8-keputusan-r1-r22.md)
+test('P8 R2 AH-2/AH-3: Tugaskan semua di header kartu, tenggat di dialog dan sebagai teks kecil di sel Status', async ({ page }) => {
+  const sent = await loginAs(page)
+  await page.goto('/cc?tab=aiv')
+  const panel = page.getByTestId('cc-wawancara-hr')
+  await expect(panel.getByLabel('Batas waktu penugasan baru')).toHaveCount(0)
+  await expect(panel.getByRole('columnheader', { name: 'Batas waktu' })).toHaveCount(0)
+  await expect(panel.getByRole('row', { name: /Dewi Atasan/ }).getByRole('cell').nth(2)).toContainText('Batas 30 Nov 2026')
+  const judul = (await panel.getByRole('heading', { name: 'Penugasan ke pimpinan dan atasan' }).boundingBox())!
+  const semua = (await panel.getByRole('button', { name: 'Tugaskan semua' }).boundingBox())!
+  expect(Math.abs(semua.y - judul.y)).toBeLessThan(40)
+  expect(semua.x).toBeGreaterThan(judul.x + 300)
+
+  await panel.getByRole('button', { name: 'Tugaskan semua' }).click()
+  const dialog = page.getByRole('dialog', { name: 'Tugaskan wawancara pimpinan' })
+  await expect(dialog).toContainText('2 pimpinan')
+  await dialog.getByLabel('Batas waktu').fill('2026-12-15')
+  await dialog.getByRole('button', { name: 'Tugaskan', exact: true }).click()
+  await expect(dialog).toHaveCount(0)
+  await expect(panel.getByRole('status')).toHaveText('2 pimpinan ditugaskan.')
+  expect(sent).toContainEqual({ method: 'POST', path: '/assignments', body: { assigneeIds: ['u-l2', 'u-l3'], dueDate: '2026-12-15', durationMinutes: 10 } })
+})
+
+test('P8 R2 AA-4: atasan tanpa field tanggal di toolbar; Tugaskan membuka dialog tenggat', async ({ page }) => {
+  const team = [{ userId: 'u-b', name: 'Karyawan B', jobRoleName: 'Engineer', status: 'none' }]
+  const sent = await loginAs(page, { role: 'supervisor', assignments: { role: 'leader', mine: { leader: assignment('leader', 'completed'), employee: null }, canAssign: true, team } })
+  await page.goto('/aiv')
+  await expect(page.getByLabel('Batas waktu penugasan baru')).toHaveCount(0)
+  await page.getByRole('button', { name: 'Tugaskan Karyawan B' }).click()
+  const dialog = page.getByRole('dialog', { name: 'Tugaskan wawancara tim' })
+  await dialog.getByLabel('Batas waktu').fill('2026-12-20')
+  await dialog.getByRole('button', { name: 'Tugaskan', exact: true }).click()
+  await expect.poll(() => sent.length).toBe(1)
+  expect(sent[0]).toMatchObject({ method: 'POST', path: '/assignments', body: { assigneeIds: ['u-b'], dueDate: '2026-12-20' } })
+})
+
+test('P8 R5: kartu agen tab nilai memakai teks netral tenant', async ({ page }) => {
+  await loginAs(page)
+  await page.goto('/cc')
+  await page.getByRole('tab', { name: 'Corporate Values' }).click()
+  const val = page.getByTestId('cc-agen-val')
+  await expect(val).toContainText('tiap nilai korporasi')
+  await expect(val).not.toContainText('5C')
+})
+
+test('P8 R15 AIV-1: karyawan melihat h1 "Wawancara AI" dan breadcrumb tanpa tautan', async ({ page }) => {
+  await loginAs(page, { role: 'learner', assignments: { role: 'employee', mine: { leader: null, employee: assignment('employee', 'assigned') } } })
+  await page.goto('/aiv')
+  await expect(page.getByRole('heading', { level: 1, name: 'Wawancara AI' })).toBeVisible()
+  const crumb = page.getByRole('navigation', { name: 'Lokasi' })
+  await expect(crumb).toHaveText(/Learning Needs Analysis\s*›\s*Wawancara AI/)
+  await expect(crumb.getByRole('link')).toHaveCount(0)
+  await expect(page.getByTestId('cc-wawancara-karyawan').getByRole('heading', { name: 'Wawancara visi, misi, dan nilai' })).toBeVisible()
+})
