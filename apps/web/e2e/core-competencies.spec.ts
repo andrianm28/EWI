@@ -50,13 +50,14 @@ const HR_ASSIGN = {
 }
 const assignment = (tier: string, status: string) => ({ id: `as-${tier}`, tier, status, dueDate: '2026-11-30', durationMinutes: 10, completedAt: status === 'completed' ? '2026-11-20T03:00:00Z' : null })
 
-interface Opts { role?: string; interview?: boolean; assignments?: unknown; featureDisabled?: boolean }
+interface Opts { role?: string; interview?: boolean; assignments?: unknown; featureDisabled?: boolean; assignFail?: { status: number; message: string }; afterAssign?: unknown }
 interface Sent { method: string; path: string; body: unknown }
 
 async function loginAs(page: Page, o: Opts = {}): Promise<Sent[]> {
   const role = o.role ?? 'hr_admin'
   const user = { id: 'u-1', tenantId: 't-1', email: `${role}@demo.test`, role }
   const sent: Sent[] = []
+  let posted = false
   const ok = (r: Route, data: unknown, status = 200) => r.fulfill({ status, json: { data } })
   await page.route('**/api/auth/tenants', (r) => r.fulfill({ json: { data: [] } }))
   // PK-16: form kata sandi hanya tampil bila API mengizinkan (dev/staging)
@@ -71,6 +72,8 @@ async function loginAs(page: Page, o: Opts = {}): Promise<Sent[]> {
     const path = url.pathname.replace(/^.*\/api\/cca/, '')
     if (req.method() !== 'GET') {
       sent.push({ method: req.method(), path, body: req.postDataJSON() })
+      if (path === '/assignments' && o.assignFail) return r.fulfill({ status: o.assignFail.status, json: { error: { code: 'UJI', message: o.assignFail.message } } })
+      if (path === '/assignments') posted = true
       if (path === '/assignments') return ok(r, { tier: 'leader', assigned: (req.postDataJSON().assigneeIds as string[]).map((id) => ({ ...assignment('leader', 'assigned'), assigneeId: id })), skipped: [], rejected: [] }, 201)
       return ok(r, {})
     }
@@ -79,7 +82,7 @@ async function loginAs(page: Page, o: Opts = {}): Promise<Sent[]> {
     if (path === '/programs/dna-5c/report') return ok(r, REPORT)
     if (path === '/assignments') {
       if (o.featureDisabled) return r.fulfill({ status: 403, json: { error: { code: 'FEATURE_DISABLED', message: 'Belum diaktifkan' } } })
-      return ok(r, o.assignments ?? HR_ASSIGN)
+      return ok(r, posted && o.afterAssign ? o.afterAssign : o.assignments ?? HR_ASSIGN)
     }
     return ok(r, [])
   })
@@ -382,7 +385,8 @@ test('P8 R2 AH-2/AH-3: Tugaskan semua di header kartu, tenggat di dialog dan seb
   const panel = page.getByTestId('cc-wawancara-hr')
   await expect(panel.getByLabel('Batas waktu penugasan baru')).toHaveCount(0)
   await expect(panel.getByRole('columnheader', { name: 'Batas waktu' })).toHaveCount(0)
-  await expect(panel.getByRole('row', { name: /Dewi Atasan/ }).getByRole('cell').nth(2)).toContainText('Batas 30 Nov 2026')
+  // triase #10: tenggat hanya untuk penugasan yang masih berjalan, bukan yang selesai
+  await expect(panel.getByRole('row', { name: /Dewi Atasan/ }).getByRole('cell').nth(2)).not.toContainText('Batas')
   const judul = (await panel.getByRole('heading', { name: 'Penugasan ke pimpinan dan atasan' }).boundingBox())!
   const semua = (await panel.getByRole('button', { name: 'Tugaskan semua' }).boundingBox())!
   expect(Math.abs(semua.y - judul.y)).toBeLessThan(40)
@@ -428,4 +432,95 @@ test('P8 R15 AIV-1: karyawan melihat h1 "Wawancara AI" dan breadcrumb tanpa taut
   await expect(crumb).toHaveText(/Learning Needs Analysis\s*›\s*Wawancara AI/)
   await expect(crumb.getByRole('link')).toHaveCount(0)
   await expect(page.getByTestId('cc-wawancara-karyawan').getByRole('heading', { name: 'Wawancara visi, misi, dan nilai' })).toBeVisible()
+})
+
+// Triase review independen P8 (docs/designs/paritas-mockup/egm/p8-code-review.md)
+const wibIso = (days: number) => new Date(Date.now() + 7 * 3_600_000 + days * 86_400_000).toISOString().slice(0, 10)
+
+test('P8 triase #10: "Batas" hanya untuk penugasan ditugaskan/berjalan', async ({ page }) => {
+  const leaders = [leaderRow('u-l1', 'Dewi Atasan', 'completed'), leaderRow('u-l4', 'Eka Atasan', 'assigned'), leaderRow('u-l5', 'Fajar Atasan', 'in_progress'), leaderRow('u-l6', 'Gita Atasan', 'cancelled')]
+  await loginAs(page, { assignments: { ...HR_ASSIGN, leaders } })
+  await page.goto('/cc?tab=aiv')
+  const panel = page.getByTestId('cc-wawancara-hr')
+  const status = (nama: string) => panel.getByRole('row', { name: new RegExp(nama) }).getByRole('cell').nth(2)
+  await expect(status('Eka Atasan')).toContainText('Batas 30 Nov 2026')
+  await expect(status('Fajar Atasan')).toContainText('Batas 30 Nov 2026')
+  await expect(status('Dewi Atasan')).not.toContainText('Batas')
+  await expect(status('Gita Atasan')).not.toContainText('Batas')
+})
+
+test('P8 triase #3: tenggat bawaan +14 hari; kosong dan tanggal lewat ditolak tanpa POST; dibuka ulang kembali ke bawaan', async ({ page }) => {
+  const sent = await loginAs(page)
+  await page.goto('/cc?tab=aiv')
+  await page.getByRole('button', { name: 'Tugaskan Budi Atasan' }).click()
+  const dialog = page.getByRole('dialog', { name: 'Tugaskan wawancara pimpinan' })
+  const field = dialog.getByLabel('Batas waktu')
+  await expect(field).toHaveValue(wibIso(14))
+  await expect(field).toBeFocused()
+  const tugaskan = dialog.getByRole('button', { name: 'Tugaskan', exact: true })
+
+  await field.fill('')
+  await tugaskan.click()
+  await expect(dialog.getByText('Pilih batas waktu')).toBeVisible()
+  await expect(field).toHaveAttribute('aria-invalid', 'true')
+  await field.fill(wibIso(-1))
+  await expect(field).not.toHaveAttribute('aria-invalid', 'true')
+  await tugaskan.click()
+  await expect(dialog.getByText('Batas waktu paling cepat hari ini')).toBeVisible()
+  expect(sent.filter((s) => s.path === '/assignments')).toEqual([])
+
+  await dialog.getByRole('button', { name: 'Batal' }).click()
+  await page.getByRole('button', { name: 'Tugaskan Budi Atasan' }).click()
+  await expect(field).toHaveValue(wibIso(14))
+  await expect(dialog.getByText('Batas waktu paling cepat hari ini')).toHaveCount(0)
+})
+
+test('P8 triase #2: HR, galat API tampil di dialog yang tetap terbuka; dialog baru tertutup saat berhasil', async ({ page }) => {
+  await loginAs(page, { assignFail: { status: 409, message: 'Pimpinan sudah punya penugasan aktif' } })
+  await page.goto('/cc?tab=aiv')
+  await page.getByRole('button', { name: 'Tugaskan Budi Atasan' }).click()
+  const dialog = page.getByRole('dialog', { name: 'Tugaskan wawancara pimpinan' })
+  await dialog.getByRole('button', { name: 'Tugaskan', exact: true }).click()
+  await expect(dialog.getByRole('alert')).toContainText('Pimpinan sudah punya penugasan aktif')
+  await expect(dialog).toBeVisible()
+  await expect(page.getByTestId('cc-wawancara-hr').getByRole('status')).toHaveCount(0)
+})
+
+test('P8 triase #2: atasan, galat API tampil di dialog yang tetap terbuka', async ({ page }) => {
+  const team = [{ userId: 'u-b', name: 'Karyawan B', jobRoleName: 'Engineer', status: 'none' }]
+  await loginAs(page, { role: 'supervisor', assignFail: { status: 400, message: 'Karyawan bukan bawahan langsung Anda' }, assignments: { role: 'leader', mine: { leader: assignment('leader', 'completed'), employee: null }, canAssign: true, team } })
+  await page.goto('/aiv')
+  await page.getByRole('button', { name: 'Tugaskan Karyawan B' }).click()
+  const dialog = page.getByRole('dialog', { name: 'Tugaskan wawancara tim' })
+  await dialog.getByRole('button', { name: 'Tugaskan', exact: true }).click()
+  await expect(dialog.getByRole('alert')).toContainText('Karyawan bukan bawahan langsung Anda')
+  await expect(dialog).toBeVisible()
+})
+
+test('P8 triase #4: tombol pembuka hilang setelah berhasil, fokus pindah ke pemberitahuan', async ({ page }) => {
+  const afterAssign = { ...HR_ASSIGN, leaders: [HR_ASSIGN.leaders[0], leaderRow('u-l2', 'Budi Atasan', 'assigned'), HR_ASSIGN.leaders[2]] }
+  await loginAs(page, { afterAssign })
+  await page.goto('/cc?tab=aiv')
+  await page.getByRole('button', { name: 'Tugaskan Budi Atasan' }).click()
+  await page.getByRole('dialog').getByRole('button', { name: 'Tugaskan', exact: true }).click()
+  await expect(page.getByRole('dialog')).toHaveCount(0)
+  await expect(page.getByRole('button', { name: 'Tugaskan Budi Atasan' })).toHaveCount(0)
+  await expect(page.getByTestId('cc-wawancara-hr').getByRole('status')).toBeFocused()
+})
+
+test('P8 triase #11: atasan "Tugaskan semua" menugaskan semua anggota tim yang belum ditugaskan', async ({ page }) => {
+  const team = [
+    { userId: 'u-a', name: 'Karyawan A', jobRoleName: 'Engineer', status: 'completed' },
+    { userId: 'u-b', name: 'Karyawan B', jobRoleName: 'Engineer', status: 'none' },
+    { userId: 'u-c', name: 'Karyawan C', jobRoleName: 'Engineer', status: 'cancelled' },
+  ]
+  const sent = await loginAs(page, { role: 'supervisor', assignments: { role: 'leader', mine: { leader: assignment('leader', 'completed'), employee: null }, canAssign: true, team } })
+  await page.goto('/aiv')
+  await page.getByRole('button', { name: 'Tugaskan semua' }).click()
+  const dialog = page.getByRole('dialog', { name: 'Tugaskan wawancara tim' })
+  await expect(dialog).toContainText('2 anggota tim')
+  await dialog.getByLabel('Batas waktu').fill(wibIso(10))
+  await dialog.getByRole('button', { name: 'Tugaskan', exact: true }).click()
+  await expect(dialog).toHaveCount(0)
+  expect(sent).toContainEqual(expect.objectContaining({ method: 'POST', path: '/assignments', body: expect.objectContaining({ assigneeIds: ['u-b', 'u-c'], dueDate: wibIso(10) }) }))
 })

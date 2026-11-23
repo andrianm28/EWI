@@ -1,7 +1,7 @@
 import { test, expect, type Page } from '@playwright/test'
 import { loginSebagai } from './support/sesi'
-import { mockApi, permintaanBelumDimock } from './support/api'
-import { papanGapTna, ID_KOMPETENSI, ID_DIMAS, ID_PROYEK, type OpsiPapanGap } from './support/tna-gap'
+import { papanGapTna, COMP, DETAIL, ID_KOMPETENSI, ID_DIMAS, ID_PROYEK, type OpsiPapanGap } from './support/tna-gap'
+import { cocok, mockApi, permintaanBelumDimock, responsData } from './support/api'
 
 // B5 Training Needs: papan gap, detail gap, dan penugasan wawancara. Spek: docs/designs/b5-training-needs.md bagian 16.
 // API di-mock; flag papan dan penugasan bawaan mati di produksi, di sini dinyalakan per test.
@@ -364,4 +364,72 @@ test('P8 R4: skor 0-100 tanpa "%", desimal koma; R6: selisih OKR merah', async (
   await page.goto(`/tna/gap?kind=competency&competencyId=${ID_KOMPETENSI}`)
   await expect(page.locator('.el-kpi').filter({ hasText: 'TARGET' })).toContainText(/TARGET\s*75$/)
   await expect(page.locator('.el-kpi').filter({ hasText: 'GAP' })).toContainText(/GAP\s*−19$/)
+})
+
+// Triase review independen P8 (docs/designs/paritas-mockup/egm/p8-code-review.md)
+test('P8 triase #4/#7: fokus awal di field pertama, Tab tetap di dialog, fokus kembali ke CTA setelah Tutup dan Esc', async ({ page }) => {
+  await setup(page, { flags: { ...BOARD, 'tna.interview_assignment': true } })
+  await page.goto(`/tna/gap?kind=competency&competencyId=${ID_KOMPETENSI}`)
+  const buka = page.getByRole('button', { name: 'Mulai wawancara akar masalah' })
+  await buka.click()
+  const dialog = page.getByRole('dialog', { name: 'Tugaskan wawancara akar masalah' })
+  await expect(dialog.getByLabel('Proyek')).toBeFocused()
+  for (let i = 0; i < 25; i++) {
+    await page.keyboard.press('Tab')
+    expect(await dialog.evaluate((d) => d.contains(d.ownerDocument.activeElement))).toBe(true)
+  }
+  await dialog.getByRole('button', { name: 'Tutup' }).click()
+  await expect(buka).toBeFocused()
+  await buka.click()
+  await page.keyboard.press('Escape')
+  await expect(dialog).toHaveCount(0)
+  await expect(buka).toBeFocused()
+})
+
+test('P8 triase #5: skor ≥1000 memakai pemisah ribuan; tanda minus dari nilai, tanpa "−-" atau "−0"', async ({ page }) => {
+  await setup(page, { flags: { ...BOARD, 'tna.interview_assignment': true } })
+  await mockApi(page, (req) => {
+    if (cocok(req, 'GET /tna/gaps/competencies')) return responsData({ rows: [{ ...COMP, targetPct: 1250, gapPct: 0 }], unapprovedCompetencies: 0 })
+    if (cocok(req, 'GET /tna/gaps/detail')) return responsData({ ...DETAIL, targetPct: 1250, gapPct: -5 })
+    return undefined
+  })
+  await page.goto('/tna?tab=kompetensi')
+  const baris = page.getByRole('table', { name: 'Gap kompetensi' }).getByRole('row', { name: /Analisis insiden/ })
+  await expect(baris.getByRole('cell').nth(2)).toHaveText('1.250')
+  await expect(baris.getByRole('cell').nth(4)).toHaveText('0')
+  await page.goto(`/tna/gap?kind=competency&competencyId=${ID_KOMPETENSI}`)
+  await expect(page.locator('.el-kpi').filter({ hasText: 'TARGET' })).toContainText(/TARGET\s*1\.250$/)
+  await expect(page.locator('.el-kpi').filter({ hasText: 'GAP' })).toContainText(/GAP\s*5$/)
+})
+
+test('P8 triase #6: galat muat data penugasan tidak hilang saat dialog dibuka dan ditutup', async ({ page }) => {
+  await setup(page, { flags: { ...BOARD, 'tna.interview_assignment': true } })
+  await mockApi(page, (req) => (cocok(req, 'GET /projects') ? { status: 500, json: { error: { code: 'X', message: 'Proyek tidak bisa dimuat' } } } : undefined))
+  await page.goto(`/tna/gap?kind=competency&competencyId=${ID_KOMPETENSI}`)
+  await expect(page.getByRole('alert')).toContainText('Proyek tidak bisa dimuat')
+  await page.getByRole('button', { name: 'Mulai wawancara akar masalah' }).click()
+  await page.getByRole('dialog').getByRole('button', { name: 'Tutup' }).click()
+  await expect(page.getByRole('alert')).toContainText('Proyek tidak bisa dimuat')
+})
+
+test('Keputusan user 23 Nov: atasan dengan papan menyala melihat "Wawancara untuk Anda" di bawah papan', async ({ page }) => {
+  await setup(page, { peran: 'atasan', flags: BOARD })
+  await mockApi(page, (req) => (cocok(req, 'GET /tna/sessions')
+    ? responsData([{ id: 's9', projectId: ID_PROYEK, intervieweeId: 'u-atasan', intervieweeName: 'Pengguna Contoh', status: 'scheduled', triggerCount: 1, inviteExpiresAt: '2026-12-31T16:59:59.000Z' }])
+    : undefined))
+  await page.goto('/tna')
+  await expect(page.getByRole('tab', { name: 'Ringkasan' })).toBeVisible()
+  const kartu = page.getByTestId('tna-my-sessions')
+  await expect(kartu.getByRole('heading', { name: 'Wawancara untuk Anda' })).toBeVisible()
+  await expect(kartu.getByRole('link', { name: 'Mulai wawancara' })).toHaveAttribute('href', '/iv/s9')
+  // tata letak papan tetap: kartu di bawah panel tab dan tautan Kelola TNA
+  const kelola = (await page.getByRole('link', { name: 'Kelola TNA' }).boundingBox())!
+  expect((await kartu.boundingBox())!.y).toBeGreaterThan(kelola.y)
+})
+
+test('Keputusan user 23 Nov: HR dengan papan menyala tanpa sesi sendiri tidak melihat kartu "Wawancara untuk Anda"', async ({ page }) => {
+  await setup(page, { flags: BOARD })
+  await page.goto('/tna')
+  await expect(page.getByRole('tab', { name: 'Ringkasan' })).toBeVisible()
+  await expect(page.getByTestId('tna-my-sessions')).toHaveCount(0)
 })

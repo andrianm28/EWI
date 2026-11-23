@@ -2,6 +2,7 @@ import { test, expect, type Page } from '@playwright/test'
 import { loginSebagai, type Peran } from './support/sesi'
 import { mockApi, permintaanBelumDimock } from './support/api'
 import { sesiWawancara, type OpsiSesiWawancara } from './support/wawancara'
+import { penanganHasilSaya } from './support/hasil-saya'
 
 // B6 Wawancara akar masalah: daftar sesi dan alur persetujuan → wawancara → ringkasan → selesai.
 // Spek: docs/designs/b6-wawancara-akar-masalah.md bagian 15. API di-mock.
@@ -213,9 +214,35 @@ test('P8 R13/R18: input jawaban satu baris; audit memakai label produk "model EL
 })
 
 test('P8 R15: daftar wawancara karyawan memakai breadcrumb mockup tanpa tautan', async ({ page }) => {
-  await setup(page)
+  // Hasil saya menyala: karyawan tidak punya menu Training Needs
+  await mockApi(page, penanganHasilSaya('u-karyawan'))
+  await setup(page, { flags: { 'learner.home': true } })
   await page.goto('/iv')
   const crumb = page.getByRole('navigation', { name: 'Lokasi' })
   await expect(crumb).toHaveText(/Training Needs\s*›\s*Wawancara akar masalah/)
   await expect(crumb.getByRole('link')).toHaveCount(0)
+})
+
+// Triase review independen P8 (docs/designs/paritas-mockup/egm/p8-code-review.md)
+test('P8 triase #1: karyawan dengan menu peralihan Training Needs mendapat tautan breadcrumb', async ({ page }) => {
+  await setup(page)
+  await expect(page.getByRole('navigation', { name: 'Navigasi utama' }).getByRole('link', { name: 'Training Needs' })).toBeVisible()
+  await page.goto('/iv')
+  await expect(page.getByRole('navigation', { name: 'Lokasi' }).getByRole('link', { name: 'Training Needs' })).toHaveAttribute('href', '/tna')
+  await page.goto('/iv/s1')
+  await expect(page.getByRole('navigation', { name: 'Lokasi' }).getByRole('link', { name: 'Training Needs' })).toHaveAttribute('href', '/tna')
+})
+
+test('P8 triase #1: HR mendapat tautan breadcrumb Training Needs', async ({ page }) => {
+  await setup(page, { peran: 'hr' })
+  await page.goto('/iv')
+  await expect(page.getByRole('navigation', { name: 'Lokasi' }).getByRole('link', { name: 'Training Needs' })).toHaveAttribute('href', '/tna')
+})
+
+test('P8 triase #9: label AI dari API (berisi ID penyedia) tidak tampil di baris audit', async ({ page }) => {
+  await setup(page, { flags: SUMMARY_ON })
+  await page.goto('/iv/s1')
+  const audit = page.locator('.el-card .el-audit')
+  await expect(audit).toContainText('model ELGOS-AI (POC)')
+  await expect(page.locator('body')).not.toContainText('penyedia-model-uji')
 })

@@ -70,7 +70,7 @@ test('halaman login tidak menampilkan asisten', async ({ page }) => {
   await expect(fab(page)).toHaveCount(0)
 })
 
-for (const peran of ['karyawan', 'atasan', 'hr', 'super'] as const) {
+for (const peran of ['karyawan', 'atasan', 'hr'] as const) {
   test(`${peran}: FAB membuka panel dengan label peran, salam, saran, dan catatan kaki`, async ({ page }) => {
     const diterima = await mockAsisten(page)
     await masuk(page, peran)
@@ -87,6 +87,19 @@ for (const peran of ['karyawan', 'atasan', 'hr', 'super'] as const) {
     expect(diterima[0]!.query.get('view')).toBe(peran)
   })
 }
+
+test('Keputusan user 23 Nov: tampilan Super Admin tanpa asisten; akun eta_admin yang sama memakainya dari tampilan HR', async ({ page }) => {
+  const diterima = await mockAsisten(page)
+  await masuk(page, 'super', { ...DENGAN_ASISTEN, peranLain: ['hr'] })
+  const tampilan = page.getByRole('group', { name: 'Tampilan' })
+  await expect(tampilan.getByRole('button', { name: 'Super Admin' })).toHaveAttribute('aria-pressed', 'true')
+  await expect(fab(page)).toHaveCount(0)
+  expect(diterima.filter((r) => r.query.get('view') === 'super')).toEqual([])
+  await tampilan.getByRole('button', { name: 'HR / L&D' }).click()
+  await expect(fab(page)).toBeVisible()
+  await fab(page).click()
+  await expect(panel(page)).toContainText('Tanyakan urusan Anda · HR / L&D')
+})
 
 test('Admin Tenant: tidak ada asisten (di luar lingkup B17)', async ({ page }) => {
   await mockAsisten(page)

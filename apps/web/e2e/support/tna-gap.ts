@@ -18,7 +18,7 @@ const SUMMARY = {
   kpis: { competencyGaps: 2, okrGaps: 1, totalGaps: 3, interviewed: 1, top4Share: 0.86 },
   classification: { training: 1, non_training: 0, review: 1, pending: 1 }, unapprovedCompetencies: 2,
 }
-const COMP = {
+export const COMP = {
   key: `c:${ID_KOMPETENSI}`, kind: 'competency', competencyId: ID_KOMPETENSI, code: 'ST-A2', name: 'Analisis insiden', target: 3, actual: 2.25, gap: 0.75,
   targetPct: 75, actualPct: 56, gapPct: 19, assessed: 4, peopleWithGap: 3, peopleTotal: 5, cumulativeShare: 0.41,
   classification: 'pending', interviewed: false, interviewedCount: 0, assignedCount: 1,
@@ -28,7 +28,7 @@ const OKR = {
   targetVaries: false, direction: 'lower', tolerance: 0, unit: 'menit', valueType: 'angka', peopleMissed: 2, peopleTotal: 4,
   classification: 'review', interviewed: true, interviewedCount: 1, assignedCount: 0,
 }
-const DETAIL = {
+export const DETAIL = {
   ...COMP,
   evidence: ['3 dari 4 karyawan yang dinilai berada di bawah target.'],
   hypotheses: [{ text: 'Materi pelatihan belum mencakup langkah ini.', verified: false }],

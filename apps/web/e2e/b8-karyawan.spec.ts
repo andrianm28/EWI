@@ -279,5 +279,10 @@ test('P8 R3/R16/R17: status titik + teks, undangan tentang KPI belum tercapai, t
   const undangan = page.getByTestId('my-invitations')
   await expect(undangan).toContainText('ada 1 wawancara singkat tentang target kerja (KPI) Anda yang belum tercapai.')
   await expect(undangan).not.toContainText('hambatan kerja')
-  await expect(page.getByTestId('my-plan').getByRole('button', { name: 'Lihat contoh rekomendasi' })).toHaveCount(0)
+  // triase #11: kartu rencana kosong (fixture bawaan) benar-benar tampil sebelum memeriksa tombolnya tidak ada
+  const rencana = page.getByTestId('my-plan')
+  await expect(rencana).toBeVisible()
+  await expect(rencana).toContainText('akan muncul di sini setelah HR menyetujui hasil wawancara')
+  await expect(rencana.getByRole('button', { name: 'Lihat contoh rekomendasi' })).toHaveCount(0)
+  await expect(rencana.getByRole('link', { name: 'Lihat contoh rekomendasi' })).toHaveCount(0)
 })
