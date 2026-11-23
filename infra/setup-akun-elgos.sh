@@ -286,8 +286,8 @@ aws bedrock list-foundation-models --profile elgos-admin --region "$QA_BEDROCK_R
   --query 'modelSummaries[].[modelId,join(`,`,inferenceTypesSupported)]' --output table || true
 aws bedrock list-inference-profiles --profile elgos-admin --region "$QA_BEDROCK_REGION" \
   --query "inferenceProfileSummaries[?contains(inferenceProfileId,'anthropic')].inferenceProfileId" --output table || true
-note "ON_DEMAND = bisa dipanggil langsung. Bila hanya INFERENCE_PROFILE, isi juga ID profil (mis. apac.anthropic...)."
-note "Profil apac. memproses data di region APAC lain: catat untuk keputusan residensi data (PD-2)."
+note "ON_DEMAND = bisa dipanggil langsung. Bila hanya INFERENCE_PROFILE, isi juga ID profil (global./apac.)."
+note "Profil lintas region memproses data di region lain (global. = seluruh dunia): perlu keputusan PD-2."
 ask QA_BEDROCK_MODEL_ID "ID model dasar (keputusan 23 Nov: anthropic.claude-sonnet-5):"
 ask QA_INFERENCE_PROFILE_ID "ID inference profile (kosong bila ON_DEMAND):"
 write_env QA_BEDROCK_REGION "$QA_BEDROCK_REGION"

@@ -154,7 +154,7 @@ Keputusan user 19 Nov: akun Bedrock siap 24 Nov, QA malam 24–26 Nov untuk Go/N
 `qa-malam` yang hanya boleh dari `main`, izin hanya `bedrock:InvokeModel` pada model QA, ditambah
 inference profile bila memakai profil) dan budget `elgos-qa-malam` (★ US$100/bulan, peringatan
 50%/80%/prakiraan 100%, seluruh akun). Role terpisah dari user aplikasi (KMS/SES) dan tidak dibuat
-selama `qa_bedrock_model_id` kosong. Hasil cek 23 Nov di akun ELGOS 267191325899: di Jakarta
+selama `qa_bedrock_model_id` kosong. Hasil cek 23 Nov di akun ELGOS: di Jakarta
 `ap-southeast-3` Claude hanya tersedia lewat profil `global.anthropic.*` (pemrosesan lintas region dunia,
 tanpa profil `apac.`); di Singapura `anthropic.claude-sonnet-5` tersedia ON_DEMAND. Keputusan user 23 Nov:
 QA malam dan aplikasi memakai **ap-southeast-1 + anthropic.claude-sonnet-5** tanpa profil (PD-2b).
