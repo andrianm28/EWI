@@ -520,4 +520,81 @@ run('B7 tinjauan HR (Postgres)', () => {
       expect(kept.status).toBe('new');
     });
   });
+
+  // Paritas B7 web (docs/designs/paritas-mockup/b7-tinjauan-web.md keputusan 3): layar tinjauan per gap.
+  // Keanggotaan temuan di gap memakai aturan R6 papan gap (kompetensi, baris kinerja, atau fokus sesi).
+  describe('tinjauan per gap', () => {
+    const g = {}; let gapComp; let otherComp;
+    const review = (q, who = 'hr') => request(app()).get(`/api/tna/review?${new URLSearchParams(q)}`).set(as(who));
+    const ids = (res) => res.body.data.map((x) => x.id).sort();
+
+    beforeAll(async () => {
+      const [[c]] = await db.query(`INSERT INTO lna_competencies (tenant_id, kind, name) VALUES (:t, 'job', 'Analisis insiden') RETURNING id`, { replacements: { t: tenant.id } });
+      gapComp = c.id;
+      const [[xc]] = await db.query(`INSERT INTO lna_competencies (tenant_id, kind, name) VALUES (:t, 'job', 'Milik tenant lain') RETURNING id`, { replacements: { t: other.id } });
+      otherComp = xc.id;
+      // sesi berfokus gap ini (B5 penugasan wawancara); temuannya tidak tertaut kompetensi
+      const s = await stores.interviews.create(tenant.id, { projectId, submodule: 'tna', intervieweeId: u.beni });
+      await db.query(`UPDATE lna_interview_sessions SET status = 'completed', ended_at = now(), focus_kind = 'competency',
+                             focus_competency_id = :c, focus_label = 'Analisis insiden' WHERE id = :id`, { replacements: { id: s.id, c: gapComp } });
+      await stores.interviews.addTurn(tenant.id, s.id, 'human', 'RAHASIA-GAP');
+      const [[rec]] = await db.query(
+        `INSERT INTO lna_performance_records (tenant_id, project_id, user_id, metric_type, name, target, actual, is_met, period, direction)
+         VALUES (:t, :p, :u, 'sla', 'Respons tiket B7', 85, 70, false, '2026-11', 'higher') RETURNING id`,
+        { replacements: { t: tenant.id, p: projectId, u: u.ani } },
+      );
+      g.a = (await finding('ani', { title: 'Belum paham langkah RCA', competencyId: gapComp, detail: 'RINCIAN-RAHASIA' })).id;
+      await setAi(g.a, 0.9);
+      g.b = (await finding('beni', { title: 'Tidak ada template baku', category: 'non_training', competencyId: null, sessionId: s.id })).id;
+      g.e = (await finding('beni', { title: 'Sudah disetujui', competencyId: gapComp, sessionId: null, reviewStatus: 'approved' })).id;
+      g.r = (await finding('ani', { title: 'Ditolak', competencyId: gapComp, reviewStatus: 'rejected' })).id;
+      g.other = (await finding('ani', { title: 'Gap lain' })).id; // kompetensi Pemahaman SLA
+      g.okr = (await finding('ani', { title: 'Respons lambat', category: 'non_training', competencyId: null, sessionId: null, performanceRecordId: rec.id, reviewStatus: 'approved' })).id;
+    });
+
+    it('gap kompetensi: hanya temuan gap itu (termasuk lewat fokus sesi), counts per gap, label gap, tanpa transkrip', async () => {
+      const all = await review({ kind: 'competency', competencyId: gapComp, status: 'all' });
+      expect(all.status).toBe(200);
+      expect(ids(all)).toEqual([g.a, g.b, g.e, g.r].sort());
+      expect(all.body.counts).toMatchObject({ draft: 2, approved: 1, edited: 0, rejected: 1, held: 0 });
+      expect(all.body.gap).toEqual({ key: `c:${gapComp}`, label: 'Analisis insiden' });
+      expect(JSON.stringify(all.body)).not.toContain('RAHASIA-GAP');
+      const item = all.body.data.find((x) => x.id === g.a);
+      for (const k of ['metricType', 'metricPeriod', 'focusKind', 'focusCompetencyId', 'focusMetricType', 'focusMetricKey', 'focusPeriod']) expect(item).not.toHaveProperty(k);
+      // status bawaan tetap draf
+      expect(ids(await review({ kind: 'competency', competencyId: gapComp }))).toEqual([g.a, g.b].sort());
+      // tanpa filter gap: perilaku lama, temuan gap lain ikut
+      expect(ids(await review({ status: 'all' }))).toEqual(expect.arrayContaining([g.a, g.other, g.okr]));
+    });
+
+    it('gap OKR lewat baris kinerja temuan', async () => {
+      const res = await review({ kind: 'okr', metricType: 'sla', name: 'Respons tiket B7', period: '2026-11', status: 'all' });
+      expect(res.status).toBe(200);
+      expect(ids(res)).toEqual([g.okr]);
+      expect(res.body.gap).toEqual({ key: 'o:sla|respons tiket b7|2026-11', label: 'Respons tiket B7' });
+    });
+
+    it('rujukan gap tidak valid 400, kompetensi tenant lain 404, hanya HR', async () => {
+      expect((await review({ kind: 'lain' })).status).toBe(400);
+      expect((await review({ kind: 'competency', competencyId: 'bukan-uuid' })).status).toBe(400);
+      expect((await review({ kind: 'okr', metricType: 'sla', name: '', period: '2026-11' })).status).toBe(400);
+      expect((await review({ kind: 'competency', competencyId: otherComp })).status).toBe(404);
+      expect((await review({ kind: 'competency', competencyId: gapComp }, 'spv')).status).toBe(403);
+      expect((await review({ kind: 'competency', competencyId: gapComp }, 'ani')).status).toBe(403);
+    });
+
+    it('solusi per gap: hanya temuan gap itu', async () => {
+      const q = new URLSearchParams({ kind: 'competency', competencyId: gapComp });
+      const res = await request(app()).get(`/api/tna/review/solutions?${q}`).set(as('hr'));
+      expect(res.status).toBe(200);
+      expect(res.body.data.training.map((x) => x.findingId)).toEqual([g.e]);
+      expect(res.body.data.improvement).toEqual([]);
+      const okr = await request(app()).get(`/api/tna/review/solutions?${new URLSearchParams({ kind: 'okr', metricType: 'sla', name: 'Respons tiket B7', period: '2026-11' })}`).set(as('hr'));
+      expect(okr.body.data.training).toEqual([]);
+      expect(okr.body.data.improvement.map((x) => x.findingId)).toEqual([g.okr]);
+      expect((await request(app()).get('/api/tna/review/solutions?kind=lain').set(as('hr'))).status).toBe(400);
+      const unfiltered = await request(app()).get('/api/tna/review/solutions').set(as('hr'));
+      expect(unfiltered.body.data.training.length).toBeGreaterThan(1);
+    });
+  });
 });
