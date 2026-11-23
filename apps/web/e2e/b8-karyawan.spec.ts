@@ -206,3 +206,74 @@ test('Data saya: galat 409 tampil; akun HR tidak melihat isian hapus', async ({ 
   await expect(k).toContainText('Akun HR atau Admin ETA dihapus lewat Admin ETA.')
   await expect(k.getByRole('button', { name: 'Kirim permintaan hapus' })).toHaveCount(0)
 })
+
+const KARTU = [
+  { id: 'p1', title: 'Alur tiket layanan', description: 'Alur tiket dari masuk sampai ditutup.', level: 'Basic', mode: null, code: 'ST-B4', status: 'completed', courseStatus: 'passed', courseScore: 87.5, reason: 'Belum paham eskalasi', needsModule: false, where: { target: 'elitementor', label: 'EliteMentor' }, launchUrl: 'https://elitementor.contoh.test/c/st-b4' },
+  { id: 'p2', title: 'Dasar otomasi', description: null, level: null, mode: null, code: null, status: 'in_progress', courseStatus: 'failed', courseScore: 40, reason: 'Dasar otomasi', needsModule: false, where: { target: 'lms', label: 'Moodle Klien' }, launchUrl: null },
+  { id: 'p3', title: 'Modul sedang disiapkan', description: null, level: null, mode: null, code: null, status: 'new', courseStatus: null, courseScore: null, reason: 'Analisis akar masalah', needsModule: true, where: { target: 'elitementor', label: 'EliteMentor' }, launchUrl: null },
+  { id: 'p4', title: 'Analisis insiden', description: null, level: 'Intermediate', mode: null, code: 'ST-A2', status: 'new', courseStatus: null, courseScore: null, reason: 'Analisis insiden', needsModule: false, where: { target: 'elitementor', label: 'EliteMentor' }, launchUrl: 'https://elitementor.contoh.test/c/st-a2' },
+]
+
+async function rencana(page: Page, cards: unknown[], delivery = { target: 'elitementor', label: 'EliteMentor' }) {
+  await mockApi(page, (req) => (cocok(req, 'GET /my/learning-plan') ? { json: { data: cards, delivery } } : undefined))
+  await masuk(page)
+  await page.getByRole('navigation', { name: 'Navigasi utama' }).getByRole('link', { name: 'Rencana belajar' }).click()
+  await expect(page).toHaveURL(/\/li$/)
+  await expect(page.getByRole('heading', { level: 1, name: 'Rencana belajar' })).toBeVisible()
+}
+
+test('Rencana belajar: kartu dengan status, skor, tautan keluar, dan modul yang disiapkan', async ({ page }) => {
+  await rencana(page, KARTU)
+  await expect(page.getByText('EliteMentor langsung membantu Anda belajar')).toBeVisible()
+  const k1 = page.getByTestId('li-card-p1')
+  await expect(k1).toContainText('Basic')
+  await expect(k1).toContainText('Selesai · skor 87,5')
+  await expect(k1).toContainText('Alasan: Belum paham eskalasi')
+  await expect(k1).toContainText('ST-B4')
+  const buka = k1.getByRole('link', { name: /Buka EliteMentor/ })
+  await expect(buka).toHaveAttribute('href', 'https://elitementor.contoh.test/c/st-b4')
+  await expect(buka).toHaveAttribute('target', '_blank')
+  await expect(buka).toHaveAttribute('rel', 'noopener noreferrer')
+
+  const k2 = page.getByTestId('li-card-p2')
+  await expect(k2).toContainText('Sedang berjalan')
+  await expect(k2).toContainText('Tidak lulus')
+  await expect(k2).toContainText('Moodle Klien')
+  await expect(k2).toContainText('Tautan belum tersedia')
+  await expect(k2).not.toContainText('Alasan:')
+
+  const k3 = page.getByTestId('li-card-p3')
+  await expect(k3).toContainText('Belum dimulai')
+  await expect(k3.getByText('Modul sedang disiapkan')).toHaveCount(1)
+  await expect(k3.getByRole('link')).toHaveCount(0)
+
+  await expect(page.getByTestId('li-card-p4').getByRole('link', { name: /Belajar dengan EliteMentor/ })).toBeVisible()
+})
+
+test('Rencana belajar: kosong, dan pengantar memakai nama LMS tenant', async ({ page }) => {
+  await rencana(page, [], { target: 'lms', label: 'Moodle Klien' })
+  await expect(page.getByText('Pelatihan dipelajari di Moodle Klien.')).toBeVisible()
+  await expect(page.getByText('Belum ada rencana belajar. Modul akan muncul di sini setelah HR menyetujui hasil wawancara Anda.')).toBeVisible()
+})
+
+test('HR dengan peran dari API (B2) berganti ke Karyawan (saya) lewat switch-role', async ({ page }) => {
+  const ganti: unknown[] = []
+  await mockApi(page, (req) => {
+    if (cocok(req, 'GET /dashboard')) return data({})
+    if (cocok(req, 'GET /me/access')) {
+      const view = ganti.length ? 'karyawan' : 'hr'
+      return { json: { submodules: ['cca', 'dna', 'tna', 'ina'], products: ['full_suite'], flags: { 'module.dna': true, 'module.tna': true, ...ON },
+        role: ganti.length ? 'learner' : 'hr_admin', view,
+        roles: [{ role: 'hr_admin', view: 'hr', label: 'HR / L&D' }, { role: 'learner', view: 'karyawan', label: 'Karyawan' }] } }
+    }
+    if (cocok(req, 'POST /auth/switch-role')) {
+      ganti.push(req.body)
+      return { json: { token: 'token-learner', user: { id: 'u-hr', tenantId: 't-contoh', email: 'hr@contoh.test', role: 'learner', roles: ['hr_admin', 'learner'] } } }
+    }
+    return undefined
+  })
+  await masuk(page, 'hr')
+  await page.getByRole('group', { name: 'Tampilan' }).getByRole('button', { name: 'Karyawan (saya)' }).click()
+  await expect(page).toHaveURL(/\/my$/)
+  expect(ganti).toEqual([{ role: 'learner' }])
+})

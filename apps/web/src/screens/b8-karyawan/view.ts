@@ -12,8 +12,12 @@ export const COMPETENCY_STATUS: Record<MyCompetencyStatus, { label: string; tone
   not_assessed: { label: 'Belum dinilai', tone: 'neutral' },
 }
 
+const num = new Intl.NumberFormat('id-ID', { maximumFractionDigits: 2 })
+/** Angka dengan koma desimal (id-ID). */
+export const formatNumber = (n: number) => num.format(n)
+
 export function scoreText(score: number | null, required: number): string {
-  return `${score ?? '—'} / ${required}`
+  return `${score === null ? '—' : formatNumber(score)} / ${formatNumber(required)}`
 }
 
 // Label tampilan karyawan mengikuti mockup ("Belum dimulai"), sengaja berbeda dari PLAN_STATUS_LABEL HR di api/lna.ts.
@@ -24,7 +28,7 @@ export const PLAN_STATUS_LABEL: Record<LearningCard['status'], string> = {
 }
 
 export function planStatusLabel(card: Pick<LearningCard, 'status' | 'courseScore'>): string {
-  if (card.status === 'completed' && card.courseScore !== null) return `Selesai · skor ${card.courseScore}`
+  if (card.status === 'completed' && card.courseScore !== null) return `Selesai · skor ${formatNumber(card.courseScore)}`
   return PLAN_STATUS_LABEL[card.status] ?? card.status
 }
 

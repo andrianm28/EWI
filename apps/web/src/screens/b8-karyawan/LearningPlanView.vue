@@ -1,7 +1,80 @@
 <script setup lang="ts">
+// "Rencana belajar" tampilan karyawan (mockup MODUL 2, liCards). Spek: docs/designs/b8-karyawan.md "Layar web".
+// Data dari GET /api/my/learning-plan: hanya rencana milik sendiri yang sudah disetujui HR (new, in_progress, completed).
+import { onMounted, ref } from 'vue'
+import { useRouter } from 'vue-router'
 import AppShell from '@/components/AppShell.vue'
+import { ApiError } from '@/api/client'
+import { COURSE_STATUS_LABEL, lna, type LearningCard, type LearningDelivery } from '@/api/lna'
+import { homeFor } from '@/router'
+import { useSessionStore } from '@/stores/session'
+import { UiButton, UiCard, UiChip, UiErrorSummary } from '@/ui'
+import { launchLabel, planStatusLabel } from './view'
+import './b8.css'
+
+const NEEDS_MODULE = 'Modul sedang disiapkan'
+const session = useSessionStore()
+const router = useRouter()
+const cards = ref<LearningCard[] | null>(null)
+const delivery = ref<LearningDelivery | null>(null)
+const error = ref('')
+const loading = ref(true)
+
+async function load() {
+  loading.value = true; error.value = ''
+  try {
+    const r = await lna.myLearningPlan()
+    cards.value = r.data
+    delivery.value = r.delivery
+  } catch (e) {
+    if (e instanceof ApiError && e.code === 'FEATURE_DISABLED') {
+      await session.loadAccess().catch(() => {})
+      await router.replace({ name: homeFor(session.activeView) })
+      return
+    }
+    error.value = e instanceof ApiError ? e.message : 'Rencana belajar tidak bisa dimuat'
+  } finally { loading.value = false }
+}
+onMounted(load)
 </script>
 
 <template>
-  <AppShell><h1 class="b8-h1">Rencana belajar</h1></AppShell>
+  <AppShell>
+    <h1 class="b8-h1">Rencana belajar</h1>
+    <p v-if="delivery" class="el-muted b8-sub">
+      Modul dan course untuk Anda berdasarkan gap kompetensi dan hasil wawancara.
+      <template v-if="delivery.target === 'elitementor'">Pilih salah satu, EliteMentor langsung membantu Anda belajar.</template>
+      <template v-else>Pelatihan dipelajari di {{ delivery.label }}.</template>
+    </p>
+    <p v-if="loading && !cards" class="el-muted" role="status">Memuat rencana belajar…</p>
+    <template v-if="error">
+      <UiErrorSummary :errors="[{ message: error }]" />
+      <UiButton variant="outlined" size="sm" @click="load">Coba lagi</UiButton>
+    </template>
+    <p v-if="cards && !cards.length" class="el-muted">Belum ada rencana belajar. Modul akan muncul di sini setelah HR menyetujui hasil wawancara Anda.</p>
+    <div v-if="cards?.length" class="b8-grid">
+      <UiCard v-for="c in cards" :key="c.id" :data-testid="`li-card-${c.id}`" class="b8-card">
+        <div class="b8-row">
+          <UiChip v-if="c.level" tone="training">{{ c.level }}</UiChip>
+          <UiChip v-if="c.mode">{{ c.mode }}</UiChip>
+          <UiChip :tone="c.status === 'completed' ? 'success' : 'neutral'">{{ planStatusLabel(c) }}</UiChip>
+          <UiChip v-if="c.courseStatus === 'failed'" tone="critical">{{ COURSE_STATUS_LABEL.failed }}</UiChip>
+          <UiChip v-if="c.needsModule && c.title !== NEEDS_MODULE" tone="review">{{ NEEDS_MODULE }}</UiChip>
+        </div>
+        <h3>{{ c.title }}</h3>
+        <p v-if="c.description" class="el-muted">{{ c.description }}</p>
+        <p v-if="c.reason && c.reason !== c.title" class="b8-small">Alasan: {{ c.reason }}</p>
+        <p class="el-muted b8-small">{{ c.where.label }}</p>
+        <div class="b8-row b8-between">
+          <span v-if="c.code" class="b8-mono">{{ c.code }}</span><span v-else />
+          <template v-if="!c.needsModule">
+            <a v-if="c.launchUrl" :href="c.launchUrl" target="_blank" rel="noopener noreferrer" class="el-btn el-btn--filled el-btn--sm">
+              {{ launchLabel(c) }}<span class="el-sr-only"> (tab baru)</span>
+            </a>
+            <span v-else class="el-muted b8-small">Tautan belum tersedia</span>
+          </template>
+        </div>
+      </UiCard>
+    </div>
+  </AppShell>
 </template>
