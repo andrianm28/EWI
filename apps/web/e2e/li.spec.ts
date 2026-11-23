@@ -8,8 +8,9 @@ const mod = (o: Record<string, unknown>) => ({
   level: 'advanced', stream: 'Specific Technical', catalogItemId: null, jobRoles: [job], counts: { K: 1, S: 1, A: 1 },
   status: { key: 'none', via: null }, priority: null, recommendation: 'vendor', request: null, draft: null, ...o,
 })
-const RCA = mod({ id: 'm-1', code: 'ST-A2', name: 'Root Cause Analysis', recommendation: 'dev', priority: { rank: 1, cumulativeShare: 0.6, label: 'Root Cause Analysis' } })
-const ITIL = mod({ id: 'm-2', code: 'TC-B1', name: 'ITIL Foundation', level: 'basic', stream: 'Technical Competencies' })
+const RCA = mod({ id: 'm-1', code: 'ST-A2', name: 'Root Cause Analysis', recommendation: 'dev', priority: { rank: 1, share: 0.6, cumulativeShare: 0.6, label: 'Root Cause Analysis' } })
+const PM = { id: 'jr-2', name: 'Project Manager' }
+const ITIL = mod({ id: 'm-2', code: 'TC-B1', name: 'ITIL Foundation', level: 'basic', stream: 'Technical Competencies', jobRoles: [job, PM] })
 const DRAFT = {
   id: 'd-1', moduleId: 'm-1', moduleCode: 'ST-A2', moduleName: 'Root Cause Analysis', moduleLevel: 'advanced', moduleStream: 'Specific Technical',
   moduleObjective: 'Mampu menemukan akar masalah', status: 'draft', generatedBy: 'template', reviewerName: null, reviewNote: null,
@@ -18,7 +19,7 @@ const DRAFT = {
   assessments: [{ kind: 'K', title: 'Knowledge', detail: 'Tes tertulis, lulus bila skor ≥ 80%.', objectives: 1 }],
 }
 
-async function setup(page: Page, calls: { method: string; url: string; body: unknown }[] = []) {
+async function setup(page: Page, calls: { method: string; url: string; body: unknown }[] = [], opt: { singleJob?: boolean } = {}) {
   const user = { id: 'u-1', tenantId: 't-1', email: 'hr@demo.test', role: 'hr_admin' }
   await page.route('**/api/auth/tenants', (r) => r.fulfill({ json: { data: [] } }))
   // PK-16: form kata sandi hanya tampil bila API mengizinkan (dev/staging)
@@ -38,7 +39,7 @@ async function setup(page: Page, calls: { method: string; url: string; body: unk
         data: prio ? [RCA] : [RCA, ITIL], vendorName: VENDOR,
         kpis: { modules: 2, knowledge: 2, skill: 2, attitude: 2, streams: 2 },
         pareto: { available: true, count: 1, codes: ['ST-A2'], cumulativeShare: 0.6, withoutGapData: 1, unlinkedFindings: 0 },
-        filters: { jobRoles: [job], streams: ['Specific Technical', 'Technical Competencies'] },
+        filters: { jobRoles: opt.singleJob ? [job] : [job, PM], streams: ['Specific Technical', 'Technical Competencies'] },
       } })
     }
     const m = path.match(/^\/modules\/(m-\d)$/)
@@ -88,17 +89,17 @@ test('menu Learning Intervention muncul saat flag module.li menyala; Library men
   await expect(nav(page).getByRole('button', { name: 'Learning Intervention' })).toBeVisible()
   await nav(page).getByRole('link', { name: 'Library' }).click()
   await expect(page.getByRole('heading', { level: 1, name: 'Library' })).toBeVisible()
-  await expect(page.getByText('1 modul menutup 60% gap training')).toBeVisible()
-  await expect(page.getByTestId('jumlah-modul')).toHaveText('2 modul')
+  await expect(page.getByRole('note').filter({ hasText: 'Prioritas Pareto 20/80' })).toContainText('1 modul prioritas Pareto (ST-A2) menyumbang sekitar 60% total gap. 1 modul lain belum punya data gap.')
+  await expect(page.getByTestId('jumlah-modul')).toHaveText('2 dari 2 modul')
   await expect(page.getByTestId('detail-modul')).toContainText('Root Cause Analysis')
-  await expect(page.getByTestId('detail-modul')).toContainText('Sumber yang disarankan: dikembangkan bersama ELGOS')
+  await expect(page.getByTestId('detail-modul')).toContainText('Sumber yang disarankan: Dikembangkan bersama ELGOS.')
   await expect(page.getByText(`ELGOS tidak mengirim apa pun ke ${VENDOR}`)).toBeVisible()
 
-  await page.getByLabel('Prioritas').selectOption('pareto')
-  await expect(page.getByTestId('jumlah-modul')).toHaveText('1 modul')
+  await page.getByRole('group', { name: 'Prioritas' }).getByRole('button', { name: 'Prioritas Pareto saja' }).click()
+  await expect(page.getByTestId('jumlah-modul')).toHaveText('1 dari 2 modul')
   expect(calls.some((c) => c.url.includes('priority=pareto'))).toBe(true)
 
-  await page.getByLabel('Prioritas').selectOption('')
+  await page.getByRole('group', { name: 'Prioritas' }).getByRole('button', { name: 'Semua modul' }).click()
   await page.getByRole('button', { name: /ITIL Foundation/ }).click()
   await page.getByRole('button', { name: `Minta ke ${VENDOR}` }).click()
   await expect(page.getByTestId('info')).toContainText('Permintaan TC-B1 dicatat')
@@ -118,8 +119,8 @@ test('Kembangkan dengan ELGOS: draf melewati empat tahap, diajukan, lalu keputus
   await page.getByLabel('Tujuan terukur 1').fill('Memahami konsep akar masalah')
   await expect(page.getByText('Tambahkan kriteria ukur berupa angka')).toBeVisible()
   await page.getByLabel('Tujuan terukur 1').fill('Menjelaskan 5 Whys dengan benar pada 4 dari 5 soal')
-  for (const label of ['Rancangan materi', 'Asesmen', 'Tinjau dan ajukan']) {
-    await page.getByRole('button', { name: 'Lanjut' }).click()
+  for (const [next, label] of [['Lanjut: rancang materi', 'Rancangan materi'], ['Lanjut: asesmen', 'Asesmen'], ['Lanjut: tinjau dan ajukan', 'Tinjau dan ajukan']]) {
+    await page.getByRole('button', { name: next }).click()
     await expect(page.getByRole('heading', { level: 2, name: label })).toBeVisible()
   }
   await page.getByRole('button', { name: 'Kirim ke SME untuk tinjauan' }).click()
@@ -147,7 +148,7 @@ test('Program & Course dan Permintaan: kamus belum ada, permintaan massal, dan l
   await expect(page.getByRole('heading', { level: 1, name: 'Program & Course' })).toBeVisible()
   // X-1 paritas: kelas li-* bersama tetap termuat saat /prog dibuka langsung (tanpa Library)
   await expect(page.getByRole('group', { name: 'Jabatan' })).toHaveCSS('display', 'flex')
-  await expect(page.getByTestId('course-TC-B1')).toContainText('Belum ada sumber')
+  await expect(page.getByTestId('course-TC-B1')).toContainText('Belum tersedia')
   await page.getByRole('button', { name: 'Minta semua modul generik di program ini' }).click()
   await expect(page.getByTestId('info')).toHaveText('1 permintaan dicatat.')
   expect(calls.find((c) => c.url === '/requests/bulk')?.body).toEqual({ scope: 'program', jobRoleId: 'jr-1', level: 'basic' })
@@ -191,4 +192,68 @@ test('P3 X-3: breadcrumb bersama di Library, Program, dan Permintaan', async ({ 
     await expect(crumb).toHaveText(new RegExp(`Learning Intervention\\s*›\\s*${teks}`))
     await expect(crumb).toHaveCSS('font-size', '12px')
   }
+})
+
+test('P6 LI-5/LI-7: filter berupa baris chip dan baris modul seperti mockup', async ({ page }) => {
+  const calls: { method: string; url: string; body: unknown }[] = []
+  await setup(page, calls, { singleJob: true })
+  await page.goto('/lib')
+  await expect(page.getByText('Saat ini seluruh modul berlaku untuk jabatan Engineer Service Delivery. Semua modul Knowledge, Skill, dan Attitude (KSA) yang teridentifikasi dari DACUM Tool 2.')).toBeVisible()
+  await expect(page.getByText('Butir Knowledge')).toBeVisible()
+  await expect(page.getByText('DACUM Tool 2 dan 3, 2 rumpun')).toBeVisible()
+  await expect(page.getByText('sikap kerja')).toBeVisible()
+
+  const filters = page.getByTestId('filter-modul')
+  await expect(filters.locator('select')).toHaveCount(0)
+  for (const [grup, awal] of [['Jabatan', 'Semua jabatan'], ['Prioritas', 'Semua modul'], ['Tipe', 'Semua'], ['Level', 'Semua'], ['Rumpun', 'Semua']]) {
+    await expect(filters.getByRole('group', { name: grup }).getByRole('button', { name: awal, exact: true })).toHaveAttribute('aria-pressed', 'true')
+  }
+  await filters.getByRole('group', { name: 'Tipe' }).getByRole('button', { name: 'Skill' }).click()
+  await expect(filters.getByRole('group', { name: 'Tipe' }).getByRole('button', { name: 'Skill' })).toHaveAttribute('aria-pressed', 'true')
+  await expect.poll(() => calls.some((c) => c.url.includes('type=S'))).toBe(true)
+
+  const rca = page.getByRole('button', { name: /Root Cause Analysis/ })
+  for (const t of ['ST-A2', 'Specific Technical · Advanced', 'K 1', 'S 1', 'A 1', 'Engineer Service Delivery', 'Pareto #1 · 60% gap', 'Belum tersedia']) await expect(rca).toContainText(t)
+  await expect(page.getByRole('button', { name: /ITIL Foundation/ })).toContainText('2 jabatan')
+  await expect(rca).toHaveCSS('background-color', 'rgb(236, 239, 245)')
+
+  const detail = page.getByTestId('detail-modul')
+  await expect(detail).toContainText('Termasuk modul yang bersama-sama menyumbang sekitar 60% total gap (kumulatif sampai urutan ini). Sediakan lebih dulu.')
+  await expect(detail).toContainText('Usulan awal, dapat diubah.')
+  await expect(page.getByRole('button', { name: 'Minta modul prioritas yang generik ke Mahaka' })).toBeVisible()
+})
+
+test('P6 LI-27: wizard dua kolom, stepper dan catatan pendekatan di kartu kiri', async ({ page }) => {
+  await setup(page)
+  await page.goto('/req/draf/d-1')
+  const stepper = page.getByTestId('draf-langkah')
+  const konten = page.getByTestId('draf-konten')
+  await expect(stepper.getByRole('list', { name: 'Tahap pengembangan modul' })).toBeVisible()
+  await expect(stepper).toContainText('Pendekatan: backward design')
+  const a = (await stepper.boundingBox())!
+  const b = (await konten.boundingBox())!
+  expect(Math.round(a.width)).toBe(240)
+  expect(b.x).toBeGreaterThan(a.x + a.width)
+  expect(Math.abs(b.y - a.y)).toBeLessThan(2)
+  await expect(page.getByRole('button', { name: 'Lanjut: rancang materi' })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Simpan perubahan' })).toBeHidden()
+  await page.getByText('Kelola draf').click()
+  await expect(page.getByRole('button', { name: 'Simpan perubahan' })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Hapus draf' })).toBeVisible()
+  for (const n of ['Lanjut: rancang materi', 'Lanjut: asesmen', 'Lanjut: tinjau dan ajukan']) await page.getByRole('button', { name: n }).click()
+  await expect(konten).toContainText('Seluruh tujuan pembelajaran terukur (1 dari 1).')
+  await expect(konten).toContainText('Setiap tujuan memiliki instrumen asesmen dan kriteria lulus.')
+})
+
+test('P6 Program & Permintaan: kartu jabatan, tab, catatan, dan chip hitungan seperti mockup', async ({ page }) => {
+  await setup(page)
+  await page.goto('/prog')
+  await expect(page.getByRole('button', { name: /Engineer Service Delivery/ })).toContainText('Kamus tersedia')
+  await expect(page.getByRole('tab', { name: 'Basic · 1 course' })).toBeVisible()
+  await expect(page.getByText('Program ini untuk jabatan Engineer Service Delivery.')).toBeVisible()
+  await expect(page.getByText('Diminta / draf')).toBeVisible()
+  await expect(page.getByTestId('course-TC-B1').getByRole('button', { name: 'Minta ke Mahaka' })).toBeVisible()
+  await page.goto('/req')
+  await expect(page.getByText('dengan bantuan agen ELGOS')).toBeVisible()
+  await expect(page.getByTestId('jumlah-draf')).toHaveText('1 draf')
 })
