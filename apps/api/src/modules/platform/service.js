@@ -27,7 +27,11 @@ const targetAudit = (actor, targetTenantId) => ({
  * onboardingClient(fn): menjalankan fn(pgClient) di koneksi khusus onboarding (core/tenant/client.js).
  * provider: penyedia kunci induk (local/kms); links: layanan email-link (prepare/send).
  */
-function createPlatformService({ db, store, flags, entitlements, audit, platformLog, links, provider, production = false, onboardingClient }) {
+const MIN_REVIEWED = 10;
+const pct = (approved, reviewed) => (reviewed ? Math.round((approved / reviewed) * 1000) / 10 : null);
+
+function createPlatformService({ db, store, flags, entitlements, audit, platformLog, platformSettings, links, provider,
+  production = false, onboardingClient }) {
   async function listModules(tenantId) {
     const [detail, submodules] = await Promise.all([flags.detail(tenantId), entitlements.submodules(tenantId)]);
     return MODULES.map((m) => rowFor(m, detail, submodules));
@@ -107,6 +111,28 @@ function createPlatformService({ db, store, flags, entitlements, audit, platform
         throw new HttpError(502, 'MAIL_FAILED', 'Email undangan gagal terkirim. Link tersimpan; coba kirim ulang beberapa saat lagi.');
       }
       return { invitation: 'sent' };
+    },
+    /** Kesepakatan AI–HR per tenant (PM-2 bagian C); n < 10 tanpa tanda lulus/gagal. */
+    async aiQuality({ days }) {
+      const target = await platformSettings.get('aiHrAgreementTarget');
+      const byTenant = new Map();
+      for (const r of await store.aiQuality({ days })) {
+        const t = byTenant.get(r.tenantId) || { tenantId: r.tenantId, name: r.name, reviewed: 0, approved: 0, daily: [] };
+        t.reviewed += r.reviewed; t.approved += r.approved;
+        t.daily.push({ day: r.day, reviewed: r.reviewed, approved: r.approved, agreement: pct(r.approved, r.reviewed), enoughData: r.reviewed >= MIN_REVIEWED });
+        byTenant.set(r.tenantId, t);
+      }
+      return [...byTenant.values()].map((t) => {
+        const agreement = pct(t.approved, t.reviewed);
+        const enoughData = t.reviewed >= MIN_REVIEWED;
+        return { ...t, agreement, enoughData, meetsTarget: enoughData ? agreement >= target : null };
+      });
+    },
+    /** Laporan biaya token mingguan (PO-10). */
+    async aiCost({ weeks }) {
+      return (await store.aiCost({ weeks })).map((r) => ({
+        ...r, tokensIn: Number(r.tokensIn), tokensOut: Number(r.tokensOut), costUsd: Math.round(Number(r.costUsd) * 1e6) / 1e6,
+      }));
     },
     async listTenants() {
       const rows = await store.listTenants();

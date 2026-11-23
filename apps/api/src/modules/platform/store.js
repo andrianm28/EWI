@@ -47,6 +47,29 @@ function createPlatformStore(db) {
     async tenantsWithFlag(key) {
       return (await q('SELECT count(*)::int AS n FROM feature_flags WHERE key = :key AND enabled', { key }))[0].n;
     },
+    /** Temuan hasil job analisis AI yang sudah ditinjau HR, per tenant per tanggal Asia/Jakarta. */
+    async aiQuality({ days }) {
+      return q(`
+        SELECT f.tenant_id AS "tenantId", t.name,
+               to_char((f.reviewed_at AT TIME ZONE 'Asia/Jakarta')::date, 'YYYY-MM-DD') AS day,
+               count(*)::int AS reviewed, (count(*) FILTER (WHERE f.review_status = 'approved'))::int AS approved
+          FROM lna_findings f JOIN tenants t ON t.id = f.tenant_id
+         WHERE f.analysis_job_id IS NOT NULL AND f.review_status <> 'draft' AND f.reviewed_at IS NOT NULL
+           AND f.reviewed_at >= now() - make_interval(days => :days)
+         GROUP BY 1, 2, 3 ORDER BY 2, 3`, { days });
+    },
+    /** Pemakaian token per tenant per minggu ISO (Senin, Asia/Jakarta); hanya minggu yang punya pemakaian. */
+    async aiCost({ weeks }) {
+      return q(`
+        SELECT l.tenant_id AS "tenantId", t.name,
+               to_char(date_trunc('week', l.created_at AT TIME ZONE 'Asia/Jakarta')::date, 'YYYY-MM-DD') AS week,
+               count(DISTINCT l.session_id)::int AS sessions, count(*)::int AS calls,
+               sum(l.input_tokens)::bigint AS "tokensIn", sum(l.output_tokens)::bigint AS "tokensOut",
+               coalesce(sum(l.cost_usd), 0)::float8 AS "costUsd", bool_or(l.cost_usd IS NULL) AS "costMissing"
+          FROM ai_usage_logs l JOIN tenants t ON t.id = l.tenant_id
+         WHERE l.created_at >= (date_trunc('week', now() AT TIME ZONE 'Asia/Jakarta') - make_interval(weeks => :weeks - 1)) AT TIME ZONE 'Asia/Jakarta'
+         GROUP BY 1, 2, 3 ORDER BY 3 DESC, 2`, { weeks });
+    },
     async tenantExists(tenantId) {
       return (await q('SELECT 1 FROM tenants WHERE id = :tenantId', { tenantId })).length > 0;
     },

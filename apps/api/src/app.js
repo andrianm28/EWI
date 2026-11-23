@@ -131,12 +131,12 @@ function createApp({ config, stores, ai, catalog, mailer, rateLimits, readiness,
     const platformSettings = createPlatformSettings({ store: stores.platformSettings, platformLog });
     const settingsView = createSettingsView({ platformSettings, store: stores.platform, encryption: config.encryption.provider, ai: config.ai });
     const platform = createPlatformService({
-      db: stores.db, store: stores.platform, flags, entitlements, audit, platformLog, links,
+      db: stores.db, store: stores.platform, flags, entitlements, audit, platformLog, platformSettings, links,
       provider: createProvider(config.encryption), production: config.nodeEnv === 'production',
       onboardingClient: (fn) => withOnboardingClient(config, fn),
     });
     app.use('/api/platform', auth, tenantContext(), requireRole(),
-      requireFlag(flags, FLAGS.PLATFORM_CONSOLE, 'Konsol platform belum diaktifkan'), platformRouter({ service: platform, settings: settingsView, limits }));
+      requireFlag(flags, FLAGS.PLATFORM_CONSOLE, 'Konsol platform belum diaktifkan'), platformRouter({ service: platform, settings: settingsView, platformLog, limits }));
   }
 
   const api = express.Router();

@@ -298,4 +298,86 @@ run('B12 Super Admin (Postgres)', () => {
       } finally { await put('/settings', original); }
     });
   });
+  describe('kualitas dan biaya AI, log, percobaan', () => {
+    const sessionIds = [];
+    beforeAll(async () => {
+      for (const key of ['mutu', 'sedikit']) {
+        await tenant(key); await user(key, `${key}Staf`, 'learner', { login: false });
+        const [[p]] = await db.query("INSERT INTO lna_projects (tenant_id, name) VALUES (:t, 'Uji B12') RETURNING id", { replacements: { t: T[key] } });
+        for (let i = 0; i < 2; i += 1) {
+          const [[sess]] = await db.query(
+            `INSERT INTO lna_interview_sessions (tenant_id, project_id, submodule, interviewee_id) VALUES (:t, :p, 'tna', :u) RETURNING id`,
+            { replacements: { t: T[key], p: p.id, u: id[`${key}Staf`] } });
+          sessionIds.push({ key, id: sess.id, project: p.id });
+        }
+        const s0 = sessionIds.find((x) => x.key === key);
+        const [[job]] = await db.query(`INSERT INTO lna_analysis_jobs (tenant_id, session_id, submodule) VALUES (:t, :s, 'tna') RETURNING id`,
+          { replacements: { t: T[key], s: s0.id } });
+        const statuses = key === 'mutu'
+          ? [...Array(9).fill('approved'), 'edited', 'edited', 'rejected', 'draft', 'draft']
+          : ['approved', 'approved', 'rejected'];
+        for (const [i, st] of statuses.entries()) {
+          await db.query(
+            `INSERT INTO lna_findings (tenant_id, project_id, category, title, review_status, reviewed_at, analysis_job_id, finding_seq)
+             VALUES (:t, :p, 'training', :title, :st, CASE WHEN :st = 'draft' THEN NULL ELSE now() END, :job, :seq)`,
+            { replacements: { t: T[key], p: s0.project, title: `temuan ${i}`, st, job: job.id, seq: i + 1 } });
+        }
+        // temuan lama tanpa job analisis (diisi approved oleh migrasi) tidak dihitung
+        await db.query(`INSERT INTO lna_findings (tenant_id, project_id, category, title, review_status, reviewed_at) VALUES (:t, :p, 'training', 'lama', 'approved', now())`,
+          { replacements: { t: T[key], p: s0.project } });
+      }
+      await db.query('UPDATE tenants SET name = :n WHERE id = :t', { replacements: { n: `=Mutu ${stamp}`, t: T.mutu } });
+      const [a, b] = sessionIds.filter((x) => x.key === 'mutu');
+      for (const [sid, cost] of [[a.id, 0.5], [a.id, null], [b.id, 0.25]]) {
+        await db.query(
+          `INSERT INTO ai_usage_logs (tenant_id, session_id, submodule, operation, provider, model, input_tokens, output_tokens, cost_usd)
+           VALUES (:t, :s, 'tna', 'analyze_tna', 'stub', 'stub', 100, 20, :cost)`, { replacements: { t: T.mutu, s: sid, cost } });
+      }
+    });
+
+    it('kesepakatan AI–HR per tenant: hanya temuan job analisis; n < 10 belum cukup data', async () => {
+      const res = await get('/ai-quality?days=30');
+      expect(res.status).toBe(200);
+      const row = (key) => res.body.data.find((r) => r.tenantId === T[key]);
+      expect(row('mutu')).toMatchObject({ reviewed: 12, approved: 9, agreement: 75, meetsTarget: false, enoughData: true });
+      expect(row('mutu').daily).toEqual([expect.objectContaining({ reviewed: 12, approved: 9, agreement: 75, enoughData: true })]);
+      expect(row('sedikit')).toMatchObject({ reviewed: 3, approved: 2, meetsTarget: null, enoughData: false });
+      expect(JSON.stringify(res.body)).not.toMatch(FORBIDDEN_KEYS);
+    });
+
+    it('biaya token mingguan: sesi, panggilan, token, biaya; biaya kosong ditandai', async () => {
+      const res = await get('/ai-cost?weeks=2');
+      const rows = res.body.data.filter((r) => r.tenantId === T.mutu);
+      expect(rows).toEqual([expect.objectContaining({ sessions: 2, calls: 3, tokensIn: 300, tokensOut: 60, costUsd: 0.75, costMissing: true })]);
+      expect(rows[0].week).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+      expect(new Date(`${rows[0].week}T00:00:00Z`).getUTCDay()).toBe(1);
+      expect(res.body.data.some((r) => r.tenantId === T.sedikit)).toBe(false);
+    });
+
+    it('CSV biaya: header, berkas unduhan, sel formula diberi awalan kutip', async () => {
+      const res = await get('/ai-cost?weeks=2&format=csv');
+      expect(res.headers['content-type']).toMatch(/^text\/csv; charset=utf-8/);
+      expect(res.headers['content-disposition']).toBe('attachment; filename="biaya-ai-mingguan.csv"');
+      const lines = res.text.trim().split(/\r?\n/);
+      expect(lines[0]).toBe('minggu,tenant,sesi,panggilan,token_masuk,token_keluar,biaya_usd,biaya_belum_tercatat');
+      expect(lines.find((l) => l.includes(`Mutu ${stamp}`))).toMatch(new RegExp(`^\\d{4}-\\d{2}-\\d{2},'=Mutu ${stamp},2,3,300,60,0\\.75,ya$`));
+    });
+
+    it('log audit platform terbaru dan hitungan percobaan per hari', async () => {
+      const log = await get('/log?limit=3');
+      expect(log.status).toBe(200);
+      expect(log.body.data).toHaveLength(3);
+      expect(log.body.data[0]).toMatchObject({ actorEmail: `super-${stamp}@b12.test`, action: expect.any(String), resource: expect.any(String) });
+      const count = async () => ((await get('/attempts?days=1')).body.data.find((r) => r.outcome === 'unknown_org') || { count: 0 }).count;
+      const before = await count();
+      await db.query(`INSERT INTO platform_attempt_counters (hour, outcome, count) VALUES (date_trunc('hour', now()), 'unknown_org', 4)
+        ON CONFLICT (hour, outcome) DO UPDATE SET count = platform_attempt_counters.count + 4`);
+      expect(await count()).toBe(before + 4);
+    });
+
+    it.each(['/ai-quality?days=0', '/ai-quality?days=91', '/ai-cost?weeks=27', '/ai-cost?format=xls', '/log?limit=0', '/log?limit=201', '/attempts?days=32', '/attempts?days=x'])(
+      '%s ditolak 400', async (path) => {
+        expect((await get(path)).status).toBe(400);
+      });
+  });
 });
