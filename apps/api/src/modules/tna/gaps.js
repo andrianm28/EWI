@@ -147,7 +147,10 @@ function linkSessions({ sessions, recordsById = new Map(), now = new Date() }) {
       const g = out.get(key);
       if (s.status === 'completed') g.interviewed.add(s.intervieweeId);
       else if (isOpen(s, now)) g.assigned.add(s.intervieweeId);
-      if (!g.byUser.has(s.intervieweeId)) g.byUser.set(s.intervieweeId, { id: s.id, status: s.status, inviteExpiresAt: s.inviteExpiresAt || null });
+      if (!g.byUser.has(s.intervieweeId)) g.byUser.set(s.intervieweeId, {
+        id: s.id, status: s.status, inviteExpiresAt: s.inviteExpiresAt || null,
+        projectId: s.projectId || null, assignedBy: s.assignedBy || null, open: isOpen(s, now),
+      });
     }
   }
   for (const g of out.values()) {

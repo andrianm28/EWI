@@ -1,4 +1,4 @@
-const { computeGap } = require('../../src/modules/dna/gap');
+const { computeGap, latestByCompetency } = require('../../src/modules/dna/gap');
 const { careerStatus } = require('../../src/modules/dna/career');
 
 describe('computeGap (RG-1)', () => {
@@ -71,5 +71,14 @@ describe('computeGap: hasil wawancara manual (cadence 11 Nov, C2)', () => {
       ],
     });
     expect(r.items[0]).toMatchObject({ score: 4, status: 'met', source: 'manual_interview' });
+  });
+});
+
+describe('latestByCompetency (A2)', () => {
+  it('tanggal asesmen sama: baris yang dibuat paling akhir menang, tidak bergantung urutan masukan', () => {
+    const old = { competencyId: 'c1', score: 1, assessedAt: '2026-11-10', createdAt: '2026-11-10T01:00:00Z' };
+    const fix = { competencyId: 'c1', score: 3, assessedAt: '2026-11-10', createdAt: '2026-11-12T01:00:00Z' };
+    expect(latestByCompetency([old, fix]).get('c1').score).toBe(3);
+    expect(latestByCompetency([fix, old]).get('c1').score).toBe(3);
   });
 });

@@ -301,7 +301,7 @@ module.exports = {
     // gerbang Admin Tenant sudah dipasang untuk seluruh router ini (r.use di atas), jadi tidak diulang di importRouter
     const passThrough = (_req, _res, next) => next();
     for (const [sm, only] of Object.entries(IMPORT_KINDS)) {
-      r.use(`/imports/${sm}`, requireSubmodule(sm, { entitlements, flags }, { tenantFlag: false }), importRouter({ submodule: sm, stores, audit, guard: passThrough, only, ownDrafts: true }));
+      r.use(`/imports/${sm}`, requireSubmodule(sm, { entitlements, flags }, { tenantFlag: false }), importRouter({ submodule: sm, stores, audit, flags, guard: passThrough, only, ownDrafts: true }));
     }
 
     return r;

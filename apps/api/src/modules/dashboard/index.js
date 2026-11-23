@@ -88,7 +88,7 @@ function dashboardRouter({ stores, flags, entitlements, settings, audit }) {
       const [sessions, reviewed, perf, periods, conf] = await Promise.all([
         stores.interviews.list(tenantId, 'tna', scope),
         // listFindings hanya mengembalikan temuan yang sudah ditinjau HR (PK-14)
-        stores.tna.listFindings(tenantId, scope, { categories: isHr || nonTrainingAllowed ? ['training', 'non_training'] : ['training'] }),
+        stores.tna.listFindings(tenantId, scope, { categories: isHr || nonTrainingAllowed ? ['training', 'non_training'] : ['training'], excludeFrozen: true }),
         stores.tna.listPerformance(tenantId, scope, {}),
         stores.tna.performancePeriods(tenantId, { userIds: ids }),
         settings.get(tenantId),
@@ -116,7 +116,7 @@ function dashboardRouter({ stores, flags, entitlements, settings, audit }) {
           stores.tna.reviewCounts(tenantId, {}),
           stores.tna.aiReviewCounts(tenantId),
           stores.tna.analysisDurations(tenantId, scope),
-          stores.tna.listPlanItems(tenantId, scope),
+          stores.tna.listPlanItems(tenantId, scope, { excludeFrozen: true }),
         ]);
         const durations = allDurations.filter((d) => inScope.has(d.userId));
         kpis.aiHrAgreement = agreement(aiCounts);
@@ -135,7 +135,7 @@ function dashboardRouter({ stores, flags, entitlements, settings, audit }) {
       // K1 / PM-6: temuan non-pelatihan untuk HR; atasan hanya bila HR memberinya akses. Tanpa akses butirnya
       // tidak dikirim sama sekali, sehingga atasan tidak bisa menyimpulkan ada temuan.
       if (nonTrainingAllowed) {
-        const rows = await stores.tna.listNonTrainingSummary(tenantId, isHr ? {} : { userIds: scope.userIds });
+        const rows = await stores.tna.listNonTrainingSummary(tenantId, isHr ? { excludeFrozen: true } : { userIds: scope.userIds, excludeFrozen: true });
         add('non_training_findings', rows.filter((f) => inScope.has(f.userId)).length);
       }
     }

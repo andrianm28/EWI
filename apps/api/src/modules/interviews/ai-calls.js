@@ -26,7 +26,7 @@ function aiContext(ctx, session) {
     .map((t) => ({
       id: t.id, metricType: t.metricType, name: t.name, target: t.target, actual: t.actual, period: t.period, direction: t.direction, unit: t.unit,
     }));
-  // B6 (A10): sesi yang ditugaskan untuk gap kompetensi membawa topiknya. Hanya nama kompetensi, bukan data orang.
+  // B6 (A10, D5): sesi yang ditugaskan untuk gap kompetensi atau OKR membawa topiknya. Hanya label, bukan data orang.
   const focus = ['competency', 'okr'].includes(session.focusKind) && session.focusLabel ? { kind: session.focusKind, label: session.focusLabel } : null;
   return { competencies, triggers, focus };
 }

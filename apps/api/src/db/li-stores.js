@@ -1,4 +1,5 @@
 'use strict';
+const { notFrozen } = require('./frozen-sql');
 // Store Postgres untuk B13 Learning Intervention. Setiap query memfilter tenant_id. Isi modul bukan data pribadi,
 // jadi tidak dienkripsi per tenant (spek §3).
 const { QueryTypes } = require('sequelize');
@@ -161,7 +162,7 @@ function createLiStores(sequelize) {
                    FROM lna_findings f
                    LEFT JOIN lna_competencies c ON c.id = f.competency_id AND c.tenant_id = f.tenant_id
                    LEFT JOIN lna_performance_records pr ON pr.id = f.performance_record_id AND pr.tenant_id = f.tenant_id
-                  WHERE f.tenant_id = :tenantId AND f.category = 'training' AND f.review_status IN (:reviewed)`;
+                  WHERE f.tenant_id = :tenantId AND f.category = 'training' AND f.review_status IN (:reviewed) AND ${notFrozen('f')}`;
       sql += scopeSql('f.user_id', scope, rep);
       if (jobRoleId) { sql += ' AND f.user_id IN (SELECT u.id FROM users u WHERE u.tenant_id = :tenantId AND u.job_role_id = :jobRoleId)'; rep.jobRoleId = jobRoleId; }
       return select(sql, rep);

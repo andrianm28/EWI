@@ -14,6 +14,8 @@ const FLAGS = Object.freeze({
   DNA_AI_INTERVIEW: 'dna.ai_interview',
   // G2-A (13 Nov): rekomendasi promosi = modul terpisah, di luar POC DNA+TNA
   PROMOTION_RECOMMENDATION: 'promotion.recommendation',
+  // B4 (19 Nov): kamus per job function, kurikulum BIA, tahap & rencana pengembangan. Mati = POC DNA (/m/dna)
+  DNA_DEVELOPMENT: 'dna.development',
   VOICE_REALTIME: 'voice.realtime',
   VOICE_TTS: 'voice.tts',
   LANG_EN: 'lang.en',
