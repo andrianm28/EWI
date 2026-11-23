@@ -184,7 +184,9 @@ test('snapshot: panel terbuka dengan percakapan (karyawan)', async ({ page }) =>
   await fab(page).click()
   await panel(page).getByRole('button', { name: 'Apa rencana belajar saya?' }).click()
   await expect(panel(page).getByRole('button', { name: 'Buka Rencana belajar' })).toBeVisible()
-  await expect(panel(page)).toHaveScreenshot('asisten-panel-karyawan.png')
+  // Potret elemen kecil yang padat teks: beda antialiasing Chromium lokal vs CI sekitar 4% (snapshot halaman penuh
+  // tetap di bawah 2% karena banyak ruang kosong). Struktur dan warna tetap terjaga oleh ambang 6%.
+  await expect(panel(page)).toHaveScreenshot('asisten-panel-karyawan.png', { maxDiffPixelRatio: 0.06 })
 })
 
 test('keluar lalu masuk lagi: panel tertutup dan percakapan lama hilang', async ({ page }) => {
