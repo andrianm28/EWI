@@ -6,8 +6,7 @@ const { createStores } = require('../../src/db/stores');
 const { createApp } = require('../../src/app');
 const { createStubProvider } = require('../../src/ai/stub-provider');
 const { AI_ERRORS } = require('../../src/ai/errors');
-const { createTokenService } = require('../../src/core/auth/tokens');
-const { makeConfig } = require('../helpers');
+const { makeConfig, sessionSigner } = require('../helpers');
 
 const run = process.env.DATABASE_URL ? describe : describe.skip;
 const CONSENT = 'cca-consent-id-v1.0';
@@ -38,8 +37,9 @@ run('B10 tahap 2: wawancara dan sintesis Core Competencies (Postgres)', () => {
   beforeAll(async () => {
     const config = makeConfig();
     db = createDb({ databaseUrl: process.env.DATABASE_URL, dbSchema: process.env.DB_SCHEMA || 'ewi' });
-    app = createApp({ config, stores: createStores(db), ai });
-    const tokens = createTokenService(config.jwt);
+    const stores = createStores(db);
+    app = createApp({ config, stores, ai });
+    const tokens = sessionSigner(config, stores.authSessions);
     const slug = `ccaw-${Date.now()}`;
     [[tenant]] = await db.query(`INSERT INTO tenants (slug, name) VALUES (:slug, 'CCA wawancara') RETURNING id`, { replacements: { slug } });
     [[other]] = await db.query(`INSERT INTO tenants (slug, name) VALUES (:slug, 'Lain') RETURNING id`, { replacements: { slug: `${slug}-x` } });
@@ -49,7 +49,7 @@ run('B10 tahap 2: wawancara dan sintesis Core Competencies (Postgres)', () => {
          VALUES (:t, :email, :name, :emp, :role, 'active', :sup) RETURNING id`,
         { replacements: { t, email: `${key}@ccaw.test`, name: `Nama ${key}`, emp: `E-${key}`, role, sup } });
       u[key] = row.id;
-      tok[key] = tokens.sign({ id: row.id, tenantId: t, role, email: `${key}@ccaw.test` });
+      tok[key] = await tokens.sign({ id: row.id, tenantId: t, role, email: `${key}@ccaw.test` });
     };
     await add('hr', 'hr_admin');
     await add('eta', 'eta_admin');

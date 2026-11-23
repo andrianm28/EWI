@@ -25,7 +25,8 @@ run('Alur pengukuran dampak belajar (HR, atasan)', () => {
   beforeAll(async () => {
     db = createDb({ databaseUrl: process.env.DATABASE_URL, dbSchema: process.env.DB_SCHEMA || 'ewi' });
     const config = makeConfig();
-    a = langkah(createApp({ config, stores: createStores(db), ai: createStubProvider() }), pembuatMasuk(config));
+    const st = createStores(db);
+    a = langkah(createApp({ config, stores: st, ai: createStubProvider() }), pembuatMasuk(config, st.authSessions));
 
     tenant = await siapkanTenant(db, { slug, flags: FLAG_LIM });
     tenantIds.push(tenant.id);
