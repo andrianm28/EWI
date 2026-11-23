@@ -35,6 +35,8 @@ test('menu karyawan sesuai mockup, tanpa butir peralihan; undangan membuka sesi'
   const undangan = page.getByTestId('my-invitations')
   await expect(undangan).toContainText('bukan untuk penilaian kinerja')
   await expect(undangan).toContainText('Tenggat')
+  // paritas: catatan undangan berjarak 20px dari bagian berikutnya (.b8-list tidak menimpa .b8-sub)
+  await expect(undangan).toHaveCSS('margin-bottom', '20px')
   await undangan.getByRole('link', { name: 'Mulai wawancara' }).click()
   await expect(page).toHaveURL(/\/iv\/s1$/)
 })

@@ -145,6 +145,8 @@ test('Program & Course dan Permintaan: kamus belum ada, permintaan massal, dan l
   await setup(page, calls)
   await page.goto('/prog')
   await expect(page.getByRole('heading', { level: 1, name: 'Program & Course' })).toBeVisible()
+  // X-1 paritas: kelas li-* bersama tetap termuat saat /prog dibuka langsung (tanpa Library)
+  await expect(page.getByRole('group', { name: 'Jabatan' })).toHaveCSS('display', 'flex')
   await expect(page.getByTestId('course-TC-B1')).toContainText('Belum ada sumber')
   await page.getByRole('button', { name: 'Minta semua modul generik di program ini' }).click()
   await expect(page.getByTestId('info')).toHaveText('1 permintaan dicatat.')
