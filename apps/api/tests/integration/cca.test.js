@@ -342,7 +342,7 @@ run('B10 Core Competencies (Postgres)', () => {
     it('ringkasan: peserta sendiri dan HR untuk tier pimpinan; ringkasan karyawan tidak dibuka per orang; baca dicatat audit', async () => {
       const a = (await get('/assignments', 'a')).body.data.mine.employee;
       const own = await get(`/assignments/${a.id}/summary`, 'a');
-      expect(own.body.data.summary).toBe('Jawaban karyawan a.');
+      expect(own.body.data.themes).toEqual([{ theme: null, question: null, answer: 'Jawaban karyawan a.' }]);
       const hrOnEmployee = await get(`/assignments/${a.id}/summary`);
       expect(hrOnEmployee.status).toBe(403);
       expect(hrOnEmployee.body.error.code).toBe('SUMMARY_RESTRICTED');
@@ -351,7 +351,7 @@ run('B10 Core Competencies (Postgres)', () => {
       expect((await get(`/assignments/${a.id}/summary`, 'luar')).status).toBe(404);
 
       const leader = await get(`/assignments/${spvAssignment.id}/summary`);
-      expect(leader.body.data).toMatchObject({ tier: 'leader', summary: 'Ringkasan pimpinan: fokus otomasi.' });
+      expect(leader.body.data).toMatchObject({ tier: 'leader', themes: [{ theme: null, question: null, answer: 'Ringkasan pimpinan: fokus otomasi.' }] });
       const b = (await get('/assignments', 'b')).body.data.mine.employee;
       expect((await get(`/assignments/${b.id}/summary`, 'b')).status).toBe(404); // belum selesai
 
@@ -386,7 +386,7 @@ run('B10 Core Competencies (Postgres)', () => {
         values: [{ name: 'Credible', score: 90 }, { name: 'Competent', score: 100 }],
         components: [{ name: 'Kuis', score: 90 }, { name: 'Asesmen akhir', score: 100 }],
       })]);
-      expect(self.interviewAssignments).toEqual([expect.objectContaining({ tier: 'employee', status: 'completed', summary: 'Jawaban karyawan a.' })]);
+      expect(self.interviewAssignments).toEqual([expect.objectContaining({ tier: 'employee', status: 'completed', summary: { themes: [{ theme: null, question: null, answer: 'Jawaban karyawan a.' }], stances: [] } })]);
       const byHr = (await exp('hr')).body.data.coreCompetencies;
       expect(byHr.interviewAssignments).toHaveLength(1);
       expect(JSON.stringify(byHr)).not.toContain('Jawaban');

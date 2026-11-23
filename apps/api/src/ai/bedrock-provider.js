@@ -6,7 +6,7 @@ const { BedrockRuntimeClient, ConverseCommand } = require('@aws-sdk/client-bedro
 const { AiError, AI_ERRORS } = require('./errors');
 const P = require('./prompts');
 
-const MAX_TOKENS = { next_question: 400, assess_competencies: 2000, analyze_tna: 3000, assistant_reply: 500 };
+const MAX_TOKENS = { next_question: 400, assess_competencies: 2000, analyze_tna: 3000, assistant_reply: 500, summarize_cca: 1500 };
 
 /** Ubah galat SDK menjadi AiError dengan pesan yang jelas. */
 function mapError(err, modelId, region) {
@@ -120,6 +120,20 @@ function createBedrockProvider(config, { client } = {}) {
       const { value, usage } = await converseParsed('analyze_tna', { system: p.system, messages: [{ role: 'user', text: p.user }] },
         (raw) => P.parseTnaFindings(raw, p.codes), 'analisis TNA');
       return { findings: value, usage };
+    },
+
+    // B10 tahap 2: pertanyaan wawancara Core Competencies { text, options }
+    async ccaQuestion({ tier, theme, position, sources, requirements, turns }) {
+      const p = P.ccaQuestionPrompt({ tier, theme, position, sources, requirements, turns });
+      const { value, usage } = await converseParsed('next_question', p, P.parseCcaQuestion, 'pertanyaan');
+      return { question: value, usage };
+    },
+
+    async summarizeCca({ tier, turns, requirements }) {
+      const p = P.ccaSummaryPrompt({ tier, turns, requirements });
+      const { value, usage } = await converseParsed('summarize_cca', { system: p.system, messages: [{ role: 'user', text: p.user }] },
+        (raw) => P.parseCcaSummary(raw, { tier, turns, codes: p.codes }), 'ringkasan wawancara');
+      return { ...value, usage };
     },
 
     // B17: jawaban Asisten ELGOS dari fakta yang sudah disaring server
