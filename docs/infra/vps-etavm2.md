@@ -45,7 +45,8 @@ cek `.env` + `db.env` → pull image → backup schema `ewi` dan verifikasi terb
 migrasi sebagai pemilik `elgos` → pasang role aplikasi `elgos_app` (`ops/app-role.sql`) → ganti
 container → `/api/ready` lokal + publik. Gagal sebelum siap lokal = rollback ke image sebelumnya. Di
 staging schema direstore otomatis bila backupnya terverifikasi; di prod tidak pernah (audit 3-2: tulisan
-pengguna selama migrasi bisa hilang), log menuliskan perintah `ops/restore.sh` untuk restore manual.
+pengguna selama migrasi bisa hilang), log menuliskan perintah `ops/restore.sh` untuk restore manual. `ROLLBACK_RESTORE_DB=1` memaksa
+restore otomatis di prod; pakai hanya untuk deploy manual yang diawasi saat tidak ada tulisan pengguna.
 Gagal cek publik sesudah siap lokal tidak memicu rollback, job hanya gagal dengan peringatan Caddy/DNS. Diuji lokal: deploy pertama, deploy ulang, v2 dengan migrasi baru + API
 crash (rollback, data tetap, role dipasang ulang).
 
@@ -62,7 +63,7 @@ kedua role, memindahkan kepemilikan objek `ewi` ke `elgos_owner` (tanpa REASSIGN
 hak dan default privileges, lalu memeriksa tidak ada hak berbahaya. Password `elgos_owner` sengaja di
 `db.env`, bukan `.env`, supaya tidak masuk container API; deploy.sh memberikannya hanya ke container
 migrasi. Diuji lokal: tabel milik `elgos_owner`, `elgos_app` ditolak CREATE dan DELETE `audit_logs`,
-rollback v2 memulihkan schema dan kepemilikannya. Sesuai `docs/ewi/database-role-dan-migrasi.md` (PR #14).
+rollback v2 di staging memulihkan schema dan kepemilikannya (prod tidak merestore otomatis, audit 3-2). Sesuai `docs/ewi/database-role-dan-migrasi.md` (PR #14).
 
 ### Job terjadwal (PD-15 A)
 

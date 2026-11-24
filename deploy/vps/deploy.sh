@@ -5,8 +5,12 @@
 #
 # Tahap: cek konfigurasi -> pull image -> backup DB (+ verifikasi) -> migrasi (pemilik skema) ->
 # role aplikasi -> ganti container -> kesiapan (/api/ready) lokal + publik.
-# Gagal setelah backup = rollback otomatis: image sebelumnya dipasang lagi; schema ewi dipulihkan
-# dari backup HANYA bila migrasi sempat jalan dan backup sudah terverifikasi terbaca (N-5).
+# Gagal setelah backup dan sebelum siap lokal = rollback otomatis: image sebelumnya dipasang lagi.
+# Staging: schema ewi dipulihkan dari backup bila migrasi sempat jalan dan backup terverifikasi (N-5).
+# Prod: schema TIDAK pernah dipulihkan otomatis (audit 3-2); image lama jalan di atas skema baru dan
+# restore manual lewat ops/restore.sh (docs/infra/runbook-insiden.md). ROLLBACK_RESTORE_DB=1 memaksa
+# restore otomatis di prod, hanya untuk deploy manual yang diawasi saat tidak ada tulisan pengguna.
+# Gagal cek publik sesudah siap lokal tidak memicu rollback.
 # Aturan migrasi (I-1): tambah dulu, hapus di rilis berikutnya, supaya image lama tetap jalan
 # di atas skema baru. Lihat docs/infra/alur-rilis.md.
 #
@@ -128,8 +132,13 @@ rollback() {
     # Audit 3-2: container lama tetap melayani selama migrasi, jadi restore otomatis di prod bisa
     # menghapus tulisan pengguna di sela itu. Prod hanya rollback image (aturan migrasi tambah-dulu);
     # restore skema diputuskan manusia lewat ops/restore.sh (runbook-insiden.md).
+    SCHEMA_NOTE=" Skema prod TETAP versi baru (tidak direstore otomatis)."
     log "Migrasi sudah jalan di prod: skema TIDAK direstore otomatis. Image lama dipasang di atas skema baru."
-    [ "$BACKUP_OK" = 1 ] && log "Backup pra-deploy untuk restore manual: KONFIRMASI=prod $DIR/ops/restore.sh pulihkan prod $BACKUP"
+    echo "::warning::Skema prod tetap versi $TAG; image lama dipasang di atasnya. Lihat runbook-insiden.md 'Rollback dengan skema baru'."
+    if [ "$BACKUP_OK" = 1 ]; then
+      log "Backup pra-deploy untuk restore manual: KONFIRMASI=prod $DIR/ops/restore.sh pulihkan prod $BACKUP"
+      echo "::warning::Restore manual bila perlu: KONFIRMASI=prod $DIR/ops/restore.sh pulihkan prod $BACKUP"
+    fi
   elif [ "$MIGRATED" = 1 ]; then
     if [ "$BACKUP_OK" = 1 ] && verify_backup "$BACKUP"; then
       log "Migrasi sudah jalan: pulihkan schema ewi dari $BACKUP"
@@ -145,13 +154,15 @@ rollback() {
   if [ -z "$OLD_API" ]; then
     log "Tidak ada versi sebelumnya untuk rollback (deploy pertama). Container dihentikan."
     dc stop api web || true
+    echo "::error::Deploy pertama $TAG ke $ENV gagal; container dihentikan (tidak ada versi lama).${SCHEMA_NOTE:-}"
   elif ELGOS_API_IMAGE="$OLD_API" ELGOS_WEB_IMAGE="$OLD_WEB" dc up -d --wait --wait-timeout 180 api web >&2 \
      && ready "$LOCAL_URL" 15; then
     log "Rollback ke $OLD_SHA berhasil."
+    echo "::error::Deploy $TAG ke $ENV gagal dan sudah di-rollback ke $OLD_SHA.${SCHEMA_NOTE:-} Lihat log di atas."
   else
     log "Rollback juga GAGAL. Perlu penanganan manual di etavm2 (runbook: docs/infra/runbook-insiden.md)."
+    echo "::error::Deploy $TAG ke $ENV gagal DAN rollback ke $OLD_SHA gagal. Tangani manual (runbook-insiden.md).${SCHEMA_NOTE:-}"
   fi
-  echo "::error::Deploy $TAG ke $ENV gagal dan sudah di-rollback ke $OLD_SHA. Lihat log di atas."
   exit 1
 }
 
