@@ -36,12 +36,24 @@ watch(() => `${session.user?.tenantId ?? ''}|${session.user?.id ?? ''}|${view.va
   if (allowed.value) store.loadIntro(view.value!)
 }, { immediate: true })
 
+// 403 VIEW_FORBIDDEN tiba saat fokus di FAB atau panel: elemen itu hilang, jadi fokus dipindah ke isi halaman.
+// flush 'pre': diperiksa sebelum DOM diperbarui, selagi elemen yang fokus masih ada.
+watch(unavailable, async (off) => {
+  if (!off) return
+  const active = document.activeElement
+  const inside = !!active && (active === fabEl.value || !!panelEl.value?.contains(active))
+  if (!inside) return
+  await nextTick()
+  document.getElementById('isi')?.focus()
+})
+
 const roleLabel = computed(() => intro.value?.roleLabel ?? (view.value ? VIEW_LABEL[view.value] : ''))
 const greeting = computed(() => intro.value?.greeting ?? `Halo, saya Asisten ELGOS. Tanyakan apa pun tentang urusan Anda sebagai ${roleLabel.value} di sini.`)
 const disclaimer = computed(() => intro.value?.disclaimer ?? `Hanya menjawab dari data yang boleh Anda lihat sebagai ${roleLabel.value}. Jawaban dicatat di log audit.`)
 const suggestions = computed(() => intro.value?.suggestions ?? [])
 
 const fabEl = ref<HTMLButtonElement | null>(null)
+const panelEl = ref<HTMLElement | null>(null)
 const inputEl = ref<HTMLInputElement | null>(null)
 const bodyEl = ref<HTMLElement | null>(null)
 
@@ -83,7 +95,8 @@ function go(page: string) {
   router.push({ name: routeOf(page) })
 }
 
-watch(() => turns.value.length, async () => {
+// id gelembung terakhir berubah tiap giliran, juga setelah riwayat mencapai batas 40 (panjang tetap)
+watch(() => turns.value[turns.value.length - 1]?.id, async () => {
   await nextTick()
   if (bodyEl.value) bodyEl.value.scrollTop = bodyEl.value.scrollHeight
 })
@@ -104,7 +117,7 @@ onMounted(async () => {
     <button v-if="!open" ref="fabEl" type="button" class="b17-fab" aria-label="Buka Asisten ELGOS" @click="show">
       <UiIcon name="smart_toy" :size="22" />
     </button>
-    <div v-else class="b17-asst" role="dialog" :aria-labelledby="titleId" @keydown="onKeydown">
+    <div v-else ref="panelEl" class="b17-asst" role="dialog" :aria-labelledby="titleId" @keydown="onKeydown">
       <div class="b17-asst__hd">
         <div>
           <div :id="titleId" class="b17-asst__title">Asisten ELGOS</div>

@@ -68,24 +68,42 @@ const preselected = (f: ReviewItem): string => (f.reviewStatus === 'draft' && !f
 const shown = (f: ReviewItem): string => current(f) || preselected(f)
 /** Temuan draf yang saran AI-nya `key` dan belum dikonfirmasi HR (dihitung kartu solusi seperti mockup). */
 const unconfirmed = (key: ReviewClassification) => items.value.filter((f) => !current(f) && preselected(f) === key)
-/** Simpan saran AI `key` yang belum dikonfirmasi (klik tombol solusi = konfirmasi HR). Return galat per temuan. */
+/**
+ * Simpan saran AI `key` yang belum dikonfirmasi (klik tombol solusi = konfirmasi HR). Return galat per temuan dan
+ * `ok` = data setelahnya berhasil dimuat ulang. 409 (diputus di tempat lain) memuat ulang temuan juga, supaya nilai
+ * server yang tampil, bukan saran lama.
+ */
 async function confirmSuggestions(key: ReviewClassification) {
   const failed: { message: string }[] = []
-  const todo = unconfirmed(key)
-  for (const f of todo) {
+  let saved = 0
+  let conflict = false
+  for (const f of unconfirmed(key)) {
     try {
       const out = (await lna.classifyFinding(f.id, key)).data
       items.value = items.value.map((x) => (x.id === f.id ? out : x))
-    } catch (e) { failed.push({ message: `${f.title}: ${message(e, 'klasifikasi gagal disimpan')}` }) }
+      saved += 1
+    } catch (e) {
+      failed.push({ message: `${f.title}: ${message(e, 'klasifikasi gagal disimpan')}` })
+      if (e instanceof ApiError && e.status === 409) conflict = true
+    }
   }
-  if (todo.length > failed.length) solutions.value = (await lna.reviewSolutions(gapQuery.value!)).data
-  return failed
+  if (!saved && !conflict) return { failed, ok: true }
+  try {
+    if (conflict) await refresh(gapQuery.value!)
+    else solutions.value = (await lna.reviewSolutions(gapQuery.value!)).data
+    return { failed, ok: true }
+  } catch {
+    return { failed: [...failed, saved ? savedButStale('Klasifikasi tersimpan') : { message: 'Tinjauan temuan tidak bisa dimuat ulang' }], ok: false }
+  }
 }
+const SUGGESTION_HINT = 'saran AI, belum dikonfirmasi'
 const planned = computed(() => new Set((solutions.value?.training ?? []).filter((t) => t.planItem).map((t) => t.findingId)))
 /** Sudah ditindaklanjuti (rencana atau serah ke Improvement Needs): API menolak klasifikasi ulang (409 ALREADY_ACTIONED). */
 const actioned = (f: ReviewItem) => !!f.handedOffAt || planned.value.has(f.id)
 const optionsFor = (f: ReviewItem) => (['training', 'improvement', 'needs_review'] as const).map((key) => ({
   key, label: LABEL[key],
+  // tampilan sama dengan mockup; pembaca layar diberi tahu bahwa pilihan ini saran AI yang belum tersimpan
+  hint: !current(f) && preselected(f) === key ? SUGGESTION_HINT : undefined,
   disabled: actioned(f) || (key === 'needs_review' && decided(f)),
   // sedang menyimpan atau solusi sedang dijalankan: aria-disabled supaya fokus tidak hilang dari tombol yang diklik
   pending: busy.value || pendingIds.value.has(f.id),
@@ -95,6 +113,8 @@ function setPending(id: string, on: boolean) {
   if (on) next.add(id); else next.delete(id)
   pendingIds.value = next
 }
+/** Tombol solusi menunggu: solusi berjalan, atau pilihan HR sedang disimpan (konfirmasi saran tidak boleh menimpanya). */
+const solutionBlocked = computed(() => busy.value || pendingIds.value.size > 0)
 const pct = (c: number | null) => (c === null ? '' : ` · AI ${Math.round(c * 100)}%`)
 
 async function classify(f: ReviewItem, key: string) {
@@ -137,14 +157,13 @@ const allSent = computed(() => !pendingTraining.value && training.value.length >
 const allPlanned = computed(() => !pendingTraining.value && training.value.length > 0 && training.value.every((t) => t.planItem))
 
 async function runTraining() {
-  if (!delivery.value) return
+  if (!delivery.value || solutionBlocked.value) return
   errors.value = []; busy.value = true
-  const failed: { message: string }[] = []
+  const confirmed = await confirmSuggestions('training')
+  const failed: { message: string }[] = [...confirmed.failed]
+  // muat ulang gagal: solusi tidak dijalankan dengan data lama
+  if (!confirmed.ok) { errors.value = failed; busy.value = false; return }
   let wrote = false
-  try { failed.push(...(await confirmSuggestions('training'))) } catch {
-    // klasifikasi tersimpan, hanya muat ulang solusi yang gagal: solusi tidak dijalankan dengan data lama
-    errors.value = [savedButStale('Klasifikasi tersimpan')]; busy.value = false; return
-  }
   for (const t of training.value) {
     try {
       const planId = t.planItem?.id ?? (await lna.planFinding(t.findingId)).data.id
@@ -170,17 +189,20 @@ const improvement = computed(() => solutions.value?.improvement ?? [])
 const pendingImprovement = computed(() => unconfirmed('improvement').length)
 const hasImprovement = computed(() => improvement.value.length > 0 || pendingImprovement.value > 0)
 const pendingHandoff = computed(() => improvement.value.filter((i) => !i.handedOffAt))
+// Catatan hanya bila semua temuan perbaikan sudah diteruskan (temuan yang baru diklasifikasi memunculkan tombol lagi)
 const handedNote = computed(() => {
-  if (pendingImprovement.value) return null
-  if (handedCount.value !== null) return handedCount.value
-  return improvement.value.length && !pendingHandoff.value.length ? improvement.value.length : null
+  if (!improvement.value.length || pendingImprovement.value || pendingHandoff.value.length) return null
+  return handedCount.value ?? improvement.value.length
 })
 async function handoff() {
+  if (solutionBlocked.value) return
   errors.value = []; busy.value = true
   let saved = false
   let failed: { message: string }[] = []
   try {
-    failed = await confirmSuggestions('improvement')
+    const confirmed = await confirmSuggestions('improvement')
+    failed = confirmed.failed
+    if (!confirmed.ok) { errors.value = failed; return }
     const ids = pendingHandoff.value.map((i) => i.findingId)
     if (ids.length) {
       const r = (await lna.handoffImprovement(ids)).data
@@ -236,7 +258,7 @@ async function handoff() {
             <template v-if="delivery?.assignAvailable">
               <UiNote v-if="allSent" tone="success">Penugasan terkirim ke EliteMentor. Progres akan tersinkron kembali ke ELGOS.</UiNote>
               <template v-else>
-                <UiButton icon="open_in_new" :disabled="busy" @click="runTraining">Tugaskan di EliteMentor</UiButton>
+                <UiButton icon="open_in_new" :disabled="solutionBlocked" @click="runTraining">Tugaskan di EliteMentor</UiButton>
                 <div class="el-muted b7-small b7-gap-s">Satu klik. Bila klien tidak memakai EliteMentor, gap diekspor ke LMS klien.</div>
               </template>
             </template>
@@ -246,7 +268,7 @@ async function handoff() {
                 <UiButton variant="outlined" icon="download" class="b7-gap-m" @click="downloadCsv">Unduh daftar gap (CSV)</UiButton>
               </template>
               <template v-else>
-                <UiButton :disabled="busy" @click="runTraining">Buat rencana</UiButton>
+                <UiButton :disabled="solutionBlocked" @click="runTraining">Buat rencana</UiButton>
                 <div class="el-muted b7-small b7-gap-s">Organisasi Anda belajar di {{ delivery.label }}. Buat rencana, lalu unduh daftar gap untuk diunggah ke sana.</div>
               </template>
             </template>
@@ -260,7 +282,7 @@ async function handoff() {
             <div class="el-muted b7-explain">Temuan non-pelatihan menjadi tindakan perbaikan (SOP, alat, sistem, atau budaya) dengan pemilik dan tenggat.</div>
             <UiNote v-if="handedNote !== null" tone="success">{{ handedNote }} tindakan perbaikan dibuat dan muncul di Improvement Needs.</UiNote>
             <template v-else-if="solutions.inaEnabled">
-              <UiButton :disabled="busy" @click="handoff">Buat tindakan di Improvement Needs</UiButton>
+              <UiButton :disabled="solutionBlocked" @click="handoff">Buat tindakan di Improvement Needs</UiButton>
             </template>
             <div v-else class="el-muted">Modul Improvement Needs belum aktif untuk organisasi Anda.</div>
           </template>
