@@ -6,7 +6,7 @@ import { tinjauanGap } from './support/tinjauan'
 import { sesiWawancara } from './support/wawancara'
 import { penanganHasilSaya } from './support/hasil-saya'
 import { penanganAdminDemo, penanganCcHr, penanganCpDemo, penanganDnaDemo, penanganInaHr, penanganLdDemo, penanganLiDemo, penanganLimDemo, penanganSuperDemo, penanganAtasanDemo, penanganKaryawanDemo } from './support/demo-modul'
-import { penanganDashboardDemo, penanganShellDemo, SESI_DEMO, tanggalDariHariIni } from './support/demo'
+import { penanganDashboardDemo, penanganShellDemo, SESI_DEMO } from './support/demo'
 
 // Demo langsung 25 Nov: satu jalan-jalan per peran mengikuti cerita utama mockup Pak Eji (Main.dc.html).
 // Setiap klik yang akan dilakukan pembawa demo harus mendarat di layar yang berfungsi: judul tampil, tanpa
@@ -62,7 +62,6 @@ test('demo HR: dashboard ke gap Training Needs, tugaskan wawancara, tinjauan tem
     await page.getByRole('button', { name: 'Mulai wawancara akar masalah' }).click()
     const form = page.getByRole('form', { name: 'Tugaskan wawancara' })
     await form.getByRole('checkbox', { name: 'Dimas' }).check()
-    await form.getByLabel('Tenggat').fill(tanggalDariHariIni(7))
     await form.getByRole('button', { name: 'Tugaskan wawancara' }).click()
     await expect(page.getByRole('status')).toContainText('1 wawancara ditugaskan')
   })

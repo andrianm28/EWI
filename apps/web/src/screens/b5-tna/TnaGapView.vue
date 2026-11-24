@@ -37,7 +37,8 @@ const pageErrors = computed(() => [...(loadError.value ? [{ message: loadError.v
 const dialogErrors = computed(() => [...formErrors.value, ...generalErrors.value])
 /** P8 R2 (TD-5): formulir penugasan di dialog, dibuka dari CTA satu baris. */
 const assignOpen = ref(false)
-function openAssign() { formErrors.value = []; error.value = ''; notice.value = ''; assignOpen.value = true }
+// Keputusan user 24 Nov: tenggat terisi hari ini +14 (WIB) setiap dialog dibuka, seperti dialog B10 (P8 triase #3)
+function openAssign() { formErrors.value = []; error.value = ''; notice.value = ''; dueDate.value = wibDate(14); assignOpen.value = true }
 const notice = ref('')
 const busy = ref(false)
 

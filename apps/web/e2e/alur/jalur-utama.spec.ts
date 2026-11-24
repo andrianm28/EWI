@@ -5,6 +5,7 @@ import { penanganHasilSaya, SESI_UNDANGAN } from '../support/hasil-saya'
 import { penanganDashboardHr } from '../support/dashboard'
 import { papanGapTna, ID_KOMPETENSI, ID_DIMAS, ID_PROYEK } from '../support/tna-gap'
 import { sesiWawancara } from '../support/wawancara'
+import { tanggalWib } from '../support/tanggal'
 
 // B18 4.5 (docs/designs/b18-e2e-qa-malam.md): tiga jalur utama, langkah ditandai test.step.
 // Seam: layar lewat browser setelah masuk lewat tautan email (loginSebagai), API di-mock lewat support/.
@@ -69,14 +70,14 @@ test('jalur 2: HR dari Dashboard utama ke Training Needs, membuka detail gap, la
     await page.getByRole('button', { name: 'Mulai wawancara akar masalah' }).click()
     const form = page.getByRole('form', { name: 'Tugaskan wawancara' })
     await form.getByRole('checkbox', { name: 'Dimas' }).check()
-    await form.getByLabel('Tenggat').fill('2026-12-05')
+    await form.getByLabel('Tenggat').fill(tanggalWib(11))
     await form.getByRole('radio', { name: '15 menit' }).check()
     await form.getByRole('button', { name: 'Tugaskan wawancara' }).click()
     await expect(page.getByRole('status')).toContainText('1 wawancara ditugaskan')
     // ID berasal dari data mock yang dipilih layar; tenggat dan durasi dari isian di atas
     expect(terkirim).toEqual([{
       path: '/assignments',
-      body: { projectId: ID_PROYEK, gap: { kind: 'competency', competencyId: ID_KOMPETENSI }, mode: 'affected', employeeIds: [ID_DIMAS], dueDate: '2026-12-05', durationMinutes: 15 },
+      body: { projectId: ID_PROYEK, gap: { kind: 'competency', competencyId: ID_KOMPETENSI }, mode: 'affected', employeeIds: [ID_DIMAS], dueDate: tanggalWib(11), durationMinutes: 15 },
     }])
   })
 })

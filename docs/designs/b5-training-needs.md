@@ -184,7 +184,7 @@ Kode galat:
 
 1. HR/atasan membuka Training Needs: ringkasan dan dua tab (`/gaps/*`).
 2. Klik baris: detail gap (`/gaps/detail`), bukti, hipotesis, daftar karyawan dan status sesinya.
-3. "Mulai wawancara akar masalah" membuka form penugasan (tidak ada di mockup; dibangun dengan pola form mockup): proyek (dari `/api/projects`, terisi otomatis bila hanya satu yang aktif), mode, karyawan (centang), tenggat, durasi 15/30 menit. Kirim → `/assignments`.
+3. "Mulai wawancara akar masalah" membuka form penugasan (tidak ada di mockup; dibangun dengan pola form mockup): proyek (dari `/api/projects`, terisi otomatis bila hanya satu yang aktif), mode, karyawan (centang), tenggat (terisi hari ini +14 hari WIB setiap dialog dibuka, seperti dialog B10; keputusan user 24 Nov), durasi 15/30 menit. Kirim → `/assignments`.
 4. Karyawan melihat undangan di daftar sesinya (tenggat, durasi, topik) dan menjalani wawancara (B6).
 5. Setelah HR meninjau temuan (B7), klasifikasi gap berubah.
 6. "Langsung ke tinjauan HR" hanya tautan ke layar tinjauan B7, tampil untuk HR; tanpa endpoint.

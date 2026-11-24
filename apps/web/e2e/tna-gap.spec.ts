@@ -3,6 +3,10 @@ import { loginSebagai } from './support/sesi'
 import { papanGapTna, COMP, DETAIL, ID_KOMPETENSI, ID_DIMAS, ID_PROYEK, type OpsiPapanGap } from './support/tna-gap'
 import { penanganDashboardHr } from './support/dashboard'
 import { cocok, mockApi, permintaanBelumDimock, responsData } from './support/api'
+import { tanggalWib } from './support/tanggal'
+
+/** Tenggat uji relatif (tanggal tetap kedaluwarsa karena batas 30 hari). */
+const TENGGAT = tanggalWib(11)
 
 // B5 Training Needs: papan gap, detail gap, dan penugasan wawancara. Spek: docs/designs/b5-training-needs.md bagian 16.
 // API di-mock; flag papan dan penugasan bawaan mati di produksi, di sini dinyalakan per test.
@@ -75,12 +79,12 @@ test('HR: klik gap membuka detail, lalu tugaskan wawancara untuk karyawan terpil
   // Sari sudah punya sesi terbuka, jadi tidak bisa dicentang
   await expect(form.getByRole('checkbox', { name: 'Sari' })).toHaveCount(0)
   await form.getByRole('checkbox', { name: 'Dimas' }).check()
-  await form.getByLabel('Tenggat').fill('2026-12-05')
+  await form.getByLabel('Tenggat').fill(TENGGAT)
   await form.getByRole('radio', { name: '15 menit' }).check()
   await form.getByRole('button', { name: 'Tugaskan wawancara' }).click()
   await expect(page.getByRole('status')).toContainText('1 wawancara ditugaskan')
   expect(sent.find((s) => s.path === '/assignments')?.body).toEqual({
-    projectId: ID_PROYEK, gap: { kind: 'competency', competencyId: ID_KOMPETENSI }, mode: 'affected', employeeIds: [ID_DIMAS], dueDate: '2026-12-05', durationMinutes: 15,
+    projectId: ID_PROYEK, gap: { kind: 'competency', competencyId: ID_KOMPETENSI }, mode: 'affected', employeeIds: [ID_DIMAS], dueDate: TENGGAT, durationMinutes: 15,
   })
 })
 
@@ -92,7 +96,7 @@ test('HR: galat penugasan dari API ditampilkan', async ({ page }) => {
   await page.goto(`/tna/gap?kind=competency&competencyId=${ID_KOMPETENSI}`)
   await page.getByRole('button', { name: 'Mulai wawancara akar masalah' }).click()
   const form = page.getByRole('form', { name: 'Tugaskan wawancara' })
-  await form.getByLabel('Tenggat').fill('2026-12-05')
+  await form.getByLabel('Tenggat').fill(TENGGAT)
   await form.getByRole('button', { name: 'Tugaskan wawancara' }).click()
   await expect(page.getByRole('alert').getByRole('link', { name: /Tenggat paling cepat besok/ })).toBeVisible()
 })
@@ -102,6 +106,8 @@ test('HR: tenggat kosong ditolak di peramban, galat menaut ke field', async ({ p
   await page.goto(`/tna/gap?kind=competency&competencyId=${ID_KOMPETENSI}`)
   await page.getByRole('button', { name: 'Mulai wawancara akar masalah' }).click()
   const form = page.getByRole('form', { name: 'Tugaskan wawancara' })
+  // tenggat terisi +14 hari (keputusan user 24 Nov); dikosongkan dulu untuk menguji penolakan
+  await form.getByLabel('Tenggat').fill('')
   await form.getByRole('button', { name: 'Tugaskan wawancara' }).click()
   await expect(page.getByRole('alert').getByRole('link', { name: 'Pilih tenggat wawancara' })).toBeVisible()
   await expect(form.getByLabel('Tenggat')).toHaveAttribute('aria-invalid', 'true')
@@ -324,15 +330,16 @@ test('P8 R2 TD-5: CTA satu baris; formulir penugasan dibuka di dialog dan perila
   const dialog = page.getByRole('dialog', { name: 'Tugaskan wawancara akar masalah' })
   await expect(dialog).toBeVisible()
   const form = dialog.getByRole('form', { name: 'Tugaskan wawancara' })
+  await form.getByLabel('Tenggat').fill('')
   await form.getByRole('button', { name: 'Tugaskan wawancara' }).click()
   await expect(dialog.getByRole('alert').getByRole('link', { name: 'Pilih tenggat wawancara' })).toBeVisible()
   await form.getByRole('checkbox', { name: 'Dimas' }).check()
-  await form.getByLabel('Tenggat').fill('2026-12-05')
+  await form.getByLabel('Tenggat').fill(TENGGAT)
   await form.getByRole('button', { name: 'Tugaskan wawancara' }).click()
   await expect(dialog).toHaveCount(0)
   await expect(page.getByRole('status')).toContainText('1 wawancara ditugaskan')
   expect(sent.find((s) => s.path === '/assignments')?.body).toEqual({
-    projectId: ID_PROYEK, gap: { kind: 'competency', competencyId: ID_KOMPETENSI }, mode: 'affected', employeeIds: [ID_DIMAS], dueDate: '2026-12-05', durationMinutes: 30,
+    projectId: ID_PROYEK, gap: { kind: 'competency', competencyId: ID_KOMPETENSI }, mode: 'affected', employeeIds: [ID_DIMAS], dueDate: TENGGAT, durationMinutes: 30,
   })
 })
 
@@ -357,7 +364,7 @@ test('P8 review: galat jaringan saat menugaskan tampil di dialog, bukan di balik
   const dialog = page.getByRole('dialog', { name: 'Tugaskan wawancara akar masalah' })
   const form = dialog.getByRole('form', { name: 'Tugaskan wawancara' })
   await form.getByRole('checkbox', { name: 'Dimas' }).check()
-  await form.getByLabel('Tenggat').fill('2026-12-05')
+  await form.getByLabel('Tenggat').fill(TENGGAT)
   await form.getByRole('button', { name: 'Tugaskan wawancara' }).click()
   await expect(dialog.getByRole('alert')).toContainText('Penugasan gagal')
   await dialog.getByRole('button', { name: 'Tutup' }).click()
@@ -449,6 +456,18 @@ test('Keputusan user 23 Nov: HR dengan papan menyala tanpa sesi sendiri tidak me
   await page.goto('/tna')
   await expect(page.getByRole('tab', { name: 'Ringkasan' })).toBeVisible()
   await expect(page.getByTestId('tna-my-sessions')).toHaveCount(0)
+})
+
+test('keputusan user 24 Nov: tenggat terisi hari ini +14 (WIB) seperti dialog B10, terkirim tanpa diubah', async ({ page }) => {
+  const sent = await setup(page, { flags: { ...BOARD, 'tna.interview_assignment': true } })
+  await page.goto(`/tna/gap?kind=competency&competencyId=${ID_KOMPETENSI}`)
+  await page.getByRole('button', { name: 'Mulai wawancara akar masalah' }).click()
+  const form = page.getByRole('form', { name: 'Tugaskan wawancara' })
+  await expect(form.getByLabel('Tenggat')).toHaveValue(tanggalWib(14))
+  await form.getByRole('checkbox', { name: 'Dimas' }).check()
+  await form.getByRole('button', { name: 'Tugaskan wawancara' }).click()
+  await expect(page.getByRole('status')).toContainText('1 wawancara ditugaskan')
+  expect(sent.find((s) => s.path === '/assignments')?.body).toMatchObject({ dueDate: tanggalWib(14) })
 })
 
 test('paritas TD-2/TD-3: nilai GAP merah; bukti dan hipotesis berupa baris ikon bergaris pemisah, tanpa poin', async ({ page }) => {

@@ -48,8 +48,3 @@ export const penanganShellDemo: Penangan = (req) => {
   if (cocok(req, 'GET /ina/access/me')) return data({ level: null, pendingVerifications: 0 })
   return undefined
 }
-
-/** Tanggal YYYY-MM-DD n hari dari hari ini, untuk isian tenggat yang dibatasi besok sampai 30 hari lagi. */
-export function tanggalDariHariIni(n: number): string {
-  return new Date(Date.now() + n * 86_400_000).toISOString().slice(0, 10)
-}
