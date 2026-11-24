@@ -173,6 +173,11 @@ Langkah tangan admin (akun, region, bootstrap, akses model, variabel repo, apply
 `QA_MALAM_AI_PRICE_OUTPUT_PER_MTOK`, opsional `QA_MALAM_MAX_TOKENS`. Cadangan bila akun terlambat: satu run manual
 oleh Andrian 26 Nov.
 
+Akses operator ke akun ELGOS sejak 24 Nov: IAM Identity Center (grup admin, permission set
+AdministratorAccess). Di etavm2 pakai `aws sso login --sso-session elgos --use-device-code` lalu
+`AWS_PROFILE=elgos-sso` (juga untuk `terraform` manual). Profil lama `elgos-admin`/`elgos-admin-sts` sudah
+dihapus dari etavm2; wizard tahap 3 membuatnya ulang hanya bila dijalankan lagi.
+
 ## Setup sekali
 
 1. AWS (dari laptop admin, profil SSO akun ELGOS, setelah akun ada): `infra/bootstrap` apply
