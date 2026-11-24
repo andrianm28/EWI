@@ -143,7 +143,7 @@ model terpilih kecuali `AI_ALLOW_CROSS_REGION=true`.
 
 | Berkas | Sebelum | Sesudah |
 |---|---|---|
-| `apps/api/src/config/env.js` | profil selain `apac.` ditolak tanpa `AI_ALLOW_CROSS_REGION` | `apac.` dan `global.` diterima (`DEFAULT_ALLOWED_PROFILES`); `us.`, `eu.`, dst. tetap ditolak; pesan galat menyebut `apac./global.` |
+| `apps/api/src/config/env.js` | profil selain `apac.` ditolak tanpa `AI_ALLOW_CROSS_REGION` | `apac.` dan `global.` diterima (`DEFAULT_ALLOWED_PROFILES`), `global.` hanya dengan `AI_ALLOW_GLOBAL_PROFILE=true` (keputusan user 24 Nov); `us.`, `eu.`, dst. tetap ditolak; pesan galat menyebut `apac./global.` |
 | `apps/api/tests/unit/config.test.js` | test produksi `anthropic.claude-sonnet-5`, `global.` di daftar yang ditolak | test produksi `global.anthropic.claude-sonnet-5-5` (`cross-region:global`, `allowCrossRegion: false`); bentuk ARN profil `global.` diterima; `global.` dengan `us-east-1` tetap ditolak |
 | `.env.example` | `BEDROCK_MODEL_ID=anthropic.claude-sonnet-5` | `BEDROCK_MODEL_ID=global.anthropic.claude-sonnet-5-5`, komentar implikasi lintas region |
 | `docs/ewi/ai-teks.md` | Sonnet 5 in-region | Sonnet 5.5 lewat profil global, izin IAM profil, implikasi UU PDP di "Batas yang diketahui" |
@@ -194,7 +194,7 @@ Singapura atau Jakarta), dan `processing` tercetak `cross-region:global` saat bo
 - ARN profil tidak diperiksa region-nya: `arn:aws:bedrock:us-east-1:...:inference-profile/global.x` lolos boot bila
   `BEDROCK_REGION` diizinkan. Endpoint tetap `BEDROCK_REGION` dan IAM aplikasi membatasi profil ke region stack, jadi
   risikonya kecil; perilaku ini sudah ada untuk `apac.` sebelum revisi.
-- Lingkungan yang memakai profil `global.` tanpa sadar kini boot tanpa peringatan. Lokasi pemrosesan tetap tercetak
+- ~~Lingkungan yang memakai profil `global.` tanpa sadar kini boot tanpa peringatan.~~ Ditutup 24 Nov: `global.` wajib `AI_ALLOW_GLOBAL_PROFILE=true`. Lokasi pemrosesan tetap tercetak
   saat boot (`server.js`).
 - Urutan rollout: `BEDROCK_MODEL_ID=global...` hanya boot pada kode yang memuat `1d77cab`. QA malam menguji `dev`,
   jadi variabel repo `QA_MALAM_BEDROCK_MODEL_ID=global...` baru berguna setelah PR #8 masuk `dev`; sebelum itu
@@ -237,6 +237,6 @@ Sumbu Spec:
 |---|---|---|
 | Bagian 3 masih meminta legal menulis Singapura tanpa penunjuk ke bagian 7 | Minor | Diterima |
 | Prosedur uji asap tidak mencapai konfigurasi terpilih | Minor | Diterima: langkah 2d |
-| Mekanisme berbeda dari "lewat `AI_ALLOW_CROSS_REGION` atau serupa"; alasan "user hanya menyebut `global.`" berlebihan | Judgement call | Alasan diperbaiki (5.5 di Singapura hanya lewat `global.`); mekanisme tetap, Andrian bisa meminta opt-in eksplisit di PR #8 |
+| Mekanisme berbeda dari "lewat `AI_ALLOW_CROSS_REGION` atau serupa"; alasan "user hanya menyebut `global.`" berlebihan | Judgement call | Alasan diperbaiki (5.5 di Singapura hanya lewat `global.`); mekanisme tetap. ✅ 24 Nov: user memilih opt-in eksplisit per lingkungan (`AI_ALLOW_GLOBAL_PROFILE=true`) |
 | Region di ARN profil tidak diperiksa | Judgement call | Dicatat di risiko; tidak diubah (perilaku lama untuk `apac.`, IAM membatasi) |
 | Test `global.` + `us-east-1` bisa lulus karena alasan salah | Judgement call | Diperbaiki: hanya galat region yang diterima |

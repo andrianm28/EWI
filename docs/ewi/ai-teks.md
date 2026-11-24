@@ -66,6 +66,7 @@ respons `POST /:id/complete` (`aiUsage`). Laporan biaya di panel Admin ETA belum
 | `AI_PROVIDER` | `stub`, produksi `bedrock` | |
 | `BEDROCK_REGION` | `ap-southeast-1` | Harus ada di `AI_ALLOWED_REGIONS` (PD-2b); Jakarta tetap boleh diisi eksplisit |
 | `AI_ALLOWED_REGIONS` | `ap-southeast-3,ap-southeast-1` | |
+| `AI_ALLOW_GLOBAL_PROFILE` | `true` bila `BEDROCK_MODEL_ID` profil `global.` | Opt-in per lingkungan (keputusan user 24 Nov, review PR #8). Tanpa `true`, ID `global.` ditolak saat boot. Tidak membuka `us.`/`eu.` dan tidak melonggarkan `AI_ALLOWED_REGIONS`. Prod hanya setelah DPIA dan persetujuan diperbarui |
 | `BEDROCK_MODEL_ID` | wajib untuk bedrock | Terpakai sejak 23 Nov: `global.anthropic.claude-sonnet-5-5` (ID inference profile, dipanggil dari endpoint Singapura). Bisa juga ID model in-region atau `apac.<id>` (langkah 2 di bawah) |
 | `BEDROCK_EXTRA_FIELDS` | kosong | JSON `additionalModelRequestFields`, opsional |
 | `AI_MAX_QUESTIONS` | 8 | |
