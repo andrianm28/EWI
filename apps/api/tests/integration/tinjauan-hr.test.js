@@ -160,6 +160,23 @@ run('B7 tinjauan HR (Postgres)', () => {
       f.race = race;
     });
 
+    // P9 CD-3: classify hanya dipakai layar tinjauan per gap (PO-6 A), jadi responsnya tanpa rincian dan catatan ringkasan
+    it('respons classify tanpa detail, originalDetail, dan summaryNote (semua cabang)', async () => {
+      const a = app();
+      const hidden = ['detail', 'originalDetail', 'summaryNote'];
+      const fresh = (await finding('ani', { title: 'Rincian rahasia', detail: 'RINCIAN-KLASIFIKASI' })).id;
+      const approved = await classify(a, fresh, 'training');
+      const edited = await classify(a, (await finding('ani', { title: 'Diubah', detail: 'RINCIAN-KLASIFIKASI' })).id, 'improvement');
+      const held = await classify(a, (await finding('ani', { title: 'Ditahan', detail: 'RINCIAN-KLASIFIKASI' })).id, 'needs_review');
+      const same = await classify(a, fresh, 'training'); // sudah diputus, kategori sama: cabang tanpa tulis
+      for (const res of [approved, edited, held, same]) {
+        expect(res.status).toBe(200);
+        for (const k of hidden) expect(res.body.data).not.toHaveProperty(k);
+        expect(JSON.stringify(res.body)).not.toContain('RINCIAN-KLASIFIKASI');
+      }
+      expect(edited.body.data).toMatchObject({ reviewStatus: 'edited', originalCategory: 'training' });
+    });
+
     it('audit mencatat keputusan', async () => {
       const rows = await audits('tna.finding_review');
       const decisions = rows.map((r) => r.meta.decision);
