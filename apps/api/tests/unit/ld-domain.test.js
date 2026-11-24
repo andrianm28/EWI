@@ -96,7 +96,7 @@ describe('KPI dan insight', () => {
     const { insights, actions } = buildInsights(rows, TODAY);
     expect(insights.map((i) => i.key)).toEqual(['late:a', 'inactive:b', 'assessment:c']);
     expect(insights[0]).toMatchObject({ source: 'EliteMentor', detail: expect.stringMatching(/3 dari 6 peserta belum selesai. Batas 09\/12\/2026/) });
-    expect(actions.map((a) => `${a.kind}:${a.trainingId}`)).toEqual(['remind:a', 'remind:b', 'open_training:c']);
+    expect(actions.map((a) => `${a.kind}:${a.trainingId}`)).toEqual(['remind:a', 'remind:b', 'open_training:c', 'confirm:c']);
   });
   it('peserta yang gagal tidak dihitung "belum selesai" dan tidak diingatkan', () => {
     const late = decorate(online({ id: 'e', startsOn: '2026-11-01', endsOn: '2026-12-09', completed: 4, failed: 1 }), TODAY);
@@ -110,7 +110,27 @@ describe('KPI dan insight', () => {
     expect(buildInsights([upcoming], TODAY).insights).toEqual([]);
   });
   it('tidak ada insight bila semua sesuai jadwal', () => {
-    expect(buildInsights([decorate(online(), TODAY), decorate(offline(), TODAY)], TODAY)).toEqual({ insights: [], actions: [] });
+    expect(buildInsights([decorate(online(), TODAY), decorate(offline({ startsOn: '2026-12-30', endsOn: '2026-12-30' }), TODAY)], TODAY)).toEqual({ insights: [], actions: [] });
+  });
+  it('Kirim ajakan: online sesuai jadwal dengan peserta yang hampir selesai (progres >= 75%)', () => {
+    const r = decorate(online({ id: 'g', title: 'DNA 5C', nearlyDone: 21, endsOn: '2026-12-31' }), TODAY);
+    const { insights, actions } = buildInsights([r], TODAY);
+    expect(insights).toEqual([]);
+    expect(actions).toEqual([{ key: 'invite:g', trainingId: 'g', kind: 'invite', title: 'Dorong 21 peserta DNA 5C yang hampir selesai', detail: 'Progres minimal 75%, batas 31/12/2026' }]);
+  });
+  it('tanpa ajakan bila pelatihan online terlambat, tidak aktif, atau belum berjalan', () => {
+    const late = decorate(online({ id: 'h', startsOn: '2026-11-01', endsOn: '2026-12-09', nearlyDone: 2 }), TODAY);
+    const inactive = decorate(online({ id: 'i', inactive: 1, nearlyDone: 2 }), TODAY);
+    const soon = decorate(online({ id: 'j', status: 'scheduled', startsOn: '2026-12-20', nearlyDone: 2 }), TODAY);
+    expect(buildInsights([late, inactive, soon], TODAY).actions.filter((a) => a.kind === 'invite')).toEqual([]);
+  });
+  it('Minta konfirmasi: offline akan datang dalam 14 hari, punya peserta, kehadiran belum dicatat', () => {
+    const r = decorate(offline({ id: 'k', startsOn: '2026-12-24', endsOn: '2026-12-24', participants: 4, attendanceRecorded: 0 }), TODAY);
+    expect(buildInsights([r], TODAY).actions).toEqual([{ key: 'confirm:k', trainingId: 'k', kind: 'confirm', title: 'Minta konfirmasi kehadiran peserta Workshop RCA 24/12/2026', detail: '4 peserta belum mengonfirmasi kehadiran' }]);
+    const far = decorate(offline({ id: 'l', startsOn: '2026-12-25', endsOn: '2026-12-25' }), TODAY);
+    const empty = decorate(offline({ id: 'm', participants: 0 }), TODAY);
+    const recorded = decorate(offline({ id: 'n', attendanceRecorded: 2 }), TODAY);
+    expect(buildInsights([far, empty, recorded], TODAY).actions.filter((a) => a.kind === 'confirm')).toEqual([]);
   });
 });
 

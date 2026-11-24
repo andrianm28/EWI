@@ -221,6 +221,24 @@ run('Learning Delivery (Postgres)', () => {
     expect((await send('post', `/trainings/${training.id}/reminders`)).body.error.code).toBe('INVALID_STATE');
   });
 
+  it('ajakan dan konfirmasi: jenis pesan lewat body kind, keadaan pelatihan diperiksa', async () => {
+    const { id } = (await send('post', '/trainings', { title: 'Workshop Eskalasi', vendorName: 'Mahaka Institute', startsOn: day(7), venue: 'Ruang Elang' })).body.data;
+    await send('put', `/trainings/${id}/participants`, { userIds: [u.dimas, u.sari] });
+    expect((await send('post', `/trainings/${id}/reminders`, { kind: 'kirim' })).status).toBe(400);
+    // ajakan hanya untuk pelatihan online yang berjalan
+    expect((await send('post', `/trainings/${id}/reminders`, { kind: 'invite' })).body.error.code).toBe('INVALID_STATE');
+    const dash = (await get('/dashboard')).body.data;
+    expect(dash.actions).toContainEqual(expect.objectContaining({ key: `confirm:${id}`, kind: 'confirm', title: expect.stringContaining('Minta konfirmasi kehadiran peserta Workshop Eskalasi') }));
+    mailer.sent.length = 0;
+    const res = await send('post', `/trainings/${id}/reminders`, { kind: 'confirm' });
+    expect(res.status).toBe(201);
+    expect(res.body.data).toEqual({ recipients: 2, sent: 2, failed: 0 });
+    expect(mailer.sent[0].subject).toBe('Konfirmasi kehadiran: Workshop Eskalasi');
+    expect(mailer.sent[0].text).toContain('konfirmasi kehadiran');
+    expect(mailer.sent[0].text).toContain('Ruang Elang');
+    expect((await audits('ld.reminder')).pop().meta).toMatchObject({ trainingId: id, kind: 'confirm', sent: 2 });
+  });
+
   it('LMS: course dengan status peserta menjadi pelatihan online yang hanya-baca', async () => {
     const [[item]] = await db.query(`INSERT INTO lna_catalog_items (tenant_id, source, external_ref, title, program_tier) VALUES (:t, 'moodle', 'C-ITIL', 'ITIL Foundation', 'basic') RETURNING id`, { replacements: { t: tenant.id } });
     await db.query(`INSERT INTO lna_catalog_items (tenant_id, source, external_ref, title) VALUES (:t, 'moodle', 'C-KOSONG', 'Belum ada peserta')`, { replacements: { t: tenant.id } });
@@ -341,5 +359,14 @@ run('Learning Delivery (Postgres)', () => {
     expect((await send('post', `/trainings/${lms.id}/reminders`)).body.data).toEqual({ recipients: 1, sent: 0, failed: 1 });
     mailer.send = realSend;
     expect((await send('post', `/trainings/${lms.id}/reminders`)).body.data).toEqual({ recipients: 1, sent: 1, failed: 0 });
+    // ajakan online: hanya peserta yang hampir selesai (progres >= 75%); konfirmasi ditolak untuk online
+    await db.query('UPDATE ld_trainings SET last_reminded_at = NULL WHERE id = :id', { replacements: { id: lms.id } });
+    expect((await send('post', `/trainings/${lms.id}/reminders`, { kind: 'confirm' })).body.error.code).toBe('INVALID_STATE');
+    expect((await send('post', `/trainings/${lms.id}/reminders`, { kind: 'invite' })).status).toBe(400); // belum ada yang >= 75%
+    await db.query('UPDATE ld_participants SET progress_pct = 80 WHERE training_id = :id AND user_id = :rina', { replacements: { id: lms.id, rina: u.rina } });
+    expect((await get('/trainings')).body.data.find((x) => x.id === lms.id).nearlyDone).toBe(1);
+    mailer.sent.length = 0;
+    expect((await send('post', `/trainings/${lms.id}/reminders`, { kind: 'invite' })).body.data).toEqual({ recipients: 1, sent: 1, failed: 0 });
+    expect(mailer.sent[0]).toMatchObject({ to: 'rina@ld.test', subject: 'Selesaikan pelatihan: ITIL Foundation' });
   });
 });

@@ -3,6 +3,7 @@
 // selalu dicek milik tenant yang sama di SQL-nya. Kehadiran dan skor adalah data individu: audit dilakukan di router.
 const { QueryTypes } = require('sequelize');
 const { scopeSql } = require('./scope-sql');
+const { NEARLY_DONE_PCT } = require('../modules/ld/domain');
 
 const TRAINING_COLS = `t.id, t.title, t.mode, t.source, t.external_ref AS "externalRef", t.catalog_item_id AS "catalogItemId",
   t.module_id AS "moduleId", t.program_tier AS "programTier", t.vendor_name AS "vendorName", t.venue,
@@ -61,11 +62,12 @@ function createLdStores(sequelize) {
 
     /** Pelatihan + hitungan peserta (bahan domain.decorate). inactiveBefore: batas "tidak aktif". */
     async listTrainings(tenantId, { id, inactiveBefore } = {}) {
-      const rep = { tenantId, inactiveBefore: inactiveBefore || new Date(0) };
+      const rep = { tenantId, inactiveBefore: inactiveBefore || new Date(0), nearlyDonePct: NEARLY_DONE_PCT };
       let sql = `SELECT ${TRAINING_COLS}, m.code AS "moduleCode", m.name AS "moduleName",
           COALESCE(p.participants, 0)::int AS participants, COALESCE(p.completed, 0)::int AS completed, COALESCE(p.failed, 0)::int AS failed,
           COALESCE(p.avg_progress, 0)::float AS "avgProgress", COALESCE(p.attendance_recorded, 0)::int AS "attendanceRecorded",
           COALESCE(p.present, 0)::int AS present, COALESCE(p.scored, 0)::int AS scored, COALESCE(p.scored_present, 0)::int AS "scoredPresent", COALESCE(p.inactive, 0)::int AS inactive,
+          COALESCE(p.nearly_done, 0)::int AS "nearlyDone",
           (SELECT count(*)::int FROM ld_documents d WHERE d.training_id = t.id AND d.tenant_id = t.tenant_id AND d.kind IN ('photo','video')) AS "photoDocs",
           (SELECT count(*)::int FROM ld_documents d WHERE d.training_id = t.id AND d.tenant_id = t.tenant_id AND d.kind = 'material') AS "materialDocs"
         FROM ld_trainings t
@@ -79,7 +81,8 @@ function createLdStores(sequelize) {
                  count(*) FILTER (WHERE lp.attendance) AS present,
                  count(*) FILTER (WHERE lp.score IS NOT NULL AND (lp.attendance IS NOT FALSE)) AS scored,
                  count(*) FILTER (WHERE lp.score IS NOT NULL AND lp.attendance) AS scored_present,
-                 count(*) FILTER (WHERE t.mode = 'online' AND lp.status IN ('enrolled','in_progress') AND COALESCE(lp.last_activity_at, lp.created_at) < :inactiveBefore) AS inactive
+                 count(*) FILTER (WHERE t.mode = 'online' AND lp.status IN ('enrolled','in_progress') AND COALESCE(lp.last_activity_at, lp.created_at) < :inactiveBefore) AS inactive,
+                 count(*) FILTER (WHERE t.mode = 'online' AND lp.status IN ('enrolled','in_progress') AND COALESCE(lp.progress_pct, 0) >= :nearlyDonePct) AS nearly_done
             FROM ld_participants lp WHERE lp.training_id = t.id AND lp.tenant_id = t.tenant_id
         ) p ON true
         WHERE t.tenant_id = :tenantId`;
@@ -243,11 +246,15 @@ function createLdStores(sequelize) {
       return !!(await one(`SELECT 1 AS x FROM ld_trainings WHERE tenant_id = :tenantId AND id <> :trainingId AND source = 'manual'
                               AND assessment_mode = 'elitementor' AND assessment_ref = :ref AND status <> 'cancelled'`, { tenantId, trainingId, ref }));
     },
-    /** Penerima pengingat: online = yang belum selesai; offline = semua peserta. Akun dinonaktifkan dilewati. */
-    async reminderRecipients(tenantId, trainingId, { pendingOnly }) {
+    /**
+     * Penerima pengingat: online = yang belum selesai; offline = semua peserta. Akun dinonaktifkan dilewati.
+     * nearlyDoneOnly (ajakan): hanya yang belum selesai dengan progres >= NEARLY_DONE_PCT.
+     */
+    async reminderRecipients(tenantId, trainingId, { pendingOnly, nearlyDoneOnly = false }) {
       return select(`SELECT u.id, u.email, u.name FROM ld_participants lp JOIN users u ON u.id = lp.user_id AND u.tenant_id = lp.tenant_id
                       WHERE lp.tenant_id = :tenantId AND lp.training_id = :trainingId AND u.status <> 'disabled'
-                        ${pendingOnly ? "AND lp.status IN ('enrolled','in_progress')" : ''} ORDER BY u.email`, { tenantId, trainingId });
+                        ${pendingOnly || nearlyDoneOnly ? "AND lp.status IN ('enrolled','in_progress')" : ''}
+                        ${nearlyDoneOnly ? 'AND COALESCE(lp.progress_pct, 0) >= :nearlyDonePct' : ''} ORDER BY u.email`, { tenantId, trainingId, nearlyDonePct: NEARLY_DONE_PCT });
     },
 
     // --- Sinkron webhook EliteMentor ---
