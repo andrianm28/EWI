@@ -133,6 +133,28 @@ run('B7 tinjauan HR (Postgres)', () => {
       expect((await classify(a, f.h, 'needs_review')).body.error.code).toBe('ALREADY_REVIEWED');
     });
 
+    it('C3 demo 25 Nov: banner menunggu review = jumlah antrean draf, juga setelah klasifikasi dan tahan', async () => {
+      const a = app();
+      const same = async () => {
+        const dash = await request(a).get('/api/tna/dashboard').set(as('hr'));
+        expect(dash.status).toBe(200);
+        const queue = await request(a).get('/api/tna/review').set(as('hr'));
+        expect(dash.body.data.reviewPending).toBe(queue.body.data.length);
+        expect(queue.body.counts.draft).toBe(queue.body.data.length);
+        return queue.body.data.length;
+      };
+      const n0 = await same();
+      const x1 = (await finding('ani', { title: 'C3 satu', category: 'non_training' })).id;
+      const x2 = (await finding('beni', { title: 'C3 dua' })).id;
+      expect(await same()).toBe(n0 + 2);
+      await classify(a, x1, 'training');
+      expect(await same()).toBe(n0 + 1);
+      await classify(a, x2, 'needs_review', 'hr', 'tahan');
+      expect(await same()).toBe(n0 + 1);
+      await classify(a, x2, 'improvement');
+      expect(await same()).toBe(n0);
+    });
+
     it('koreksi salah klik: boleh pindah kategori selama belum ditindaklanjuti', async () => {
       const a = app();
       const back = await classify(a, f.t2, 'training');
@@ -894,5 +916,13 @@ run('B7 tinjauan HR (Postgres)', () => {
         await db.query('DELETE FROM lna_findings WHERE id IN (:ids)', { replacements: { ids: [draft, done] } });
       }
     });
+  });
+
+  it('C3 demo 25 Nov: setelah rencana, penugasan, serah, dan pembekuan, dashboard tetap 200 dan banner = antrean', async () => {
+    const a = app();
+    for (const who of ['hr', 'spv', 'ani']) expect((await request(a).get('/api/tna/dashboard').set(as(who))).status).toBe(200);
+    const dash = await request(a).get('/api/tna/dashboard').set(as('hr'));
+    const queue = await request(a).get('/api/tna/review').set(as('hr'));
+    expect(dash.body.data.reviewPending).toBe(queue.body.data.length);
   });
 });

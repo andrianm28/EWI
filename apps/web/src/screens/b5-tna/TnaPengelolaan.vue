@@ -13,6 +13,7 @@ import {
 } from '@/api/lna'
 import { useSessionStore } from '@/stores/session'
 import { HR_ROLES } from './api'
+import { useReviewPending } from './review-pending'
 
 const session = useSessionStore()
 const dash = ref<TnaDashboard | null>(null)
@@ -45,6 +46,8 @@ const showNonTraining = computed(() => nonTrainingOn.value && (isHr.value || (is
 // C2 demo 25 Nov: GET /tna/findings juga mengirim temuan non-training ke HR saat INA aktif. Kartu "Kebutuhan training"
 // hanya memuat temuan training (POST /findings/:id/plan menolak yang lain); non-training punya kartunya sendiri.
 const trainingFindings = computed(() => findings.value.filter((f) => (f.category ?? 'training') === 'training'))
+// C3: hitungan banner dari sumber bersama /tna (dimuat ulang saat halaman kembali terlihat)
+const { count: reviewPending } = useReviewPending(() => isHr.value)
 const ungranted = computed(() => supervisors.value.filter((s) => !grants.value.some((g) => g.supervisorId === s.id)))
 // Q38: undangan yang belum selesai, untuk dipantau dan diperpanjang HR
 const openInvites = computed(() => sessions.value.filter((s) => s.status === 'scheduled' || s.status === 'in_progress'))
@@ -142,10 +145,10 @@ const target = (f: Finding) => (f.metricName ? `${f.metricName}: target ${f.targ
     <p v-if="notice" role="status" class="tna-notice">{{ notice }}</p>
 
     <!-- PK-14: temuan AI menunggu review HR sebelum tampil (PM-5 ★A) -->
-    <UiNote v-if="isHr && dash?.reviewPending" tone="warning" data-testid="tna-review-banner">
+    <UiNote v-if="isHr && reviewPending" tone="warning" data-testid="tna-review-banner">
       <div class="tna-row">
         <div>
-          <div class="tna-strong">{{ dash.reviewPending }} temuan AI dari wawancara TNA menunggu review</div>
+          <div class="tna-strong">{{ reviewPending }} temuan AI dari wawancara TNA menunggu review</div>
           <div>Temuan baru tampil ke atasan dan karyawan, dan baru dihitung di dashboard, setelah Anda setujui.</div>
         </div>
         <UiButton size="sm" :to="{ name: 'tna-review' }">Review</UiButton>

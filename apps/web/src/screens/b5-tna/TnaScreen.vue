@@ -12,6 +12,7 @@ import { useSessionStore } from '@/stores/session'
 import { lna, type Session } from '@/api/lna'
 import TnaMySessions from './TnaMySessions.vue'
 import TnaPengelolaan from './TnaPengelolaan.vue'
+import { useReviewPending } from './review-pending'
 import { useShowBoard } from './board'
 import { HR_ROLES, gaps, gapRefOf, type CompetencyGap, type GapSummary, type OkrGap } from './api'
 import { CLASSIFICATION_LABEL, CLASSIFICATION_TONE, gapScore, interviewStatus, num, pct } from './labels'
@@ -24,11 +25,7 @@ const router = useRouter()
 // Papan hanya untuk peran yang diterima API (R1); selain itu tidak ada panggilan /gaps sama sekali
 const showBoard = useShowBoard()
 // Triase P5 M1: banner temuan AI menunggu review ikut pindah ke Kelola TNA, jadi HR diberi catatan ringkas di papan
-const reviewPending = ref(0)
-async function loadReviewPending() {
-  if (!showBoard.value || !session.hasActiveRole(HR_ROLES)) return
-  try { reviewPending.value = (await lna.tnaDashboard()).data.reviewPending ?? 0 } catch { /* catatan opsional; galat papan ditangani loadBoard */ }
-}
+const { count: reviewPending } = useReviewPending(() => showBoard.value && session.hasActiveRole(HR_ROLES))
 
 const TABS = [{ key: 'ringkasan', label: 'Ringkasan' }, { key: 'kompetensi', label: 'Gap kompetensi' }, { key: 'okr', label: 'Gap OKR' }]
 const tab = computed({
@@ -59,7 +56,7 @@ async function loadMySessions() {
   if (!showBoard.value) return
   try { mySessions.value = (await lna.sessions('tna')).data } catch { /* kartu opsional; menu Wawancara akar masalah tetap ada */ }
 }
-onMounted(() => { void loadBoard(); void loadReviewPending(); void loadMySessions() })
+onMounted(() => { void loadBoard(); void loadMySessions() })
 watch(period, (v, old) => { if (old) loadBoard() })
 
 const kpis = computed(() => {
