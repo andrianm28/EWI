@@ -170,6 +170,16 @@ run('B15 tahap 3 wawancara ulang AI (Postgres)', () => {
     expect((await get(`/plans/${plan.id}/reinterviews/${u.a}`, 'a')).status).toBe(403);
   });
 
+  it('Simpan hasil (mockup limFinish): HR mencatat tinjauan hasil di audit; tanpa wawancara selesai 404; non-HR 403', async () => {
+    const res = await send('post', `/plans/${plan.id}/reinterviews/${u.a}/review`, {}, 'hr');
+    expect(res.status).toBe(204);
+    const [log] = await q("SELECT meta FROM audit_logs WHERE tenant_id = :t AND resource = 'lim.reinterview' AND action = 'update' ORDER BY id DESC LIMIT 1", { t: tenant.id });
+    expect(log.meta).toMatchObject({ planId: plan.id, employeeIds: [u.a], reviewed: true, reinterviewId: expect.any(String) });
+    expect((await send('post', `/plans/${plan.id}/reinterviews/${u.b}/review`, {}, 'hr')).status).toBe(404);
+    expect((await send('post', `/plans/${plan.id}/reinterviews/bukan-uuid/review`, {}, 'hr')).status).toBe(404);
+    expect((await send('post', `/plans/${plan.id}/reinterviews/${u.a}/review`, {}, 'spv')).status).toBe(403);
+  });
+
   it('HR membatalkan jadwal saat wawancara berjalan: pasangan itu dilewati; rencana diarsip: sesi 409', async () => {
     await send('post', me('b', '/consent'), { consentVersion: CONSENT }, 'b');
     const res = await send('post', `/plans/${plan.id}/queue/schedule`, { userIds: [u.b], date: null }, 'hr');
