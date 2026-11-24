@@ -210,7 +210,7 @@ function interviewRouter({ submodule, stores, ai, aiConfig = {}, audit, analysis
       if (!transcript.some((t) => t.speaker === 'human')) throw badRequest('Belum ada jawaban di sesi ini');
       const ctx = aiContext(await buildContext(stores, req.tenantId, s), s);
       const out = await callAi({ stores, aiConfig, tenantId: req.tenantId, session: s },
-        () => ai.analyzeTna({ transcript, triggers: ctx.triggers, competencies: ctx.competencies, pass: 1 }));
+        () => ai.analyzeTna({ transcript, triggers: ctx.triggers, competencies: ctx.competencies, focus: ctx.focus, pass: 1 }));
       const saved = await stores.interviews.saveSummary(req.tenantId, s.id, out.findings, { restartCount: s.restartCount, turnCount: transcript.length });
       const stored = await stores.interviews.getSummary(req.tenantId, s.id);
       // Kalah balapan: pakai ringkasan pemenang; bila sesi sudah diulang atau ditutup, hasil ini dibuang.

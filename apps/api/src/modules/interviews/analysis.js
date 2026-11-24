@@ -72,7 +72,7 @@ function createAnalysisRunner({ stores, ai, aiConfig = {}, logger = console, max
       const { items, onlySecond } = combineAssessments(r1.results, r2.results);
       return stores.analysis.saveDna(tenantId, job, session, items, { onlySecond });
     }
-    const call = (pass) => callAi(env, () => ai.analyzeTna({ transcript, triggers: safe.triggers, competencies: safe.competencies, pass }));
+    const call = (pass) => callAi(env, () => ai.analyzeTna({ transcript, triggers: safe.triggers, competencies: safe.competencies, focus: safe.focus, pass }));
     // B6 (A8): ringkasan yang dikonfirmasi karyawan adalah penilaian pertama, jadi temuan yang sampai ke HR
     // sama dengan yang dilihat karyawan. Model hanya dipanggil untuk penilaian kedua.
     const confirmed = await stores.interviews.summaryForAnalysis(tenantId, session.id);

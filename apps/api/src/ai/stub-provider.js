@@ -6,6 +6,9 @@ const { CCA_STANCES, ccaDefaultQuestion, limDefaultQuestion } = require('./promp
 const STUB_NOTE = 'Skor sementara dari penyedia AI tiruan (stub); perlu dinilai ulang.';
 const NON_TRAINING_HINTS = ['sop', 'tools', 'tool', 'aplikasi', 'sistem', 'akses', 'jaringan', 'prosedur'];
 
+// C4 demo 25 Nov: tanda jawaban yang menyangkut pengetahuan/keterampilan (bukan SOP/tools) untuk wawancara gap kompetensi
+const TRAINING_HINTS = ['dilatih', 'pelatihan', 'training', 'belum paham', 'kurang paham', 'belum menguasai', 'belum tahu', 'tidak tahu', 'teknik', 'pengetahuan', 'belum pernah belajar'];
+
 const words = (s) => String(s || '').toLowerCase().split(/[^a-z0-9]+/i).filter((w) => w.length > 3);
 const humanText = (transcript) => transcript.filter((t) => t.speaker === 'human').map((t) => t.text).join(' ').toLowerCase();
 
@@ -102,7 +105,7 @@ function createStubProvider() {
       return { results, usage: usage('assess_competencies') };
     },
 
-    async analyzeTna({ transcript, triggers, competencies }) {
+    async analyzeTna({ transcript, triggers, competencies, focus = null }) {
       const text = humanText(transcript);
       const findings = triggers.map((t) => {
         const comp = bestMatch(text, competencies);
@@ -115,6 +118,20 @@ function createStubProvider() {
           confidence: 0.2,
         };
       });
+      // C4 demo 25 Nov: sesi gap kompetensi tidak punya pemicu target, jadi temuan training ditebak dari jawaban:
+      // kompetensi fokus (bila namanya ada di daftar), selain itu kompetensi yang paling banyak disebut.
+      if (!triggers.length && TRAINING_HINTS.some((h) => text.includes(h))) {
+        const byFocus = focus && focus.kind === 'competency' && focus.label
+          ? competencies.find((c) => c.name.toLowerCase() === String(focus.label).toLowerCase()) : null;
+        const comp = byFocus || bestMatch(text, competencies);
+        findings.push({
+          category: 'training',
+          title: comp ? `Perlu pelatihan ${comp.name}` : 'Perlu pelatihan untuk pekerjaan ini',
+          detail: STUB_NOTE,
+          competencyId: comp ? comp.id : null,
+          confidence: 0.2,
+        });
+      }
       if (NON_TRAINING_HINTS.some((h) => text.includes(h))) {
         // BT-23: temuan non-training direkam sebagai item tertaut
         findings.push({ category: 'non_training', title: 'Kendala non-training disebut (SOP/tools/sistem)', detail: STUB_NOTE, confidence: 0.2 });
