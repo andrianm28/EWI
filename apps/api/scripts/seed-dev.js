@@ -21,6 +21,10 @@ const bcrypt = require('bcryptjs');
   const { rows: [hr] } = await c.query(
     `INSERT INTO users (tenant_id, email, name, role, password_hash, status) VALUES ($1, 'hr@demo.test', 'HR Demo', 'hr_admin', $2, 'active')
      ON CONFLICT (tenant_id, email) DO UPDATE SET password_hash = EXCLUDED.password_hash RETURNING id`, [t.id, hash]);
+  // Pengelola tenant (B11): sejak masa interim HR dicabut 24 Nov, hanya tenant_admin yang membuka layar Admin Tenant
+  await c.query(
+    `INSERT INTO users (tenant_id, email, name, role, password_hash, status) VALUES ($1, 'admin@demo.test', 'Admin Tenant Demo', 'tenant_admin', $2, 'active')
+     ON CONFLICT (tenant_id, email) DO UPDATE SET password_hash = EXCLUDED.password_hash`, [t.id, hash]);
   await c.query(
     `INSERT INTO users (tenant_id, email, name, role, password_hash, status, supervisor_id) VALUES ($1, 'learner@demo.test', 'Learner Demo', 'learner', $2, 'active', $3)
      ON CONFLICT (tenant_id, email) DO NOTHING`, [t.id, hash, hr.id]);

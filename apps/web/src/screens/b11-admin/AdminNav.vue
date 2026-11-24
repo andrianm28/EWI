@@ -1,6 +1,5 @@
 <script setup lang="ts">
-// Tautan antar layar Admin Tenant. Sampai peran tenant_admin ada (B2), HR tidak punya butir menu untuk layar ini,
-// jadi ketiga layar saling menautkan di sini.
+// Tautan antar layar Admin Tenant: ketiga layar saling menautkan di sini.
 defineProps<{ current: 'users' | 'jobs' | 'cfg' }>()
 const LINKS = [{ name: 'users', label: 'Pengguna & peran' }, { name: 'jobs', label: 'Jabatan & kamus kompetensi' }, { name: 'cfg', label: 'Impor data & integrasi' }] as const
 </script>
