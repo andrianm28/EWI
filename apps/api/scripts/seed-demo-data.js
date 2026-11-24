@@ -41,7 +41,7 @@ async function link(c, table, row) {
  * c: klien pg (search_path schema ELGOS). stores: createStores(...) untuk data terenkripsi (temuan).
  * ids: { tenantId, jobRoleId, levelIds, hrId, spvId, memberIds: [dimas, rina, budi] }.
  */
-async function seedDemoData(c, { stores, tenantId: t, jobRoleId, levelIds, hrId, spvId, memberIds }) {
+async function seedDemoData(c, { stores, tenantId: t, jobRoleId, levelIds, hrId, spvId, headId, memberIds }) {
   const [dimas, rina, budi] = memberIds;
   // Kolom terenkripsi (evidence, judul/detail temuan dan tindakan INA, ringkasan CC) ditulis lewat cipher store dengan kunci tenant
   const enc = (v) => stores.cipher.encrypt(t, v);
@@ -211,8 +211,7 @@ async function seedDemoData(c, { stores, tenantId: t, jobRoleId, levelIds, hrId,
   await findOrInsert(c, 'lna_non_training_grants', { tenant_id: t, supervisor_id: spvId, revoked_at: null }, { granted_by: hrId });
   // Kepala Divisi (pimpinan@, peran supervisor sejak PR #60) juga diberi akses tindakan perbaikan oleh HR, supaya menu
   // Improvement Needs di tampilan Atasan terbuka seperti untuk Atasan Demo
-  const { rows: [head] } = await c.query(`SELECT id FROM users WHERE tenant_id = $1 AND email = 'pimpinan@demo.test' AND role = 'supervisor'`, [t]);
-  if (head) await findOrInsert(c, 'lna_non_training_grants', { tenant_id: t, supervisor_id: head.id, revoked_at: null }, { granted_by: hrId });
+  if (headId) await findOrInsert(c, 'lna_non_training_grants', { tenant_id: t, supervisor_id: headId, revoked_at: null }, { granted_by: hrId });
 
   // ---------- Library, Program & Course, Permintaan, draf modul ----------
   const MODULES = [

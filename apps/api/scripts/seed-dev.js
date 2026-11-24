@@ -117,7 +117,7 @@ async function seedDev(c, { password, stores, slug = 'demo', env = process.env }
     await c.query(`INSERT INTO feature_flags (tenant_id, key, enabled) VALUES ($1, $2, true)
                    ON CONFLICT (tenant_id, key) DO UPDATE SET enabled = true`, [t.id, key]);
   }
-  const demo = await seedDemoData(c, { stores, tenantId: t.id, jobRoleId: role.id, levelIds, hrId: hr.id, spvId: spv.id, memberIds: members });
+  const demo = await seedDemoData(c, { stores, tenantId: t.id, jobRoleId: role.id, levelIds, hrId: hr.id, spvId: spv.id, headId: head.id, memberIds: members });
   return { tenantId: t.id, jobRoleId: role.id, hrId: hr.id, spvId: spv.id, memberIds: members, ...demo };
 }
 
