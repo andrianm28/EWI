@@ -259,7 +259,7 @@ run('B15 Learning Impact Measurement (Postgres)', () => {
     expect(d.chain[2].finding).toBe('1 dari 3 karyawan sudah diwawancara ulang');
   });
 
-  it('atasan: hanya rencana dan ringkasan timnya (tanpa dirinya), tanpa data per orang; boleh isi skor kinerja bawahan langsung', async () => {
+  it('atasan: hanya rencana dan ringkasan timnya, tanpa data per orang; boleh isi skor kinerja bawahan langsung', async () => {
     const list = (await get('/plans', 'spv')).body.data;
     expect(list).toEqual([expect.objectContaining({ id: plan.id, participantCount: 2 })]);
     const d = (await get(`/plans/${plan.id}/overview`, 'spv')).body.data;
@@ -278,6 +278,20 @@ run('B15 Learning Impact Measurement (Postgres)', () => {
     // bukan anggota tim ditolak sebelum cek peserta, supaya atasan tidak bisa menebak siapa peserta rencana
     expect(res.body.data.rejected.map((r) => r.message)).toEqual(['Atasan hanya mengisi skor kinerja', 'Karyawan bukan anggota tim Anda', 'Karyawan bukan anggota tim Anda']);
     expect((await get(`/plans/${plan.id}/overview`, 'dir')).body.data.plan.id).toBe(plan.id);
+  });
+
+  it('D23 (keputusan user 24 Nov): cakupan atasan lewat visibleEmployeeScope, jadi atasan yang ikut pelatihan masuk timnya sendiri', async () => {
+    const [t1] = await q(`SELECT id FROM ld_trainings WHERE tenant_id = :t AND title = 'Workshop RCA'`, { t: tenant.id });
+    const [row] = await participant(t1.id, u.spv, { attendance: true, score: 60, scoreSource: 'vendor_manual' });
+    try {
+      expect((await get(`/plans/${plan.id}/overview`, 'spv')).body.data.participants).toBe(3); // a, b, dirinya
+      expect((await get(`/plans/${plan.id}/overview`, 'dir')).body.data.participants).toBe(1); // pimpinan: c (spv bukan bawahannya)
+      // skor kinerja tetap hanya untuk bawahan langsung (bagian 5), bukan untuk dirinya
+      const res = await send('put', `/plans/${plan.id}/measurements`, { entries: [{ userId: u.spv, competencyId: k1, performanceScore: 99 }] }, 'spv');
+      expect(res.body.data).toMatchObject({ saved: 0, rejected: [{ index: 0, message: 'Skor kinerja Anda diisi HR, bukan oleh Anda sendiri' }] });
+    } finally {
+      await q('DELETE FROM ld_participants WHERE id = :id', { id: row.id });
+    }
   });
 
   it('PATCH rencana: field yang tidak dikirim tetap; estimasi nilai, faktor, arsip', async () => {
