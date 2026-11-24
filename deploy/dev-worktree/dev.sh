@@ -96,7 +96,8 @@ cmd_up() {
   dc exec -T api docker-entrypoint.sh npm run --silent seed:lti-demo
   if [ "$public" = 0 ]; then
     # EM-LTI: tautan EliteMentor diselesaikan terhadap APP_BASE_URL, jadi mode lokal memakai origin loopback
-    local lurl="http://127.0.0.1:$(envval WEB_PORT)"
+    local lurl
+    lurl="http://127.0.0.1:$(envval WEB_PORT)"
     if [ "$(envval APP_BASE_URL)" != "$lurl" ]; then set_url "$lurl"; dc up -d --wait api >/dev/null; fi
   fi
   if [ "$public" = 1 ]; then
