@@ -402,10 +402,8 @@ test('P9 CD-1: sesi habis saat simpan otomatis waktu meninggalkan draf: tetap pi
   expect(calls.filter((c) => c.method === 'PUT')).toHaveLength(1)
 })
 
-// Review 24 Nov: klik ganda Lanjut saat simpan otomatis berjalan tidak melompati langkah
-test('Draf: klik ganda Lanjut saat simpan otomatis hanya maju satu langkah dan menyimpan sekali', async ({ page }) => {
-  const calls: { method: string; url: string; body: unknown }[] = []
-  await setup(page, calls)
+// Review 24 Nov: PUT draf yang ditahan sampai `release()` dipanggil (simpan otomatis sedang berjalan)
+async function tahanPutDraf(page: Page, calls: { method: string; url: string; body: unknown }[]) {
   let release!: () => void
   const held = new Promise<void>((ok) => { release = ok })
   await page.route('**/api/li/drafts/d-1', async (r: Route) => {
@@ -414,15 +412,68 @@ test('Draf: klik ganda Lanjut saat simpan otomatis hanya maju satu langkah dan m
     await held
     return r.fulfill({ json: { data: { ...DRAFT, ...JSON.parse(r.request().postData() ?? '{}') } } })
   })
-  await page.goto('/req/draf/d-1')
-  await page.getByLabel('Tujuan terukur 1').fill('Menjelaskan 5 Whys pada 4 dari 5 soal')
-  const next = page.getByRole('button', { name: 'Lanjut: rancang materi' })
-  await next.dblclick()
-  await expect(next).toBeDisabled()
-  release()
+  return () => release()
+}
+
+// Review 24 Nov: klik ganda Lanjut saat simpan otomatis berjalan tidak melompati langkah. Dua klik sinkron di satu
+// tugas peramban tiba sebelum tombol dirender nonaktif, jadi yang diuji adalah penjaga `busy` di go() sendiri.
+test('Draf: klik ganda Lanjut saat simpan otomatis hanya maju satu langkah dan menyimpan sekali', async ({ page }) => {
+  const calls: { method: string; url: string; body: unknown }[] = []
+  await setup(page, calls)
+  const release = await tahanPutDraf(page, calls)
+  try {
+    await page.goto('/req/draf/d-1')
+    await page.getByLabel('Tujuan terukur 1').fill('Menjelaskan 5 Whys pada 4 dari 5 soal')
+    const next = page.getByRole('button', { name: 'Lanjut: rancang materi' })
+    await next.evaluate((b) => { const el = b as unknown as { click(): void }; el.click(); el.click() })
+    await expect(next).toBeDisabled()
+  } finally { release() }
   await expect(page.getByRole('heading', { name: 'Rancangan materi' })).toBeVisible()
   await expect(page.getByRole('button', { name: 'Kembali' })).toBeEnabled()
   expect(calls.filter((c) => c.method === 'PUT')).toHaveLength(1)
+})
+
+// Review 24 Nov (egm): keluar saat simpan otomatis dari Lanjut masih berjalan menunggu simpan itu, bukan menyimpan dua kali
+test('Draf: keluar saat simpan otomatis berjalan menunggu simpan itu lalu pindah, satu PUT', async ({ page }) => {
+  const calls: { method: string; url: string; body: unknown }[] = []
+  await setup(page, calls)
+  const release = await tahanPutDraf(page, calls)
+  try {
+    await page.goto('/req/draf/d-1')
+    await page.getByLabel('Tujuan terukur 1').fill('Menjelaskan 5 Whys pada 4 dari 5 soal')
+    await page.getByRole('button', { name: 'Lanjut: rancang materi' }).click()
+    await expect.poll(() => calls.filter((c) => c.method === 'PUT').length).toBe(1)
+    await page.getByRole('navigation', { name: 'Lokasi' }).getByRole('link', { name: 'Permintaan & pengembangan' }).click()
+  } finally { release() }
+  await expect(page).toHaveURL(/\/req$/)
+  await expect(page.getByRole('dialog', { name: 'Tinggalkan tanpa menyimpan?' })).toHaveCount(0)
+  expect(calls.filter((c) => c.method === 'PUT')).toHaveLength(1)
+})
+
+// Review 24 Nov (egm): kembali lewat tombol Back peramban, simpan gagal, "Tinggalkan" mengulang navigasi Back (tanpa entri riwayat ganda)
+test('Draf: Back peramban dengan simpan gagal: dialog memuat pesan API, Tinggalkan kembali tanpa entri riwayat baru', async ({ page }) => {
+  const calls: { method: string; url: string; body: unknown }[] = []
+  await setup(page, calls)
+  await page.route('**/api/li/drafts/d-1', async (r: Route) => {
+    if (r.request().method() !== 'PUT') return r.fallback()
+    calls.push({ method: 'PUT', url: '/drafts/d-1', body: null })
+    return r.fulfill({ status: 500, json: { error: { code: 'INTERNAL', message: 'Penyimpanan draf sedang gangguan' } } })
+  })
+  await page.goto('/req')
+  await page.getByTestId('draf-ST-A2').getByRole('link', { name: 'Buka' }).click()
+  await expect(page).toHaveURL(/\/req\/draf\/d-1$/)
+  const panjang = await page.evaluate<number>('history.length')
+  await page.getByLabel('Tujuan terukur 1').fill('Menjelaskan 5 Whys pada 4 dari 5 soal')
+  await page.goBack()
+  const dialog = page.getByRole('dialog', { name: 'Tinggalkan tanpa menyimpan?' })
+  await expect(dialog).toBeVisible()
+  await expect(dialog).toContainText('Penyimpanan draf sedang gangguan')
+  await expect(page).toHaveURL(/\/req\/draf\/d-1$/)
+  // ringkasan galat tidak ikut diumumkan selama dialog terbuka
+  await expect(page.locator('.el-errsum')).toHaveCount(0)
+  await dialog.getByRole('button', { name: 'Tinggalkan tanpa menyimpan' }).click()
+  await expect(page).toHaveURL(/\/req$/)
+  expect(await page.evaluate<number>('history.length')).toBe(panjang)
 })
 
 // Review 24 Nov: simpan otomatis gagal saat meninggalkan draf tidak boleh mengunci layar

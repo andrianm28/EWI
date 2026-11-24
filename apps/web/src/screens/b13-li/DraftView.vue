@@ -1,7 +1,7 @@
 <script setup lang="ts">
 // Pengembangan modul (mockup, layar `lidev`): tujuan → rancangan materi → asesmen → tinjau dan ajukan ke SME.
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
-import { onBeforeRouteLeave, useRoute, useRouter, type RouteLocationNormalized } from 'vue-router'
+import { isNavigationFailure, onBeforeRouteLeave, useRoute, useRouter, type RouteLocationNormalized } from 'vue-router'
 import AppShell from '@/components/AppShell.vue'
 import './li.css'
 import { ApiError } from '@/api/client'
@@ -28,7 +28,7 @@ const NEXT_LABEL: Record<string, string> = { tujuan: 'Lanjut: rancang materi', m
 // Review 24 Nov: selama simpan berjalan klik berikutnya diabaikan (klik ganda tidak melompati langkah).
 async function go(d: number) {
   if (busy.value) return
-  if (dirty.value) { await save(AUTO_SAVED); if (error.value) return }
+  if (dirty.value && !(await save(AUTO_SAVED))) return
   step.value = STEPS[STEPS.findIndex((s) => s.key === step.value) + d]!.key
 }
 const AUTO_SAVED = 'Perubahan disimpan otomatis.'
@@ -38,21 +38,47 @@ const dirty = computed(() => !!draft.value && editable.value && content(draft.va
 // P9 CD-1: keluar, sesi habis, atau tujuan rute publik (login) tidak menyimpan dan tidak pernah ditahan;
 // simpan yang gagal karena sesi berakhir (401) juga tidak menahan navigasi ke login.
 // Review 24 Nov: simpan gagal (bukan 401) menawarkan "Tinggalkan tanpa menyimpan?" supaya layar tidak terkunci.
+// Simpan yang sedang berjalan (mis. dari Lanjut) ditunggu, bukan digandakan; hanya navigasi terakhir yang membuka dialog.
+// Navigasi Back/Forward peramban diulang dengan router.go(delta) supaya riwayat tidak mendapat entri ganda.
 const leaveTarget = ref<RouteLocationNormalized | null>(null)
+const leaveError = ref('')
+// selama penjaga keluar bekerja atau dialog terbuka, ringkasan galat tidak ditampilkan (tidak diumumkan dua kali)
+const guarding = ref(false)
 let discard = false
+let leaveSeq = 0
+let leaveDelta: number | null = null
+let popNav: { to: string; delta: number } | null = null
+const stopListen = router.options.history.listen((to, _from, info) => { popNav = { to, delta: info.delta } })
+onBeforeUnmount(stopListen)
 onBeforeRouteLeave(async (to) => {
-  if (discard || !dirty.value || !session.isAuthenticated || to.meta.public) return true
-  await save(AUTO_SAVED)
-  if (!error.value || !session.isAuthenticated) return true
-  leaveTarget.value = to
-  return false
+  const delta = popNav && popNav.to === to.fullPath ? popNav.delta : null
+  popNav = null
+  if (discard || !session.isAuthenticated || to.meta.public) return true
+  if (!inflight && !dirty.value) return true
+  const seq = ++leaveSeq
+  guarding.value = true
+  try {
+    let ok = inflight ? await inflight : true
+    if (seq !== leaveSeq) return false // navigasi lain sudah menggantikan yang ini
+    if (dirty.value) ok = await save(AUTO_SAVED)
+    if (seq !== leaveSeq) return false
+    if (ok || !session.isAuthenticated) return true
+    leaveTarget.value = to
+    leaveDelta = delta
+    leaveError.value = error.value
+    return false
+  } finally { if (!leaveTarget.value) guarding.value = false }
 })
-function leaveWithoutSaving() {
+function stay() { leaveTarget.value = null; guarding.value = false }
+async function leaveWithoutSaving() {
   const to = leaveTarget.value
   if (!to) return
   discard = true
   leaveTarget.value = null
-  router.push(to.fullPath).catch(() => { discard = false })
+  if (leaveDelta) { router.go(leaveDelta); return }
+  // router.push tidak menolak saat navigasi dibatalkan; hasilnya NavigationFailure
+  const failure = await router.push(to.fullPath)
+  if (isNavigationFailure(failure)) { discard = false; guarding.value = false }
 }
 // menutup tab atau memuat ulang: hanya peringatan bawaan peramban
 const onUnload = (e: BeforeUnloadEvent) => { if (dirty.value) e.preventDefault() }
@@ -85,13 +111,20 @@ const checks = computed(() => {
   ]
 })
 
-async function act(fn: () => Promise<{ data: Draft }>, done: string) {
+// Tindakan yang sedang berjalan; penjaga keluar menunggunya alih-alih memulai PUT kedua. Return true bila berhasil.
+let inflight: Promise<boolean> | null = null
+function act(fn: () => Promise<{ data: Draft }>, done: string): Promise<boolean> {
   busy.value = true; error.value = ''; notice.value = ''
-  try {
-    draft.value = { ...draft.value!, ...(await fn()).data }
-    saved.value = content(draft.value)
-    notice.value = done
-  } catch (e) { error.value = e instanceof ApiError ? e.message : 'Tindakan gagal' } finally { busy.value = false }
+  const run = (async () => {
+    try {
+      draft.value = { ...draft.value!, ...(await fn()).data }
+      saved.value = content(draft.value)
+      notice.value = done
+      return true
+    } catch (e) { error.value = e instanceof ApiError ? e.message : 'Tindakan gagal'; return false } finally { busy.value = false }
+  })()
+  inflight = run
+  return run.finally(() => { if (inflight === run) inflight = null })
 }
 const save = (done = 'Perubahan disimpan.') => act(() => li.saveDraft(draft.value!.id, { objectives: draft.value!.objectives, sessions: draft.value!.sessions, assessments: draft.value!.assessments }), done)
 const confirmDelete = ref(false)
@@ -101,8 +134,7 @@ function coverage(a: Draft['assessments'][number]) {
   return total ? `${a.objectives} dari ${total} tujuan tercakup` : `${a.objectives} tujuan tercakup`
 }
 async function submit() {
-  await save()
-  if (!error.value) await act(() => li.submitDraft(draft.value!.id), 'Draf diajukan untuk tinjauan SME.')
+  if (await save()) await act(() => li.submitDraft(draft.value!.id), 'Draf diajukan untuk tinjauan SME.')
 }
 async function remove() {
   busy.value = true; error.value = ''
@@ -122,7 +154,7 @@ const review = (decision: 'approved' | 'returned') => act(
 <template>
   <AppShell>
     <UiBreadcrumb :items="[{ label: 'Permintaan & pengembangan', to: { name: 'req' } }, { label: 'Pengembangan modul' }]" />
-    <UiErrorSummary v-if="error" :errors="[{ message: error }]" />
+    <UiErrorSummary v-if="error && !guarding" :errors="[{ message: error }]" />
     <UiNote v-if="notice" tone="success" data-testid="info">{{ notice }}</UiNote>
 
     <template v-if="draft">
@@ -227,10 +259,11 @@ const review = (decision: 'approved' | 'returned') => act(
         </UiCard>
       </div>
     </template>
-    <UiDialog :open="!!leaveTarget" title="Tinggalkan tanpa menyimpan?" @close="leaveTarget = null">
+    <UiDialog :open="!!leaveTarget" title="Tinggalkan tanpa menyimpan?" @close="stay">
       <p>Perubahan pada draf gagal disimpan. Bila Anda meninggalkan layar ini, perubahan tersebut hilang.</p>
+      <UiNote tone="critical" class="li-dev__block">{{ leaveError }}</UiNote>
       <div class="li-actions">
-        <UiButton variant="outlined" @click="leaveTarget = null">Tetap di sini</UiButton>
+        <UiButton variant="outlined" @click="stay">Tetap di sini</UiButton>
         <UiButton @click="leaveWithoutSaving">Tinggalkan tanpa menyimpan</UiButton>
       </div>
     </UiDialog>
