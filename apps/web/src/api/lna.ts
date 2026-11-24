@@ -25,7 +25,7 @@ export interface EmployeeDetail {
 }
 export interface Session { id: string; projectId: string; intervieweeId: string; intervieweeName: string | null; status: string; triggerCount: number; inviteExpiresAt?: string; inviteExtendedCount?: number }
 export interface Turn { speaker: 'ai' | 'human'; text: string; at: string }
-export interface Finding { id: string; userId: string; userName: string | null; title: string; status: string; competencyName: string | null; metricName: string | null; target: number | null; actual: number | null }
+export interface Finding { id: string; userId: string; userName: string | null; title: string; category?: 'training' | 'non_training'; status: string; competencyName: string | null; metricName: string | null; target: number | null; actual: number | null }
 export interface ParetoRow { key: string; label: string; people: number; avgMiss: number; score: number; share: number; cumulativeShare: number }
 export interface PlanItem { id: string; userId: string; userName: string | null; findingTitle: string | null; origin: string; status: string; catalogItemTitle: string | null; needsModule?: boolean; catalogItemUrl?: string | null; courseStatus?: string | null; note: string | null }
 export interface TnaDashboard { role: string; people: number | null; redTargets: number; sessions: Record<string, number>; trainingFindings: number; planItems: Record<string, number>; reviewPending?: number }

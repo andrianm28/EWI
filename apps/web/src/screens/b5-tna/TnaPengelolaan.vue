@@ -42,6 +42,9 @@ const canRequestTraining = computed(() => isLearner.value && session.hasFlag(FLA
 // PM-6: temuan di luar pelatihan untuk HR; atasan hanya bila HR memberinya akses
 const nonTrainingOn = computed(() => session.hasFlag(FLAG_NON_TRAINING_HR))
 const showNonTraining = computed(() => nonTrainingOn.value && (isHr.value || (isSupervisor.value && supervisorGranted.value)))
+// C2 demo 25 Nov: GET /tna/findings juga mengirim temuan non-training ke HR saat INA aktif. Kartu "Kebutuhan training"
+// hanya memuat temuan training (POST /findings/:id/plan menolak yang lain); non-training punya kartunya sendiri.
+const trainingFindings = computed(() => findings.value.filter((f) => (f.category ?? 'training') === 'training'))
 const ungranted = computed(() => supervisors.value.filter((s) => !grants.value.some((g) => g.supervisorId === s.id)))
 // Q38: undangan yang belum selesai, untuk dipantau dan diperpanjang HR
 const openInvites = computed(() => sessions.value.filter((s) => s.status === 'scheduled' || s.status === 'in_progress'))
@@ -208,9 +211,9 @@ const target = (f: Finding) => (f.metricName ? `${f.metricName}: target ${f.targ
 
     <UiCard>
       <h2 class="tna-h2">{{ isLearner ? 'Hasil TNA Anda' : 'Kebutuhan training' }}</h2>
-      <p v-if="!findings.length" class="el-muted">Belum ada hasil.<template v-if="!isHr"> Hasil wawancara tampil setelah direview HR.</template></p>
+      <p v-if="!trainingFindings.length" class="el-muted">Belum ada hasil.<template v-if="!isHr"> Hasil wawancara tampil setelah direview HR.</template></p>
       <ul class="tna-items" data-testid="tna-findings">
-        <li v-for="f in findings" :key="f.id">
+        <li v-for="f in trainingFindings" :key="f.id">
           <div>
             <div>{{ f.title }}<span v-if="!isLearner" class="el-muted"> · {{ f.userName }}</span></div>
             <div class="el-muted tna-small">{{ f.competencyName ?? 'Kompetensi belum terpetakan' }}<template v-if="target(f)"> · {{ target(f) }}</template></div>
