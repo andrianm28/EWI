@@ -1,8 +1,9 @@
 // Label tampilan B15. Teks statis mockup (jebakan, prinsip pelaporan) ada di sini, bukan di API (spek bagian 3).
 import { EMPTY, formatNumber, formatScore } from '@/ui/format'
+import type { StatusTone } from '@/ui/tones'
 import type { Application, Confidence, Coverage, Indicator, QueueRow, Retention, Strength, Verdict } from './api'
 
-type Tone = 'success' | 'warning' | 'critical' | 'info' | 'neutral'
+type Tone = StatusTone
 export const COVERAGE: Record<Coverage, { text: string; tone: Tone }> = {
   measured: { text: 'Terukur', tone: 'success' }, partial: { text: 'Sebagian', tone: 'warning' }, missing: { text: 'Belum ada data', tone: 'neutral' },
 }

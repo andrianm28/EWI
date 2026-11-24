@@ -3,8 +3,8 @@
 import { computed } from 'vue'
 import UiIcon from './UiIcon.vue'
 import type { IconName } from './icons'
+import type { StatusTone as Tone } from './tones'
 
-type Tone = 'success' | 'warning' | 'critical' | 'info' | 'neutral'
 const props = withDefaults(defineProps<{ tone?: Tone; icon?: IconName }>(), { tone: 'neutral' })
 
 const DEFAULT_ICON: Record<Tone, IconName> = {

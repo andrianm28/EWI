@@ -25,7 +25,7 @@ const { getKind } = require('../imports/kinds');
 const { validateRows, commitRows } = require('../imports/engine');
 const { PLAN_STATUSES, PLAN_STATUS_LABEL, initialStatus, canTransition } = require('./plan-status');
 const {
-  reviewWorkspaceRouter, toReviewItem, withoutDetail, gapFilterOf, projectIdOf, assertNotWithdrawn, frozenError,
+  reviewWorkspaceRouter, toReviewItem, withoutDetail, hasGapFilter, gapFilterOf, projectIdOf, assertNotWithdrawn, frozenError,
 } = require('./review-workspace');
 const { gapRouter } = require('./gap-routes');
 
@@ -168,7 +168,7 @@ module.exports = {
       // Audit PR 39 butir 39-2 (aturan CLAUDE.md 3): filter gap bagian dari fitur tinjauan baru, jadi di balik flag
       // tna.review_workspace. Flag mati + parameter gap -> 403 FEATURE_DISABLED, sama dengan requireFlag di rute B7
       // lain; antrean tanpa filter tetap jalan (pengaman wajib PK-14, tidak di balik flag).
-      if (req.query.kind !== undefined && req.query.kind !== '' && !(await flags.isEnabled(req.tenantId, FLAGS.TNA_REVIEW_WORKSPACE))) {
+      if (hasGapFilter(req) && !(await flags.isEnabled(req.tenantId, FLAGS.TNA_REVIEW_WORKSPACE))) {
         throw forbidden('FEATURE_DISABLED', 'Tinjauan HR versi baru belum diaktifkan untuk organisasi Anda');
       }
       const gap = await gapFilterOf(req, stores);

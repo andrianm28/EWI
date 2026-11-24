@@ -2,9 +2,10 @@
 // Spek: docs/designs/b8-karyawan.md "Layar web".
 // Angka memakai formatter bersama (koma desimal id-ID, paritas P8 R4).
 import { EMPTY, formatNumber } from '@/ui/format'
+import type { StatusTone } from '@/ui/tones'
 import type { DataRequestType, LearningCard, MyCompetencyStatus, MyResults } from '@/api/lna'
 
-type Tone = 'success' | 'warning' | 'critical' | 'neutral'
+type Tone = Exclude<StatusTone, 'info'>
 
 /** Status kompetensi mengikuti mockup (Menguasai / Sebagian / Belum), plus "Belum dinilai". */
 export const COMPETENCY_STATUS: Record<MyCompetencyStatus, { label: string; tone: Tone }> = {

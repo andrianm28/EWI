@@ -1,7 +1,8 @@
+import type { ChipTone } from '@/ui/tones'
 import type { AssessmentStatus, CheckKey, Doc, Health, Training } from './api'
 
 // Tone UiChip (P7 X-2: status di LD memakai chip terisi seperti mockup; UiStatus global tidak diubah, K-3)
-export type Tone = 'training' | 'improvement' | 'review' | 'success' | 'critical' | 'neutral'
+export type Tone = ChipTone
 export const SOURCE_LABEL: Record<Training['source'], string> = { manual: 'Input manual di ELGOS', elitementor: 'EliteMentor', lms: 'LMS klien' }
 export const HEALTH: Record<Health, { text: string; tone: Tone }> = {
   ok: { text: 'Sesuai jadwal', tone: 'success' }, watch: { text: 'Perlu perhatian', tone: 'review' }, late: { text: 'Terlambat', tone: 'critical' },

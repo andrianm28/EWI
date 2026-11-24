@@ -35,9 +35,8 @@ const { REVIEWED } = require('../modules/tna/review-status');
 const REVIEWED_SQL = `(${REVIEWED.map((x) => `'${x}'`).join(', ')})`;
 const { scopeSql } = require('./scope-sql');
 // Paritas B7 web: kolom pencocokan temuan ke gap (aturan R6 findingsByGap). Internal, dibuang sebelum respons.
-const GAP_MATCH_COLS = `pr.metric_type AS "metricType", pr.period AS "metricPeriod", s.focus_kind AS "focusKind",
-  s.focus_competency_id AS "focusCompetencyId", s.focus_metric_type AS "focusMetricType", s.focus_metric_key AS "focusMetricKey",
-  s.focus_period AS "focusPeriod"`;
+const { GAP_MATCH_COLUMNS } = require('../modules/tna/gaps');
+const GAP_MATCH_COLS = Object.entries(GAP_MATCH_COLUMNS).map(([field, col]) => `${col} AS "${field}"`).join(', ');
 // P9 CD-11: nama target dinormalkan persis seperti metricKey (performance.js): trim, spasi tunggal, huruf kecil.
 // `\s` JavaScript juga mencakup NBSP dan spasi Unicode lain; `\s` Postgres tidak, jadi kelasnya ditulis lengkap.
 const JS_SPACE_RUN = '[\\s\\u00a0\\u1680\\u2000-\\u200a\\u2028\\u2029\\u202f\\u205f\\u3000\\ufeff]+';

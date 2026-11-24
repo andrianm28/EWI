@@ -4,10 +4,10 @@
 import { computed, onMounted, ref, watch } from 'vue'
 import AppShell from '@/components/AppShell.vue'
 import { useSessionStore } from '@/stores/session'
-import { UiAuditLine, UiBreadcrumb, UiButton, UiCard, UiChip, UiDataTable, UiErrorSummary, UiKpiCard, UiNote, UiSegmented, UiTabs, type UiColumn } from '@/ui'
+import { UiAuditLine, UiBreadcrumb, UiButton, UiCard, UiChip, UiDataTable, UiErrorSummary, UiKpiCard, UiNote, UiSegmented, UiTabs, type ChipTone, type UiColumn } from '@/ui'
 import { cpApi, TIER_LABEL, type Action, type CareerMap, type CareerStatus, type DecisionRow, type Evidence, type MapRow, type Paths } from './api'
 
-type Tone = 'training' | 'improvement' | 'review' | 'success' | 'critical' | 'neutral'
+type Tone = ChipTone
 const session = useSessionStore()
 const role = computed(() => session.user?.role ?? '')
 

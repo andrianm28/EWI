@@ -1,8 +1,9 @@
 // Label Indonesia untuk status dan nilai Learning Intervention (API hanya mengirim kunci).
+import type { ChipTone } from '@/ui/tones'
 import type { DraftStatus, ItemKind, Level, ModuleRow, RequestStatus, StatusKey } from './api'
 
 // Tone UiChip: status di layar LI tampil sebagai chip terisi seperti mockup (P6 K-P6-2); UiStatus global tidak diubah.
-type Tone = 'success' | 'review' | 'training' | 'neutral'
+type Tone = Extract<ChipTone, 'success' | 'review' | 'training' | 'neutral'>
 export const LEVEL_LABEL: Record<Level, string> = { basic: 'Basic', intermediate: 'Intermediate', advanced: 'Advanced' }
 export const KIND_LABEL: Record<ItemKind, string> = { K: 'Knowledge', S: 'Skill', A: 'Attitude' }
 

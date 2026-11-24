@@ -11,7 +11,7 @@ const { badRequest, notFound, HttpError } = require('../../core/errors');
 const { reviewDue, suggestedClassification, CLASSIFICATIONS, categoryFor } = require('./review-sla');
 const { PLAN_STATUS_LABEL } = require('./plan-status');
 const { toCsv } = require('./csv');
-const { gapKeyOf, findingsInGap } = require('./gaps');
+const { gapKeyOf, findingsInGap, GAP_MATCH_COLUMNS } = require('./gaps');
 const { metricKey } = require('./performance');
 const { parseGapQuery } = require('./assignment');
 
@@ -24,9 +24,8 @@ const EXPORT_HEADER = ['ID Karyawan', 'Nama', 'Email', 'Kompetensi', 'Kode Cours
 
 /** Salinan baris tanpa field tertentu. */
 const omit = (fields) => (row) => Object.fromEntries(Object.entries(row).filter(([k]) => !fields.includes(k)));
-// Kolom internal pencocokan gap (lna-stores GAP_MATCH_COLS); tidak dikirim ke klien
-const GAP_MATCH_FIELDS = ['metricType', 'metricPeriod', 'focusKind', 'focusCompetencyId', 'focusMetricType', 'focusMetricKey', 'focusPeriod'];
-const withoutGapFields = omit(GAP_MATCH_FIELDS);
+// Kolom internal pencocokan gap (gaps.js GAP_MATCH_COLUMNS, dipilih lna-stores); tidak dikirim ke klien
+const withoutGapFields = omit(Object.keys(GAP_MATCH_COLUMNS));
 // Layar tinjauan per gap tanpa rincian temuan maupun catatan ringkasan karyawan (PO-6 A); rincian di antrean lama
 const GAP_HIDDEN_FIELDS = ['detail', 'originalDetail', 'summaryNote'];
 const withoutDetail = omit(GAP_HIDDEN_FIELDS);
@@ -36,8 +35,11 @@ const withoutDetail = omit(GAP_HIDDEN_FIELDS);
  * (perilaku lama). Kompetensi harus milik tenant ini (404). Return { key, label, keep(rows), query } dengan `query`
  * predikat gap untuk `stores.tna.reviewQueue` (audit PR 39 butir 39-3).
  */
+/** Permintaan membawa filter gap (`kind` terisi). Dipakai juga gerbang flag GET /review di index.js. */
+const hasGapFilter = (req) => req.query.kind !== undefined && req.query.kind !== '';
+
 async function gapFilterOf(req, stores) {
-  if (req.query.kind === undefined || req.query.kind === '') return null;
+  if (!hasGapFilter(req)) return null;
   const gap = parseGapQuery(req.query);
   let label = gap.name;
   if (gap.kind === 'competency') {
@@ -237,4 +239,4 @@ function assertNotWithdrawn(item) {
   if (item && item.consentWithdrawnAt) throw frozenError();
 }
 
-module.exports = { reviewWorkspaceRouter, toReviewItem, withoutDetail, gapFilterOf, projectIdOf, assertNotWithdrawn, frozenError };
+module.exports = { reviewWorkspaceRouter, toReviewItem, withoutDetail, hasGapFilter, gapFilterOf, projectIdOf, assertNotWithdrawn, frozenError };
