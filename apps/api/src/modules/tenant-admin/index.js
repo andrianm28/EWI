@@ -160,7 +160,11 @@ module.exports = {
         patch.name = optionalText(body, 'name', 'Nama', 255);
         if (!patch.name) throw badRequest('Nama tidak boleh kosong');
       }
-      if (has(body, 'role')) { checkRole(body.role, req.user); patch.role = body.role; }
+      if (has(body, 'role')) {
+        // peran yang sama dengan sekarang bukan pemberian peran (layar B11 selalu mengirim peran saat mengedit)
+        if (body.role !== current.role) checkRole(body.role, req.user);
+        patch.role = body.role;
+      }
       if (has(body, 'employeeId')) patch.employeeId = optionalText(body, 'employeeId', 'ID karyawan', 64);
       if (has(body, 'status')) {
         if (!['active', 'disabled'].includes(body.status)) throw badRequest('status harus active atau disabled');

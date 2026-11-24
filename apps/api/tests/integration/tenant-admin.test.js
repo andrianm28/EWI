@@ -399,12 +399,17 @@ run('Admin Tenant B11 (Postgres)', () => {
 
     it('Super Admin hanya boleh memberi peran Admin Tenant: tidak bisa membuat akun HR atau peran lain yang membaca isi karyawan (review 24 Nov malam, R8-1)', async () => {
       expect((await get('/roles', 'eta')).body.data.map((r) => r.key)).toEqual(['tenant_admin']);
+      await addUser(A.id, 'sasaranEta', 'learner');
       for (const role of ['hr_admin', 'supervisor', 'learner', 'pimpinan']) {
         const made = await post('/users', { email: `eta-${role}-${Date.now()}@b11.test`, name: 'Lewat Super Admin', role }, 'eta');
         expect([role, made.status, made.body.error && made.body.error.code]).toEqual([role, 403, 'ROLE_FORBIDDEN']);
-        const naik = await patch(`/users/${id.staf}`, { role }, 'eta');
-        if (role !== 'learner') expect([role, naik.status, naik.body.error && naik.body.error.code]).toEqual([role, 403, 'ROLE_FORBIDDEN']);
+        if (role === 'learner') continue; // sasaran sudah learner: bukan perubahan peran
+        const naik = await patch(`/users/${id.sasaranEta}`, { role }, 'eta');
+        expect([role, naik.status, naik.body.error && naik.body.error.code]).toEqual([role, 403, 'ROLE_FORBIDDEN']);
       }
+      // mengubah data lain sambil mengirim peran yang sama (bentuk kiriman layar B11) tetap boleh
+      const ubahNama = await patch(`/users/${id.hrA}`, { name: 'HR A', role: 'hr_admin' }, 'eta');
+      expect([ubahNama.status, ubahNama.body.data && ubahNama.body.data.role]).toEqual([200, 'hr_admin']);
       const tadmin = await post('/users', { email: `eta-tadmin-${Date.now()}@b11.test`, name: 'Admin Pemulihan', role: 'tenant_admin' }, 'eta');
       expect(tadmin.status).toBe(201);
     });
