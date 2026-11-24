@@ -115,7 +115,7 @@ Mockup punya lima tampilan. Kuncinya dipakai di seluruh web app:
 - **Ganti tampilan sebelum B2 dan B8 selesai.** Tampilan tambahan hanya ditawarkan bila rute berandanya sudah terdaftar (untuk `karyawan`: rute `my`, Hasil saya, B8). Alasannya: halaman lama menentukan isi dari `user.role` dan API memberi data sesuai peran asli, jadi "tampilan karyawan" di atas halaman lama akan tetap memperlihatkan data HR. Begitu B8 memasang `my`, tombol ganti tampilan muncul sendiri.
 - Tampilan aktif disimpan di store sesi (`activeView`) dan `sessionStorage` kunci `elgos.view`. Saat nilainya tidak termasuk tampilan yang tersedia, dipakai tampilan pertama (pilihan tersimpan tidak ditimpa).
 - Bila profil belum termuat (`/auth/me` gagal setelah muat ulang), tampilan jatuh ke `karyawan` (menu paling sempit) dan pil identitas tidak tampil. Ini sama dengan perilaku halaman lama yang memperlakukan peran kosong sebagai bukan HR.
-- **Layar yang dipakai beberapa tampilan** (mis. `dash` untuk hr dan atasan, `aiv` untuk atasan dan karyawan) membaca `session.activeView` secara reaktif untuk varian dan judul, dan `session.roles` untuk izin. Jangan membaca `session.role` (satu peran) untuk keduanya. Ganti tampilan ke rute yang sama (hr → atasan saat di `dash`) tidak memicu navigasi, jadi layar harus bereaksi pada perubahan `activeView` sendiri. Data yang ditampilkan mengikuti apa yang dikirim API (mis. B3 memakai `scope` dari respons), bukan tampilan aktif.
+- **Layar yang dipakai beberapa tampilan** (mis. `dash` untuk hr dan atasan, `aiv` untuk atasan dan karyawan) membaca `session.activeView` secara reaktif untuk varian dan judul, dan `session.roles` untuk izin (pembantu `session.hasAnyRole(list)`, paritas P9 CD-4). Jangan membaca `session.role` (satu peran) untuk keduanya. Ganti tampilan ke rute yang sama (hr → atasan saat di `dash`) tidak memicu navigasi, jadi layar harus bereaksi pada perubahan `activeView` sendiri. Data yang ditampilkan mengikuti apa yang dikirim API (mis. B3 memakai `scope` dari respons), bukan tampilan aktif.
 - **Data tampilan tambahan akun multi-peran** diselesaikan B2 (PR #20): pengalih tampilan memanggil `POST /auth/switch-role` bila `/me/access` mengirim `roles`, sehingga API menghitung data dengan peran tampilan itu. Sampai itu masuk, API memakai peran utama dan layar wajib mengikuti cakupan dari respons (butir di atas).
 - `[⏳ DITERIMA]` Rute lama tanpa `meta.views` (`legacy-dna`, `legacy-tna`, `legacy-review`, `legacy-interview`) tidak memindahkan tampilan. Setelah B8 memasang `my`, akun HR di tampilan "Karyawan (saya)" yang membuka tautan `/m/tna` melihat halaman HR dengan label Karyawan. Hanya UI (API tetap mengotorisasi); hilang saat B4/B5/B6/B7 mengganti rute itu dengan `views` yang benar. Tombol Back ke rute khusus HR juga memindahkan tampilan kembali ke HR; itu konsekuensi "tautan langsung tetap bekerja".
 - `eta_admin` dipetakan ke `super`. Di halaman lama ia setara HR, jadi sampai layar Tenant (B12) terpasang ia tetap mendapat butir peralihan Developmental Needs dan Training Needs.
@@ -268,7 +268,7 @@ Perhatian: `li` adalah **rute** Rencana belajar milik B8, sedangkan `module.li` 
 Rincian:
 
 - Judul layar di top bar berupa `<div>`, bukan heading, supaya `<h1>` tetap milik halaman. Shell tidak memakai `role="status"`, `role="alert"`, atau live region; e2e lama mencari peran itu tanpa cakupan.
-- Judul tab peramban: "<judul layar> · ELGOS".
+- Judul tab peramban: "<judul layar> · ELGOS". Dipasang `src/shell/title.ts` dari `main.ts` (bukan dari router), supaya `router/index.ts` tidak mengimpor `shell/menu.ts` yang sudah mengimpor `routeOpen` dari router (paritas P9 IR-3).
 - Drawer layar sempit: saat dibuka fokus pindah ke butir pertama; Esc atau klik latar menutup dan mengembalikan fokus ke tombol menu.
 - Baris tenant: untuk tampilan `super` "Konsol platform ELGOS · semua tenant" (mockup); selain itu `user.tenantName` bila API mengirimnya, selain itu kosong. Mockup menulis "Elitery · Periode Q4 2026"; periode belum punya sumber data. `[⚠️ BELUM TERVERIFIKASI]` field `tenantName` belum ada di `/auth/me`; diminta ke B2.
 - Pil "Log audit aktif" boleh tampil tanpa syarat karena audit baca data individu wajib dan gagal-tertutup (R2-2, `src/core/audit`).
@@ -343,7 +343,7 @@ Gerbang: `npm run lint`, `npm test` (API tidak berubah), `npm run build`, `npm r
 - [x] `apps/web/src/shell/views.ts` (tampilan dan pemetaan peran), `menu.ts` (daftar menu + aturan tampil), `theme.ts`
 - [x] `apps/web/src/components/AppShell.vue` (ditulis ulang), `AppDrawer.vue`, `AppTopBar.vue`
 - [x] `apps/web/src/stores/session.ts`: `roles`, `views`, `activeView`, `setView`, `homeReady`, `bindRoutes`; `SessionUser.roles?`, `tenantName?`
-- [x] `apps/web/src/router/index.ts`: glob `screens/*/routes.ts`, penjaga `views`/`flag`/`submodule`, `homeFor`, `assertUnique`, judul tab
+- [x] `apps/web/src/router/index.ts`: glob `screens/*/routes.ts`, penjaga `views`/`flag`/`submodule`, `homeFor`, `assertUnique` (judul tab pindah ke `shell/title.ts`, P9)
 - [x] `apps/web/src/screens/legacy-{dna,tna,review,interview,cca,ina}/routes.ts` (rute lama dipecah)
 - [x] `apps/web/src/screens/ui-kit/routes.ts`, `UiKitView.vue`, `test-routes.ts`, `TestScreen.vue` (hanya `VITE_UI_KIT=1`)
 - [x] `apps/web/env.d.ts`: `VITE_UI_KIT`

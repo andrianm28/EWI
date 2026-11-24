@@ -53,4 +53,49 @@ Tidak ada pelanggaran keras CLAUDE.md aturan 1, 2, 4, 5, 6, 7. Filter gap di `GE
 Ringkas: Standards 4 temuan + 7 smell (terburuk S-1/S-2, `views` rute). Spec 5 temuan (terburuk SP-1 label Ditutup yang seharusnya Diputuskan). egm 1 tinggi (IR-1), 7 sedang.
 
 ## Triase
-(diisi saat perbaikan)
+
+P9 (branch `paritas-p9` dari `ea7d1c4`, 24 Nov). Perbaikan perilaku dikerjakan test-first: commit test merah lebih dulu, lalu perbaikannya (pasangan merah → hijau di kolom terakhir). Smell Standards diberi nomor SM-1..SM-9 sesuai urutan di daftar di atas. Selisih spek dan kode setelah P9: [p9-drift.md](p9-drift.md).
+
+| ID | Keputusan | Alasan / commit |
+| --- | --- | --- |
+| S-1 | Perbaiki | Rute `tna-review` memasang `views: ['hr','admin','super']` (sama dengan `review`); tautan dari tampilan Atasan memindahkan tampilan ke HR. e2e akun HR + atasan. `2873a3c` → `c5aabc3` |
+| S-2 | Tunda | Butuh persetujuan Andrian (B0 5.3 aturan 1, kode bersama). `views` admin/hr/super tetap; alasan `hr` dan `super` serta penyimpangannya ditulis di komentar `b11-admin/routes.ts` (`d2d3a7c`). Masuk daftar reviewer di badan PR |
+| S-3 | Tunda | Belum ada token bayangan untuk panel melayang. Usul ke B0: token `--el-shadow-float` (terang/gelap) untuk panel Asisten dan pengingat INA; setelah itu dua `box-shadow` mentah diganti |
+| S-4 | Tunda | Belum ada komponen Ui untuk chip pilihan bebas. Usul ke B0: `UiChoiceChip` (tombol chip netral, `disabled`, fokus) untuk `b17-chip`, `iv-ac`, `cp-pick`, dan pemilih jabatan di `ProgramView.vue` |
+| SM-1 | Perbaiki | `GAP_MATCH_COLUMNS` di `tna/gaps.js` menurunkan SELECT `GAP_MATCH_COLS` dan daftar field internal yang dibuang. `75a0384` |
+| SM-2 | Perbaiki | `withoutGapFields` dan `withoutDetail` memakai satu `omit(fields)`. `b519b5e` |
+| SM-3 | Perbaiki | Normalisasi nama SQL kini setara `metricKey` (CD-11); `parseGapQuery` hanya merapikan label, kunci tetap dari `metricKey`. `7f5dd1b` → `656bb1f` |
+| SM-4 | Perbaiki | `hasGapFilter(req)` dipakai `gapFilterOf` dan gerbang flag `GET /review`. `75a0384` |
+| SM-5 | Tunda | Data clump `focus*`: membungkusnya menjadi objek menyentuh baris store, `sessionGapKeys`, dan `linkSessions` di B5. Ditunda ke tipe `Gap` bersama (B5 §15, sudah ditunda ke S2); sumber kolom kini satu (SM-1) |
+| SM-6 | Perbaiki | `ReviewGapQuery` menjadi union bertipe (bentuk `GapRef`), tanpa cast `unknown`. `656bb1f` |
+| SM-7 | Perbaiki | `ChipTone`/`StatusTone` di `ui/tones.ts`, dipakai UiChip, UiStatus, B8, B13, B14, B15, B16. `75a0384` |
+| SM-8 | Tunda | Nada mode online/offline: B8 menerima `mode` string bebas dari API, B14 enum; warnanya sudah sama (training/improvement). Menyatukan butuh modul lintas paket; nilai kecil, risiko impor lintas layar |
+| SM-9 | Tolak | `gapFilterOf.keep` mengikat kunci gap; menghapusnya menyebar `findingsInGap(rows, key)` ke tiga pemanggil (antrean, solusi, ekspor). Bukan middle man murni |
+| SP-1 | Perbaiki | AA-4, TN-10, IN-11, ADM-1 menjadi Diputuskan; hitungan README dikoreksi. `d2d3a7c` |
+| SP-2 | Tunda | LI-14 kembali Terbuka: chip "Contoh (dummy)" menyebut data contoh yang tidak ada di aplikasi; perlu keputusan user (label jujur atau 1:1). `d2d3a7c` |
+| SP-3 | Tunda | LD-10 kembali Terbuka: placeholder tanggal tidak bisa tampil di `input type=date`; butuh input teks + parser (bukan kecil) atau keputusan. `d2d3a7c` |
+| SP-4 | Perbaiki | `competencyId` baris Pareto ditulis di B3; perubahan `parseGapQuery` ditulis di B5. `AdminLinks.vue` sudah diterima user di triase P7 (dicatat di baris ADM-1). `d2d3a7c` |
+| SP-5 | Perbaiki | B7 web Keputusan 2/3 mengikuti R1 dan audit 39-2; komentar `b7-tinjauan/routes.ts` diperbarui. `c5aabc3`, `d2d3a7c` |
+| IR-1 | Perbaiki | `ShellExtra` asisten memetakan halaman API `review` ke rute antrean `tna-review` (sama dengan dashboard); API dan test-nya tidak berubah. e2e HR + `tna.review_workspace`. `b867ce0` → `faeb034` |
+| IR-2 | Tunda | Gerbang reviewer Andrian (auth UI, kode bersama, `lna-stores.js`, `ci.yml`, kini juga `session.ts`, `AppShell.vue`, `ui/`) adalah butir badan PR, bukan kode |
+| IR-3 | Perbaiki | Judul tab pindah ke `shell/title.ts` (dipasang `main.ts`); `router/index.ts` tidak mengimpor `shell/menu.ts`. `0c60047` |
+| IR-4 | Perbaiki | Test `/tna/gaps/detail`: nama berspasi berantakan membuka gap yang sama; > 255 karakter 400. Perilaku ditulis di B5. `acc8b85`, `d2d3a7c` |
+| IR-5 | Perbaiki | `GET /plan-items/export.csv` menerima filter gap (validasi dan 404 sama dengan `/review`); layar per gap mengirimnya, label tombol tetap jujur. Jest + e2e. `7f5dd1b` → `656bb1f` |
+| IR-6 | Perbaiki | Baris README basi (ShellExtra, `ReviewView.vue`, RV-3) dan komentar `'super'` B11 (`d2d3a7c`); `waitForTimeout(1200)` diganti menunggu respons Pareto (`6ac19f3`). Ambang snapshot dan riwayat git: TL-1, TL-2 |
+| CD-1 | Perbaiki | `onBeforeRouteLeave` draf LI tidak menyimpan bila sesi tidak ada atau tujuan rute publik, dan tidak menahan navigasi setelah 401. Dua e2e (Keluar, sesi habis). `af4f4f9` → `8ef75d4` |
+| CD-2 | Perbaiki | `AppShell` menumpuk semua `ShellExtra` dalam satu kolom fixed kanan bawah; kontrak di B0 5.3. e2e kedua flag dengan `boundingBox`. `9a2397b` → `fb4b87e` |
+| CD-3 | Perbaiki | Semua cabang `classify` memakai `withoutDetail` (endpoint hanya dipakai layar per gap; antrean memakai `/review`). Jest. `b474bc2` → `b519b5e` |
+| CD-4 | Perbaiki | `session.hasAnyRole` di TnaScreen, TnaPengelolaan, TnaGapView, papan B5. e2e akun atasan utama + HR. `2873a3c` → `c5aabc3` |
+| CD-5 | Perbaiki | Sama dengan S-1. `c5aabc3` |
+| CD-6 | Perbaiki | Tautan ke antrean memakai `{ name: 'tna-review' }`. `c5aabc3` |
+| CD-7 | Perbaiki | `EMPTY` dan `formatPercent` di `ui/format.ts`; Dashboard, Konfigurasi platform, label B15, `fmt` CCA, dan sel kosong lain memakainya. Biaya US$ tetap `toLocaleString` (empat desimal). `6adaeb0` |
+| CD-8 | Perbaiki | `AI_NAME` ("ELGOS-AI") untuk gelembung IV, CCA, LIM; audit CCA memakai `AI_PRODUCT_LABEL`. Teks e2e diperbarui, snapshot tidak berubah. `6adaeb0` |
+| CD-9 | Tunda | `?ubah=` CC dan INA berbeda perilaku (INA menunggu daftar dimuat dan membuang id tak dikenal); menyatukan berisiko regresi di dua paket milik thread lain. `.mod` dan pembungkus notice juga per paket; dikerjakan bersama komponen B0 (S-4) |
+| CD-10 | Perbaiki | Sama dengan IR-3. `0c60047` |
+| CD-11 | Perbaiki | Predikat SQL memakai kelas spasi lengkap (tab, NBSP, spasi Unicode) seperti `\s` JavaScript. Jest. `7f5dd1b` → `656bb1f` |
+| CD-12 | Perbaiki | `loadSeq` di TinjauanView (pola `listSeq`) dan `askSeq` di store asisten (jawaban basi dibuang walau kunci tampilan kembali sama). Dua e2e. `a8af4cf` → `4db02a4` |
+| CD-13 | Perbaiki | `waitForTimeout` diganti (`6ac19f3`); ambang snapshot di TL-1 |
+| TL-1 | Tunda | Menurunkan ambang ke 0,02 butuh PNG dari runner CI (artifact `e2e-test-results`); di luar sesi ini |
+| TL-2 | Tunda | Menulis ulang riwayat git repo publik adalah keputusan user/Andrian |
+
+Jumlah: Perbaiki 27, Tolak 1, Tunda 11 (39 ID).
