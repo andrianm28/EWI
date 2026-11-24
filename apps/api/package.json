@@ -12,6 +12,7 @@
     "migrate": "node scripts/ensure-schema.js && sequelize-cli db:migrate",
     "migrate:undo": "node scripts/migrate-undo.js",
     "seed:dev": "node scripts/seed-dev.js",
+    "seed:lti-demo": "node scripts/seed-lti-demo.js",
     "migrate:undo:all": "node scripts/migrate-undo.js --all",
     "db:grant-app": "node scripts/grant-app-role.js"
   },
