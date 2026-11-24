@@ -25,7 +25,7 @@ export interface EmployeeDetail {
 }
 export interface Session { id: string; projectId: string; intervieweeId: string; intervieweeName: string | null; status: string; triggerCount: number; inviteExpiresAt?: string; inviteExtendedCount?: number }
 export interface Turn { speaker: 'ai' | 'human'; text: string; at: string }
-export interface Finding { id: string; userId: string; userName: string | null; title: string; status: string; competencyName: string | null; metricName: string | null; target: number | null; actual: number | null }
+export interface Finding { id: string; userId: string; userName: string | null; title: string; category?: 'training' | 'non_training'; status: string; competencyName: string | null; metricName: string | null; target: number | null; actual: number | null }
 export interface ParetoRow { key: string; label: string; people: number; avgMiss: number; score: number; share: number; cumulativeShare: number }
 export interface PlanItem { id: string; userId: string; userName: string | null; findingTitle: string | null; origin: string; status: string; catalogItemTitle: string | null; needsModule?: boolean; catalogItemUrl?: string | null; courseStatus?: string | null; note: string | null }
 export interface TnaDashboard { role: string; people: number | null; redTargets: number; sessions: Record<string, number>; trainingFindings: number; planItems: Record<string, number>; reviewPending?: number }
@@ -117,7 +117,7 @@ export const lna = {
   async downloadGapCsv(gap?: ReviewGapQuery) {
     await downloadFile(`/tna/plan-items/export.csv${gap ? `?${new URLSearchParams(gap)}` : ''}`, `elgos-gap-${new Date().toISOString().slice(0, 10)}.csv`)
   },
-  handoffImprovement: (findingIds: string[]) => post<{ data: { handedOff: string[]; already: string[]; skipped: string[] } }>('/tna/review/improvement-handoff', { findingIds }),
+  handoffImprovement: (findingIds: string[]) => post<{ data: { handedOff: string[]; already: string[]; skipped: string[]; actionsCreated?: number } }>('/tna/review/improvement-handoff', { findingIds }),
   reviewFinding: (id: string, body: ReviewDecision) => post<{ data: ReviewItem }>(`/tna/findings/${id}/review`, body),
   myResults: () => call<{ data: MyResults }>('/my/results'),
   myLearningPlan: () => call<{ data: LearningCard[]; delivery: LearningDelivery }>('/my/learning-plan'),

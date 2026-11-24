@@ -133,6 +133,28 @@ run('B7 tinjauan HR (Postgres)', () => {
       expect((await classify(a, f.h, 'needs_review')).body.error.code).toBe('ALREADY_REVIEWED');
     });
 
+    it('C3 demo 25 Nov: banner menunggu review = jumlah antrean draf, juga setelah klasifikasi dan tahan', async () => {
+      const a = app();
+      const same = async () => {
+        const dash = await request(a).get('/api/tna/dashboard').set(as('hr'));
+        expect(dash.status).toBe(200);
+        const queue = await request(a).get('/api/tna/review').set(as('hr'));
+        expect(dash.body.data.reviewPending).toBe(queue.body.data.length);
+        expect(queue.body.counts.draft).toBe(queue.body.data.length);
+        return queue.body.data.length;
+      };
+      const n0 = await same();
+      const x1 = (await finding('ani', { title: 'C3 satu', category: 'non_training' })).id;
+      const x2 = (await finding('beni', { title: 'C3 dua' })).id;
+      expect(await same()).toBe(n0 + 2);
+      await classify(a, x1, 'training');
+      expect(await same()).toBe(n0 + 1);
+      await classify(a, x2, 'needs_review', 'hr', 'tahan');
+      expect(await same()).toBe(n0 + 1);
+      await classify(a, x2, 'improvement');
+      expect(await same()).toBe(n0);
+    });
+
     it('koreksi salah klik: boleh pindah kategori selama belum ditindaklanjuti', async () => {
       const a = app();
       const back = await classify(a, f.t2, 'training');
@@ -434,12 +456,44 @@ run('B7 tinjauan HR (Postgres)', () => {
       expect(res.body.data.already).toEqual([]);
       expect(res.body.data.skipped.sort()).toEqual([f.t1, f.late, f.x].sort());
       const again = await handoff(a, [f.h]);
-      expect(again.body.data).toEqual({ handedOff: [], already: [f.h], skipped: [] });
+      expect(again.body.data).toEqual({ handedOff: [], already: [f.h], skipped: [], actionsCreated: 0 });
       expect((await classify(a, f.h, 'training')).body.error.code).toBe('ALREADY_ACTIONED');
       const sol = await request(a).get('/api/tna/review/solutions').set(as('hr'));
       expect(sol.body.data.inaEnabled).toBe(true);
       expect(sol.body.data.improvement.find((x) => x.findingId === f.h).handedOffAt).toBeTruthy();
       expect((await audits('tna.improvement_handoff'))[0].meta).toMatchObject({ objectIds: [f.h], employeeIds: [u.ani] });
+    });
+
+    it('C1 demo 25 Nov: serah membuat tindakan di Improvement Needs (judul terenkripsi, kategori ditebak, tercatat audit)', async () => {
+      const a = app();
+      await setFlag('ina.dashboard', true);
+      const list = await request(a).get('/api/ina/actions').set(as('hr'));
+      expect(list.status).toBe(200);
+      const act = list.body.data.find((x) => x.findingId === f.h);
+      expect(act).toMatchObject({ title: 'Ragu-ragu', category: 'lainnya', status: 'new', involvesIndividual: false, ownerUserId: null, sourceRef: 'Pemahaman SLA' });
+      const [raw] = await db.query('SELECT title FROM ina_actions WHERE id = :id', { replacements: { id: act.id }, type: 'SELECT' });
+      expect(raw.title).not.toContain('Ragu-ragu');
+      const [fs] = await db.query('SELECT status FROM lna_findings WHERE id = :id', { replacements: { id: f.h }, type: 'SELECT' });
+      expect(fs.status).toBe('planned');
+      const logs = await audits('ina.action');
+      expect(logs.find((l) => l.action === 'create' && l.meta.objectIds.includes(act.id)).meta).toMatchObject({ category: 'lainnya', fromFinding: true, via: 'tna.handoff' });
+      // bentuk sama dengan POST /ina/actions: status temuan { from, to }, hanya bila memang berubah
+      const moved = (await audits('tna.finding')).filter((l) => l.meta.via === 'tna.handoff' && l.meta.objectIds.includes(f.h));
+      expect(moved).toHaveLength(1);
+      expect(moved[0].meta).toMatchObject({ status: { from: 'open', to: 'planned' }, employeeIds: [u.ani] });
+      // serah ulang tidak membuat tindakan kedua
+      await handoff(a, [f.h]);
+      const again = await request(a).get('/api/ina/actions').set(as('hr'));
+      expect(again.body.data.filter((x) => x.findingId === f.h)).toHaveLength(1);
+      // temuan yang sudah bertanda diteruskan sebelum perbaikan ini (data demo lama) mendapat tindakannya saat diserahkan ulang
+      const legacy = (await finding('beni', { title: 'Akses aplikasi monitoring terbatas', category: 'non_training', reviewStatus: 'approved' })).id;
+      await db.query('UPDATE lna_findings SET improvement_handoff_at = now(), improvement_handoff_by = :hr WHERE id = :id', { replacements: { id: legacy, hr: u.hr } });
+      expect((await handoff(a, [legacy])).body.data).toEqual({ handedOff: [], already: [legacy], skipped: [], actionsCreated: 1 });
+      const fixed = (await request(a).get('/api/ina/actions').set(as('hr'))).body.data.filter((x) => x.findingId === legacy);
+      expect(fixed).toEqual([expect.objectContaining({ category: 'sistem', title: 'Akses aplikasi monitoring terbatas' })]);
+      await db.query('DELETE FROM ina_actions WHERE finding_id = :id', { replacements: { id: legacy } });
+      await db.query('DELETE FROM lna_findings WHERE id = :id', { replacements: { id: legacy } });
+      await setFlag('ina.dashboard', false);
     });
 
     it('kontrak B9: listImprovementHandoffs tanpa data individu', async () => {
@@ -874,5 +928,13 @@ run('B7 tinjauan HR (Postgres)', () => {
         await db.query('DELETE FROM lna_findings WHERE id IN (:ids)', { replacements: { ids: [draft, done] } });
       }
     });
+  });
+
+  it('C3 demo 25 Nov: setelah rencana, penugasan, serah, dan pembekuan, dashboard tetap 200 dan banner = antrean', async () => {
+    const a = app();
+    for (const who of ['hr', 'spv', 'ani']) expect((await request(a).get('/api/tna/dashboard').set(as(who))).status).toBe(200);
+    const dash = await request(a).get('/api/tna/dashboard').set(as('hr'));
+    const queue = await request(a).get('/api/tna/review').set(as('hr'));
+    expect(dash.body.data.reviewPending).toBe(queue.body.data.length);
   });
 });

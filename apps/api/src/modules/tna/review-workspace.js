@@ -14,6 +14,7 @@ const { toCsv } = require('./csv');
 const { gapKeyOf, findingsInGap, GAP_MATCH_COLUMNS } = require('./gaps');
 const { metricKey } = require('./performance');
 const { parseGapQuery } = require('./assignment');
+const { inferCategory } = require('../ina/domain');
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const ACTIVE_PLAN = ['new', 'in_progress'];
@@ -222,11 +223,20 @@ function reviewWorkspaceRouter({ stores, settings, catalog, flags, audit, assign
     if (!raw.every((id) => typeof id === 'string' && UUID.test(id))) throw badRequest('findingIds harus berisi id temuan yang valid');
     if (!(await flags.isEnabled(req.tenantId, FLAGS.MODULE_INA))) throw conflict('INA_DISABLED', 'Modul Improvement Needs belum aktif untuk organisasi Anda');
     const ids = [...new Set(raw.map((id) => id.toLowerCase()))];
-    const out = await stores.tna.handoffImprovement(req.tenantId, ids, req.user.id);
+    const out = await stores.tna.handoffImprovement(req.tenantId, ids, req.user.id, { categorize: inferCategory });
     if (out.handedOff.length) {
       await audit.record(req, 'update', 'tna.improvement_handoff', { employeeIds: out.employeeIds, objectType: 'tna_finding', objectIds: out.handedOff, count: out.handedOff.length });
     }
-    res.json({ data: { handedOff: out.handedOff, already: out.already, skipped: out.skipped } });
+    // C1: tindakan INA yang lahir dari serah dicatat seperti POST /ina/actions (sumber daya ina.action) plus status temuan
+    for (const act of out.actions) {
+      await audit.record(req, 'create', 'ina.action', { objectIds: [act.id], category: act.category, fromFinding: true, findingId: act.findingId, via: 'tna.handoff' });
+      if (act.finding) {
+        await audit.record(req, 'update', 'tna.finding', {
+          objectIds: [act.finding.id], status: { from: act.finding.from, to: act.finding.to }, via: 'tna.handoff', ...(act.userId ? { employeeIds: [act.userId] } : {}),
+        });
+      }
+    }
+    res.json({ data: { handedOff: out.handedOff, already: out.already, skipped: out.skipped, actionsCreated: out.actions.length } });
   }));
 
   return r;

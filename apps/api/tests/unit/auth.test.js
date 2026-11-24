@@ -46,4 +46,9 @@ describe('GET /api/auth/tenants (pilihan organisasi di login)', () => {
     expect(res.status).toBe(200);
     expect(res.body.data).toEqual([{ slug: 'elgos', name: 'ELGOS' }, { slug: 'other', name: 'Lain' }]);
   });
+
+  it('C10 demo 25 Nov: /methods memberi tahu web apakah daftar organisasi ada, supaya /login tidak memanggil endpoint yang 404', async () => {
+    expect((await request(makeApp()).get('/api/auth/methods')).body.tenantPicker).toBe(false);
+    expect((await request(makeApp({}, { LOGIN_TENANT_PICKER: 'true' })).get('/api/auth/methods')).body.tenantPicker).toBe(true);
+  });
 });
