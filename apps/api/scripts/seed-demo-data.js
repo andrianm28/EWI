@@ -7,6 +7,8 @@
 //   sehingga terenkripsi per tenant seperti data asli.
 // - Tidak ada data untuk Super Admin: konsol Super Admin hanya membaca metadata tenant (denyEmployeeContent).
 
+const { generateDraft } = require('../src/modules/li/design');
+
 const DAY = 24 * 60 * 60 * 1000;
 // Kompetensi milik seed (seed-dev + seed ini). Hanya ini yang disahkan dan diberi tingkat.
 const SEEDED_COMPETENCIES = ['Memahami kontrak proyek', 'Menjalankan SOP L1', 'Troubleshooting jaringan dasar', 'Komunikasi pelanggan',
@@ -109,6 +111,25 @@ async function seedDemoData(c, { stores, tenantId: t, jobRoleId, levelIds, hrId,
     }
   }
 
+  // ---------- Career & Promotion (gap B3): syarat = lulus program jenjang berikutnya + OKR >= 80% ----------
+  // Learner Demo (Junior -> Senior, OKR 100%) sudah direkomendasikan atasan: HR melihat Setujui/Tunda.
+  // Budi (Probation -> Junior, OKR 80%) memenuhi syarat tanpa keputusan: atasan melihat Rekomendasikan, HR "Menunggu atasan".
+  // Rina (OKR 57%) tetap "Belum memenuhi syarat".
+  for (const [userId, tiers] of [[learner.id, ['basic', 'intermediate']], [budi, ['basic']]]) {
+    for (const tier of tiers) {
+      await c.query(`INSERT INTO lna_program_completions (tenant_id, user_id, program_tier, status, passed_at, recorded_by)
+                     VALUES ($1, $2, $3, 'passed', '2026-11-05', $4) ON CONFLICT (tenant_id, user_id, program_tier) DO NOTHING`, [t, userId, tier, hrId]);
+    }
+  }
+  const { rows: [{ career_level_id: learnerLevel }] } = await c.query('SELECT career_level_id FROM users WHERE id = $1', [learner.id]);
+  const nextLevel = levelIds[levelIds.indexOf(learnerLevel) + 1];
+  if (nextLevel) {
+    await findOrInsert(c, 'lna_promotion_decisions', { tenant_id: t, user_id: learner.id, to_level_id: nextLevel }, {
+      from_level_id: learnerLevel, okr_achievement: 100, supervisor_decision: 'recommend', supervisor_by: spvId, supervisor_at: '2026-11-21T03:00:00Z',
+      supervisor_note: 'Konsisten menyelesaikan insiden P2 dalam SLA dan sudah lulus program Intermediate.',
+    });
+  }
+
   // ---------- Sesi wawancara akar masalah (TNA) ----------
   const session = (userId, status, extra = {}) => findOrInsert(c, 'lna_interview_sessions',
     { tenant_id: t, project_id: projectId, submodule: 'tna', interviewee_id: userId, focus_kind: 'competency', focus_competency_id: comp['Analisis insiden'] },
@@ -185,24 +206,33 @@ async function seedDemoData(c, { stores, tenantId: t, jobRoleId, levelIds, hrId,
     ['SD-B1', 'Root Cause Analysis', 'basic', 'Insiden', 'Peserta mampu menelusuri akar masalah insiden dengan 5 Whys dan diagram tulang ikan.'],
     ['SD-I1', 'ITIL Foundation', 'intermediate', 'Proses layanan', 'Peserta memahami siklus layanan ITIL 4 dan praktik Incident & Problem Management.'],
     ['SD-B2', 'Penulisan laporan pasca-insiden', 'basic', 'Insiden', 'Peserta mampu menulis laporan pasca-insiden yang lengkap dan dapat ditindaklanjuti.'],
+    // Gap B6: course Advanced belum diminta. Rumpun "Specific Technical" = rekomendasi Kembangkan (settings li.devStreams),
+    // rumpun lain = Minta ke vendor.
+    ['SD-A1', 'Otomasi infrastruktur dengan IaC', 'advanced', 'Specific Technical', 'Peserta mampu mengotomasi pemulihan layanan dengan skrip infrastruktur sebagai kode.', 'Otomasi infrastruktur'],
+    ['SD-A2', 'Manajemen problem dan analisis tren', 'advanced', 'Proses layanan', 'Peserta mampu menemukan pola insiden berulang dan menutupnya lewat manajemen problem.'],
   ];
   const mod = {};
-  for (const [code, name, level, stream, objective] of MODULES) {
+  for (const [code, name, level, stream, objective, competency = 'Analisis insiden'] of MODULES) {
     mod[name] = await findOrInsert(c, 'li_modules', { tenant_id: t, code }, { name, level, stream, objective });
     await link(c, 'li_module_job_roles', { tenant_id: t, module_id: mod[name], job_role_id: jobRoleId });
-    await link(c, 'li_module_competencies', { tenant_id: t, module_id: mod[name], competency_id: comp['Analisis insiden'] });
+    await link(c, 'li_module_competencies', { tenant_id: t, module_id: mod[name], competency_id: comp[competency] });
     for (const [pos, [kind, text]] of [['K', `Konsep dasar ${name}`], ['S', `Menerapkan ${name} pada kasus nyata`], ['A', 'Teliti dan terbuka pada umpan balik']].entries()) {
       await findOrInsert(c, 'li_module_items', { tenant_id: t, module_id: mod[name], kind, position: pos + 1 }, { text });
     }
   }
   await findOrInsert(c, 'li_module_requests', { tenant_id: t, module_id: mod['ITIL Foundation'] },
     { vendor_name: 'Mahaka Institute', status: 'requested', note: 'Untuk 4 peserta Service Delivery L1', requested_by: hrId });
-  await findOrInsert(c, 'li_module_drafts', { tenant_id: t, module_id: mod['Root Cause Analysis'] }, {
+  // Draf SD-B1 (gap B1): bentuk sama dengan POST /li/modules/:id/draft (generateDraft dari butir KSA), bukan daftar string.
+  // Draf lama berbentuk string (seed sebelum 25 Nov) diganti di tempat agar layar draf tidak galat.
+  const rcaItems = (await c.query('SELECT kind, text FROM li_module_items WHERE tenant_id = $1 AND module_id = $2 ORDER BY position', [t, mod['Root Cause Analysis']])).rows;
+  const rcaDraft = generateDraft({ name: 'Root Cause Analysis', items: rcaItems });
+  const draftId = await findOrInsert(c, 'li_module_drafts', { tenant_id: t, module_id: mod['Root Cause Analysis'] }, {
     status: 'draft', generated_by: 'template', created_by: hrId,
-    objectives: JSON.stringify(['Menjelaskan langkah 5 Whys pada insiden P2', 'Menyusun diagram tulang ikan dari satu insiden nyata']),
-    sessions: JSON.stringify([{ title: 'Sesi 1: Konsep dan contoh', minutes: 60 }, { title: 'Sesi 2: Praktik kasus tim', minutes: 90 }]),
-    assessments: JSON.stringify([{ kind: 'studi_kasus', title: 'Analisis satu insiden tim' }]),
+    objectives: JSON.stringify(rcaDraft.objectives), sessions: JSON.stringify(rcaDraft.sessions), assessments: JSON.stringify(rcaDraft.assessments),
   });
+  await c.query(`UPDATE li_module_drafts SET objectives = $3::jsonb, sessions = $4::jsonb, assessments = $5::jsonb
+                  WHERE tenant_id = $1 AND id = $2 AND jsonb_typeof(objectives -> 0) = 'string'`,
+  [t, draftId, JSON.stringify(rcaDraft.objectives), JSON.stringify(rcaDraft.sessions), JSON.stringify(rcaDraft.assessments)]);
 
   // ---------- Learning Delivery ----------
   const training = (title, values) => findOrInsert(c, 'ld_trainings', { tenant_id: t, title }, { created_by: hrId, ...values });
@@ -216,6 +246,25 @@ async function seedDemoData(c, { stores, tenantId: t, jobRoleId, levelIds, hrId,
     await findOrInsert(c, 'ld_participants', { tenant_id: t, training_id: ldItil, user_id: userId },
       { progress_pct: [40, 65, 20, 50][i], status: 'in_progress', last_activity_at: new Date(Date.now() - (i + 1) * DAY) });
     await findOrInsert(c, 'ld_participants', { tenant_id: t, training_id: ldRca, user_id: userId }, { progress_pct: 0, status: 'enrolled' });
+  }
+  // Gap B8 (aturan ld/domain.js buildInsights): Budi tidak aktif > 14 hari di ITIL -> saran "Kirim pengingat".
+  await c.query(`UPDATE ld_participants SET last_activity_at = now() - interval '16 days'
+                  WHERE tenant_id = $1 AND training_id = $2 AND user_id = $3 AND status = 'in_progress'`, [t, ldItil, budi]);
+  // Online berjalan sesuai jadwal dengan peserta belum selesai -> "Kirim ajakan" (C6, thread aksi LD).
+  const ldKom = await training('Komunikasi insiden ke pelanggan', { mode: 'online', source: 'elitementor', program_tier: 'basic',
+    starts_on: isoDate(-6), ends_on: isoDate(24), session_count: 4, sessions_done: 1, status: 'running', materials_ready: true, assessment_mode: 'elitementor' });
+  for (const [i, userId] of team.entries()) {
+    const done = i === 0;
+    await findOrInsert(c, 'ld_participants', { tenant_id: t, training_id: ldKom, user_id: userId }, {
+      progress_pct: [100, 35, 30, 25][i], status: done ? 'completed' : 'in_progress', completed_at: done ? new Date(Date.now() - DAY) : null });
+  }
+  await c.query(`UPDATE ld_participants SET last_activity_at = now() - interval '1 day' WHERE tenant_id = $1 AND training_id = $2`, [t, ldKom]);
+  // Offline akan datang (<= 14 hari) dengan peserta, kehadiran belum dicatat -> "Minta konfirmasi" (C6).
+  const ldRca2 = await training('Root Cause Analysis (angkatan 2)', { mode: 'offline', source: 'manual', module_id: mod['Root Cause Analysis'],
+    program_tier: 'basic', vendor_name: 'Mahaka Institute', venue: 'Ruang Rapat Lt. 5', starts_on: isoDate(12), ends_on: isoDate(13),
+    session_count: 2, sessions_done: 0, status: 'scheduled', materials_ready: true, assessment_mode: 'vendor_manual' });
+  for (const userId of team) {
+    await findOrInsert(c, 'ld_participants', { tenant_id: t, training_id: ldRca2, user_id: userId }, { progress_pct: 0, status: 'enrolled' });
   }
   // Angkatan RCA yang sudah selesai di dalam periode rencana LIM (mulai 1 Nov): skor post dari LD membuat tim masuk
   // antrean tab Pengukuran AI, sehingga hasil wawancara ulang Dimas bisa dibuka dari "Lihat hasil" (gladi demo 25 Nov).
@@ -265,20 +314,52 @@ async function seedDemoData(c, { stores, tenantId: t, jobRoleId, levelIds, hrId,
   const source = (kind, title, text, position) => findOrInsert(c, 'cca_sources', { tenant_id: t, kind, title },
     { text, position, status: 'active', source_ref: 'Profil perusahaan 2026', created_by: hrId });
   const vision = await source('vision', 'Visi', 'Menjadi pemimpin layanan cloud.', 1);
-  await source('mission', 'Misi', 'Memberikan layanan cloud yang andal, aman, dan cepat dipulihkan bagi pelanggan.', 2);
+  const mission = await source('mission', 'Misi', 'Memberikan layanan cloud yang andal, aman, dan cepat dipulihkan bagi pelanggan.', 2);
   const valCust = await source('value', 'Fokus pelanggan', 'Setiap keputusan dimulai dari dampaknya bagi pelanggan.', 3);
-  await source('value', 'Integritas', 'Jujur melaporkan insiden dan akar masalahnya.', 4);
-  await findOrInsert(c, 'cca_requirements', { tenant_id: t, source_id: vision, name: 'Keandalan layanan cloud' },
-    { definition: 'Memahami praktik yang menjaga ketersediaan layanan.', target_score: 80, actual_score: 64, actual_source: 'manual', origin: 'hr', status: 'validated', validated_by: hrId });
-  await findOrInsert(c, 'cca_requirements', { tenant_id: t, source_id: valCust, name: 'Empati pelanggan saat insiden' },
-    { definition: 'Mengomunikasikan dampak dan perkiraan pemulihan kepada pelanggan.', target_score: 85, actual_score: 72, actual_source: 'manual', origin: 'hr', status: 'validated', validated_by: hrId });
+  const valIntegrity = await source('value', 'Integritas', 'Jujur melaporkan insiden dan akar masalahnya.', 4);
+  const requirement = (sourceId, name, values) => findOrInsert(c, 'cca_requirements', { tenant_id: t, source_id: sourceId, name },
+    { actual_source: 'manual', origin: 'hr', status: 'validated', validated_by: hrId, ...values });
+  await requirement(vision, 'Keandalan layanan cloud', { definition: 'Memahami praktik yang menjaga ketersediaan layanan.', target_score: 80, actual_score: 64 });
+  await requirement(valCust, 'Empati pelanggan saat insiden', { definition: 'Mengomunikasikan dampak dan perkiraan pemulihan kepada pelanggan.', target_score: 85, actual_score: 72 });
+  // Gap B7: persyaratan Misi dan indikator nilai Integritas (layar CC tidak lagi kosong di dua kelompok ini)
+  await requirement(mission, 'Keandalan pemulihan layanan', { definition: 'Memulihkan layanan sesuai SLA dan mencegah insiden berulang.', target_score: 80, actual_score: 70 });
+  await requirement(valIntegrity, 'Melaporkan insiden apa adanya', { definition: 'Mencatat linimasa dan akar masalah insiden tanpa menutupi kesalahan.', target_score: 85, actual_score: 78 });
+
+  // Penugasan wawancara berjenjang. Atasan Demo sudah selesai sebagai pimpinan; Kepala Divisi Demo (pimpinan) belum
+  // ditugaskan HR (gap B4: Tugaskan / Tugaskan semua). Tim atasan: Dimas selesai, Rina belum mulai, Budi belum ditugaskan (gap B5).
   const leader = await findOrInsert(c, 'cca_assignments', { tenant_id: t, assignee_id: spvId, tier: 'leader' },
     { assigned_by: hrId, due_date: isoDate(7), duration_minutes: 15, status: 'completed', completed_at: '2026-11-20T04:00:00Z',
       summary: await enc('Atasan menekankan keandalan dan komunikasi saat insiden.') });
-  for (const userId of team) {
+  for (const userId of team.filter((u) => u !== budi)) {
     await findOrInsert(c, 'cca_assignments', { tenant_id: t, assignee_id: userId, tier: 'employee' },
       { assigned_by: spvId, parent_id: leader, due_date: isoDate(7), duration_minutes: 15, status: userId === dimas ? 'completed' : 'assigned',
         completed_at: userId === dimas ? '2026-11-21T04:00:00Z' : null });
+  }
+  // Seed sebelum 25 Nov menugaskan Budi; penugasan yang belum dimulai itu dicabut supaya tombol Tugaskan tampil
+  await c.query(`DELETE FROM cca_assignments WHERE tenant_id = $1 AND assignee_id = $2 AND tier = 'employee' AND status = 'assigned'
+                   AND parent_id = $3 AND session_id IS NULL AND created_at < '2026-11-25'`, [t, budi, leader]);
+
+  // Program nilai korporasi (gap B7): hasil per karyawan, satu belum menyelesaikan semua kegiatan
+  // ("Wawancarai karyawan yang belum selesai"). Bentuk config sama dengan validateProgramConfig.
+  const programId = await findOrInsert(c, 'cca_programs', { tenant_id: t, key: 'nilai-2026' }, {
+    name: 'Program Nilai Perusahaan 2026', provider: 'Tim Budaya Perusahaan', cutoff_date: '2026-11-15', updated_by: hrId,
+    config: JSON.stringify({
+      values: [{ name: 'Fokus pelanggan' }, { name: 'Integritas' }],
+      components: [{ name: 'Kuis', weight: 40 }, { name: 'Asesmen akhir', weight: 60 }],
+      totalActivities: 6, passScore: 70,
+      bands: [{ key: 'strong', label: 'Strong Culture Alignment', min: 85, description: 'Skor akhir 85 atau lebih' },
+        { key: 'baseline', label: 'Baseline Implementation', min: 70, description: null }],
+    }),
+    insight: 'Skor Integritas tertahan pada kuis studi kasus pelaporan insiden.',
+    recommendations: JSON.stringify([{ title: 'Selesaikan kegiatan yang tertinggal', detail: 'Ajak karyawan yang belum selesai menuntaskan kuis sebelum cut off berikutnya.' }]),
+  });
+  for (const [i, userId] of team.entries()) {
+    const done = i !== 2; // Budi belum selesai
+    await findOrInsert(c, 'cca_program_results', { tenant_id: t, program_id: programId, user_id: userId }, {
+      division: 'Service Delivery', activities_done: done ? 6 : 3, final_score: done ? [88, 74, null, 80][i] : null,
+      value_scores: JSON.stringify(done ? [[90, 86], [78, 70], null, [84, 76]][i] : [70, null]),
+      component_scores: JSON.stringify(done ? [[85, 90], [70, 77], null, [78, 81]][i] : [60, null]),
+    });
   }
 
   return { projectId, learnerId: learner.id, planId, competencyIds: comp, findingIds, draftFindingIds, reviewedFindingIds, inaActionIds };

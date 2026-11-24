@@ -19,7 +19,7 @@ const DRAFT = {
   assessments: [{ kind: 'K', title: 'Knowledge', detail: 'Tes tertulis, lulus bila skor ≥ 80%.', objectives: 1 }],
 }
 
-async function setup(page: Page, calls: { method: string; url: string; body: unknown }[] = [], opt: { singleJob?: boolean; slowPareto?: boolean } = {}) {
+async function setup(page: Page, calls: { method: string; url: string; body: unknown }[] = [], opt: { singleJob?: boolean; slowPareto?: boolean; draft?: Record<string, unknown> } = {}) {
   const user = { id: 'u-1', tenantId: 't-1', email: 'hr@demo.test', role: 'hr_admin' }
   await page.route('**/api/auth/tenants', (r) => r.fulfill({ json: { data: [] } }))
   // PK-16: form kata sandi hanya tampil bila API mengizinkan (dev/staging)
@@ -28,7 +28,7 @@ async function setup(page: Page, calls: { method: string; url: string; body: unk
   await page.route('**/api/auth/me', (r) => r.fulfill({ json: { user } }))
   await page.route('**/api/me/access', (r) => r.fulfill({ json: { submodules: ['dna', 'tna'], products: ['full_suite'], flags: { 'module.dna': true, 'module.tna': true, 'module.li': true } } }))
   await page.route(/\/api\/(dna|tna)\//, (r) => r.fulfill({ json: { data: [] } }))
-  let draft = { ...DRAFT }
+  let draft = { ...DRAFT, ...opt.draft }
   await page.route(/\/api\/li\//, async (r: Route) => {
     const req = r.request(); const url = new URL(req.url()); const path = url.pathname.replace(/^.*\/api\/li/, '')
     const body = req.postData() ? JSON.parse(req.postData()!) : null
@@ -539,4 +539,24 @@ test('P8 R20: kalimat vendor menjadi petunjuk kecil di bawah tombol Minta; alur 
   await expect(page.getByText(`Alur: diminta → dikonfirmasi ${VENDOR} → modul dikirim → dipasang di EliteMentor.`, { exact: true })).toBeVisible()
   const hintReq = page.getByText(`HR mencatat tiap langkah; ELGOS tidak mengirim apa pun ke ${VENDOR}.`, { exact: true })
   await expect(hintReq).toHaveCSS('font-size', '12px')
+})
+
+test('gap B1: draf lama berisi tujuan string dan asesmen tanpa hitungan tetap bisa disunting dan disimpan', async ({ page }) => {
+  const calls: { method: string; url: string; body: unknown }[] = []
+  const errors: string[] = []
+  page.on('pageerror', (e) => errors.push(e.message))
+  await setup(page, calls, { draft: {
+    objectives: ['Menjelaskan langkah 5 Whys pada insiden P2'],
+    assessments: [{ kind: 'K', title: 'Knowledge', detail: 'Tes tertulis, lulus bila skor ≥ 80%.' }],
+  } })
+  await page.goto('/req/draf/d-1')
+  await expect(page.getByLabel('Tujuan terukur 1')).toHaveValue('Menjelaskan langkah 5 Whys pada insiden P2')
+  await page.getByLabel('Tujuan terukur 1').fill('Menjelaskan langkah 5 Whys pada 4 dari 5 insiden P2')
+  await page.getByRole('button', { name: 'Lanjut: rancang materi' }).click()
+  await page.getByRole('button', { name: 'Lanjut: asesmen' }).click()
+  await expect(page.getByText('1 dari 1 tujuan tercakup')).toBeVisible()
+  await expect(page.getByText(/undefined/)).toHaveCount(0)
+  expect(errors).toEqual([])
+  const put = calls.find((c) => c.method === 'PUT' && c.url === '/drafts/d-1')
+  expect((put?.body as { objectives: { kind: string; text: string }[] }).objectives[0]).toMatchObject({ kind: 'K', text: 'Menjelaskan langkah 5 Whys pada 4 dari 5 insiden P2' })
 })

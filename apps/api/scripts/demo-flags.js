@@ -8,6 +8,8 @@ const DEMO_FLAGS = Object.freeze([
   // layar utama dan peran
   'dashboard.main', 'ina.dashboard', 'learner.home', 'promotion.recommendation', 'tna.gap_board',
   'admin.tenant', 'platform.console',
+  // gap B2: ganti tampilan multi-peran ("Karyawan (saya)"). Hanya di tenant dev; e2e memalsukan /me/access sendiri.
+  'auth.multi_role',
   // layar mockup demo 25 Nov
   'tna.interview_assignment', 'tna.interview_summary', 'tna.review_workspace',
   'cca.interview', 'dna.development', 'ina.ai_verification', 'assistant', 'lim.reinterview',

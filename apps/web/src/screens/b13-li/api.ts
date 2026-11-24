@@ -45,6 +45,26 @@ export interface Programs {
   vendorName: string
 }
 
+const KINDS: ItemKind[] = ['K', 'S', 'A']
+const kindOf = (v: unknown): ItemKind => (KINDS.includes(v as ItemKind) ? (v as ItemKind) : 'K')
+/**
+ * Gap B1: draf lama (seed sebelum 25 Nov) menyimpan tujuan sebagai teks dan asesmen tanpa hitungan tujuan.
+ * Dinormalkan ke bentuk kontrak generateDraft supaya layar bisa menyunting dan PUT tidak ditolak.
+ */
+export function normalizeDraft(d: Draft): Draft {
+  const objectives = (d.objectives as unknown[] ?? []).map((o): Objective => {
+    if (typeof o === 'string') return { kind: 'K', item: o, text: o, assessment: '' }
+    const x = (o ?? {}) as Partial<Objective>
+    return { kind: kindOf(x.kind), item: x.item ?? '', text: x.text ?? '', assessment: x.assessment ?? '' }
+  })
+  const assessments = (d.assessments ?? []).map((a) => ({
+    ...a,
+    kind: kindOf(a.kind),
+    objectives: Number.isInteger(a.objectives) ? a.objectives : objectives.filter((o) => o.kind === kindOf(a.kind)).length,
+  }))
+  return { ...d, objectives, sessions: d.sessions ?? [], assessments }
+}
+
 const call = <T>(path: string, init: RequestInit = {}) => api<T>(`/li${path}`, init, useSessionStore().token)
 const send = <T>(method: string, path: string, body?: unknown) => call<T>(path, { method, body: JSON.stringify(body ?? {}) })
 const qs = (o: Record<string, string | null | undefined>) => {
@@ -66,7 +86,7 @@ export const li = {
   deleteDraft: (id: string) => call<unknown>(`/drafts/${id}`, { method: 'DELETE' }),
   programs: (f: { jobRoleId?: string | null; level?: Level } = {}) => call<Programs>(`/programs${qs(f)}`),
   startDraft: (moduleId: string) => send<{ data: Draft }>('POST', `/modules/${moduleId}/draft`),
-  draft: (id: string) => call<{ data: Draft }>(`/drafts/${id}`),
+  draft: async (id: string) => { const res = await call<{ data: Draft }>(`/drafts/${id}`); return { ...res, data: normalizeDraft(res.data) } },
   saveDraft: (id: string, body: Partial<Pick<Draft, 'objectives' | 'sessions' | 'assessments'>>) => send<{ data: Draft }>('PUT', `/drafts/${id}`, body),
   submitDraft: (id: string) => send<{ data: Draft }>('POST', `/drafts/${id}/submit`),
   reviewDraft: (id: string, body: { decision: 'approved' | 'returned'; note?: string; reviewerName: string }) => send<{ data: Draft }>('POST', `/drafts/${id}/review`, body),
