@@ -51,6 +51,10 @@ services:
       TENANT_KEY_PROVIDER: local
       # EM-LTI: issuer tetap (tidak ikut URL tunnel yang berubah); kunci platform ELGOS_LTI_PRIVATE_KEY dari .env (dibuat dev.sh)
       LTI_ISSUER: https://elgos-dev.local
+      # B14: dokumentasi pelatihan offline (foto/video). Tanpa ini unggah menjawab 501 STORAGE_NOT_CONFIGURED.
+      EWI_UPLOAD_DIR: /app/uploads
+    volumes:
+      - uploads:/app/uploads
     deploy:
       resources:
         limits: { cpus: "1", memory: 768m }
@@ -103,3 +107,4 @@ services:
 
 volumes:
   db-data:
+  uploads:

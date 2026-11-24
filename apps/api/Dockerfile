@@ -17,7 +17,9 @@ COPY --from=deps /app/node_modules ./node_modules
 COPY package.json ./
 COPY apps/api ./apps/api
 COPY --chmod=755 apps/api/docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
+# /app/uploads: titik pasang volume EWI_UPLOAD_DIR (B14), dibuat di image supaya volume bernama dimiliki user node.
 RUN rm -rf apps/api/tests apps/api/Dockerfile \
+ && mkdir -p /app/uploads \
  && chmod 755 /app/certs && chmod 644 /app/certs/rds-global-bundle.pem \
  && chown -R node:node /app
 USER node

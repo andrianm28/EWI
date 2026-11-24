@@ -25,7 +25,11 @@ if [ -d /srv/elgos-prod ] && [ "${DEV_ALLOW_ROOTFUL:-0}" != 1 ] \
   exit 1
 fi
 
-dc() { docker compose -p "$PROJECT" -f "$HERE/docker-compose.yml" --env-file "$DEV_ENV_FILE" "$@"; }
+# B19: kunci suara opsional. Bila ada, overlay suara dipasang (mount read-only + env VOICE_*).
+VOICE_KEY_FILE="${VOICE_KEY_FILE:-$HOME/secrets/gcp-voice.json}"
+COMPOSE_FILES=(-f "$HERE/docker-compose.yml")
+if [ -r "$VOICE_KEY_FILE" ]; then export VOICE_KEY_FILE; COMPOSE_FILES+=(-f "$HERE/docker-compose.voice.yml"); fi
+dc() { docker compose -p "$PROJECT" "${COMPOSE_FILES[@]}" --env-file "$DEV_ENV_FILE" "$@"; }
 envval() { sed -n "s/^$1=//p" "$DEV_ENV_FILE" | tail -1; }
 
 free_port() {
