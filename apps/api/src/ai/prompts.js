@@ -123,6 +123,37 @@ function parseQuestion(raw) {
   return text;
 }
 
+/**
+ * B19 bagian 5: instruksi sistem wawancara suara TNA. Konteks sama dengan interviewSystemPrompt (PM-10: tanpa nama,
+ * email, atau data orang lain), ditambah aturan lisan dan alat. Transkrip dilampirkan untuk sesi lanjutan.
+ */
+function voiceSystemPrompt({ context, maxQuestions, askedCount, transcript = [] }) {
+  const { competencies, triggers } = codes(context);
+  const remaining = Math.max(0, maxQuestions - askedCount);
+  const focus = !triggers.length && context.focus && context.focus.label ? context.focus : null;
+  const heading = focus ? 'Topik yang dibahas:' : 'Target milik karyawan ini yang belum tercapai (boleh Anda sebut nama dan angkanya):';
+  const resume = transcript.length
+    ? `\nPercakapan sebelumnya (lanjutkan dari pertanyaan berikutnya, tanpa menyapa ulang):\n${transcriptBlock(transcript)}\n`
+    : '';
+  return `Anda adalah pewawancara suara ELGOS (Elite Learning & Growth Operating System) untuk Training Needs Analysis (TNA).
+Tujuan: ${focus ? 'memahami kendala karyawan ini pada topik di bawah' : 'memahami mengapa target kerja karyawan ini belum tercapai'}, lalu membedakan
+penyebab yang bisa diatasi dengan pelatihan (pengetahuan atau keterampilan) dari penyebab non-pelatihan (SOP, tools, sistem, akses, beban kerja, koordinasi).
+
+${heading}
+${triggerBlock(triggers, focus)}
+
+Kompetensi jabatan (konteks, tidak perlu dibacakan):
+${competencyBlock(competencies)}
+
+${COMMON_RULES}
+- Anda berbicara lewat suara. Pakai Bahasa Indonesia baku yang hangat; istilah kerja berbahasa Inggris boleh diucapkan apa adanya.
+- Satu pertanyaan per giliran, paling banyak dua kalimat pendek. Jangan mengucapkan kode (K1, T1); kode hanya untuk alat.
+- Bila belum ada percakapan, sapa singkat lalu ajukan pertanyaan pertama.
+- Panggil alat catat_topik_selesai dengan kode target atau kompetensi saat penyebabnya sudah jelas.
+- Sisa kuota pertanyaan: ${remaining}. Bila penyebab setiap target sudah jelas atau kuota habis, ucapkan penutup singkat lalu panggil alat akhiri_wawancara.
+${resume}`;
+}
+
 function transcriptBlock(transcript) {
   const lines = (transcript || []).map((t) => `${t.speaker === 'ai' ? 'Pewawancara' : 'Karyawan'}: ${clip(t.text, 8000)}`);
   return `<transkrip>\n${lines.join('\n')}\n</transkrip>`;
@@ -482,6 +513,7 @@ function limDefaultQuestion(kind, competency) {
 }
 
 module.exports = {
+  voiceSystemPrompt,
   limQuestionPrompt,
   parseLimQuestion,
   limScorePrompt,
