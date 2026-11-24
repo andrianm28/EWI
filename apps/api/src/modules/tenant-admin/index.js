@@ -57,6 +57,14 @@ function checkRole(role, actor) {
   if (!allowed.includes(role)) throw badRequest(`Peran harus salah satu dari: ${allowed.join(', ')}`);
 }
 
+const RECOVERY_ONLY = 'Tenant ini sudah punya Admin Tenant aktif. Super Admin hanya memberi peran Admin Tenant untuk memulihkan tenant tanpa pengelola; peran lain diberikan Admin Tenant tersebut.';
+
+/** R8-1: Super Admin memberi tenant_admin hanya bila tenant belum punya Admin Tenant aktif (keputusan user, kartu 24 Nov malam). */
+async function assertRecoveryGrant(req, role, db) {
+  if (req.user.role !== ROLES.ETA_ADMIN || role !== ROLES.TENANT_ADMIN) return;
+  if (await db.hasActiveTenantAdmin(req.tenantId)) throw conflict('TENANT_HAS_ADMIN', RECOVERY_ONLY);
+}
+
 module.exports = {
   key: 'tenant-admin',
   title: 'Admin Tenant',
@@ -139,6 +147,7 @@ module.exports = {
       const name = optionalText(body, 'name', 'Nama', 255);
       if (!name) throw badRequest('Nama wajib diisi');
       checkRole(body.role, req.user);
+      await assertRecoveryGrant(req, body.role, db);
       const employeeId = optionalText(body, 'employeeId', 'ID karyawan', 64);
       const position = await resolvePosition(req, body, null);
       const user = await db.createUser(req.tenantId, { email, name, role: body.role, employeeId, ...position });
@@ -162,7 +171,7 @@ module.exports = {
       }
       if (has(body, 'role')) {
         // peran yang sama dengan sekarang bukan pemberian peran (layar B11 selalu mengirim peran saat mengedit)
-        if (body.role !== current.role) checkRole(body.role, req.user);
+        if (body.role !== current.role) { checkRole(body.role, req.user); await assertRecoveryGrant(req, body.role, db); }
         patch.role = body.role;
       }
       if (has(body, 'employeeId')) patch.employeeId = optionalText(body, 'employeeId', 'ID karyawan', 64);

@@ -101,8 +101,10 @@ run('B2 peran (Postgres)', () => {
       expect([extra, res.status, res.body.error && res.body.error.code]).toEqual([extra, 403, 'ROLE_FORBIDDEN']);
     }
     expect(await rolesOf('dimas')).toEqual(['learner']);
-    expect((await put(u.dimas, { roles: ['learner', 'tenant_admin'], primary: 'learner' }, eta)).status).toBe(200);
-    await put(u.dimas, { roles: ['learner'], primary: 'learner' });
+    // tenant a sudah punya Admin Tenant aktif: Super Admin tidak menambah Admin Tenant (hanya pemulihan, R8-1)
+    const tambah = await put(u.dimas, { roles: ['learner', 'tenant_admin'], primary: 'learner' }, eta);
+    expect([tambah.status, tambah.body.error && tambah.body.error.code]).toEqual([409, 'TENANT_HAS_ADMIN']);
+    expect(await rolesOf('dimas')).toEqual(['learner']);
   });
 
   it('Admin Tenant terakhir tidak bisa dicabut, juga saat dua permintaan datang bersamaan', async () => {

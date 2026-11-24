@@ -42,6 +42,11 @@ function roleRoutes({ userRoles, audit, flags }) {
       if (roles.some((x) => !held.has(x) && x !== ROLES.TENANT_ADMIN)) {
         throw forbidden('ROLE_FORBIDDEN', 'Super Admin hanya bisa memberi peran Admin Tenant. Peran lain diberikan oleh Admin Tenant.');
       }
+      // ...dan hanya untuk memulihkan tenant tanpa Admin Tenant aktif
+      if (roles.includes(ROLES.TENANT_ADMIN) && !held.has(ROLES.TENANT_ADMIN) && userRoles.hasActiveTenantAdmin
+        && await userRoles.hasActiveTenantAdmin(req.tenantId)) {
+        throw new HttpError(409, 'TENANT_HAS_ADMIN', 'Tenant ini sudah punya Admin Tenant aktif. Super Admin hanya memberi peran Admin Tenant untuk memulihkan tenant tanpa pengelola; peran lain diberikan Admin Tenant tersebut.');
+      }
     }
     if (roles.some((x) => !ASSIGNABLE_ROLES.includes(x))) throw badRequest('Ada peran yang tidak dikenal');
     if (!roles.includes(primary)) throw badRequest('primary harus salah satu dari roles');
