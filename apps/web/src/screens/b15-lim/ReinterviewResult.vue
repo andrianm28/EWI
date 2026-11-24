@@ -4,7 +4,8 @@
 // aturan di API (generatedBy 'rules'), jadi layar menulis "Rekomendasi" dan "Tingkat keyakinan" tanpa kata AI.
 import { computed, onMounted, ref } from 'vue'
 import { ApiError } from '@/api/client'
-import { UiButton, UiNote, UiProgressBar, UiStatus, UiStepper } from '@/ui'
+import { UiAuditLine, UiButton, UiNote, UiProgressBar, UiStatus, UiStepper } from '@/ui'
+import { AI_PRODUCT_LABEL } from '@/api/ai'
 import { lim, type ReinterviewResults } from './api'
 import { APPLICATION, CONFIDENCE, COVERAGE, RETENTION, STRENGTH, score, withUnit } from './labels'
 
@@ -87,6 +88,8 @@ const bars = (b: { post: number | null; reinterview: number | null; performance:
         </template>
       </template>
       <div><UiButton variant="outlined" @click="emit('back')">Kembali ke antrean</UiButton></div>
+      <!-- LIM-8: baris audit mockup (M:1111); API mencatat pembukaan hasil ini lewat audit.readIndividual -->
+      <UiAuditLine v-if="latest" :items="[AI_PRODUCT_LABEL, `log audit: ${latest.competencies.length} kompetensi dinilai`, 'dibuka HR tercatat']" />
     </div>
   </section>
 </template>

@@ -12,3 +12,4 @@
 .lim-flow { display: grid; grid-template-columns: minmax(0, 240px) minmax(0, 1fr); gap: 16px; align-items: start; }
 @media (max-width: 720px) { .lim-flow { grid-template-columns: minmax(0, 1fr); } }
 .lim-item { padding: 10px 12px; border: 1px solid var(--el-outline-variant); border-radius: 8px; display: flex; justify-content: space-between; gap: 12px; align-items: center; }
+.lim-fold > summary { cursor: pointer; padding: 8px 0; }

@@ -15,7 +15,7 @@ export const STRENGTH: Record<Strength, { text: string; tone: Tone }> = {
   weak: { text: 'Indikasi lemah', tone: 'warning' }, no_data: { text: 'Belum ada data', tone: 'neutral' },
 }
 export const QUEUE_STATUS: Record<QueueRow['status'], { text: string; tone: Tone }> = {
-  none: { text: 'Belum dijadwalkan', tone: 'warning' }, scheduled: { text: 'Terjadwal', tone: 'info' }, done: { text: 'Selesai', tone: 'success' },
+  none: { text: 'Belum dijadwalkan', tone: 'warning' }, scheduled: { text: 'Dijadwalkan', tone: 'info' }, done: { text: 'Selesai', tone: 'success' },
 }
 // Tahap 3: temuan benchmark (mockup Pak Eji, fungsi limFind) dan tingkat keyakinan
 export const RETENTION: Record<Retention, { title: string; text: string; tone: Tone }> = {
