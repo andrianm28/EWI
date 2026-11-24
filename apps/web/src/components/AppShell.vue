@@ -44,8 +44,9 @@ const extras = Object.entries(import.meta.glob<{ default: Component }>('@/screen
       <AppTopBar :drawer-open="drawerOpen" @toggle-drawer="drawerOpen = !drawerOpen" />
       <main id="isi" class="el-app__content" tabindex="-1"><slot /></main>
     </div>
-    <!-- Tambahan shell (mis. Asisten ELGOS) melayang di atas scrim; disembunyikan selama drawer melayang terbuka -->
-    <div v-show="!(drawerOpen && narrow)" :inert="drawerOpen && narrow">
+    <!-- Tambahan shell (mis. Asisten ELGOS) melayang di atas scrim; disembunyikan selama drawer melayang terbuka.
+         Satu kolom di kanan bawah supaya tambahan paket tidak saling menutupi (P9 CD-2); ShellExtra tidak memakai position fixed sendiri. -->
+    <div v-show="!(drawerOpen && narrow)" class="el-app__extras" :inert="drawerOpen && narrow">
       <component :is="x.component" v-for="x in extras" :key="x.path" />
     </div>
   </div>
@@ -57,6 +58,11 @@ const extras = Object.entries(import.meta.glob<{ default: Component }>('@/screen
 .el-app__content { padding: 24px; max-width: 1280px; width: 100%; }
 .el-app__content:focus { outline: none; }
 .el-app__scrim { display: none; }
+.el-app__extras {
+  position: fixed; right: 24px; bottom: 24px; z-index: 50; display: flex; flex-direction: column; align-items: flex-end;
+  gap: 12px; max-height: calc(100vh - 48px); pointer-events: none;
+}
+.el-app__extras > * { pointer-events: auto; }
 @media (max-width: 900px) {
   .el-app__content { padding: 16px; }
   .el-app__scrim { display: block; position: fixed; inset: 0; background: var(--el-scrim); z-index: 30; }

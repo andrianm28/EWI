@@ -137,16 +137,16 @@ onMounted(async () => {
 
 <style>
 .b17-fab {
-  position: fixed; right: 24px; bottom: 24px; width: 56px; height: 56px; border-radius: 28px; border: 0;
+  flex: 0 0 auto; width: 56px; height: 56px; border-radius: 28px; border: 0;
   background: var(--el-primary); color: var(--el-on-primary); box-shadow: var(--el-shadow);
-  display: flex; align-items: center; justify-content: center; z-index: 50; cursor: pointer;
+  display: flex; align-items: center; justify-content: center; cursor: pointer;
 }
 .b17-fab:hover { filter: brightness(1.15); }
 .b17-asst {
-  position: fixed; right: 24px; bottom: 24px; width: 380px; max-width: calc(100vw - 32px); height: 560px;
-  max-height: calc(100vh - 48px); background: var(--el-surface-card); border: 1px solid var(--el-outline-variant);
-  border-radius: 20px; box-shadow: 0 8px 24px rgb(0 0 0 / 0.25); display: flex; flex-direction: column; z-index: 50;
-  overflow: hidden;
+  /* tinggi 560 px, menyusut di dalam kolom tambahan shell (AppShell) bila layar pendek atau ada pengingat lain */
+  flex: 0 1 560px; min-height: 0; width: 380px; max-width: calc(100vw - 32px); background: var(--el-surface-card);
+  border: 1px solid var(--el-outline-variant); border-radius: 20px; box-shadow: 0 8px 24px rgb(0 0 0 / 0.25);
+  display: flex; flex-direction: column; overflow: hidden;
 }
 .b17-asst__hd {
   padding: 14px 16px; background: var(--el-primary); color: var(--el-on-primary);
