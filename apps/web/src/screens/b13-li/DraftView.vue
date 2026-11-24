@@ -6,11 +6,13 @@ import AppShell from '@/components/AppShell.vue'
 import './li.css'
 import { ApiError } from '@/api/client'
 import { UiAuditLine, UiBreadcrumb, UiButton, UiCard, UiChip, UiErrorSummary, UiField, UiIcon, UiNote, UiStepper } from '@/ui'
+import { useSessionStore } from '@/stores/session'
 import { li, type Draft } from './api'
 import { DRAFT_LABEL, KIND_LABEL, LEVEL_LABEL } from './labels'
 
 const route = useRoute()
 const router = useRouter()
+const session = useSessionStore()
 const draft = ref<Draft | null>(null)
 const error = ref('')
 const notice = ref('')
@@ -31,10 +33,12 @@ const AUTO_SAVED = 'Perubahan disimpan otomatis.'
 const content = (d: Draft) => JSON.stringify({ objectives: d.objectives, sessions: d.sessions, assessments: d.assessments })
 const saved = ref('')
 const dirty = computed(() => !!draft.value && editable.value && content(draft.value) !== saved.value)
-onBeforeRouteLeave(async () => {
-  if (!dirty.value) return true
+// P9 CD-1: keluar, sesi habis, atau tujuan rute publik (login) tidak menyimpan dan tidak pernah ditahan;
+// simpan yang gagal karena sesi berakhir (401) juga tidak menahan navigasi ke login.
+onBeforeRouteLeave(async (to) => {
+  if (!dirty.value || !session.isAuthenticated || to.meta.public) return true
   await save(AUTO_SAVED)
-  return !error.value
+  return !error.value || !session.isAuthenticated
 })
 // menutup tab atau memuat ulang: hanya peringatan bawaan peramban
 const onUnload = (e: BeforeUnloadEvent) => { if (dirty.value) e.preventDefault() }
