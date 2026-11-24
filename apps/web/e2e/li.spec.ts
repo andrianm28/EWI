@@ -308,9 +308,12 @@ test('P6 Library: respons filter yang basi tidak menimpa pilihan terbaru', async
   await page.goto('/lib')
   const prio = page.getByTestId('filter-modul').getByRole('group', { name: 'Prioritas' })
   await expect(page.getByTestId('jumlah-modul')).toHaveText('2 dari 2 modul')
+  // P9 IR-6: tunggu respons Pareto yang lambat (800 ms) benar-benar tiba, bukan jeda waktu tetap
+  const pareto = page.waitForResponse((r) => r.url().includes('/api/li/modules') && r.url().includes('priority=pareto'))
   await prio.getByRole('button', { name: 'Prioritas Pareto saja' }).click()
   await prio.getByRole('button', { name: 'Semua modul' }).click()
-  await page.waitForTimeout(1200) // respons Pareto (lambat 800 ms) tiba setelah respons "Semua modul"
+  await (await pareto).finished()
+  await page.evaluate('new Promise((ok) => requestAnimationFrame(() => requestAnimationFrame(ok)))')
   await expect(page.getByTestId('jumlah-modul')).toHaveText('2 dari 2 modul')
 })
 
