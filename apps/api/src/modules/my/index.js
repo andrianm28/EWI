@@ -10,12 +10,13 @@ const { deliveryFor } = require('../../core/settings');
 const { forbidden } = require('../../core/errors');
 const { currentConsentVersion } = require('../../core/consent');
 const { computeGap } = require('../dna/gap');
+const { binderCookie } = require('../lti');
 const { competencyView, safeLaunchUrl, inviteActions, PLAN_VISIBLE } = require('./view');
 
 const wrap = (fn) => (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
 const OPEN = ['scheduled', 'in_progress'];
 
-function myRouter({ stores, flags, entitlements, settings, audit }) {
+function myRouter({ stores, flags, entitlements, settings, audit, lti, appBaseUrl }) {
   const r = express.Router();
   r.use(requireFlag(flags, FLAGS.LEARNER_HOME, 'Beranda karyawan belum diaktifkan untuk organisasi Anda'));
   const active = (req, key) => submoduleActive({ entitlements, flags }, req.tenantId, key);
@@ -66,6 +67,10 @@ function myRouter({ stores, flags, entitlements, settings, audit }) {
   r.get('/learning-plan', wrap(async (req, res) => {
     if (!(await active(req, 'tna'))) throw forbidden('FEATURE_DISABLED', 'Rencana belajar belum diaktifkan untuk organisasi Anda');
     const [items, conf] = await Promise.all([visiblePlan(req), settings.get(req.tenantId)]);
+    // EM-LTI §3.5: tombol EliteMentor (LTI) bila flag em.lti menyala dan tool aktif
+    const ltiOn = Boolean(lti && (await lti.available(req.tenantId)));
+    const links = ltiOn ? await stores.lti.linksForUser(req.tenantId, req.user.id) : { byPlanItem: new Map(), offline: [] };
+    const ltiOf = (link, offline) => (link ? { linkId: link.id, label: offline ? 'Ujian di EliteMentor' : 'Belajar dengan EliteMentor' } : null);
     const data = items.map((p) => ({
       id: p.id,
       title: p.catalogItemTitle || p.findingTitle || 'Modul sedang disiapkan',
@@ -80,9 +85,28 @@ function myRouter({ stores, flags, entitlements, settings, audit }) {
       needsModule: Boolean(p.needsModule),
       where: deliveryFor(conf, p.catalogSource),
       launchUrl: safeLaunchUrl(p.catalogItemUrl),
+      lti: ltiOf(links.byPlanItem.get(p.id), false),
     }));
+    for (const t of links.offline) {
+      data.push({
+        id: t.trainingId, title: t.title, description: null, level: t.programTier ?? null, mode: 'Offline', code: t.courseRef, status: 'new',
+        courseStatus: null, courseScore: null, reason: null, needsModule: false,
+        where: { target: 'elitementor', label: ['Workshop offline', t.startsOn, t.venue, t.vendorName].filter(Boolean).join(' · ') },
+        launchUrl: null, lti: ltiOf(t, true),
+      });
+    }
     await audit.readIndividual(req, 'my.learning_plan', { employeeIds: data.length ? [req.user.id] : [], objectType: 'tna_plan_item', objectIds: data.map((p) => p.id) });
     res.json({ data, delivery: deliveryFor(conf, null) });
+  }));
+
+  // EM-LTI §3.1: mulai peluncuran EliteMentor untuk diri sendiri. Jawaban: URL login tool + cookie pengikat untuk authorize.
+  r.post('/elitementor/launch', wrap(async (req, res) => {
+    if (!lti) throw forbidden('FEATURE_DISABLED', 'EliteMentor lewat LTI belum diaktifkan untuk organisasi Anda');
+    if (!(await active(req, 'tna'))) throw forbidden('FEATURE_DISABLED', 'Rencana belajar belum diaktifkan untuk organisasi Anda');
+    const { url, binder } = await lti.startLaunch({ tenantId: req.tenantId, userId: req.user.id, linkId: (req.body || {}).linkId });
+    res.set('Cache-Control', 'no-store');
+    res.append('Set-Cookie', binderCookie(binder, appBaseUrl || ''));
+    res.json({ data: { url } });
   }));
 
   return r;

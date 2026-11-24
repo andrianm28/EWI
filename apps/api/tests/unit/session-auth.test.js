@@ -39,8 +39,8 @@ describe('PD-10 ★B: login password hanya di luar produksi', () => {
     const res = await login(app);
     expect(res.status).toBe(404);
     expect(res.body.error.message).toMatch(/link email/);
-    expect((await request(app).get('/api/auth/methods')).body).toEqual({ password: false, emailLink: true, sso: false });
-    expect((await request(build()).get('/api/auth/methods')).body).toEqual({ password: true, emailLink: true, sso: false });
+    expect((await request(app).get('/api/auth/methods')).body).toEqual({ password: false, emailLink: true, sso: false, tenantPicker: false });
+    expect((await request(build()).get('/api/auth/methods')).body).toEqual({ password: true, emailLink: true, sso: false, tenantPicker: false });
   });
 
   it('TRUST_PROXY divalidasi', () => {

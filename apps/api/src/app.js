@@ -40,6 +40,8 @@ const { createCatalogService, elitementorAdapter, moodleAdapter } = require('./i
 const tenantAdmin = require('./modules/tenant-admin');
 const { createStorage } = require('./integrations/storage');
 const { createLdSync } = require('./modules/ld/sync');
+const { loadPlatformKey, createJwksClient } = require('./integrations/elitementor/lti/keys');
+const { createLtiService, ltiPublicRouter, ltiAssignmentAdapter } = require('./modules/lti');
 const { createPlatformService } = require('./modules/platform/service');
 const { createProvider } = require('./core/crypto');
 const { withOnboardingClient } = require('./core/tenant/client');
@@ -55,7 +57,7 @@ const SUBMODULE_MODULES = ['cca', 'dna', 'tna', 'ina', 'li', 'ld', 'lim'].map((k
  * stores: { users, flags, audit, entitlements, projects, people, settings, dna, interviews, tna, projectsExtra }
  * ai / catalog / assignments / storage bisa diganti di test; default mengikuti config (AI_PROVIDER, PK-06; K-1 masih terbuka).
  */
-function createApp({ config, stores, ai, catalog, mailer, rateLimits, readiness, assignments, storage, voiceProvider }) {
+function createApp({ config, stores, ai, catalog, mailer, rateLimits, readiness, assignments, storage, ltiFetch, voiceProvider }) {
   const app = express();
   const tokens = createTokenService(config.jwt);
   const flags = createFlagService(stores.flags);
@@ -105,6 +107,12 @@ function createApp({ config, stores, ai, catalog, mailer, rateLimits, readiness,
   const em = config.elitementor || {};
   deps.assignments = assignments
     || (em.assignmentsEnabled && em.baseUrl && em.tokenUrl ? createAssignmentService({ client: createElitementorClient(em) }) : null);
+  // EM-LTI (ADR 0003): ELGOS sebagai LTI 1.3 Platform. Kunci dari env; tanpa kunci di produksi rute LTI menjawab 503.
+  const ltiConf = config.lti || { issuer: config.appBaseUrl, privateKey: '' };
+  const ltiKey = stores.lti ? loadPlatformKey({ pem: ltiConf.privateKey, production: config.nodeEnv === 'production', log: config.nodeEnv === 'test' ? () => {} : undefined }) : null;
+  const lti = stores.lti ? createLtiService({ stores, flags, key: ltiKey, config: { ...config, lti: ltiConf }, secret: config.jwt.secret }) : null;
+  deps.lti = lti;
+  deps.ltiAssignments = lti ? ltiAssignmentAdapter({ stores, service: lti }) : null;
   // PK-14: analisis wawancara berjalan di latar. app.locals.analysis dipakai server (penyapu) dan test (drain).
   deps.analysis = createAnalysisRunner({ stores, ai: deps.ai, aiConfig: deps.aiConfig });
   app.locals.analysis = deps.analysis;
@@ -157,6 +165,12 @@ function createApp({ config, stores, ai, catalog, mailer, rateLimits, readiness,
       requireFlag(flags, FLAGS.PLATFORM_CONSOLE, 'Konsol platform belum diaktifkan'), platformRouter({ service: platform, settings: settingsView, platformLog, limits }));
   }
 
+  if (lti) {
+    app.use('/api/lti', ltiPublicRouter({
+      service: lti, stores, flags, entitlements, key: ltiKey, jwksClient: createJwksClient(ltiFetch ? { fetchImpl: ltiFetch } : {}), config: { ...config, lti: ltiConf }, audit,
+    }));
+  }
+
   const api = express.Router();
   api.use(auth, tenantContext());
   api.get('/me/access', async (req, res, next) => {
@@ -177,7 +191,7 @@ function createApp({ config, stores, ai, catalog, mailer, rateLimits, readiness,
   api.use('/sessions', sessionRoutes({ sessions, audit }));
   if (stores.people && stores.interviews) api.use('/employees', denyEmployeeContent, employeeRouter({ stores, flags, audit, voice: deps.voice }));
   // B8: beranda karyawan. Bukan submodul; tiap bagian memeriksa modulnya sendiri (flag learner.home).
-  if (stores.people && stores.dataRequests) api.use('/my', myRouter({ stores, flags, entitlements, settings, audit }));
+  if (stores.people && stores.dataRequests) api.use('/my', myRouter({ stores, flags, entitlements, settings, audit, lti, appBaseUrl: config.appBaseUrl }));
   // B17: Asisten ELGOS. Bukan submodul; tiap penyusun fakta memeriksa modulnya sendiri (flag assistant).
   if (stores.people && stores.assistant) api.use('/assistant', denyEmployeeContent, assistantRouter({ ...deps, entitlements }));
   // B3: dashboard lintas modul. Bukan submodul; di balik flag sendiri dan tiap bagian mengikuti modul sumbernya.

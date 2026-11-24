@@ -30,6 +30,21 @@ async function load() {
   } finally { loading.value = false }
 }
 onMounted(load)
+
+// EM-LTI: luncurkan modul EliteMentor (LTI 1.3). Tab yang sama: API memberi URL login tool, lalu tool kembali ke ELGOS.
+const launching = ref<string | null>(null)
+const launchError = ref('')
+async function launch(c: LearningCard) {
+  if (!c.lti || launching.value) return
+  launching.value = c.id; launchError.value = ''
+  try {
+    const r = await lna.launchElitementor(c.lti.linkId)
+    window.location.assign(r.data.url)
+  } catch (e) {
+    launchError.value = e instanceof ApiError ? e.message : 'EliteMentor tidak bisa dibuka. Coba lagi.'
+    launching.value = null
+  }
+}
 </script>
 
 <template>
@@ -45,6 +60,8 @@ onMounted(load)
       <UiErrorSummary :errors="[{ message: error }]" />
       <UiButton variant="outlined" size="sm" :disabled="loading" @click="load">Coba lagi</UiButton>
     </template>
+    <!-- role="alert" diumumkan pembaca layar saat disisipkan; tanpa galat tidak ada alert di halaman (uji demo-alur) -->
+    <div v-if="launchError" role="alert"><UiNote tone="critical" class="b8-gap">{{ launchError }}</UiNote></div>
     <p v-if="cards && !cards.length" class="el-muted">Belum ada rencana belajar. Modul akan muncul di sini setelah HR menyetujui hasil wawancara Anda.</p>
     <div v-if="cards?.length" class="b8-grid">
       <UiCard v-for="c in cards" :key="c.id" :data-testid="`li-card-${c.id}`" class="b8-card">
@@ -61,7 +78,9 @@ onMounted(load)
         <p class="el-muted b8-small">{{ c.where.label }}</p>
         <div class="b8-row b8-between">
           <span v-if="c.code" class="b8-mono">{{ c.code }}</span><span v-else />
-          <template v-if="!c.needsModule">
+          <UiButton v-if="c.lti" size="sm" icon="smart_toy" :disabled="launching !== null" :aria-busy="launching === c.id ? 'true' : undefined"
+            :data-testid="`li-lti-${c.id}`" @click="launch(c)">{{ launching === c.id ? 'Membuka EliteMentor…' : c.lti.label }}</UiButton>
+          <template v-else-if="!c.needsModule">
             <a v-if="c.launchUrl" :href="c.launchUrl" target="_blank" rel="noopener noreferrer" class="el-btn el-btn--filled el-btn--sm">
               <UiIcon v-if="c.where.target === 'elitementor'" name="smart_toy" :size="18" />{{ launchLabel(c) }}<span class="el-sr-only"> (tab baru)</span>
             </a>

@@ -8,7 +8,7 @@ const { badRequest } = require('../../core/errors');
  */
 async function validateRows(kind, rows, { stores, tenantId, options = {} }) {
   if (kind.checkOptions) {
-    const err = kind.checkOptions(options);
+    const err = kind.checkOptions(options, rows);
     if (err) throw badRequest(err);
   }
   const ctx = kind.context ? await kind.context({ stores, tenantId, rows, options }) : {};

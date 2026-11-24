@@ -166,7 +166,7 @@ run('B8 karyawan (Postgres)', () => {
       expect(cards.find((c) => c.code === 'MDL-7')).toEqual({
         id: expect.any(String), title: 'SLA Lanjutan', description: null, level: 'intermediate', mode: null, code: 'MDL-7', status: 'completed',
         courseStatus: 'passed', courseScore: 88, reason: 'Belum paham SLA', needsModule: false,
-        where: { target: 'lms', label: 'Moodle Elitery' }, launchUrl: 'https://moodle.test/course/7',
+        where: { target: 'lms', label: 'Moodle Elitery' }, launchUrl: 'https://moodle.test/course/7', lti: null,
       });
       expect(cards.find((c) => c.code === 'MDL-8').launchUrl).toBeNull();
       expect(cards.find((c) => c.code === 'EM-1').where).toEqual({ target: 'elitementor', label: 'EliteMentor' });

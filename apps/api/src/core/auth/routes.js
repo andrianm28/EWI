@@ -32,9 +32,10 @@ function authRoutes({ users, sessions, policy, audit, requireAuth, limits, attem
     res.json({ data: await users.listActiveTenants() });
   }));
 
-  // Web menampilkan form password hanya bila API mengizinkan.
+  // Web menampilkan form password hanya bila API mengizinkan. C10 demo 25 Nov: `tenantPicker` memberi tahu web apakah
+  // GET /tenants tersedia, supaya halaman login tidak memanggil endpoint yang menjawab 404.
   r.get('/methods', wrap(async (req, res) => {
-    res.json({ password: localLogin, emailLink: true, sso: !!(await ssoTenant(req.query.tenant)) });
+    res.json({ password: localLogin, emailLink: true, sso: !!(await ssoTenant(req.query.tenant)), tenantPicker: Boolean(tenantPicker && users.listActiveTenants) });
   }));
 
   // B1: kerangka SSO. IdP belum ada, jadi organisasi yang flag-nya menyala mendapat 501 (tercatat di audit).

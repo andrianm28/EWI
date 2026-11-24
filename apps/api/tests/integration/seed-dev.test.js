@@ -132,6 +132,92 @@ run('seed-dev: tenant demo untuk demo langsung (Postgres)', () => {
     expect(mine.find((x) => x.planId === ids.planId)?.status).toBe('open');
   });
 
+  // ---------- Gap demo 25 Nov (daftar-gap-25nov.md, kelompok B) ----------
+  test('B1: draf SD-B1 berbentuk kontrak generateDraft (tujuan {kind,text} terukur, asesmen dengan cakupan)', async () => {
+    const drafts = (await get('hr', '/li/drafts').expect(200)).body.data;
+    const rca = drafts.find((d) => d.moduleCode === 'SD-B1');
+    const d = (await get('hr', `/li/drafts/${rca.id}`).expect(200)).body.data;
+    expect(d.objectives.length).toBeGreaterThan(0);
+    for (const o of d.objectives) {
+      expect(['K', 'S', 'A']).toContain(o.kind);
+      expect(o.text).toMatch(/\d/); // terukur: tidak ada galat merah "belum terukur"
+    }
+    for (const a of d.assessments) {
+      expect(['K', 'S', 'A']).toContain(a.kind);
+      expect(Number.isInteger(a.objectives)).toBe(true); // bukan "undefined tujuan tercakup"
+    }
+    // simpan ulang isi yang sama diterima API (sebelumnya 400 "Tipe tujuan harus K, S, atau A")
+    await request(app).put(`/api/li/drafts/${d.id}`).set({ Authorization: `Bearer ${tok.hr}` })
+      .send({ objectives: d.objectives, sessions: d.sessions, assessments: d.assessments }).expect(200);
+  });
+
+  test('B1/B5: seed ulang memperbaiki data seed lama di staging (draf berisi string, Budi sudah ditugaskan)', async () => {
+    const { rows: [d] } = await c.query(`SELECT d.id FROM li_module_drafts d JOIN li_modules m ON m.id = d.module_id WHERE d.tenant_id = $1 AND m.code = 'SD-B1'`, [ids.tenantId]);
+    await c.query(`UPDATE li_module_drafts SET objectives = '["Menjelaskan langkah 5 Whys pada insiden P2"]'::jsonb WHERE id = $1`, [d.id]);
+    const { rows: [lead] } = await c.query(`SELECT id FROM cca_assignments WHERE tenant_id = $1 AND assignee_id = $2 AND tier = 'leader'`, [ids.tenantId, ids.spvId]);
+    await c.query(`INSERT INTO cca_assignments (tenant_id, assignee_id, assigned_by, tier, parent_id, due_date, status, created_at)
+                   VALUES ($1, $2, $3, 'employee', $4, '2026-12-01', 'assigned', '2026-11-24T10:00:00Z')`, [ids.tenantId, ids.memberIds[2], ids.spvId, lead.id]);
+    await seedDev(c, { password: SANDI, stores, slug: SLUG, env: { NODE_ENV: 'test' } });
+    const draft = (await get('hr', `/li/drafts/${d.id}`).expect(200)).body.data;
+    expect(draft.objectives.every((o) => typeof o === 'object' && ['K', 'S', 'A'].includes(o.kind))).toBe(true);
+    const team = (await get('spv', '/cca/assignments').expect(200)).body.data.team;
+    expect(team.find((m) => m.name === 'Budi').status).toBe('none');
+  }, 60000);
+
+  test('B2: HR dan Atasan bisa beralih ke Karyawan (saya); Admin Tenant ke HR dan Karyawan', async () => {
+    const views = async (who) => (await get(who, '/me/access').expect(200)).body.roles.map((r) => r.view).sort();
+    expect(await views('hr')).toEqual(['hr', 'karyawan']);
+    expect(await views('spv')).toEqual(['atasan', 'karyawan']);
+    expect(await views('admin')).toEqual(['admin', 'hr', 'karyawan']);
+  });
+
+  test('B3: keputusan promosi berisi satu menunggu HR (Setujui), satu menunggu atasan (Rekomendasikan), satu belum memenuhi', async () => {
+    const hr = (await get('hr', '/dna/career/decisions').expect(200)).body.data;
+    const byName = (rows, name) => rows.find((x) => x.employee.name === name);
+    expect(byName(hr, 'Learner Demo')).toMatchObject({ eligible: true, actions: ['approve', 'hold'] });
+    expect(byName(hr, 'Budi')).toMatchObject({ eligible: true, actions: [], blockedReason: 'waiting_supervisor' });
+    expect(byName(hr, 'Rina')).toMatchObject({ eligible: false });
+    const spv = (await get('spv', '/dna/career/decisions').expect(200)).body.data;
+    expect(byName(spv, 'Budi')).toMatchObject({ actions: ['recommend', 'hold'] });
+    // rekomendasi Learner Demo berasal dari atasannya sendiri (RG-3: atasan melihat timnya)
+    expect(byName(spv, 'Learner Demo')).toMatchObject({ supervisor: { decision: 'recommend' } });
+  });
+
+  test('B4/B5/B7: CC punya pimpinan belum ditugaskan, anggota tim belum ditugaskan dan belum mulai, persyaratan Misi, indikator Integritas, program nilai', async () => {
+    const hr = (await get('hr', '/cca/assignments').expect(200)).body.data;
+    expect(hr.leaders.some((l) => l.status === 'none')).toBe(true);
+    const spv = (await get('spv', '/cca/assignments').expect(200)).body.data;
+    expect(spv.canAssign).toBe(true);
+    const status = Object.fromEntries(spv.team.map((m) => [m.name, m.status]));
+    expect(status).toMatchObject({ Budi: 'none', Rina: 'assigned', Dimas: 'completed' });
+    expect(JSON.stringify((await get('hr', '/cca/overview').expect(200)).body)).toContain('Keandalan pemulihan layanan');
+    expect(JSON.stringify((await get('hr', '/cca/overview?group=values').expect(200)).body)).toContain('Melaporkan insiden apa adanya');
+    const programs = (await get('hr', '/cca/programs').expect(200)).body.data;
+    expect(programs.map((p) => p.key)).toContain('nilai-2026');
+    const report = (await get('hr', '/cca/programs/nilai-2026/report').expect(200)).body.data;
+    expect(report.kpis.registered).toBe(4);
+    expect(report.kpis.completed).toBeLessThan(4); // ada yang belum selesai: tombol "Wawancarai karyawan yang belum selesai"
+  });
+
+  test('B6: Program & Course punya course Advanced, satu untuk Kembangkan dan satu untuk Minta', async () => {
+    const adv = (await get('hr', '/li/programs?level=advanced').expect(200)).body.data;
+    const mods = adv.groups.flatMap((g) => g.modules);
+    expect(mods.length).toBeGreaterThanOrEqual(2);
+    const open = mods.filter((m) => m.status.key === 'none');
+    expect(open.map((m) => m.recommendation).sort()).toEqual(expect.arrayContaining(['dev', 'vendor']));
+  });
+
+  test('B8/C6: LD punya data Kirim pengingat, Kirim ajakan, Minta konfirmasi, Lihat program; LIM punya jadwal belum mulai', async () => {
+    const dash = (await get('hr', '/ld/dashboard').expect(200)).body.data;
+    expect(dash.actions.some((a) => a.kind === 'remind')).toBe(true);
+    const trainings = JSON.stringify((await get('hr', '/ld/trainings').expect(200)).body.data);
+    expect(trainings).toContain('Komunikasi insiden ke pelanggan');
+    expect(trainings).toContain('Root Cause Analysis (angkatan 2)');
+    expect(trainings).toContain('ITIL Foundation (angkatan 2)');
+    const antrean = (await get('hr', `/lim/plans/${ids.planId}/queue`).expect(200)).body.data;
+    expect(antrean.find((x) => x.userId === ids.memberIds[1])).toMatchObject({ status: 'scheduled' });
+  });
+
   test('Super Admin tidak membaca isi karyawan walau tenant demo menyalakan semua modul', async () => {
     for (const path of ['/dashboard', '/tna/review', '/ina/access/me', '/ina/actions']) {
       const res = await get('eta', path);

@@ -275,6 +275,23 @@ test('PK-23 HR: perpanjang undangan, temuan di luar pelatihan, status rencana K-
   expect(extended).toEqual({ days: 7 })
 })
 
+test('C2 demo 25 Nov HR: temuan non-training tidak tampil di Kebutuhan training dan tanpa tombol Buat training plan', async ({ page }) => {
+  await page.route('**/api/tna/dashboard', (r) => r.fulfill({ json: { data: { role: 'hr_admin', people: null, redTargets: 0, sessions: {}, trainingFindings: 1, planItems: {} } } }))
+  await page.route('**/api/tna/findings', (r) => r.fulfill({ json: { data: [
+    { id: 'f-tr', userId: 'd', userName: 'Dimas', category: 'training', title: 'Belum paham SLA', status: 'open', competencyName: null, metricName: null, target: null, actual: null },
+    { id: 'f-nt', userId: 'd', userName: 'Dimas', category: 'non_training', title: 'Tools Pandu lambat', status: 'open', competencyName: null, metricName: null, target: null, actual: null },
+  ] } }))
+  for (const path of ['plan-items', 'sessions', 'pareto']) await page.route(`**/api/tna/${path}`, (r) => r.fulfill({ json: { data: [] } }))
+  await page.route('**/api/tna/job-roles', (r) => r.fulfill({ json: { data: [], defaults: { scope: 'red_only', jobRoleId: null } } }))
+  await page.route('**/api/projects', (r) => r.fulfill({ json: { data: [] } }))
+  await loginAs(page, 'hr_admin', 'u-hr')
+  await page.goto('/m/tna')
+  const list = page.getByTestId('tna-findings')
+  await expect(list).toContainText('Belum paham SLA')
+  await expect(list).not.toContainText('Tools Pandu lambat')
+  await expect(list.getByRole('button', { name: 'Buat training plan' })).toHaveCount(1)
+})
+
 test('PM-6 atasan: temuan di luar pelatihan tampil hanya bila HR memberi akses', async ({ page }) => {
   let access = false
   await page.route('**/api/tna/dashboard', (r) => r.fulfill({ json: { data: { role: 'supervisor', people: 2, redTargets: 1, sessions: {}, trainingFindings: 0, planItems: {} } } }))

@@ -264,6 +264,27 @@ test('P9 CD-4: akun multi-peran (atasan utama + HR) di tampilan HR melihat catat
   await expect(page.getByTestId('tna-review-banner').getByRole('link', { name: 'Review' })).toHaveAttribute('href', '/m/tna/review')
 })
 
+test('C3 demo 25 Nov: hitungan banner review dimuat ulang saat galat sesaat dan saat kembali ke halaman', async ({ page }) => {
+  await setup(page, { flags: BOARD, reviewPending: 3 })
+  let calls = 0; let pending = 2
+  await page.route('**/api/tna/dashboard', (r) => {
+    calls += 1
+    if (calls === 1) return r.fulfill({ status: 500, json: { error: { code: 'INTERNAL', message: 'galat sesaat' } } })
+    return r.fulfill({ json: { data: { role: 'hr_admin', people: null, redTargets: 1, sessions: {}, trainingFindings: 0, planItems: {}, reviewPending: pending } } })
+  })
+  await page.goto('/tna')
+  const note = page.getByTestId('tna-review-ringkas')
+  await expect(note).toContainText('2 temuan AI dari wawancara TNA menunggu review')
+  // antrean berubah di tab lain (klasifikasi); kembali ke halaman memuat ulang hitungan
+  pending = 1
+  // string, bukan fungsi: tsconfig e2e tanpa lib dom (document/window tidak dikenal vue-tsc)
+  await page.evaluate("document.dispatchEvent(new Event('visibilitychange'))")
+  await expect(note).toContainText('1 temuan AI dari wawancara TNA menunggu review')
+  pending = 0
+  await page.evaluate("window.dispatchEvent(new Event('focus'))")
+  await expect(note).toHaveCount(0)
+})
+
 test('P5 triase M1: tanpa temuan menunggu review, catatan tidak tampil', async ({ page }) => {
   await setup(page, { flags: BOARD })
   await page.goto('/tna')

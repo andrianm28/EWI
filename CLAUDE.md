@@ -11,8 +11,10 @@ Nama produk: **ELGOS** (Elite Learning & Growth Operating System). EWI adalah na
 ## Aturan arsitektur (wajib)
 
 1. ELGOS punya database sendiri (tabel di schema `ewi`). Tidak ada akses ke database EliteMentor;
-   integrasi hanya lewat `src/integrations/elitementor` (API OAuth2 + webhook HMAC).
-2. Setiap query data bisnis memfilter `tenant_id` dari `req.tenantId`, tidak pernah dari body/query.
+   integrasi hanya lewat `src/integrations/elitementor` (API OAuth2 + webhook HMAC) atau LTI 1.3 Platform
+   (`src/integrations/elitementor/lti` + `src/modules/lti`, ADR 0003).
+2. Setiap query data bisnis memfilter `tenant_id` dari `req.tenantId`, tidak pernah dari body/query. Pengecualian:
+   rute LTI publik mengambil tenant dari tiket peluncuran/token AGS di server (ADR 0003); konsol platform (ADR 0002).
 3. Endpoint submodul dipasang lewat `requireSubmodule()` (entitlement + flag). Fitur baru di balik flag
    baru di `src/core/flags`, default mati.
 4. Visibilitas data karyawan lewat `visibleEmployeeScope()` (RG-3): learner dirinya, atasan timnya, HR semua.

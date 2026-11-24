@@ -1,5 +1,5 @@
 // B9: aturan murni Improvement Needs dan port AI verifikasi.
-const { canTransition, kpis, isOverdue, isDate, isUuid, CATEGORIES } = require('../../src/modules/ina/domain');
+const { canTransition, kpis, isOverdue, isDate, isUuid, CATEGORIES, inferCategory } = require('../../src/modules/ina/domain');
 const { createVerificationAi, classify, defaultSummary, MAX_QUESTIONS } = require('../../src/modules/ina/verification-ai');
 const { inaAccess, requireLevel } = require('../../src/modules/ina/access');
 
@@ -129,5 +129,23 @@ describe('INA akses (K1 = PM-6)', () => {
     await expect(requireLevel(req('learner'), stores(false), ['manage', 'read'])).rejects.toMatchObject({ status: 403, code: 'ROLE_FORBIDDEN' });
     await expect(requireLevel(req('pimpinan'), stores(false), ['manage'])).rejects.toMatchObject({ status: 403, code: 'ROLE_FORBIDDEN' });
     expect((await requireLevel(req('hr_admin'), stores(false), ['manage'])).level).toBe('manage');
+  });
+});
+
+describe('inferCategory (C1 demo 25 Nov: tindakan dari serah temuan TNA)', () => {
+  it('menebak kategori dari kata kunci judul, tanpa kata kunci -> lainnya', () => {
+    expect(inferCategory('SOP eskalasi tiket belum jelas')).toBe('sop');
+    expect(inferCategory('Akses aplikasi ticketing sering terputus')).toBe('sistem');
+    expect(inferCategory('Headset dan perangkat rusak')).toBe('alat');
+    expect(inferCategory('Kurang motivasi setelah reorganisasi')).toBe('budaya');
+    expect(inferCategory('Ragu-ragu')).toBe('lainnya');
+    expect(inferCategory(null)).toBe('lainnya');
+  });
+  it('mencocokkan kata utuh, bukan potongan kata', () => {
+    expect(inferCategory('Persistem')).toBe('lainnya');
+    expect(inferCategory('Prosedural')).toBe('lainnya');
+  });
+  it('selalu menghasilkan kategori yang valid', () => {
+    for (const t of ['sop', 'alat', 'x']) expect(CATEGORIES).toContain(inferCategory(t));
   });
 });

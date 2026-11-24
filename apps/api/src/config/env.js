@@ -83,6 +83,11 @@ function loadConfig(env = process.env) {
       // B7: penugasan course ke EliteMentor. Kontrak FR-EM belum final, jadi mati sampai dinyalakan dengan sengaja.
       assignmentsEnabled: env.ELITEMENTOR_ASSIGNMENTS_ENABLED === 'true',
     }),
+    // EM-LTI (ADR 0003): ELGOS sebagai LTI 1.3 Platform. issuer default = APP_BASE_URL; kunci privat PEM/base64 PEM.
+    lti: Object.freeze({
+      issuer: (env.LTI_ISSUER || env.APP_BASE_URL || (env.CORS_ORIGIN || '').split(',')[0] || 'http://localhost:5174').replace(/\/+$/, ''),
+      privateKey: env.ELGOS_LTI_PRIVATE_KEY || '',
+    }),
     // Alamat web untuk link masuk (R3-2), mis. https://dev-elgos.eliteacademy.id
     appBaseUrl: (env.APP_BASE_URL || (env.CORS_ORIGIN || '').split(',')[0] || 'http://localhost:5174').replace(/\/$/, ''),
     encryption: Object.freeze({

@@ -9,7 +9,7 @@
 //     -> { question: string | null, usage: UsageRecord[] }                 (null = wawancara selesai)
 //   assessCompetencies({ transcript, competencies })
 //     -> { results: [{ competencyId, score 0-4, confidence 0-1, evidence }], usage }
-//   analyzeTna({ transcript, triggers, competencies })
+//   analyzeTna({ transcript, triggers, competencies, focus? })  (focus: topik sesi gap; dipakai stub, Bedrock mengabaikan)
 //     -> { findings: [{ category training|non_training, title, detail, competencyId?, performanceRecordId?, confidence? }], usage }
 //   assistantReply({ view, roleLabel, facts, pages: [{ key, label }], question })                     (B17)
 //     -> { answer: string | null, page: string | null, refused: boolean, usage }      (answer null = tidak tahu)

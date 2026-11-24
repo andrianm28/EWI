@@ -41,6 +41,15 @@ async function seedDev(c, { password, stores, slug = 'demo', env = process.env }
   const { rows: [spv] } = await c.query(
     `INSERT INTO users (tenant_id, email, name, role, password_hash, status, employee_id) VALUES ($1, 'spv@demo.test', 'Atasan Demo', 'supervisor', $2, 'active', 'D-SPV')
      ON CONFLICT (tenant_id, email) DO UPDATE SET password_hash = EXCLUDED.password_hash RETURNING id`, [t.id, hash]);
+  // Gap B2 (K2, mockup admin 3 tampilan): Admin Tenant juga HR. Tampilan "Karyawan (saya)" untuk HR, Atasan, dan Admin
+  // ditambahkan API sendiri (switchableRoles) selama flag auth.multi_role menyala (DEMO_FLAGS).
+  await c.query(`INSERT INTO user_roles (tenant_id, user_id, role, granted_by)
+                 SELECT u.tenant_id, u.id, 'hr_admin', NULL FROM users u WHERE u.tenant_id = $1 AND u.email = 'admin@demo.test'
+                 ON CONFLICT (user_id, role) DO NOTHING`, [t.id]);
+  // Pimpinan kedua (gap B4): belum ditugaskan wawancara visi & nilai oleh HR, supaya Tugaskan / Tugaskan semua aktif
+  await c.query(
+    `INSERT INTO users (tenant_id, email, name, role, password_hash, status, employee_id) VALUES ($1, 'pimpinan@demo.test', 'Kepala Divisi Demo', 'pimpinan', $2, 'active', 'D-PIMPINAN')
+     ON CONFLICT (tenant_id, email) DO UPDATE SET password_hash = EXCLUDED.password_hash`, [t.id, hash]);
   const { rows: [role] } = await c.query(
     `INSERT INTO lna_job_roles (tenant_id, name, division) VALUES ($1, 'Service Delivery L1', 'Service Delivery')
      ON CONFLICT (tenant_id, name) DO UPDATE SET division = EXCLUDED.division RETURNING id`, [t.id]);
@@ -123,7 +132,7 @@ async function main(env = process.env) {
     await seedDev(c, { password, stores, env });
     // Password hanya dicetak bila dibuat acak di sini; bila dari DEV_SEED_PASSWORD, pemilik env sudah tahu
     const pwNote = env.DEV_SEED_PASSWORD ? 'password dari DEV_SEED_PASSWORD' : `password acak ${password} (set DEV_SEED_PASSWORD agar tidak dicetak)`;
-    console.log(`seed selesai: tenant demo, admin@demo.test, eta@demo.test, hr@demo.test, spv@demo.test, learner@demo.test, dimas|rina|budi@demo.test, ${pwNote}`);
+    console.log(`seed selesai: tenant demo, admin@demo.test, eta@demo.test, hr@demo.test, spv@demo.test, pimpinan@demo.test, learner@demo.test, dimas|rina|budi@demo.test, ${pwNote}`);
   } finally {
     await c.end();
     await db.close();
