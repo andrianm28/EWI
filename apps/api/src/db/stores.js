@@ -6,6 +6,7 @@ const { createLnaStores } = require('./lna-stores');
 const { createTenantAdminStores } = require('./tenant-admin-stores');
 const { createInaStores } = require('./ina-stores');
 const { createCcaStores } = require('./cca-stores');
+const { createLtiStores } = require('./lti-stores');
 const { createFieldCipher, createProvider } = require('../core/crypto');
 const { PRIVILEGED_ROLES, ROLES } = require('../core/rbac/roles');
 
@@ -209,6 +210,8 @@ function createStores(sequelize, { encryption } = {}) {
     ...createTenantAdminStores(sequelize),
     ...createInaStores(sequelize, { cipher }),
     ...createCcaStores(sequelize, { cipher }),
+    // EM-LTI (ADR 0003): ELGOS sebagai LTI 1.3 Platform
+    ...createLtiStores(sequelize),
     users: {
       async listActiveTenants() {
         return q(`SELECT slug, name FROM tenants WHERE status = 'active' ORDER BY name`);

@@ -60,6 +60,8 @@ const FLAGS = Object.freeze({
   LIM_REINTERVIEW: 'lim.reinterview',
   // B3 (19 Nov): dashboard utama HR dan dashboard tim atasan. Mati = pengguna tetap mendarat di Beranda lama
   DASHBOARD_MAIN: 'dashboard.main',
+  // EM-LTI (25 Nov, ADR 0003): EliteMentor sebagai Tool LTI 1.3 (peluncuran dari Rencana belajar, penugasan = resource link, nilai lewat AGS)
+  ELITEMENTOR_LTI: 'em.lti',
 });
 
 const KNOWN = new Set(Object.values(FLAGS));
