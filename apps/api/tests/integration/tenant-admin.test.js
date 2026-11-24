@@ -397,6 +397,18 @@ run('Admin Tenant B11 (Postgres)', () => {
       expect((await get('/users', 'hrNaik')).status).toBe(200);
     });
 
+    it('Super Admin hanya boleh memberi peran Admin Tenant: tidak bisa membuat akun HR atau peran lain yang membaca isi karyawan (review 24 Nov malam, R8-1)', async () => {
+      expect((await get('/roles', 'eta')).body.data.map((r) => r.key)).toEqual(['tenant_admin']);
+      for (const role of ['hr_admin', 'supervisor', 'learner', 'pimpinan']) {
+        const made = await post('/users', { email: `eta-${role}-${Date.now()}@b11.test`, name: 'Lewat Super Admin', role }, 'eta');
+        expect([role, made.status, made.body.error && made.body.error.code]).toEqual([role, 403, 'ROLE_FORBIDDEN']);
+        const naik = await patch(`/users/${id.staf}`, { role }, 'eta');
+        if (role !== 'learner') expect([role, naik.status, naik.body.error && naik.body.error.code]).toEqual([role, 403, 'ROLE_FORBIDDEN']);
+      }
+      const tadmin = await post('/users', { email: `eta-tadmin-${Date.now()}@b11.test`, name: 'Admin Pemulihan', role: 'tenant_admin' }, 'eta');
+      expect(tadmin.status).toBe(201);
+    });
+
     it('Admin Tenant boleh memberi peran Admin Tenant dan mengubah akun Admin Tenant lain', async () => {
       expect((await get('/roles', 'adminB')).body.data.map((r) => r.key)).toEqual(expect.arrayContaining(['tenant_admin', 'hr_admin']));
       const made = await post('/users', { email: `admin-kedua-${Date.now()}@b11.test`, name: 'Admin Kedua', role: 'tenant_admin' }, 'adminB');

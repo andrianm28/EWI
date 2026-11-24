@@ -48,9 +48,13 @@ function optionalId(body, key, label) {
   return body[key].toLowerCase();
 }
 
-function checkRole(role) {
+function checkRole(role, actor) {
   if (role === ROLES.ETA_ADMIN) throw forbidden('ROLE_FORBIDDEN', 'Peran Super Admin tidak bisa diberikan dari layar Admin Tenant');
-  if (!assignableRoles().includes(role)) throw badRequest(`Peran harus salah satu dari: ${assignableRoles().join(', ')}`);
+  if (actor && actor.role === ROLES.ETA_ADMIN && role !== ROLES.TENANT_ADMIN) {
+    throw forbidden('ROLE_FORBIDDEN', 'Super Admin hanya bisa memberi peran Admin Tenant. Peran lain diberikan oleh Admin Tenant.');
+  }
+  const allowed = assignableRoles(actor);
+  if (!allowed.includes(role)) throw badRequest(`Peran harus salah satu dari: ${allowed.join(', ')}`);
 }
 
 module.exports = {
@@ -116,7 +120,7 @@ module.exports = {
     }
 
     // ---------- Pengguna & peran ----------
-    r.get('/roles', (req, res) => res.json({ data: assignableRoles().map((key) => ({ key, label: roleLabel(key) })) }));
+    r.get('/roles', (req, res) => res.json({ data: assignableRoles(req.user).map((key) => ({ key, label: roleLabel(key) })) }));
 
     r.get('/users', wrap(async (req, res) => {
       const status = req.query.status ? String(req.query.status) : null;
@@ -134,7 +138,7 @@ module.exports = {
       if (!EMAIL_RE.test(email) || email.length > 320) throw badRequest('Email wajib diisi dengan format yang benar');
       const name = optionalText(body, 'name', 'Nama', 255);
       if (!name) throw badRequest('Nama wajib diisi');
-      checkRole(body.role);
+      checkRole(body.role, req.user);
       const employeeId = optionalText(body, 'employeeId', 'ID karyawan', 64);
       const position = await resolvePosition(req, body, null);
       const user = await db.createUser(req.tenantId, { email, name, role: body.role, employeeId, ...position });
@@ -156,7 +160,7 @@ module.exports = {
         patch.name = optionalText(body, 'name', 'Nama', 255);
         if (!patch.name) throw badRequest('Nama tidak boleh kosong');
       }
-      if (has(body, 'role')) { checkRole(body.role); patch.role = body.role; }
+      if (has(body, 'role')) { checkRole(body.role, req.user); patch.role = body.role; }
       if (has(body, 'employeeId')) patch.employeeId = optionalText(body, 'employeeId', 'ID karyawan', 64);
       if (has(body, 'status')) {
         if (!['active', 'disabled'].includes(body.status)) throw badRequest('status harus active atau disabled');
