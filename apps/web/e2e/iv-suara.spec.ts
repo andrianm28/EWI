@@ -60,6 +60,7 @@ function penangan() {
 
 /** Gateway suara tiruan: setelah auth mengirim ready, sapaan AI, dan menjawab end_turn dengan giliran. */
 async function gateway(page: Page, { gagal = false } = {}) {
+  let sisaGagal = gagal ? 1 : 0 // hanya sambungan pertama yang gagal
   const diterima: Record<string, unknown>[] = []
   let soket: WebSocketRoute | null = null
   await page.routeWebSocket(/\/api\/voice\/sessions\/s1\/stream$/, (ws) => {
@@ -69,7 +70,7 @@ async function gateway(page: Page, { gagal = false } = {}) {
       const m = JSON.parse(String(raw))
       diterima.push(m)
       if (m.type === 'auth') {
-        if (gagal) { kirim({ type: 'error', code: 'VOICE_UNAVAILABLE', message: 'Wawancara suara sedang tidak tersedia.' }); ws.close({ code: 1000 }); return }
+        if (sisaGagal > 0) { sisaGagal -= 1; kirim({ type: 'error', code: 'VOICE_UNAVAILABLE', message: 'Wawancara suara sedang tidak tersedia.' }); ws.close({ code: 1000 }); return }
         kirim({ type: 'ready' })
         kirim({ type: 'caption', speaker: 'ai', text: 'Halo, apa kendala' })
         kirim({ type: 'turn', turn: { id: 1, speaker: 'ai', text: 'Halo, apa kendala terbesar Anda?', at: '', mode: 'voice', interrupted: false, corrected: false } })
@@ -162,6 +163,6 @@ test('ended provider (gateway gagal) -> teks dengan pesan dan Kembali ke suara',
   await expect(page.getByText('Wawancara suara sedang tidak tersedia. Anda bisa melanjutkan dengan mengetik.')).toBeVisible()
   await expect(page.getByLabel('Jawaban', { exact: true })).toBeVisible()
   await page.getByRole('button', { name: 'Kembali ke suara' }).click()
-  await expect(page.getByTestId('panel-suara')).toBeVisible()
+  await expect(page.getByTestId('panel-suara').getByRole('status')).toHaveText('Mendengarkan')
   expect(terkirim.filter((t) => t.path === 'switch').map((t) => t.body)).toEqual([{ to: 'text' }, { to: 'voice' }])
 })
