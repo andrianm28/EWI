@@ -99,3 +99,29 @@ P9 (branch `paritas-p9` dari `ea7d1c4`, 24 Nov). Perbaikan perilaku dikerjakan t
 | TL-2 | Tunda | Menulis ulang riwayat git repo publik adalah keputusan user/Andrian |
 
 Jumlah: Perbaiki 27, Tolak 1, Tunda 11 (39 ID).
+
+## Review 24 Nov
+
+Review ulang head `fd7bda2` (empat reviewer: egm API, egm web, Spec, Standards; tanpa P0/P1). Perilaku dikerjakan test-first; kode yang sudah benar tetapi belum diuji mendapat test cakupan (langsung hijau).
+
+| Temuan | Tingkat | Hasil | Catatan / commit |
+| --- | --- | --- | --- |
+| Cabang SQL gap OKR lewat fokus sesi tidak diuji (`lna-stores.js` reviewQueue) | P2 | Diperbaiki | Jest route + store reviewQueue dengan sesi `focus_kind='okr'` tanpa kompetensi/baris kinerja, termasuk temuan tertaut kompetensi yang tidak ikut (R6). `8430693` |
+| `/review/solutions` dan `export.csv` memuat dan mendekripsi semua temuan lalu memfilter gap di JS | P2 | Diperbaiki | `gapSql` satu predikat untuk reviewQueue, listReviewedForSolutions, listPlanExport; `findingsInGap` tetap pemutus pasti. Jest store merah → hijau. `8430693` |
+| DraftView: Kembali/Lanjut tanpa penjaga busy, klik ganda melompati langkah | P2 | Diperbaiki | `go()` kembali bila busy, tombol `:disabled="busy"`. e2e merah → hijau. `73d6c81` |
+| DraftView: simpan otomatis gagal menahan navigasi tanpa jalan keluar | P2 | Diperbaiki | UiDialog "Tinggalkan tanpa menyimpan?" (Tetap di sini / Tinggalkan tanpa menyimpan). e2e merah → hijau. `73d6c81` |
+| `asisten.spec.ts` uji jawaban basi memakai jeda 300 ms + asersi negatif | P2 | Diperbaiki | `waitForResponse` respons lambat lalu pertanyaan pembatas. `afdf173` |
+| `asisten.spec.ts` cek "tanpa POST" sinkron | P3 | Diperbaiki | `expect.poll` dengan pembatas positif (POST pertama harus pertanyaan berikutnya). `afdf173` |
+| `parseGapQuery` menerima periode berisi spasi saja | P3 | Diperbaiki | `!q.period.trim()`, sama dengan `parseGap`. Jest merah → hijau. `8430693` |
+| Join `users` (u, r, hb) di REVIEW_FROM dan solusi tanpa `tenant_id` | P3 | Diperbaiki | `AND x.tenant_id = f.tenant_id`. Jest merah → hijau (nama pengguna tenant lain tidak bocor). `8430693` |
+| Cabang reclassify di uji respons classify | P3 | Diperbaiki | Kasus approved → improvement ditambah ke "semua cabang". `8430693` |
+| JSDoc yatim `gaps.js` dan `review-workspace.js` | P3 | Diperbaiki | Dipindah ke atas fungsinya. `8430693` |
+| Dashboard: `aria-label` baris Pareto menimpa teks tautan | P3 | Diperbaiki | Dihapus; e2e memeriksa nama aksesibel dari teks yang terlihat. Membalik keputusan review P3 sebelumnya. `afdf173` |
+| TinjauanView teks sukses "{n} temuan diteruskan…" berbeda dari mockup | Spec (b) 5 | Diperbaiki | Kini persis mockup `makeIna`: "{n} tindakan perbaikan dibuat dan muncul di Improvement Needs."; spek B7 HR butir 6 dan B7 web butir 9 diperbarui. `afdf173` |
+| Spek B7: filter gap "Tanpa flag", solusi tanpa parameter gap | P3 | Diperbaiki | `b7-tinjauan-hr.md` butir 1 (403 tanpa flag) dan 3 (parameter gap, `gapSql`) |
+| Spek B17 web: FAB fixed 24px, panel 380×560 basi setelah CD-2 | Spec (a) 2 | Diperbaiki | `b17-asisten-web.md` mengikuti `.el-app__extras` dan `flex: 0 1 560px` |
+| DraftView `act` menimpa draf lokal dengan respons | P3 | Terbuka | Ketikan selama simpan bisa hilang; perlu readonly saat busy atau gabung metadata saja |
+| Dialog AssignmentsHr, InterviewAssignmentView, TnaGapView bisa ditutup saat request berjalan | P3 | Terbuka | Di luar lingkup putaran ini |
+| AntreanView tab tanpa penjaga urutan respons | P3 | Terbuka | Pola `loadSeq` seperti TinjauanView |
+| Spec (a) 1 LD-10, (a) 3 LIM-6/LIM-8, (b) 4/6/7 | Spec | Terbuka | LD-10 sudah tercatat (SP-3); sisanya menunggu keputusan user |
+| Standards: nama branch, gerbang reviewer Andrian, smell duplikasi/switch | Standards | Terbuka | Butir badan PR (IR-2) dan refactor terpisah |

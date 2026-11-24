@@ -17,8 +17,10 @@ Referensi foto: `node catalog.cjs` dengan `{ asOpen: true }` untuk hr, atasan, k
 
 ## Layar (urutan mockup)
 
-1. **FAB** (`button`, `aria-label="Buka Asisten ELGOS"`): bulat 56px, `position: fixed; right: 24px; bottom: 24px`, latar `--el-primary`, ikon `smart_toy`, bayangan `--el-shadow`. Tidak tampil saat panel terbuka (mockup `asFab = !asOpen`).
-2. **Panel** (`div role="dialog"`, `aria-labelledby` judul, non-modal seperti mockup: tanpa scrim dan tanpa `aria-modal`): 380×560px, `max-width: calc(100vw - 32px)`, `max-height: calc(100vh - 48px)`, sudut 20px, garis `--el-outline-variant`, bayangan `0 8px 24px rgb(0 0 0 / .25)`, `z-index: 50`.
+Letak (P9 CD-2): FAB dan panel tidak memakai `position: fixed` sendiri. `AppShell` menaruh semua tambahan shell di satu kolom `.el-app__extras` (`position: fixed; right: 24px; bottom: 24px; z-index: 50`, flex kolom rata kanan, `gap: 12px`, `max-height: calc(100vh - 48px)`), jadi tambahan paket lain tidak saling menutupi. Kolom itu disembunyikan dan `inert` selama drawer melayang terbuka di layar sempit.
+
+1. **FAB** (`button`, `aria-label="Buka Asisten ELGOS"`): bulat 56px (`flex: 0 0 auto`) di kolom `.el-app__extras`, latar `--el-primary`, ikon `smart_toy`, bayangan `--el-shadow`. Tidak tampil saat panel terbuka (mockup `asFab = !asOpen`).
+2. **Panel** (`div role="dialog"`, `aria-labelledby` judul, non-modal seperti mockup: tanpa scrim dan tanpa `aria-modal`): lebar 380px (`max-width: calc(100vw - 32px)`), tinggi `flex: 0 1 560px` dengan `min-height: 0` (560px, menyusut di kolom `.el-app__extras` bila layar pendek atau ada tambahan lain; batas tinggi dari kolom), sudut 20px, garis `--el-outline-variant`, bayangan `0 8px 24px rgb(0 0 0 / .25)`.
    - **Kepala** (latar `--el-primary`, teks `--el-on-primary`): "Asisten ELGOS" (500) dan "Tanyakan urusan Anda · {roleLabel}" (12px, opasitas .85); tombol teks ikon `close` `aria-label="Tutup"`.
    - **Isi** (`role="log"`, `aria-live="polite"`): gelembung `ai` (latar `--el-surface-2`, sudut kiri bawah 4px, rata kiri) dan `me` (latar `--el-primary`, rata kanan), lebar maks 88%, label kecil "Asisten ELGOS"/"Anda" (11px). Gelembung pertama selalu salam. Gelembung jawaban dengan `action` memuat tombol tonal kecil "Buka {label}" ke rute `action.page`.
    - **Kaki**: chip saran (`button`, 12px, tinggi min 30px, garis `--el-outline`, sudut 8px), lalu baris input "Tanya apa saja" (`aria-label="Pertanyaan"`, tinggi 40px) + tombol "Kirim", lalu catatan 11px `disclaimer`.

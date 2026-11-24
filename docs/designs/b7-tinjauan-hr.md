@@ -65,9 +65,9 @@ Konfigurasi tenant (`tenants.settings`, lewat `core/settings`), tanpa migrasi. N
 
 Semua di router `tna`, jadi lewat `requireSubmodule('tna')`. Semua hanya HR (`requireRole(HR_ADMIN)`, dipasang sebelum pemeriksaan flag supaya peran lain mendapat `403 ROLE_FORBIDDEN`, bukan status flag). Karena hanya HR (cakupan seluruh tenant), `visibleEmployeeScope()` tidak dipanggil. Admin ETA ikut lolos seperti di seluruh `requireRole`; setiap aksesnya tercatat di audit dengan perannya, dan itu dianggap memenuhi "akses tercatat" PM-3 `[⏳ DITERIMA]` (pembatasan Super Admin adalah urusan B2). `tenant_id` dari `req.tenantId`; objek tenant lain selalu `404`.
 
-### Tanpa flag (hanya menambah field baca pada pengaman review PR #16)
+### Tanpa flag (antrean tanpa filter gap; menambah field baca pada pengaman review PR #16)
 
-1. `GET /api/tna/review` (ada, `projectId` opsional; filter gap opsional `kind` + `competencyId` | `metricType`, `name`, `period` sejak paritas B7 web, lihat `paritas-mockup/b7-tinjauan-web.md` keputusan 3). Tambahan per item: `held`, `heldAt`, `heldByName`, `holdNote`, `suggestedClassification`, `reviewDueAt`, `overdue`. Tambahan di respons: `counts.held`, `counts.overdue` (dihitung dari seluruh draf dalam cakupan `projectId` yang sama, bukan hanya baris yang difilter `status`), `targetDays`.
+1. `GET /api/tna/review` (ada, `projectId` opsional). Antrean tanpa filter gap tidak di balik flag. Filter gap opsional `kind` + `competencyId` | `metricType`, `name`, `period` (sejak paritas B7 web, lihat `paritas-mockup/b7-tinjauan-web.md` keputusan 3) adalah bagian fitur tinjauan baru, jadi **di balik flag `tna.review_workspace`** (audit PR 39 butir 39-2): flag mati + `kind` terisi → `403 FEATURE_DISABLED`, dicek sebelum parameter gap divalidasi. Dengan filter gap: data dan `counts` hanya temuan gap itu (aturan R6), tanpa `detail`, `originalDetail`, `summaryNote`, plus `gap: { key, label }`; `period`/`name` berisi spasi saja → `400`; kompetensi tenant lain → `404`. Tambahan per item: `held`, `heldAt`, `heldByName`, `holdNote`, `suggestedClassification`, `reviewDueAt`, `overdue`. Tambahan di respons: `counts.held`, `counts.overdue` (dihitung dari seluruh draf dalam cakupan `projectId` yang sama, bukan hanya baris yang difilter `status`), `targetDays`.
    - Awal hitungan = waktu sesi wawancara selesai (`lna_interview_sessions.ended_at`, sesuai PM-3 "setelah wawancara selesai"); temuan tanpa sesi memakai `createdAt` temuan.
    - `reviewDueAt` = jam yang sama pada hari kerja ke-`targetDays` setelah tanggal awal (tanggal dan hari menurut WIB; hari kerja = Senin–Jumat). Contoh dengan 2 hari: Senin 10.00 → Rabu 10.00; Kamis 10.00 → Senin 10.00; Jumat 23.30 → Selasa 23.30; Sabtu 10.00 → Selasa 10.00; Minggu 10.00 → Selasa 10.00. `[⏳ DITERIMA]` tanpa kalender libur nasional; test unit mencakup kelima contoh.
    - `overdue` = masih `draft` dan `now > reviewDueAt`. Temuan yang ditahan tetap dihitung terlambat.
@@ -83,7 +83,7 @@ Aturan CLAUDE.md nomor 3: klasifikasi, tahan, solusi, penugasan, ekspor, dan ser
    - Temuan `rejected` → `409 ALREADY_REVIEWED`. `classification` lain → `400`. `note` maks 2000 karakter.
    - Audit `update` `tna.finding_review` `{ employeeIds, objectIds, decision: 'approved' | 'edited' | 'hold' | 'reclassified', classification, from, confidence }`. Audit ditulis setelah perubahan tersimpan (pola PR #16) `[⏳ DITERIMA]`.
    - Respons: item review terbaru (bentuk butir 1).
-3. `GET /api/tna/review/solutions` (`projectId` opsional). Respons:
+3. `GET /api/tna/review/solutions` (`projectId` opsional; filter gap opsional dengan parameter sama dengan butir 1: hanya temuan gap itu, validasi `400`/`404` sama). Predikat kandidat gap dijalankan di SQL (`gapSql`, sama dengan antrean per gap), keanggotaan pasti lewat `findingsInGap` (R6); `GET /plan-items/export.csv` memakai filter yang sama. Respons:
    ```json
    { "data": {
        "training": [{ "findingId", "userId", "userName", "title", "competencyName",
@@ -124,7 +124,7 @@ Aturan CLAUDE.md nomor 3: klasifikasi, tahan, solusi, penugasan, ekspor, dan ser
    - Flag `module.ina` mati → `409 INA_DISABLED`.
    - Satu `UPDATE ... WHERE tenant_id = :tenantId AND id IN (:ids) AND category = 'non_training' AND review_status IN ('approved','edited') AND improvement_handoff_at IS NULL RETURNING id` → `handedOff`. Id yang memenuhi syarat tetapi sudah ditandai → `already`. Sisanya (draf, training, ditolak, tenant lain, tidak ada) → `skipped`.
    - Respons `{ handedOff, already, skipped }`. Audit `update` `tna.improvement_handoff` `{ employeeIds, objectIds, count }`, hanya bila ada yang diteruskan.
-   - Teks di web: "N temuan diteruskan ke Improvement Needs" (bukan "tindakan dibuat"), karena tindakan dibuat oleh modul B9.
+   - Teks di web persis mockup (`makeIna`, review 24 Nov): "N tindakan perbaikan dibuat dan muncul di Improvement Needs." dengan N = `handedOff` + `already`. Di data, tindakan tetap diwujudkan modul B9 dari temuan yang diteruskan.
 
 ### Perubahan pada endpoint yang ada
 
