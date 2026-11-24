@@ -321,6 +321,47 @@ test('FAB tampil langsung walau salam belum dimuat', async ({ page }) => {
   await expect(panel(page).locator('.b17-chip')).toHaveCount(0)
 })
 
+// Review egm 42f1aa0 (P3): 403 yang tiba saat fokus di panel memindahkan fokus ke isi halaman, bukan ke body
+test('salam 403 tiba saat panel terbuka: panel hilang dan fokus pindah ke isi halaman', async ({ page }) => {
+  await mockAsisten(page)
+  let lepas: () => void = () => {}
+  const tahan = new Promise<void>((ok) => { lepas = ok })
+  await page.route(/\/api\/assistant\?/, async (r) => {
+    await tahan
+    await r.fulfill({ status: 403, json: { error: { code: 'VIEW_FORBIDDEN', message: 'Tampilan ini tidak tersedia untuk peran Anda' } } })
+  })
+  await masuk(page, 'karyawan')
+  await fab(page).click()
+  await expect(panel(page).getByRole('textbox', { name: 'Pertanyaan' })).toBeFocused()
+  lepas()
+  await expect(panel(page)).toHaveCount(0)
+  await expect(fab(page)).toHaveCount(0)
+  await expect(page.locator('#isi')).toBeFocused()
+})
+
+// Review egm 42f1aa0 (P2): gulir ke bawah tetap jalan setelah riwayat mencapai batas 40 gelembung
+test('setelah 40 gelembung, jawaban baru tetap tergulir ke pandangan', async ({ page }) => {
+  await mockAsisten(page)
+  await masuk(page, 'karyawan')
+  await fab(page).click()
+  const input = panel(page).getByRole('textbox', { name: 'Pertanyaan' })
+  const kirim = panel(page).getByRole('button', { name: 'Kirim' })
+  for (let i = 1; i <= 21; i++) {
+    await input.fill(`Pertanyaan ${i}`)
+    await input.press('Enter')
+    await expect(kirim).toBeEnabled()
+  }
+  const isi = panel(page).locator('.b17-asst__bd')
+  await isi.evaluate((el) => { (el as unknown as { scrollTop: number }).scrollTop = 0 })
+  await input.fill('Pertanyaan terakhir')
+  await input.press('Enter')
+  await expect(panel(page).getByText('Pertanyaan terakhir')).toBeVisible()
+  await expect.poll(() => isi.evaluate((el) => {
+    const e = el as unknown as { scrollTop: number; scrollHeight: number; clientHeight: number }
+    return e.scrollHeight - e.scrollTop - e.clientHeight
+  })).toBeLessThan(2)
+})
+
 test('review: salam gagal dimuat (500): salam dan catatan bawaan tampil tanpa chip', async ({ page }) => {
   await mockAsisten(page, { intro: () => ({ status: 500, json: {} }) })
   await masuk(page, 'karyawan')

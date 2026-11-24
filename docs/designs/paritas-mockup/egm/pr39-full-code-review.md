@@ -148,3 +148,17 @@ Review independen atas empat commit di atas (tanpa P0/P1).
 | Route `export.csv` dengan gap OKR lewat fokus sesi | P3 | Diperbaiki | Bagian dari test fokus sesi. `f10dc32` |
 | Join `users` lain tanpa `tenant_id` (listFindings, listNonTrainingSummary, nonTrainingGrants, listPlanItems, getPlanItem) | P3 | Diperbaiki | Satu test store merah → hijau. `f10dc32` |
 | Join `lna_competencies`, `lna_performance_records`, `lna_findings` di listFindings, listNonTrainingSummary, listPlanItems, listImprovementHandoffs tanpa `tenant_id` | P3 | Terbuka | Ditemukan saat mengerjakan butir di atas; pengerasan yang sama, di luar daftar review ini |
+
+### Review egm atas `a0603c8`/`42f1aa0` (24 Nov)
+
+| Temuan | Prioritas | Status | Catatan |
+|---|---|---|---|
+| Chip klasifikasi tetap `aria-pressed=true` setelah classify gagal (`defineModel` menyimpan salinan lokal tanpa `onUpdate:modelValue`) | P1 | Diperbaiki | `UiSegmented` kini terkendali penuh (prop `modelValue` + emit `update:modelValue`/`select`), tanpa salinan lokal; pemakai `v-model` lain tidak berubah. E2E classify 500 → kembali ke saran AI |
+| Tombol solusi bisa mengonfirmasi saran AI selagi pilihan HR sendiri sedang disimpan | P1 | Diperbaiki | Tiga tombol solusi nonaktif selama `busy` atau `pendingIds` tidak kosong, plus guard di `runTraining`/`handoff`. E2E: classify ditahan 800 ms → tombol nonaktif, lalu hanya `improvement` yang terkirim |
+| 409 saat konfirmasi saran tidak memuat ulang temuan | P2 | Diperbaiki | `confirmSuggestions` memuat ulang temuan dan solusi (`refresh`) bila ada 409; nilai server tampil. E2E 409 |
+| Pesan "Temuan tidak bisa diteruskan" vs "Klasifikasi tersimpan…" saat konfirmasi tersimpan tetapi muat ulang gagal | P2 | Diperbaiki | Keduanya "Klasifikasi tersimpan, tetapi data tidak bisa dimuat ulang."; serah tidak dijalankan. E2E |
+| `handedCount` menyembunyikan tombol Buat tindakan walau ada temuan perbaikan baru | P2 | Diperbaiki | Catatan hanya bila tidak ada temuan perbaikan tertunda maupun belum diserahkan. E2E |
+| Saran AI terpilih tidak dibedakan untuk pembaca layar | P2 | Diperbaiki | Tampilan tetap mockup; nama aksesibel chip "…, saran AI, belum dikonfirmasi" (opsi `hint` → `aria-label`). E2E |
+| Gulir otomatis Asisten berhenti setelah batas 40 gelembung | P2 | Diperbaiki | Watch id gelembung terakhir, bukan panjang. E2E 21 giliran |
+| 403 terlambat menyembunyikan FAB/panel yang sedang fokus | P3 | Diperbaiki | Bila fokus di FAB/panel, fokus pindah ke `#isi` (ShellExtra; `store.ts` tidak diubah). E2E |
+| Uji: konfirmasi gagal → tanpa catatan sukses; solusi hanya untuk temuan yang diputus server | P3 | Diperbaiki | E2E 500 dan 409 |

@@ -3,23 +3,25 @@
 // variant="chips": tombol terpisah gaya `.rad` mockup (pilihan klasifikasi di Tinjauan HR, B7).
 // Opsi `disabled` tidak bisa dipilih; model kosong ('') berarti belum ada pilihan.
 // Opsi `pending` (mis. sedang menyimpan) juga tidak bisa dipilih, tetapi memakai aria-disabled, bukan `disabled`,
-// supaya tombol yang baru diklik tidak kehilangan fokus.
+// supaya tombol yang baru diklik tidak kehilangan fokus. Opsi `hint`: tambahan nama aksesibel (hanya pembaca layar).
+// Terkendali penuh: yang tampil terpilih selalu `modelValue` dari induk (tanpa salinan lokal), jadi pilihan yang gagal
+// disimpan induk tidak tetap tampil terpilih.
 withDefaults(defineProps<{
-  options: { key: string; label: string; disabled?: boolean; pending?: boolean }[]
+  modelValue: string
+  options: { key: string; label: string; disabled?: boolean; pending?: boolean; hint?: string }[]
   label: string
   variant?: 'joined' | 'chips'
 }>(), { variant: 'joined' })
-const model = defineModel<string>({ required: true })
 // `select` dikirim di setiap klik, juga pada opsi yang sudah terpilih (B7: klik saran AI yang tampil terpilih = konfirmasi)
-const emit = defineEmits<{ select: [key: string] }>()
-function pick(key: string) { model.value = key; emit('select', key) }
+const emit = defineEmits<{ 'update:modelValue': [key: string]; select: [key: string] }>()
+function pick(key: string) { emit('update:modelValue', key); emit('select', key) }
 </script>
 
 <template>
   <div :class="['el-seg', { 'el-seg--chips': variant === 'chips' }]" role="group" :aria-label="label">
     <button
-      v-for="o in options" :key="o.key" type="button" :class="{ 'is-on': o.key === model }" :aria-pressed="o.key === model"
-      :disabled="o.disabled" :aria-disabled="o.pending ? 'true' : undefined" @click="!o.pending && pick(o.key)"
+      v-for="o in options" :key="o.key" type="button" :class="{ 'is-on': o.key === modelValue }" :aria-pressed="o.key === modelValue"
+      :aria-label="o.hint ? `${o.label}, ${o.hint}` : undefined" :disabled="o.disabled" :aria-disabled="o.pending ? 'true' : undefined" @click="!o.pending && pick(o.key)"
     >
       {{ o.label }}
     </button>
