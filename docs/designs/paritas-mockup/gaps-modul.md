@@ -31,7 +31,7 @@ Semua path relatif ke `apps/web/src/screens/`. Shell (drawer/top bar) tidak dini
 | LI-10 | Detail, jabatan & KSA | komponen | Jabatan sebagai chip biru; butir KSA dengan garis kiri (list indent) | Teks biasa; `<ul>` | b13-li/LibraryView.vue:138-146 | rendah | Chip jabatan; daftar butir dengan border-left · **Ditutup** ([p6-li.md](p6-li.md)) |
 | LI-11 | Detail, sumber disarankan | copy | "Sumber yang disarankan: Dikembangkan bersama ELGOS. Topik spesifik proses perusahaan (kontrak, SLA, EliNotes, alur layanan), sehingga kecil kemungkinan ada di katalog umum. Usulan awal, dapat diubah." | "…dikembangkan bersama ELGOS. Modul ini spesifik proses perusahaan." | b13-li/LibraryView.vue:147-150 | rendah | Salin copy mockup (dua varian: dev / vendor) · **Sebagian** ([p6-li.md](p6-li.md)): contoh topik "(kontrak, SLA, EliNotes, alur layanan)" tidak diambil karena data tenant demo |
 | LI-12 | Detail, tombol | komponen/ikon | Dua tombol sebaris; ikon "Kembangkan dengan ELGOS" = `auto_awesome` | Ikon `smart_toy`, tombol bertumpuk | b13-li/LibraryView.vue:151-154 | rendah | Ikon auto_awesome; `li-actions` no-wrap pada lebar ≥ 400px · **Ditutup** ([p6-li.md](p6-li.md)) |
-| LI-13 | Detail, "Course di katalog" | komponen (tambahan) | Tidak ada | Seksi tautkan course | b13-li/LibraryView.vue:159-172 | rendah | Catat sebagai tambahan proyek (PK-2) · **Terbuka** (24 Nov): perlu keputusan catat sebagai tambahan proyek (PK-2) |
+| LI-13 | Detail, "Course di katalog" | komponen (tambahan) | Tidak ada | Seksi tautkan course | b13-li/LibraryView.vue:159-172 | rendah | Catat sebagai tambahan proyek (PK-2) · **Diputuskan** (keputusan user 24 Nov: penyimpangan sengaja, tanpa ubah kode) |
 
 ### Program & Course (`hr--prog`)
 
