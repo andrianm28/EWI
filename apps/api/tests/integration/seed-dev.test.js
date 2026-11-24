@@ -11,8 +11,8 @@ const { seedDev } = require('../../scripts/seed-dev');
 const { DEMO_FLAGS } = require('../../scripts/demo-flags');
 
 const run = process.env.DATABASE_URL ? describe : describe.skip;
-// Kunci induk tetap khusus test ini: data terenkripsi tenant demo harus terbaca lagi di run jest berikutnya.
-const MASTER = 'a5'.repeat(32);
+// Tenant baru per run (slug unik): kunci induk acak bawaan test aman, dan sisa run lain tidak memengaruhi hasil.
+const SLUG = `demo-uji-${Date.now()}`;
 const COUNTED = ['users', 'user_roles', 'lna_competencies', 'lna_assessments', 'lna_performance_records', 'lna_interview_sessions',
   'lna_findings', 'lna_analysis_jobs', 'lna_training_plan_items', 'ina_actions', 'lna_non_training_grants', 'li_modules', 'li_module_items',
   'li_module_requests', 'li_module_drafts', 'ld_trainings', 'ld_participants', 'lim_plans', 'lim_indicators', 'lim_measurements',
@@ -29,7 +29,7 @@ run('seed-dev: tenant demo untuk demo langsung (Postgres)', () => {
   };
 
   beforeAll(async () => {
-    const config = makeConfig({ EWI_LOCAL_MASTER_KEY: MASTER });
+    const config = makeConfig();
     db = createDb({ databaseUrl: process.env.DATABASE_URL, dbSchema: process.env.DB_SCHEMA || 'ewi' });
     stores = createStores(db, { encryption: config.encryption });
     app = createApp({ config, stores });
@@ -37,7 +37,7 @@ run('seed-dev: tenant demo untuk demo langsung (Postgres)', () => {
     c = new Client({ connectionString: process.env.DATABASE_URL });
     await c.connect();
     await c.query(`SET search_path TO "${process.env.DB_SCHEMA || 'ewi'}"`);
-    ids = await seedDev(c, { password: 'sandi-uji-seed', stores, env: { NODE_ENV: 'test' } });
+    ids = await seedDev(c, { password: 'sandi-uji-seed', stores, slug: SLUG, env: { NODE_ENV: 'test' } });
     const { rows } = await c.query(`SELECT id, email, role FROM users WHERE tenant_id = $1`, [ids.tenantId]);
     for (const u of rows) tok[u.email.split('@')[0]] = await tokens.sign({ id: u.id, tenantId: ids.tenantId, role: u.role, email: u.email });
   }, 60000);
@@ -51,8 +51,34 @@ run('seed-dev: tenant demo untuk demo langsung (Postgres)', () => {
 
   test('idempoten: jalan kedua tidak menambah baris', async () => {
     const before = await counts();
-    await seedDev(c, { password: 'sandi-uji-seed', stores, env: { NODE_ENV: 'test' } });
+    await seedDev(c, { password: 'sandi-uji-seed', stores, slug: SLUG, env: { NODE_ENV: 'test' } });
     expect(await counts()).toEqual(before);
+  }, 60000);
+
+  test('kolom terenkripsi tersimpan terenkripsi (bukan teks biasa)', async () => {
+    const raw = async (sql) => (await c.query(sql, [ids.tenantId])).rows.map((r) => r.v);
+    const columns = {
+      'lna_assessments.evidence': await raw('SELECT evidence AS v FROM lna_assessments WHERE tenant_id = $1 AND evidence IS NOT NULL'),
+      'lna_findings.title': await raw('SELECT title AS v FROM lna_findings WHERE tenant_id = $1'),
+      'lna_findings.detail': await raw('SELECT detail AS v FROM lna_findings WHERE tenant_id = $1 AND detail IS NOT NULL'),
+      'ina_actions.title': await raw('SELECT title AS v FROM ina_actions WHERE tenant_id = $1'),
+      'ina_actions.detail': await raw('SELECT detail AS v FROM ina_actions WHERE tenant_id = $1 AND detail IS NOT NULL'),
+      'cca_assignments.summary': await raw('SELECT summary AS v FROM cca_assignments WHERE tenant_id = $1 AND summary IS NOT NULL'),
+      'lim_reinterviews.summary': await raw('SELECT summary AS v FROM lim_reinterviews WHERE tenant_id = $1 AND summary IS NOT NULL'),
+    };
+    for (const [col, values] of Object.entries(columns)) {
+      expect([col, values.length > 0]).toEqual([col, true]);
+      expect([col, values.filter((v) => !stores.cipher.isEncrypted(v))]).toEqual([col, []]);
+    }
+  });
+
+  test('hanya kompetensi seed yang disahkan; draf lain di tenant tetap draf', async () => {
+    const { rows: [draft] } = await c.query(
+      `INSERT INTO lna_competencies (tenant_id, kind, name, source, importance) VALUES ($1, 'core', 'Draf staging', 'hr_rule', 3) RETURNING id`, [ids.tenantId]);
+    await seedDev(c, { password: 'sandi-uji-seed', stores, slug: SLUG, env: { NODE_ENV: 'test' } });
+    const { rows: [row] } = await c.query('SELECT approved_at, approved_by, program_tier FROM lna_competencies WHERE id = $1', [draft.id]);
+    expect(row).toEqual({ approved_at: null, approved_by: null, program_tier: null });
+    await c.query('DELETE FROM lna_competencies WHERE id = $1', [draft.id]);
   }, 60000);
 
   test('flag demo menyala; tenant_admin ada; eta_admin tetap eta_admin', async () => {
@@ -64,15 +90,17 @@ run('seed-dev: tenant demo untuk demo langsung (Postgres)', () => {
 
   test('HR: dashboard (Pareto, kesepakatan AI–HR), papan gap, tinjauan temuan, INA, LI, LD, LIM, CC berisi', async () => {
     const dash = (await get('hr', '/dashboard').expect(200)).body.data;
-    expect(dash.pareto.rows[0].label).toBe('Analisis insiden');
-    expect(dash.kpis.aiHrAgreement.reviewed).toBe(3);
+    expect(dash.pareto.rows.map((r) => r.competencyId)).toContain(ids.competencyIds['Analisis insiden']);
+    expect(dash.kpis.aiHrAgreement.reviewed).toBe(ids.reviewedFindingIds.length);
     expect(dash.kpis.okrGaps).toBeGreaterThan(0);
     const gaps = (await get('hr', '/tna/gaps/competencies').expect(200)).body.data;
     expect(JSON.stringify(gaps)).toContain('Analisis insiden');
-    const review = (await get('hr', '/tna/review').expect(200)).body;
-    expect(review.data).toHaveLength(4);
-    expect((await get('hr', '/tna/review?status=reviewed').expect(200)).body.data).toHaveLength(3);
-    expect((await get('hr', '/ina/actions').expect(200)).body.data.map((a) => a.title)).toContain('Perbarui SOP eskalasi insiden');
+    const idsOf = (body) => body.data.map((f) => f.id);
+    expect(idsOf((await get('hr', '/tna/review').expect(200)).body)).toEqual(expect.arrayContaining(ids.draftFindingIds));
+    expect(idsOf((await get('hr', '/tna/review?status=reviewed').expect(200)).body)).toEqual(expect.arrayContaining(ids.reviewedFindingIds));
+    const actions = (await get('hr', '/ina/actions').expect(200)).body.data;
+    expect(actions.map((a) => a.id)).toEqual(expect.arrayContaining(ids.inaActionIds));
+    expect(actions.map((a) => a.title)).toContain('Perbarui SOP eskalasi insiden');
     expect((await get('hr', '/li/modules').expect(200)).body.data.map((m) => m.name)).toEqual(expect.arrayContaining(['Root Cause Analysis', 'ITIL Foundation']));
     expect(JSON.stringify((await get('hr', '/ld/trainings').expect(200)).body.data)).toContain('ITIL Foundation');
     expect(JSON.stringify((await get('hr', '/lim/plans').expect(200)).body.data)).toContain('Pilot L1');
@@ -93,7 +121,8 @@ run('seed-dev: tenant demo untuk demo langsung (Postgres)', () => {
     expect(JSON.stringify(my)).toContain('Otomasi infrastruktur');
     expect(my.invitations.length).toBeGreaterThan(0);
     expect((await get('learner', '/my/learning-plan').expect(200)).body.data.length).toBeGreaterThan(0);
-    expect((await get('learner', '/lim/me/reinterviews').expect(200)).body.data[0].status).toBe('open');
+    const mine = (await get('learner', '/lim/me/reinterviews').expect(200)).body.data;
+    expect(mine.find((x) => x.planId === ids.planId)?.status).toBe('open');
   });
 
   test('Super Admin tidak membaca isi karyawan walau tenant demo menyalakan semua modul', async () => {

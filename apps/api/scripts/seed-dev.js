@@ -16,12 +16,12 @@ const { DEMO_FLAGS } = require('./demo-flags');
 const { seedDemoData } = require('./seed-demo-data');
 
 /** Isi tenant demo lewat klien pg `c` (search_path sudah di schema ELGOS). Mengembalikan id penting untuk test. */
-async function seedDev(c, { password, stores, env = process.env } = {}) {
+async function seedDev(c, { password, stores, slug = 'demo', env = process.env } = {}) {
   if (env.NODE_ENV === 'production') throw new Error('seed-dev dilarang di produksi');
   const hash = await bcrypt.hash(password, 10);
   const { rows: [t] } = await c.query(
-    `INSERT INTO tenants (slug, name) VALUES ('demo', 'Demo Organisasi')
-     ON CONFLICT (slug) DO UPDATE SET name = EXCLUDED.name RETURNING id`);
+    `INSERT INTO tenants (slug, name) VALUES ($1, 'Demo Organisasi')
+     ON CONFLICT (slug) DO UPDATE SET name = EXCLUDED.name RETURNING id`, [slug]);
   const { rows: [hr] } = await c.query(
     `INSERT INTO users (tenant_id, email, name, role, password_hash, status) VALUES ($1, 'hr@demo.test', 'HR Demo', 'hr_admin', $2, 'active')
      ON CONFLICT (tenant_id, email) DO UPDATE SET password_hash = EXCLUDED.password_hash RETURNING id`, [t.id, hash]);
@@ -86,8 +86,8 @@ async function seedDev(c, { password, stores, env = process.env } = {}) {
       if (!row) continue;
       for (const [i, userId] of members.entries()) {
         await c.query(`INSERT INTO lna_assessments (tenant_id, user_id, competency_id, score, confidence, evidence, source, assessor, assessed_at)
-                       VALUES ($1, $2, $3, $4, 1, 'Contoh hasil wawancara manual (seed)', 'manual_interview', 'Tim ETA', '2026-10-20')`,
-        [t.id, userId, comp.id, row[i]]);
+                       VALUES ($1, $2, $3, $4, 1, $5, 'manual_interview', 'Tim ETA', '2026-10-20')`,
+        [t.id, userId, comp.id, row[i], await stores.cipher.encrypt(t.id, 'Contoh hasil wawancara manual (seed)')]);
       }
     }
   }

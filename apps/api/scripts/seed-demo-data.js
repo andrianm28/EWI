@@ -8,6 +8,9 @@
 // - Tidak ada data untuk Super Admin: konsol Super Admin hanya membaca metadata tenant (denyEmployeeContent).
 
 const DAY = 24 * 60 * 60 * 1000;
+// Kompetensi milik seed (seed-dev + seed ini). Hanya ini yang disahkan dan diberi tingkat.
+const SEEDED_COMPETENCIES = ['Memahami kontrak proyek', 'Menjalankan SOP L1', 'Troubleshooting jaringan dasar', 'Komunikasi pelanggan',
+  'Analisis insiden', 'Otomasi infrastruktur'];
 const isoDate = (offsetDays) => new Date(Date.now() + offsetDays * DAY).toISOString().slice(0, 10);
 
 /** Cari satu baris lewat kunci; bila belum ada, sisipkan. Nama tabel dan kolom berasal dari kode ini, bukan input. */
@@ -35,11 +38,15 @@ async function link(c, table, row) {
  */
 async function seedDemoData(c, { stores, tenantId: t, jobRoleId, levelIds, hrId, spvId, memberIds }) {
   const [dimas, rina, budi] = memberIds;
+  // Kolom terenkripsi (evidence, judul/detail temuan dan tindakan INA, ringkasan CC) ditulis lewat cipher store dengan kunci tenant
+  const enc = (v) => stores.cipher.encrypt(t, v);
 
   // ---------- Karyawan demo (learner@demo.test): jabatan, jenjang, atasan ----------
   const { rows: [learner] } = await c.query(
-    `UPDATE users SET job_role_id = $2, career_level_id = $3, supervisor_id = $4, employee_id = COALESCE(employee_id, 'D-LEARNER')
+    `UPDATE users SET job_role_id = COALESCE(job_role_id, $2), career_level_id = COALESCE(career_level_id, $3),
+            supervisor_id = COALESCE(supervisor_id, $4), employee_id = COALESCE(employee_id, 'D-LEARNER')
       WHERE tenant_id = $1 AND email = 'learner@demo.test' RETURNING id`, [t, jobRoleId, levelIds[1], spvId]);
+  if (!learner) throw new Error('seed-demo-data: akun learner@demo.test tidak ditemukan di tenant demo');
   const team = [dimas, rina, budi, learner.id];
 
   // ---------- Kamus kompetensi disahkan HR + target skor (syarat papan gap R2) ----------
@@ -47,9 +54,10 @@ async function seedDemoData(c, { stores, tenantId: t, jobRoleId, levelIds, hrId,
     await findOrInsert(c, 'lna_competencies', { tenant_id: t, job_role_id: kind === 'job' ? jobRoleId : null, name },
       { kind, source: 'hr_rule', importance });
   }
+  // Hanya kompetensi seed yang disahkan; draf lain di tenant (mis. staging) tidak disentuh
   await c.query(`UPDATE lna_competencies SET required_score = COALESCE(required_score, 3), approved_at = COALESCE(approved_at, now()),
-                        approved_by = COALESCE(approved_by, $2) WHERE tenant_id = $1`, [t, hrId]);
-  const { rows: comps } = await c.query('SELECT id, name FROM lna_competencies WHERE tenant_id = $1', [t]);
+                        approved_by = COALESCE(approved_by, $2) WHERE tenant_id = $1 AND name = ANY($3::text[])`, [t, hrId, SEEDED_COMPETENCIES]);
+  const { rows: comps } = await c.query('SELECT id, name FROM lna_competencies WHERE tenant_id = $1 AND name = ANY($2::text[])', [t, SEEDED_COMPETENCIES]);
   const comp = Object.fromEntries(comps.map((x) => [x.name, x.id]));
 
   // Developmental Needs (B4): kode, rumpun, dan tingkat BIA kamus jabatan + job function hasil DACUM
@@ -81,7 +89,7 @@ async function seedDemoData(c, { stores, tenantId: t, jobRoleId, levelIds, hrId,
     for (const [i, userId] of team.entries()) {
       if (row[i] === null || !comp[name]) continue;
       await findOrInsert(c, 'lna_assessments', { tenant_id: t, user_id: userId, competency_id: comp[name], source: 'manual_interview' },
-        { score: row[i], confidence: 1, evidence: 'Contoh hasil wawancara manual (seed demo)', assessor: 'Tim ETA', assessed_at: '2026-11-10' });
+        { score: row[i], confidence: 1, evidence: await enc('Contoh hasil wawancara manual (seed demo)'), assessor: 'Tim ETA', assessed_at: '2026-11-10' });
     }
   }
 
@@ -129,19 +137,26 @@ async function seedDemoData(c, { stores, tenantId: t, jobRoleId, levelIds, hrId,
     [sRina, rina, 'training', 'Analisis tren insiden berulang belum dilakukan', 'Insiden berulang ditangani satu per satu tanpa melihat polanya.', 'edited'],
     [sRina, rina, 'non_training', 'Beban tiket malam terlalu tinggi', 'Tiket malam menumpuk pada dua orang; disetujui HR untuk dibahas bersama penjadwalan.', 'approved'],
   ];
-  const findingIds = {};
+  const findingIds = {}; const draftFindingIds = []; const reviewedFindingIds = [];
   for (const [i, [sessionId, userId, category, title, detail, decision]] of FINDINGS.entries()) {
     const seq = i + 1;
     let id = (await c.query('SELECT id FROM lna_findings WHERE tenant_id = $1 AND session_id = $2 AND finding_seq = $3', [t, sessionId, seq])).rows[0]?.id;
     if (!id) {
-      ({ id } = await stores.tna.insertFinding(t, { projectId, userId, competencyId: comp['Analisis insiden'], sessionId, category, title, detail, gapScore: 1 }));
-      await c.query('UPDATE lna_findings SET finding_seq = $3, confidence = 0.86, analysis_job_id = $4 WHERE tenant_id = $1 AND id = $2', [t, id, seq, jobs[sessionId]]);
-      if (decision) {
-        await stores.tna.reviewFinding(t, id, { decision, reviewerId: hrId, title: decision === 'edited' ? `${title} (disunting HR)` : null });
-        await c.query('UPDATE lna_findings SET scoring_agreement = $3 WHERE tenant_id = $1 AND id = $2', [t, id, decision === 'approved']);
-      }
+      // Satu INSERT (kunci idempoten finding_seq ikut tersimpan), judul/detail terenkripsi seperti stores.tna.insertFinding
+      ({ rows: [{ id }] } = await c.query(
+        `INSERT INTO lna_findings (tenant_id, project_id, user_id, competency_id, session_id, category, title, detail, gap_score, review_status,
+                                   finding_seq, confidence, analysis_job_id)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 1, 'draft', $9, 0.86, $10) RETURNING id`,
+        [t, projectId, userId, comp['Analisis insiden'], sessionId, category, await enc(title), await enc(detail), seq, jobs[sessionId]]));
+    }
+    const { rows: [state] } = await c.query('SELECT review_status FROM lna_findings WHERE id = $1', [id]);
+    // Putusan HR lewat store (diulang aman: hanya temuan yang masih draf, jadi run yang terputus dilanjutkan)
+    if (decision && state.review_status === 'draft') {
+      await stores.tna.reviewFinding(t, id, { decision, reviewerId: hrId, title: decision === 'edited' ? `${title} (disunting HR)` : null });
+      await c.query('UPDATE lna_findings SET scoring_agreement = $3 WHERE tenant_id = $1 AND id = $2', [t, id, decision === 'approved']);
     }
     findingIds[title] = id;
+    (decision ? reviewedFindingIds : draftFindingIds).push(id);
   }
 
   // ---------- Rencana belajar: dari temuan yang disetujui HR, dan satu untuk karyawan demo ----------
@@ -151,15 +166,18 @@ async function seedDemoData(c, { stores, tenantId: t, jobRoleId, levelIds, hrId,
     { origin: 'hr', program_tier: 'basic', status: 'new', catalog_source: 'elitementor', catalog_item_title: 'Root Cause Analysis untuk gap Analisis insiden' });
 
   // ---------- Improvement Needs: tindakan perbaikan + akses atasan ----------
-  await findOrInsert(c, 'ina_actions', { tenant_id: t, title: 'Perbarui SOP eskalasi insiden' }, {
-    detail: 'Sesuaikan matriks eskalasi P1/P2 dengan struktur tim terbaru dan sosialisasikan ke L1.', category: 'sop',
-    owner_user_id: spvId, finding_id: findingIds['SOP eskalasi insiden P2 belum diperbarui'], competency_id: comp['Analisis insiden'],
-    due_date: isoDate(14), status: 'in_progress', created_by: hrId,
-  });
-  await findOrInsert(c, 'ina_actions', { tenant_id: t, title: 'Buka akses baca dasbor pemantauan untuk L1' }, {
-    detail: 'Ajukan akses baca dasbor pemantauan untuk seluruh akun L1.', category: 'alat', owner_user_id: dimas,
-    due_date: isoDate(7), status: 'new', created_by: hrId,
-  });
+  // Kunci idempoten = temuan asal (finding_id), bukan judul yang terenkripsi
+  const inaActionIds = [];
+  for (const [finding, title, detail, values] of [
+    ['SOP eskalasi insiden P2 belum diperbarui', 'Perbarui SOP eskalasi insiden', 'Sesuaikan matriks eskalasi P1/P2 dengan struktur tim terbaru dan sosialisasikan ke L1.',
+      { category: 'sop', owner_user_id: spvId, competency_id: comp['Analisis insiden'], due_date: isoDate(14), status: 'in_progress' }],
+    ['Akses dasbor pemantauan terbatas', 'Buka akses baca dasbor pemantauan untuk L1', 'Ajukan akses baca dasbor pemantauan untuk seluruh akun L1.',
+      { category: 'alat', owner_user_id: dimas, due_date: isoDate(7), status: 'new' }],
+  ]) {
+    const key = { tenant_id: t, finding_id: findingIds[finding] };
+    const { rows: [found] } = await c.query('SELECT id FROM ina_actions WHERE tenant_id = $1 AND finding_id = $2', [t, key.finding_id]);
+    inaActionIds.push(found ? found.id : await findOrInsert(c, 'ina_actions', key, { title: await enc(title), detail: await enc(detail), created_by: hrId, ...values }));
+  }
   await findOrInsert(c, 'lna_non_training_grants', { tenant_id: t, supervisor_id: spvId, revoked_at: null }, { granted_by: hrId });
 
   // ---------- Library, Program & Course, Permintaan, draf modul ----------
@@ -245,14 +263,14 @@ async function seedDemoData(c, { stores, tenantId: t, jobRoleId, levelIds, hrId,
     { definition: 'Mengomunikasikan dampak dan perkiraan pemulihan kepada pelanggan.', target_score: 85, actual_score: 72, actual_source: 'manual', origin: 'hr', status: 'validated', validated_by: hrId });
   const leader = await findOrInsert(c, 'cca_assignments', { tenant_id: t, assignee_id: spvId, tier: 'leader' },
     { assigned_by: hrId, due_date: isoDate(7), duration_minutes: 15, status: 'completed', completed_at: '2026-11-20T04:00:00Z',
-      summary: 'Atasan menekankan keandalan dan komunikasi saat insiden.' });
+      summary: await enc('Atasan menekankan keandalan dan komunikasi saat insiden.') });
   for (const userId of team) {
     await findOrInsert(c, 'cca_assignments', { tenant_id: t, assignee_id: userId, tier: 'employee' },
       { assigned_by: spvId, parent_id: leader, due_date: isoDate(7), duration_minutes: 15, status: userId === dimas ? 'completed' : 'assigned',
         completed_at: userId === dimas ? '2026-11-21T04:00:00Z' : null });
   }
 
-  return { projectId, learnerId: learner.id, planId };
+  return { projectId, learnerId: learner.id, planId, competencyIds: comp, findingIds, draftFindingIds, reviewedFindingIds, inaActionIds };
 }
 
 module.exports = { seedDemoData, findOrInsert };
