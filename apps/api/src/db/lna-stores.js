@@ -733,7 +733,8 @@ function createLnaStores(sequelize, { cipher } = {}) {
         if (!latest || String(latest.id) !== String(turnId)) return { error: 'NOT_LATEST_ANSWER' };
         const [[row]] = await run(`UPDATE lna_interview_turns SET corrected_text = :text WHERE id = :turnId AND session_id = :sessionId
                                     RETURNING id, speaker, text, corrected_text AS "correctedText", at, mode, interrupted`);
-        await run('UPDATE lna_interview_sessions SET transcript_edited_at = clock_timestamp() WHERE tenant_id = :tenantId AND id = :sessionId');
+        // Presisi milidetik: nilai ini kembali lewat Date JS ke penjaga saveSummary (editedAt)
+        await run("UPDATE lna_interview_sessions SET transcript_edited_at = date_trunc('milliseconds', clock_timestamp()) WHERE tenant_id = :tenantId AND id = :sessionId");
         const [opened] = await open(tenantId, [row], ['text', 'correctedText']);
         return turnView(opened);
       });

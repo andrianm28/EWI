@@ -45,7 +45,7 @@ export function fromBase64(b64: string): ArrayBuffer {
 /** Constraint mikrofon (V2/V4): peredam gema penting karena suara AI keluar dari speaker yang sama. */
 export const MIC_CONSTRAINTS: MediaStreamConstraints = { audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true }, video: false }
 
-export interface Mic { stop(): void }
+export interface Mic { readonly ctx: AudioContext; stop(): void }
 
 /** Mulai menangkap mikrofon dari stream yang sudah diizinkan; onChunk menerima PCM16 16 kHz base64. */
 export async function startMic(stream: MediaStream, onChunk: (b64: string) => void): Promise<Mic> {
@@ -55,17 +55,22 @@ export async function startMic(stream: MediaStream, onChunk: (b64: string) => vo
   const src = ctx.createMediaStreamSource(stream)
   const node = new AudioWorkletNode(ctx, 'elgos-pcm16')
   node.port.onmessage = (e: MessageEvent<ArrayBuffer>) => onChunk(toBase64(e.data))
+  // Node tanpa keluaran bisa tidak diproses di sebagian mesin: sambungkan lewat gain 0 ke destination (tidak terdengar)
+  const mute = ctx.createGain()
+  mute.gain.value = 0
   src.connect(node)
+  node.connect(mute).connect(ctx.destination)
   return {
+    ctx,
     stop() {
       node.port.onmessage = null
-      try { src.disconnect(); node.disconnect() } catch { /* sudah lepas */ }
+      try { src.disconnect(); node.disconnect(); mute.disconnect() } catch { /* sudah lepas */ }
       void ctx.close()
     },
   }
 }
 
-export interface Player { play(b64: string): void; stop(): void; close(): void; readonly speaking: boolean }
+export interface Player { play(b64: string): void; stop(): void; close(): void; readonly speaking: boolean; readonly ctx: AudioContext }
 
 /** Pemutar audio AI: potongan dijadwalkan berurutan; stop() memotong semua yang sedang/akan diputar. */
 export function createPlayer(onIdle?: () => void): Player {
@@ -73,6 +78,7 @@ export function createPlayer(onIdle?: () => void): Player {
   let next = 0
   const live = new Set<AudioBufferSourceNode>()
   return {
+    ctx,
     get speaking() { return live.size > 0 },
     play(b64) {
       const pcm = new Int16Array(fromBase64(b64))

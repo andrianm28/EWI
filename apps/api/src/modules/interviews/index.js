@@ -345,10 +345,13 @@ function interviewRouter({ submodule, stores, ai, aiConfig = {}, audit, analysis
         }
         return res.json({ data: { mode: 'voice' } });
       }
-      if (s.mode !== 'text') {
+      // Sudah di mode teks: 200 tanpa perubahan (7.1)
+      if (s.mode === 'text') return res.json({ data: { mode: 'text', question: null } });
+      {
+        // Hentikan sesi suara dulu supaya giliran terbukanya tersimpan dengan epoch lama (6.1), baru epoch dinaikkan
+        await stopVoice(s.id, 'switched');
         const row = await stores.interviews.setMode(req.tenantId, s.id, 'text');
         if (!row) throw new HttpError(409, 'INVALID_STATE', 'Sesi sudah berubah. Muat ulang halaman ini.');
-        await stopVoice(s.id, 'switched');
         await audit.record(req, 'update', `${submodule}.interview_mode`, { employeeIds: [s.intervieweeId], objectType: 'interview_session', objectIds: [s.id], to: 'text' });
       }
       // Giliran terakhir bukan pertanyaan AI yang utuh: buat pertanyaan teks berikutnya supaya karyawan tidak menunggu
@@ -368,8 +371,8 @@ function interviewRouter({ submodule, stores, ai, aiConfig = {}, audit, analysis
   }
 
   // B19 (V5): karyawan membetulkan jawaban terakhirnya (salah dengar di mode suara, salah ketik di mode teks)
-  if (submodule === 'tna') {
-    r.patch('/:id/turns/:turnId', noSuperAdmin, wrap(async (req, res) => {
+  if (voiceSupported) {
+    r.patch('/:id/turns/:turnId', noSuperAdmin, requireFlag(flags, FLAGS.VOICE_REALTIME, 'Wawancara suara belum diaktifkan untuk organisasi Anda'), wrap(async (req, res) => {
       const s = await loadVisible(req);
       mustBeInterviewee(req, s);
       if (s.status !== 'in_progress' || s.summaryAt) throw new HttpError(409, 'INVALID_STATE', 'Jawaban tidak bisa diubah lagi');

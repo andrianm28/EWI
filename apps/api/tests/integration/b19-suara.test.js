@@ -201,6 +201,11 @@ run('B19 wawancara suara HTTP + WS (Postgres, penyedia fake)', () => {
     expect(sw.body.data).toEqual({ mode: 'text', question: null });
     expect(await c.wait((m) => m.type === 'ended')).toEqual({ type: 'ended', reason: 'switched' });
     expect((await request(app).post(`${base(sid)}/turns`).set(as('eka')).send({ text: 'jawab teks' })).status).toBe(200);
+    // sudah di mode teks: 200 tanpa perubahan, tidak ada pertanyaan baru (7.1)
+    const before = (await request(app).get(`${base(sid)}/transcript`).set(as('eka'))).body.data.length;
+    const again = await request(app).post(`${base(sid)}/voice/switch`).set(as('eka')).send({ to: 'text' });
+    expect(again.body.data).toEqual({ mode: 'text', question: null });
+    expect((await request(app).get(`${base(sid)}/transcript`).set(as('eka'))).body.data.length).toBe(before);
     // sesi kosong: pindah ke teks membuat pertanyaan pertama
     const sid2 = await voiceReady('fani');
     const sw2 = await request(app).post(`${base(sid2)}/voice/switch`).set(as('fani')).send({ to: 'text' });
@@ -225,6 +230,14 @@ run('B19 wawancara suara HTTP + WS (Postgres, penyedia fake)', () => {
     const ok = await patch('gita', humans[1].id, 'jawab dua salah');
     expect(ok.status).toBe(200);
     expect(ok.body.data).toMatchObject({ text: 'jawab dua salah', corrected: true, originalText: 'jawab dua slah' });
+    // Ubah bagian B19: flag voice.realtime mati -> 403 FEATURE_DISABLED (7.1)
+    await flag(tenant.id, 'voice.realtime', false);
+    const off = await patch('gita', humans[1].id, 'lagi');
+    await flag(tenant.id, 'voice.realtime', true);
+    expect([off.status, off.body.error.code]).toEqual([403, 'FEATURE_DISABLED']);
+    // ringkasan sesudah Ubah tetap bisa dibuat (penjaga transcript_edited_at, presisi milidetik)
+    const sum = await request(app).post(`${base(sid)}/summary`).set(as('gita')).send({});
+    expect(sum.status).toBe(201);
   });
 
   it('penarikan persetujuan menutup WS; restart mengosongkan kolom suara', async () => {

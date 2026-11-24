@@ -27,6 +27,18 @@ let player: Player | null = null
 let micStream: MediaStream | null = null
 let ownStream = false
 let finished = false
+let draining: Player | null = null
+const suspended = ref(false)
+
+/** Konteks audio yang dibuat di luar klik (mis. sesudah muat ulang) bisa tertahan; lanjutkan pada interaksi berikutnya. */
+function unlockAudio() {
+  for (const c of [mic?.ctx, player?.ctx]) if (c && c.state === 'suspended') void c.resume()
+  suspended.value = false
+}
+function checkSuspended() {
+  suspended.value = [mic?.ctx, player?.ctx].some((c) => c && c.state === 'suspended')
+  if (suspended.value) { addEventListener('pointerdown', unlockAudio, true); addEventListener('keydown', unlockAudio, true) }
+}
 
 function finish(reason: string, message?: string) {
   if (finished) return
@@ -34,12 +46,17 @@ function finish(reason: string, message?: string) {
   phase.value = 'ended'
   emit('caption', null)
   emit('ended', reason, message)
-  cleanup()
+  // Selesai normal: penutup AI datang lebih cepat dari waktu nyata, biarkan diputar habis sebelum pemutar ditutup
+  cleanup({ drain: reason === 'done' })
 }
 
-function cleanup() {
+function cleanup({ drain = false } = {}) {
+  removeEventListener('pointerdown', unlockAudio, true)
+  removeEventListener('keydown', unlockAudio, true)
   mic?.stop(); mic = null
-  player?.close(); player = null
+  const p = player; player = null
+  if (p && drain && p.speaking) draining = p
+  else p?.close()
   if (ws && ws.readyState <= WebSocket.OPEN) { try { ws.close(1000) } catch { /* sudah tertutup */ } }
   ws = null
   // Stream dari langkah Persetujuan dimiliki induk; stream yang dibuka panel sendiri dilepas di sini
@@ -71,7 +88,8 @@ function onMessage(e: MessageEvent<string>) {
       phase.value = 'listening'
       break
     case 'error':
-      finish(m.code === 'VOICE_UNAVAILABLE' ? 'provider' : 'error', m.message as string)
+      // Gangguan sambungan boleh dicoba lagi; galat keadaan (batas waktu, flag, tab lain) tidak
+      finish(m.code === 'VOICE_UNAVAILABLE' || m.code === 'VOICE_TICKET' ? 'provider' : 'blocked', m.message as string)
       break
     case 'ended':
       finish(m.reason as string)
@@ -83,7 +101,10 @@ async function connect() {
   try {
     micStream = props.stream && props.stream.active ? props.stream : null
     if (!micStream) { micStream = await navigator.mediaDevices.getUserMedia(MIC_CONSTRAINTS); ownStream = true }
-    player = createPlayer(() => { if (phase.value === 'speaking') phase.value = 'listening' })
+    player = createPlayer(() => {
+      if (draining) { draining.close(); draining = null }
+      if (phase.value === 'speaking') phase.value = 'listening'
+    })
     const t = (await iv.voiceTicket(props.sessionId)).data
     if (finished) return
     ws = new WebSocket(wsUrl(t.path))
@@ -91,8 +112,13 @@ async function connect() {
     ws.onmessage = onMessage
     ws.onclose = () => finish('provider', 'Sambungan suara terputus.')
     mic = await startMic(micStream, (b64) => { if (!muted.value) send({ type: 'audio', data: b64 }) })
+    if (finished) { mic.stop(); mic = null; return }
+    for (const c of [mic.ctx, player.ctx]) if (c.state === 'suspended') await c.resume().catch(() => {})
+    checkSuspended()
   } catch (e) {
     const denied = e instanceof DOMException && (e.name === 'NotAllowedError' || e.name === 'SecurityError')
+    // Tiket ditolak karena keadaan sesi (batas waktu, flag mati, ringkasan sudah dibuat): kembali ke suara tidak berguna
+    if (e instanceof ApiError && (e.status === 403 || e.status === 409)) return finish('blocked', e.message)
     finish('provider', denied ? 'Izin mikrofon ditolak. Lanjutkan dengan mengetik.' : e instanceof ApiError ? e.message : 'Sambungan suara gagal dibuka.')
   }
 }
@@ -111,7 +137,7 @@ function typeInstead() {
 }
 
 onMounted(connect)
-onBeforeUnmount(() => { finished = true; cleanup() })
+onBeforeUnmount(() => { finished = true; cleanup(); draining?.close(); draining = null })
 </script>
 
 <template>
@@ -124,6 +150,7 @@ onBeforeUnmount(() => { finished = true; cleanup() })
       <UiButton variant="tonal" :disabled="phase === 'connecting' || phase === 'ended' || muted" @click="endTurn">Selesai menjawab</UiButton>
       <UiButton variant="text" @click="typeInstead">Ketik saja</UiButton>
     </div>
+    <p v-if="suspended" class="iv-small">Ketuk di mana saja di halaman ini untuk mengaktifkan suara.</p>
     <p class="el-muted iv-small">Pakai headset bila ada, supaya suara AI tidak tertangkap mikrofon.</p>
   </section>
 </template>

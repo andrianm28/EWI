@@ -86,6 +86,9 @@ run('B19 store wawancara suara (Postgres)', () => {
     expect((await iv().get(tenant.id, id)).transcriptEditedAt).toBeTruthy();
     // ringkasan yang mulai sebelum koreksi tidak tersimpan
     expect(await iv().saveSummary(tenant.id, id, [], { restartCount: 0, turnCount: 4, editedAt: null })).toBeNull();
+    // ringkasan yang membaca transkrip sesudah koreksi tersimpan (editedAt dari get() lewat Date JS)
+    const now = await iv().get(tenant.id, id);
+    expect(await iv().saveSummary(tenant.id, id, [], { restartCount: 0, turnCount: 4, editedAt: now.transcriptEditedAt })).toBeTruthy();
   });
 
   it('waktu mulai suara diisi sekali; ai_done hanya dengan epoch berlaku; restart mengosongkan kolom suara', async () => {

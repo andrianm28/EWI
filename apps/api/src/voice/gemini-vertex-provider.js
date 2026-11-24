@@ -87,6 +87,12 @@ function createGeminiVertexProvider({ config, tokenSource, WebSocket = require('
         dispatch(s, msg);
       });
       ws.on('error', (e) => s.emit('error', { code: 'VOICE_UPSTREAM', message: e.message }));
+      // 6.4: upgrade ditolak 401/403/404/429 tidak dicoba ulang; status lain boleh dicoba ulang
+      ws.on('unexpected-response', (req, res) => {
+        const rejected = [401, 403, 404, 429].includes(res.statusCode);
+        s.emit('error', { code: rejected ? 'VOICE_UPSTREAM_REJECTED' : 'VOICE_UPSTREAM', status: res.statusCode, message: `Upgrade Gemini ditolak (${res.statusCode})` });
+        try { req.destroy(); } catch { /* */ }
+      });
       ws.on('close', (code, reason) => s.emit('close', { code, reason: reason ? reason.toString() : '' }));
       Object.assign(s, {
         sendAudio: (data) => send({ realtimeInput: { audio: { data, mimeType: 'audio/pcm;rate=16000' } } }),

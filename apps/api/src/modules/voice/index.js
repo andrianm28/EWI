@@ -73,16 +73,19 @@ function createVoiceModule(deps) {
           .catch((e) => console.error(`Audit sesi suara gagal: ${e.message}`));
       },
     });
+    // Browser bisa pergi selama pemeriksaan kelayakan: jangan buka Gemini untuk soket yang sudah tertutup
+    if (ws.readyState !== 1) return;
     registry.add(sessionId, vs);
-    await audit.record(auditReq(claims), 'create', 'tna.voice_session', {
-      employeeIds: [claims.id], objectType: 'interview_session', objectIds: [sessionId], provider: provider.name, model: provider.model, location: provider.location,
-    });
     ws.on('message', (data, isBinary) => {
       let msg = null;
       if (!isBinary) { try { msg = JSON.parse(data.toString('utf8')); } catch { msg = null; } }
       vs.onClientMessage(msg);
     });
     ws.on('close', () => { if (!vs.ended) vs.stop('stopped'); });
+    await audit.record(auditReq(claims), 'create', 'tna.voice_session', {
+      employeeIds: [claims.id], objectType: 'interview_session', objectIds: [sessionId], provider: provider.name, model: provider.model, location: provider.location,
+    });
+    if (ws.readyState !== 1) { await vs.stop('stopped'); return; }
     await vs.start();
   }
 

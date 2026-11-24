@@ -59,7 +59,7 @@ function penangan() {
 }
 
 /** Gateway suara tiruan: setelah auth mengirim ready, sapaan AI, dan menjawab end_turn dengan giliran. */
-async function gateway(page: Page, { gagal = false } = {}) {
+async function gateway(page: Page, { gagal = false, pesanAuth }: { gagal?: boolean; pesanAuth?: Record<string, unknown> } = {}) {
   let sisaGagal = gagal ? 1 : 0 // hanya sambungan pertama yang gagal
   const diterima: Record<string, unknown>[] = []
   let soket: WebSocketRoute | null = null
@@ -71,6 +71,7 @@ async function gateway(page: Page, { gagal = false } = {}) {
       diterima.push(m)
       if (m.type === 'auth') {
         if (sisaGagal > 0) { sisaGagal -= 1; kirim({ type: 'error', code: 'VOICE_UNAVAILABLE', message: 'Wawancara suara sedang tidak tersedia.' }); ws.close({ code: 1000 }); return }
+        if (pesanAuth) { kirim(pesanAuth); return }
         kirim({ type: 'ready' })
         kirim({ type: 'caption', speaker: 'ai', text: 'Halo, apa kendala' })
         kirim({ type: 'turn', turn: { id: 1, speaker: 'ai', text: 'Halo, apa kendala terbesar Anda?', at: '', mode: 'voice', interrupted: false, corrected: false } })
@@ -84,7 +85,7 @@ async function gateway(page: Page, { gagal = false } = {}) {
   return { diterima, putus: () => soket?.close({ code: 1011 }) }
 }
 
-async function setup(page: Page, izin: 'boleh' | 'tolak' = 'boleh', opsi: { gagal?: boolean } = {}) {
+async function setup(page: Page, izin: 'boleh' | 'tolak' = 'boleh', opsi: { gagal?: boolean; pesanAuth?: Record<string, unknown> } = {}) {
   await mikrofon(page, izin)
   const { penangan: p, terkirim } = penangan()
   await mockApi(page, p)
@@ -165,4 +166,21 @@ test('ended provider (gateway gagal) -> teks dengan pesan dan Kembali ke suara',
   await page.getByRole('button', { name: 'Kembali ke suara' }).click()
   await expect(page.getByTestId('panel-suara').getByRole('status')).toHaveText('Mendengarkan')
   expect(terkirim.filter((t) => t.path === 'switch').map((t) => t.body)).toEqual([{ to: 'text' }, { to: 'voice' }])
+})
+
+test('dibuka di tab lain (superseded): tidak pindah mode, tawarkan Lanjutkan di sini', async ({ page }) => {
+  const { terkirim } = await setup(page, 'boleh', { pesanAuth: { type: 'ended', reason: 'superseded' } })
+  await setujuSuara(page)
+  await expect(page.getByTestId('suara-di-tab-lain')).toContainText('dibuka di tab atau perangkat lain')
+  expect(terkirim.filter((t) => t.path === 'switch')).toEqual([])
+  await expect(page.getByRole('button', { name: 'Lanjutkan di sini' })).toBeVisible()
+})
+
+test('galat keadaan (batas waktu) -> teks tanpa Kembali ke suara', async ({ page }) => {
+  const { terkirim } = await setup(page, 'boleh', { pesanAuth: { type: 'error', code: 'INVALID_STATE', message: 'Batas waktu suara habis.' } })
+  await setujuSuara(page)
+  await expect(page.getByText('Batas waktu suara habis. Lanjutkan dengan mengetik.')).toBeVisible()
+  await expect(page.getByLabel('Jawaban', { exact: true })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Kembali ke suara' })).toHaveCount(0)
+  expect(terkirim.filter((t) => t.path === 'switch').map((t) => t.body)).toEqual([{ to: 'text' }])
 })

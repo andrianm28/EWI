@@ -25,6 +25,8 @@ const route = useRoute()
 const router = useRouter()
 const id = computed(() => route.params.id as string)
 const summaryOn = computed(() => session.hasFlag('tna.interview_summary'))
+// Ubah jawaban (V5) bagian dari B19, ikut flag voice.realtime (spek bagian 2)
+const voiceFlagOn = computed(() => session.hasFlag('voice.realtime'))
 
 const s = ref<SessionView | null>(null)
 const turns = computed(() => s.value?.turns ?? [])
@@ -49,6 +51,8 @@ const caption = ref<{ speaker: 'ai' | 'human'; text: string } | null>(null)
 const voiceNotice = ref('')
 const canReturnToVoice = ref(false)
 const panelKey = ref(0)
+const voiceElsewhere = ref(false)
+const voiceHere = () => { voiceElsewhere.value = false; panelKey.value += 1 }
 const releaseMic = () => { voiceStream.value?.getTracks().forEach((t) => t.stop()); voiceStream.value = null }
 
 async function load({ keepSummary = false } = {}) {
@@ -122,10 +126,10 @@ function onVoiceEnded(reason: string, message?: string) {
   releaseMic()
   if (reason === 'done') { aiDone.value = true; return }
   if (reason === 'time') return toText('Batas waktu wawancara suara habis. Lanjutkan dengan mengetik.', false)
-  if (reason === 'provider' || reason === 'superseded' || reason === 'error') {
-    const msg = reason === 'superseded' ? 'Wawancara suara dibuka di tab atau perangkat lain.' : message || 'Sambungan suara terputus.'
-    return toText(`${msg} Anda bisa melanjutkan dengan mengetik.`, true)
-  }
+  if (reason === 'provider') return toText(`${message || 'Sambungan suara terputus.'} Anda bisa melanjutkan dengan mengetik.`, true)
+  if (reason === 'blocked') return toText(`${message || 'Wawancara suara tidak bisa dilanjutkan.'} Lanjutkan dengan mengetik.`, false)
+  // Tab lain yang sekarang memegang sesi suara: jangan pindah mode (akan menghentikan tab itu); tawarkan lanjut di sini
+  if (reason === 'superseded') { voiceElsewhere.value = true; return undefined }
   if (reason === 'session_changed' || reason === 'withdrawn') return run(load, 'Sesi wawancara tidak bisa dimuat')
   return undefined
 }
@@ -215,12 +219,16 @@ const audit = computed(() => {
 
         <template v-else-if="step === 'chat'">
           <PercakapanWawancara
-            :turns="turns" :question-limit="s.questionLimit" :can-answer="!aiDone" :busy="busy" :mode="mode" :pending="caption" can-edit
+            :turns="turns" :question-limit="s.questionLimit" :can-answer="!aiDone" :busy="busy" :mode="mode" :pending="caption" :can-edit="voiceFlagOn"
             @send="send" @edit="editTurn"
           >
             <template #masukan-suara>
+              <div v-if="voiceElsewhere" class="iv-voice" data-testid="suara-di-tab-lain">
+                <p role="status">Wawancara suara sedang dibuka di tab atau perangkat lain.</p>
+                <div class="iv-actions"><UiButton variant="outlined" @click="voiceHere">Lanjutkan di sini</UiButton></div>
+              </div>
               <PanelSuara
-                :key="panelKey" :session-id="id" :stream="voiceStream"
+                v-else :key="panelKey" :session-id="id" :stream="voiceStream"
                 @turn="onVoiceTurn" @caption="caption = $event" @ended="onVoiceEnded" @type="toText()"
               />
             </template>

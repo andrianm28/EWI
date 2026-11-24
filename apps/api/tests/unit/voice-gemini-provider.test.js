@@ -113,3 +113,16 @@ test('pesan rusak dari server menjadi event error, bukan crash', async () => {
   ws.emit('message', Buffer.from('{bukan json'), true);
   expect(errs).toEqual(['VOICE_PROTOCOL']);
 });
+
+test('upgrade ditolak 401/403/404/429 menjadi VOICE_UPSTREAM_REJECTED (tidak dicoba ulang); 5xx tetap VOICE_UPSTREAM', async () => {
+  const errs = [];
+  const { s, ws } = await open();
+  s.on('error', (e) => errs.push(e));
+  let destroyed = 0;
+  ws.emit('unexpected-response', { destroy: () => { destroyed += 1; } }, { statusCode: 403 });
+  const b = await open();
+  b.s.on('error', (e) => errs.push(e));
+  b.ws.emit('unexpected-response', { destroy: () => { destroyed += 1; } }, { statusCode: 503 });
+  expect(errs.map((e) => [e.code, e.status])).toEqual([['VOICE_UPSTREAM_REJECTED', 403], ['VOICE_UPSTREAM', 503]]);
+  expect(destroyed).toBe(2);
+});

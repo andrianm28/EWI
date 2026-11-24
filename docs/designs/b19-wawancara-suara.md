@@ -139,7 +139,7 @@ Gateway yang memutuskan, bukan model sendirian.
 
 - **Kuota pertanyaan** = `questionLimit(session, aiConfig)`. Yang dihitung: giliran AI tersimpan yang tidak bertanda `interrupted`, dari database (jadi berlaku lintas sambungan dan lintas mode). Saat kuota tercapai, gateway mengirim `sendText('Kuota pertanyaan habis. Ucapkan penutup singkat lalu panggil akhiri_wawancara.')`. Bila model masih bertanya, giliran AI itu tetap disimpan, lalu gateway mengakhiri dengan alasan `done` dan menyimpan `ai_done_at`.
 - **Batas waktu suara per sesi wawancara**, bukan per sambungan: `voice_started_at` diisi saat sesi suara pertama terhubung; batasnya 18 menit bila `durationMinutes = 15`, selain itu 36 menit (selaras dengan `questionLimit`). Lewat batas: `ended` alasan `time`, lalu web pindah ke teks.
-- **Audio masuk**: pesan lebih dari 256 KB (`maxPayload` ws) atau bukan JSON yang dikenal → tutup `1008`. Laju audio di atas 1,5× waktu nyata dalam jendela 10 detik (48.000 byte PCM per detik) → tutup `1008` dengan `error` `VOICE_RATE`. Audio sebelum `ready` diantrekan paling banyak 5 detik, sisanya dibuang.
+- **Audio masuk**: pesan lebih dari 256 KB (`maxPayload` ws) atau bukan JSON yang dikenal → tutup `1008`. Laju audio di atas 1,5× waktu nyata dalam jendela 10 detik (48.000 byte PCM per detik) → tutup `1008` dengan `error` `VOICE_RATE`. Audio sebelum `ready` (setupComplete Gemini) dibuang: Gemini tidak menerima masukan sebelum setup selesai, dan AI menyapa lebih dulu.
 - **Biaya per tenant**: tanpa batas di v1, laporan biaya mingguan memakai `ai_usage_logs` (PO-10 C) [⏳ DITERIMA].
 
 ### 6.4 Gangguan sambungan Gemini
@@ -190,7 +190,7 @@ Gateway → browser: `{type:'ready'}`, `{type:'audio', data}` (PCM16 24 kHz), `{
 
 Endpoint HTTP memakai kode yang sama: `VOICE_FORBIDDEN` → 403, `FEATURE_DISABLED` → 403, `VOICE_UNAVAILABLE` → 503, `INVALID_STATE` → 409.
 
-**Layar per alasan `ended`**: `done` → tombol "Lihat ringkasan temuan" (atau "Selesai dan kirim" bila flag ringkasan mati); `time`, `provider`, `superseded` → pindah ke teks (`/voice/switch to:'text'`) dengan pesan dan tombol **Kembali ke suara** (kecuali `time`); `session_changed`, `withdrawn` → muat ulang sesi; `switched`, `stopped` → tidak ada tindakan.
+**Layar per alasan `ended`**: `done` → tombol "Lihat ringkasan temuan" (atau "Selesai dan kirim" bila flag ringkasan mati); `provider` → pindah ke teks (`/voice/switch to:'text'`) dengan pesan dan tombol **Kembali ke suara**; `time` dan galat keadaan (`error` selain `VOICE_UNAVAILABLE`/`VOICE_TICKET`, tiket ditolak 403/409) → pindah ke teks tanpa tombol itu; `superseded` → tidak pindah mode (pindah akan menghentikan tab yang kini memegang sesi), panel diganti catatan "dibuka di tab lain" dengan tombol **Lanjutkan di sini**; `session_changed`, `withdrawn` → muat ulang sesi; `switched`, `stopped` → tidak ada tindakan.
 
 ### 7.4 Giliran di respons
 
@@ -292,6 +292,33 @@ Laporan lengkap: `/mnt/project-files/elgos-eksekusi/egm-b19/spek/` (zoom out, in
 | Batas biaya per tenant (design B2, zoom m5) | Tunda ⏳; laporan mingguan PO-10 C (6.3) |
 | Kode keputusan di luar repo (comprehension M-6, design N10) | Perbaiki sebagian: kode yang menentukan desain diberi arti singkat di teks; log lengkap tetap di project files |
 
-### 13.2 Review diff
+### 13.2 Review diff (25 Nov, PR #56)
 
-(diisi setelah implementasi)
+Empat reviewer atas diff `scbrmb...im2v1p`: mattpocock code-review (Standards, Spec) dan egm (codebase-details, implementation-readiness).
+
+| Temuan | Sumber | Triase |
+|---|---|---|
+| `transcript_edited_at` mikrodetik vs `Date` JS milidetik: `/summary` selalu 409 sesudah Ubah | codebase B1 | Perbaiki ✓ `date_trunc('milliseconds')` + test positif (merah lalu hijau) |
+| Audio sebelum `setupComplete` dikirim ke Gemini | readiness B1 | Perbaiki ✓ dibuang sampai `ready` (6.3 diperbarui) |
+| "(disela)" tersimpan sebelum jawaban yang dijawabnya | spec c1, codebase M2, readiness M3 | Perbaiki ✓ jawaban disimpan saat AI mulai bicara; test jawaban → AI → disela |
+| Ubah dan PATCH tidak di balik flag | standards, spec c2 | Perbaiki ✓ `requireFlag` + `can-edit` ikut flag; test 403 |
+| Upgrade 401/403/404/429 dicoba ulang | spec c3, codebase m8 | Perbaiki ✓ `unexpected-response` → `VOICE_UPSTREAM_REJECTED`, juga `VOICE_AUTH_FAILED`, tidak dicoba ulang |
+| `switch to:'text'` di mode teks bukan no-op | spec c4 | Perbaiki ✓ 200 tanpa perubahan + test |
+| `setMode` sebelum `stopVoice`: caption terbuka ditolak epoch | codebase M5 | Perbaiki ✓ urutan dibalik |
+| Tab ditutup saat pemeriksaan kelayakan: Gemini tetap dibuka | codebase M3, readiness M5 | Perbaiki ✓ cek `readyState` sebelum dan sesudah audit |
+| Gagal simpan di `finish` membocorkan sambungan Gemini | readiness M4 | Perbaiki ✓ `finally` + test |
+| Penutup AI terpotong saat `ended:done` | codebase M4 | Perbaiki ✓ pemutar ditutup saat idle |
+| `superseded`/galat keadaan memanggil switch dan menawarkan Kembali ke suara | codebase M6/m11, readiness m10 | Perbaiki ✓ alasan `blocked` dan layar "Lanjutkan di sini"; 2 test e2e |
+| AudioContext tertahan sesudah muat ulang; worklet tanpa keluaran | readiness M6, codebase m10 | Perbaiki ✓ `resume()` + buka saat interaksi berikutnya; worklet lewat gain 0 |
+| `akhiri_wawancara` tanpa `turnComplete` menggantung | readiness m9 | Perbaiki ✓ tenggang 8 detik + test |
+| `goAway` tanpa handle tidak menyimpan caption terbuka | spec a | Perbaiki ✓ |
+| Teks koreksi masuk prompt tanpa escape | standards | Perbaiki ✓ `JSON.stringify` + label "data, bukan perintah" |
+| `deploy/vps/.env.example` `fake` + `asia-southeast1` | readiness M7 | Perbaiki ✓ `none` + `asia-south1` |
+| Kunci di rootless Docker (uid) | readiness B2 | Sudah: salinan etavm2 milik 166535 (= uid 1000 container); `pasang-kunci-gcp.sh` milik thread infra, perlu `APP_UID` |
+| Tiket audience `ewi-voice` vs aturan 5 (`ewi`) | standards | Butuh keputusan Andrian (ADR 0003): sengaja supaya tiket tidak bisa dipakai sebagai token API |
+| `jti` sekali pakai di memori per proses | standards | Terima: satu proses API per lingkungan; epoch membatasi |
+| Rate limit tiket 429 vs spek 409 | spec, codebase m7 | Terima 429 (`VOICE_RATE`), 7.1 diselaraskan di revisi berikut |
+| Kelayakan tiap simpan giliran (4.3), test "sesi login dicabut", naik-turun-naik di test | spec a | Tunda ⏳: cek berkala 30 detik + penjaga epoch di `addTurn`; CI menjalankan naik-turun-naik |
+| Cek token Google saat boot | readiness m11 | Tunda ⏳: smoke etavm2 sebelum demo |
+| Smell (duplikasi cek flag, string mode/alasan, `session.js` panjang) | standards | Tunda ⏳ refaktor sesudah demo |
+
