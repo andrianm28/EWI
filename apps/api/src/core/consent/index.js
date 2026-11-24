@@ -18,10 +18,13 @@ const CONSENT_VERSIONS = Object.freeze({
   ina: Object.freeze(['ina-verifikasi-v1.0']),
 });
 
-// B19 (7.1): persetujuan suara terpisah dari persetujuan utama. v0.1 hanya untuk demo dan tenant uji; flag voice.realtime
+// B19 (7.1): persetujuan suara terpisah dari persetujuan utama. teks draf hanya untuk demo dan tenant uji; flag voice.realtime
 // tetap mati untuk tenant sungguhan sampai teks v1.0 terbit dari legal (Fasha).
+// v0.2 (25 Nov): teks menyebut wilayah pemrosesan Google Cloud Mumbai, India (VOICE_LOCATION asia-south1) dan bahwa suara
+// tidak diproses Claude di Singapura. v0.1 hanya menulis "tidak dijamin di Indonesia", jadi dicabut (karyawan setuju ulang).
+// Bila VOICE_LOCATION diganti, teks di PersetujuanTna.vue dan versi ini wajib ikut berubah.
 const VOICE_CONSENT_VERSIONS = Object.freeze({
-  tna: Object.freeze(['tna-voice-consent-id-v0.1']),
+  tna: Object.freeze(['tna-voice-consent-id-v0.2']),
 });
 
 const latest = (list) => (list && list.length ? list[list.length - 1] : null);

@@ -18,7 +18,7 @@ Di luar cakupan: suara untuk wawancara DNA, CCA (`aiv`), LIM, INA; penyimpanan a
 
 | Langkah mockup | Tambahan untuk suara (hanya bila flag menyala) | Keputusan |
 | --- | --- | --- |
-| Persetujuan | Fieldset "Cara menjawab" dengan pilihan **Ketik** (bawaan) / **Suara**. Bila Suara: satu paragraf tambahan (suara diproses Google Gemini Live di Google Cloud; lokasi pemrosesan tidak dijamin di Indonesia; ELGOS tidak menyimpan rekaman suara, hanya transkripnya) dan kotak centang persetujuan suara kedua. Klaim tentang retensi di sisi Google tidak ditulis sampai legal (Fasha) menilai [⚠️ BELUM TERVERIFIKASI]. Izin mikrofon diminta saat menekan "Lanjut ke wawancara"; bila ditolak, galat tampil di ringkasan galat yang sama dan pilihan kembali ke Ketik | PM-9, PD-2b, V4 |
+| Persetujuan | Fieldset "Cara menjawab" dengan pilihan **Ketik** (bawaan) / **Suara**. Bila Suara: satu paragraf tambahan (suara dan percakapan diproses Google Gemini Live di Google Cloud wilayah Mumbai, India, bukan Claude di Singapura seperti wawancara ketik; teks v0.2, 25 Nov; ELGOS tidak menyimpan rekaman suara, hanya transkripnya) dan kotak centang persetujuan suara kedua. Klaim tentang retensi di sisi Google tidak ditulis sampai legal (Fasha) menilai [⚠️ BELUM TERVERIFIKASI]. Izin mikrofon diminta saat menekan "Lanjut ke wawancara"; bila ditolak, galat tampil di ringkasan galat yang sama dan pilihan kembali ke Ketik | PM-9, PD-2b, V4 |
 | Wawancara | Gelembung chat yang sama, ditambah gelembung caption sementara. Panel suara menggantikan kotak teks: status ("Menyambungkan", "Mendengarkan", "AI sedang bicara"), tombol **Bisukan mikrofon** (aria-pressed), tombol **Selesai menjawab**, tombol **Ketik saja**, dan saran memakai headset | V2, V5 |
 | Wawancara, disela | Bila karyawan memotong, suara AI berhenti seketika dan gelembung AI berakhir dengan "(disela)" | V3 |
 | Wawancara, koreksi | Jawaban terakhir karyawan punya tombol **Ubah** (mode suara dan teks); teks koreksi disimpan di samping teks asli dan, di mode suara, diteruskan ke model | V5 |
@@ -162,7 +162,7 @@ Semua di bawah `/api/tna/sessions` (router B6, `requireSubmodule('tna')`), hanya
 
 | Endpoint | Aturan |
 | --- | --- |
-| `POST /:id/consent` body `{ consentVersion, mode?: 'text'\|'voice', voiceConsentVersion? }` | Urutan cek: status, undangan, versi persetujuan utama (perilaku lama), lalu bila `mode:'voice'`: flag (403), `voiceConsentVersion` wajib (400) dan harus `tna-voice-consent-id-v0.1` (409 `CONSENT_VERSION_OUTDATED`). Persetujuan utama dan suara disimpan dalam satu `UPDATE` (`start()` menerima `mode`, `voiceConsentVersion`); audit `tna.interview_consent` plus `tna.interview_voice_consent`. Mode suara tidak memanggil `nextQuestion`; respons `{ status, consentVersion, mode: 'voice', question: null }`. Tanpa `mode` atau `mode:'text'`: perilaku lama persis |
+| `POST /:id/consent` body `{ consentVersion, mode?: 'text'\|'voice', voiceConsentVersion? }` | Urutan cek: status, undangan, versi persetujuan utama (perilaku lama), lalu bila `mode:'voice'`: flag (403), `voiceConsentVersion` wajib (400) dan harus `tna-voice-consent-id-v0.2` (409 `CONSENT_VERSION_OUTDATED`). Persetujuan utama dan suara disimpan dalam satu `UPDATE` (`start()` menerima `mode`, `voiceConsentVersion`); audit `tna.interview_consent` plus `tna.interview_voice_consent`. Mode suara tidak memanggil `nextQuestion`; respons `{ status, consentVersion, mode: 'voice', question: null }`. Tanpa `mode` atau `mode:'text'`: perilaku lama persis |
 | `POST /:id/voice/ticket` | Kelayakan 4.2 (galat 7.3). Menaikkan `voice_epoch`. Respons `{ ticket, path: '/api/voice/sessions/:id/stream', expiresIn: 60 }`. Laju: 10 per menit per user (409 `VOICE_RATE` bila lewat) |
 | `POST /:id/voice/switch` body `{ to: 'text'\|'voice', voiceConsentVersion? }` | Sesi `in_progress`, `summary_at` kosong, `ai_done_at` kosong (409 `INVALID_STATE`). `to:'text'`: `mode='text'`, `voice_epoch+1`, `registry.stop`; bila giliran terakhir bukan pertanyaan AI yang utuh (tidak ada giliran, giliran karyawan, atau AI "(disela)") dan kuota belum habis, pertanyaan teks berikutnya dibuat lewat jalur teks (galat AI = 502 seperti `/turns`, mode tetap teks). Respons `{ mode: 'text', question }`. `to:'voice'`: flag; bila belum ada persetujuan suara, `voiceConsentVersion` wajib dan dicatat; `mode='voice'`. Respons `{ mode: 'voice' }`. Sudah di mode tujuan: 200 tanpa perubahan. Audit `tna.interview_mode` |
 | `POST /:id/turns` (lama) | Ditambah: ditolak 409 `VOICE_ACTIVE` bila `mode='voice'` (penjaga `mode='text'` di `addTurn` jalur teks) |
@@ -223,7 +223,7 @@ Migrasi `20261125001900-b19-wawancara-suara.js` (raw SQL, schema `ewi`, dengan `
 | `VOICE_NAME` | opsional |
 | `VOICE_PRICE_INPUT_PER_MTOK`, `VOICE_PRICE_OUTPUT_PER_MTOK` (teks), `VOICE_PRICE_AUDIO_INPUT_PER_MTOK`, `VOICE_PRICE_AUDIO_OUTPUT_PER_MTOK` (audio) | opsional; bawaan untuk gemini-3.8-live |
 
-Kunci tidak pernah masuk repo, log, atau respons. `voice.realtime` tetap mati untuk tenant sungguhan sampai teks persetujuan suara v1.0 terbit (legal); v0.1 hanya untuk demo dan tenant uji.
+Kunci tidak pernah masuk repo, log, atau respons. `voice.realtime` tetap mati untuk tenant sungguhan sampai teks persetujuan suara v1.0 terbit (legal); v0.2 hanya untuk demo dan tenant uji (v0.1 dicabut 25 Nov karena tidak menyebut wilayah).
 
 ## 10. Web
 
