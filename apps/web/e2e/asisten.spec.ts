@@ -2,6 +2,7 @@ import { test, expect, type Page } from '@playwright/test'
 import { cocok, mockApi, responsData, type PermintaanApi } from './support/api'
 import { penanganHasilSaya } from './support/hasil-saya'
 import { loginSebagai, semuaModulDengan, SEMUA_MODUL, type Peran } from './support/sesi'
+import { tinjauanGap, T_DRAF } from './support/tinjauan'
 
 // Paritas S1 / X-1: panel Asisten ELGOS (B17). Spek: docs/designs/paritas-mockup/b17-asisten-web.md
 
@@ -148,6 +149,20 @@ test('aksi ke halaman yang tidak bisa dibuka tidak menampilkan tombol', async ({
   await panel(page).getByRole('button', { name: 'Kirim' }).click()
   await expect(panel(page).getByText('Ada 3 draf menunggu.')).toBeVisible()
   await expect(panel(page).getByRole('button', { name: /^Buka / })).toHaveCount(0)
+})
+
+test('P9 IR-1: HR menekan "Buka Tinjauan HR" dari asisten dan sampai di antrean tinjauan, bukan layar per gap', async ({ page }) => {
+  await mockApi(page, tinjauanGap().penangan)
+  await mockAsisten(page, { jawab: () => responsData({ answer: 'Ada 1 draf menunggu tinjauan.', action: { page: 'review', label: 'Tinjauan HR' }, outcome: 'answered' }) })
+  await masuk(page, 'hr', semuaModulDengan({ assistant: true, 'tna.review_workspace': true }))
+  await fab(page).click()
+  await panel(page).getByRole('textbox', { name: 'Pertanyaan' }).fill('Ada tinjauan?')
+  await panel(page).getByRole('button', { name: 'Kirim' }).click()
+  await panel(page).getByRole('button', { name: 'Buka Tinjauan HR' }).click()
+  await expect(page).toHaveURL(/\/m\/tna\/review$/)
+  await expect(page.getByRole('heading', { level: 1, name: 'Review hasil AI' })).toBeVisible()
+  await expect(page.getByTestId(`review-item-${T_DRAF}`)).toBeVisible()
+  await expect(page.getByText('Alamat gap tidak lengkap')).toHaveCount(0)
 })
 
 test('Esc dan tombol Tutup menutup panel; fokus kembali ke FAB', async ({ page }) => {
