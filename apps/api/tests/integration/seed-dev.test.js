@@ -171,6 +171,20 @@ run('seed-dev: tenant demo untuk demo langsung (Postgres)', () => {
     expect(await views('admin')).toEqual(['admin', 'hr', 'karyawan']);
   });
 
+  test('pimpinan@ (Kepala Divisi) memakai tampilan Atasan mockup: beranda Dashboard tim dan Developmental Needs berisi', async () => {
+    const access = (await get('pimpinan', '/me/access').expect(200)).body;
+    expect(access).toMatchObject({ view: 'atasan', home: 'dash' });
+    expect(access.roles.map((r) => r.role)).toEqual(expect.arrayContaining(['supervisor', 'pimpinan']));
+    // RG-3: timnya bawahan langsung, yaitu Atasan Demo
+    const dash = (await get('pimpinan', '/dashboard').expect(200)).body.data;
+    expect(dash).toMatchObject({ scope: 'team', people: 1 });
+    const dn = (await get('pimpinan', '/dna/development/overview').expect(200)).body.data;
+    expect(dn.selectedJobRoleId).toBeTruthy();
+    // tetap pimpinan yang belum ditugaskan HR (gap B4)
+    const hr = (await get('hr', '/cca/assignments').expect(200)).body.data;
+    expect(hr.leaders.find((l) => l.name === 'Kepala Divisi Demo')).toMatchObject({ status: 'none' });
+  });
+
   test('B3: keputusan promosi berisi satu menunggu HR (Setujui), satu menunggu atasan (Rekomendasikan), satu belum memenuhi', async () => {
     const hr = (await get('hr', '/dna/career/decisions').expect(200)).body.data;
     const byName = (rows, name) => rows.find((x) => x.employee.name === name);
