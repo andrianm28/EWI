@@ -9,6 +9,7 @@ const { deliveryFor } = require('../../core/settings');
 const { computeGap } = require('../dna/gap');
 const { competencyView, inviteActions, PLAN_VISIBLE } = require('../my/view');
 const { toReviewItem } = require('../tna/review-workspace');
+const ld = require('../ld/domain');
 
 const MAX_TEXT = 120;
 const clip = (v) => (v == null ? null : String(v).slice(0, MAX_TEXT));
@@ -17,7 +18,7 @@ const OPEN = ['scheduled', 'in_progress'];
 
 // Kunci halaman = nama rute B0 §5.2/§5.3. Web hanya menampilkan tombol "Buka" bila routeOpen(page, view) lolos.
 const PAGE_LABEL = Object.freeze({
-  my: 'Hasil saya', li: 'Rencana belajar', iv: 'Wawancara akar masalah', tna: 'Training Needs', review: 'Tinjauan HR', ina: 'Improvement Needs',
+  my: 'Hasil saya', li: 'Rencana belajar', iv: 'Wawancara akar masalah', tna: 'Training Needs', review: 'Tinjauan HR', ina: 'Improvement Needs', ld: 'Learning Delivery',
 });
 
 const BUILDERS = [
@@ -113,6 +114,16 @@ const BUILDERS = [
   {
     key: 'perbaikan', views: ['hr'], submodule: 'tna', flags: [FLAGS.MODULE_INA, FLAGS.TNA_REVIEW_WORKSPACE], page: 'ina',
     build: ({ stores, tenantId }) => stores.tna.improvementCounts(tenantId),
+  },
+  {
+    // Learning Delivery: angka dan judul pelatihan saja (bukan data orang). Tanpa sinkron katalog (fakta hanya membaca).
+    key: 'pelatihan', views: ['hr'], submodule: 'ld', page: 'ld',
+    async build({ stores, tenantId }) {
+      const today = ld.todayJakarta();
+      const rows = (await stores.ld.listTrainings(tenantId, { inactiveBefore: new Date(Date.now() - ld.INACTIVE_DAYS * 86400000) })).map((t) => ld.decorate(t, today));
+      const { running, online, offline, upcoming, avgProgress, attention } = ld.kpis(rows);
+      return { running, online, offline, upcoming, avgProgress, attention, late: rows.filter((r) => ['running', 'upcoming'].includes(r.group) && r.health === 'late').slice(0, 5).map((r) => clip(r.title)) };
+    },
   },
   {
     key: 'permintaanData', views: ['hr'], page: null,

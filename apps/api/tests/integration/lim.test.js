@@ -6,12 +6,13 @@ const { createDb } = require('../../src/db');
 const { createStores } = require('../../src/db/stores');
 const { createApp } = require('../../src/app');
 const { makeConfig, sessionSigner } = require('../helpers');
+const { memoryMailer } = require('../../src/integrations/mailer');
 
 const run = process.env.DATABASE_URL ? describe : describe.skip;
 const day = (offset) => new Date(Date.now() + 7 * 3600e3 + offset * 86400e3).toISOString().slice(0, 10);
 
 run('B15 Learning Impact Measurement (Postgres)', () => {
-  let db; let app; let stores; let tenant; let other; const u = {}; const tok = {};
+  let mailer; let db; let app; let stores; let tenant; let other; const u = {}; const tok = {};
   let role; let role2; let k1; let k2; let k3; let m1; let m2; let mOther; let plan;
   const as = (who) => ({ Authorization: `Bearer ${tok[who]}` });
   const get = (path, who = 'hr') => request(app).get(`/api/lim${path}`).set(as(who));
@@ -33,7 +34,8 @@ run('B15 Learning Impact Measurement (Postgres)', () => {
     const config = makeConfig();
     db = createDb({ databaseUrl: process.env.DATABASE_URL, dbSchema: process.env.DB_SCHEMA || 'ewi' });
     stores = createStores(db);
-    app = createApp({ config, stores });
+    mailer = memoryMailer();
+    app = createApp({ config, stores, mailer });
     const tokens = sessionSigner(config, stores.authSessions);
     const slug = `lim-${Date.now()}`;
     [[tenant]] = await db.query(`INSERT INTO tenants (slug, name) VALUES (:slug, 'LIM uji') RETURNING id`, { replacements: { slug } });
@@ -245,6 +247,22 @@ run('B15 Learning Impact Measurement (Postgres)', () => {
     expect((await get(`/plans/${plan.id}/queue`)).body.data.find((r) => r.userId === u.a)).toMatchObject({ status: 'scheduled', scheduledOn: day(5) });
     await send('post', `/plans/${plan.id}/queue/schedule`, { userIds: [u.a], date: null });
     expect((await get(`/plans/${plan.id}/queue`)).body.data.find((r) => r.userId === u.a).status).toBe('none');
+    // "Mulai sekarang" (mockup): jadwal hari ini + email ke karyawan (notify), tercatat di audit
+    mailer.sent.length = 0;
+    // email menunjuk menu Wawancara ulang: ditolak selama flag lim.reinterview mati; notify bukan boolean true diabaikan
+    expect((await send('post', `/plans/${plan.id}/queue/schedule`, { userIds: [u.a], date: day(0), notify: true })).status).toBe(400);
+    expect((await send('post', `/plans/${plan.id}/queue/schedule`, { userIds: [u.a], date: day(0), notify: 'false' })).body.data.notified).toBeUndefined();
+    expect(mailer.sent).toHaveLength(0);
+    await flag('lim.reinterview', true);
+    const now = await send('post', `/plans/${plan.id}/queue/schedule`, { userIds: [u.a], date: day(0), notify: true });
+    expect(now.body.data).toMatchObject({ scheduled: [u.a], notified: 1 });
+    expect(mailer.sent).toHaveLength(1);
+    expect(mailer.sent[0].subject).toBe('Wawancara ulang Anda sudah bisa dimulai');
+    expect(mailer.sent[0].text).toContain('Wawancara ulang');
+    expect((await q(`SELECT meta FROM audit_logs WHERE tenant_id = :t AND resource = 'lim.measurement' AND action = 'update' ORDER BY id DESC LIMIT 1`, { t: tenant.id }))[0].meta).toMatchObject({ notified: 1 });
+    expect((await send('post', `/plans/${plan.id}/queue/schedule`, { userIds: [u.a], date: null, notify: true })).status).toBe(400);
+    await send('post', `/plans/${plan.id}/queue/schedule`, { userIds: [u.a], date: null });
+    await flag('lim.reinterview', false);
 
     // done hanya lewat store (sambungan mesin wawancara tahap 3); karyawan tenant lain tidak bisa ditulis
     await stores.lim.recordReinterview(tenant.id, plan.id, u.luar, k1, { score: 99, sessionId: null });

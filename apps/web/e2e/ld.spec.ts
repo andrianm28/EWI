@@ -13,19 +13,20 @@ const OFFLINE = {
   status: 'scheduled', group: 'upcoming', progressPct: 0, health: 'watch', participants: 2,
   checks: [{ key: 'schedule', ok: false }, { key: 'materials', ok: false }, { key: 'participants', ok: true }, { key: 'assessment', ok: false }],
 }
+const SOON_ONLINE = { ...base, id: 't-4', title: 'Program Intermediate', mode: 'online', source: 'elitementor', startsOn: '2027-01-12', endsOn: '2027-02-12', status: 'scheduled', group: 'upcoming', progressPct: 0, health: 'ok', participants: 6 }
 const people: { userId: string; name: string; email: string; jobRoleName: string; status: string; attendance: boolean | null; score: number | null; scoreSource: string | null }[] = [
   { userId: 'u-d', name: 'Dimas', email: 'dimas@demo.test', jobRoleName: 'Engineer', status: 'enrolled', attendance: null, score: null, scoreSource: null },
   { userId: 'u-r', name: 'Rina', email: 'rina@demo.test', jobRoleName: 'Engineer', status: 'enrolled', attendance: null, score: null, scoreSource: null },
 ]
 
-async function setup(page: Page, calls: { method: string; url: string; body: unknown }[] = [], opts: { webhookSync?: boolean } = {}) {
+async function setup(page: Page, calls: { method: string; url: string; body: unknown }[] = [], opts: { webhookSync?: boolean; demo?: boolean } = {}) {
   const user = { id: 'u-1', tenantId: 't-1', email: 'hr@demo.test', role: 'hr_admin' }
   await page.route('**/api/auth/tenants', (r) => r.fulfill({ json: { data: [] } }))
   // PK-16: form kata sandi hanya tampil bila API mengizinkan (dev/staging)
   await page.route('**/api/auth/methods', (r) => r.fulfill({ json: { password: true, emailLink: true } }))
   await page.route('**/api/auth/login', (r) => r.fulfill({ json: { token: 't', user } }))
   await page.route('**/api/auth/me', (r) => r.fulfill({ json: { user } }))
-  await page.route('**/api/me/access', (r) => r.fulfill({ json: { submodules: ['dna', 'tna'], products: ['full_suite'], flags: { 'module.dna': true, 'module.tna': true, 'module.ld': true } } }))
+  await page.route('**/api/me/access', (r) => r.fulfill({ json: { submodules: ['dna', 'tna'], products: ['full_suite'], flags: { 'module.dna': true, 'module.tna': true, 'module.ld': true, 'module.li': !!opts.demo } } }))
   await page.route(/\/api\/(dna|tna)\//, (r) => r.fulfill({ json: { data: [] } }))
   const created: Record<string, unknown>[] = []
   let detail = {
@@ -42,10 +43,15 @@ async function setup(page: Page, calls: { method: string; url: string; body: unk
         kpis: { running: 1, online: 1, offline: 0, upcoming: 1, activeLearners: 3, avgProgress: 40, attention: 2 }, generatedBy: 'rules',
         insights: [{ key: 'late:t-1', trainingId: 't-1', title: 'ITIL Foundation tertinggal dari jadwal', detail: '3 dari 4 peserta belum selesai.', source: 'LMS klien' }],
         actions: [{ key: 'remind:t-1', trainingId: 't-1', kind: 'remind', title: 'Kirim pengingat ke 3 peserta ITIL Foundation', detail: 'Batas sudah lewat' },
-          { key: 'open_training:t-2', trainingId: 't-2', kind: 'open_training', title: 'Siapkan asesmen Workshop RCA', detail: 'Pilih cara asesmen' }],
+          { key: 'open_training:t-2', trainingId: 't-2', kind: 'open_training', title: 'Siapkan asesmen Workshop RCA', detail: 'Pilih cara asesmen' },
+          ...(opts.demo ? [
+            { key: 'invite:t-1', trainingId: 't-1', kind: 'invite', title: 'Dorong 2 peserta ITIL Foundation yang hampir selesai', detail: 'Progres minimal 75%' },
+            { key: 'confirm:t-2', trainingId: 't-2', kind: 'confirm', title: 'Minta konfirmasi kehadiran peserta Workshop RCA 25/11/2026', detail: '2 peserta terdaftar, kehadiran belum dicatat' },
+          ] : [])],
       } } })
     }
-    if (path === '/trainings' && req.method() === 'GET') return r.fulfill({ json: { data: [ONLINE, OFFLINE, ...created] } })
+    if (path === '/trainings' && req.method() === 'GET') return r.fulfill({ json: { data: [ONLINE, OFFLINE, ...(opts.demo ? [SOON_ONLINE] : []), ...created] } })
+    if (path === '/trainings/t-2/reminders') return r.fulfill({ status: 201, json: { data: { recipients: 2, sent: 2, failed: 0 } } })
     if (path === '/options') return r.fulfill({ json: { data: { vendorName: 'Mahaka Institute', storageReady: true, webhookSync: opts.webhookSync ?? false, jobRoles: [{ id: 'jr-1', name: 'Engineer', people: 2 }], employees: [{ id: 'u-s', name: 'Sari', email: 's@demo.test', jobRoleName: null }] } } })
     if (path === '/trainings' && req.method() === 'POST') { const t = { ...OFFLINE, id: 't-3', title: body.title }; created.push(t); return r.fulfill({ status: 201, json: { data: t } }) }
     if (path === '/trainings/t-1' && req.method() === 'PATCH') return r.fulfill({ json: { data: ONLINE } })
@@ -279,4 +285,22 @@ test('triase P7: asesmen lewat EliteMentor, ubah peserta, tandai selesai dan bat
   await expect(rows.getByRole('button', { name: 'Tambah Dokumentasi' })).toBeVisible()
   // materi PDF diakui di copy unggah
   await expect(d).toContainText('Materi pelatihan (PDF) juga bisa diunggah')
+})
+
+test('Saran tindakan demo: Kirim ajakan dan Minta konfirmasi mengirim jenis pesan, tombol berganti teks selesai; Lihat program', async ({ page }) => {
+  const calls: { method: string; url: string; body: unknown }[] = []
+  await setup(page, calls, { demo: true })
+  await page.goto('/ld')
+  await page.getByRole('button', { name: 'Kirim ajakan' }).click()
+  await expect(page.getByTestId('info')).toHaveText('Ajakan dikirim ke 3 dari 3 peserta.')
+  await expect(page.getByRole('button', { name: 'Ajakan terkirim' })).toBeDisabled()
+  expect(calls.find((c) => c.url === '/trainings/t-1/reminders')?.body).toEqual({ kind: 'invite' })
+  await page.getByRole('button', { name: 'Minta konfirmasi' }).click()
+  await expect(page.getByTestId('info')).toHaveText('Permintaan konfirmasi kehadiran dikirim ke 2 dari 2 peserta.')
+  await expect(page.getByRole('button', { name: 'Permintaan terkirim' })).toBeDisabled()
+  expect(calls.find((c) => c.url === '/trainings/t-2/reminders')?.body).toEqual({ kind: 'confirm' })
+  await expect(page.getByRole('button', { name: 'Kirim pengingat' })).toBeEnabled()
+  await page.getByRole('tab', { name: 'Akan datang' }).click()
+  const soon = page.getByRole('table', { name: 'Pelatihan yang akan datang' })
+  await expect(soon.getByRole('link', { name: 'Lihat program Program Intermediate' })).toHaveAttribute('href', '/prog')
 })

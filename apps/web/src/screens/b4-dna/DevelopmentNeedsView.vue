@@ -4,11 +4,20 @@
 import { computed, onMounted, ref, watch } from 'vue'
 import AppShell from '@/components/AppShell.vue'
 import { useSessionStore } from '@/stores/session'
+import { routeOpen } from '@/router'
 import { UiAgentCard, UiBreadcrumb, UiButton, UiCard, UiChip, UiDataTable, UiErrorSummary, UiKpiCard, UiNote, UiProgressBar, UiSegmented, UiTabs, type UiColumn } from '@/ui'
 import { dnaApi, STAGE_LABEL, TIER_LABEL, type Curriculum, type DevelopmentPlan, type Dictionary, type EmployeeNeed, type Overview, type PlanModule, type Stage } from './api'
 
 const session = useSessionStore()
 const isHr = computed(() => session.user?.role === 'hr_admin')
+// "Buka wawancara AI" (mockup go.aiv, gap C7): daftar wawancara AI yang ada per tampilan aktif. HR/Super Admin ke tab
+// Wawancara AI Core Competencies (flag cca.interview), atasan ke /aiv. Wawancara validasi kamus khusus DNA (DN-1) belum diputuskan.
+const aivTo = computed(() => {
+  const v = session.activeView
+  if ((v === 'hr' || v === 'super') && session.hasFlag('cca.interview') && routeOpen('cc', v)) return { name: 'cc', query: { tab: 'aiv' } }
+  if (v === 'atasan' && routeOpen('aiv', v)) return { name: 'aiv' }
+  return null
+})
 
 const TABS = [
   { key: 'dash', label: 'Ringkasan' }, { key: 'kamus', label: 'Kamus kompetensi' },
@@ -124,8 +133,8 @@ const moduleChip = (m: PlanModule): { tone: 'success' | 'review' | 'neutral'; la
     <UiBreadcrumb :items="[{ label: 'Learning Needs Analysis' }, { label: 'Developmental Needs' }]" />
     <h1 class="el-h1">Developmental Needs</h1>
     <p class="el-muted" style="margin:0 0 16px">Proaktif: kebutuhan pengembangan setiap jabatan berdasarkan kamus kompetensi dan tingkat Basic, Intermediate, Advanced (BIA).</p>
-    <!-- Tanpa tombol: layar validasi kamus lewat AI belum ada (paritas P3, K-P3-2) -->
-    <UiAgentCard title="Validasi kamus kompetensi" data-testid="dn-agen">
+    <!-- Gap C7 25 Nov (mengganti K-P3-2): tombol ke daftar wawancara AI seperti mockup; tanpa tombol bila rute/flag tertutup -->
+    <UiAgentCard title="Validasi kamus kompetensi" action="Buka wawancara AI" :to="aivTo" data-testid="dn-agen">
       AI mewawancarai atasan pemilik jabatan untuk memvalidasi hasil DACUM, lalu karyawan jabatan itu untuk menilai posisi mereka pada tingkat Basic, Intermediate, Advanced.
     </UiAgentCard>
 

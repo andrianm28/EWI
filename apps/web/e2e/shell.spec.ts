@@ -1,5 +1,5 @@
 import { test, expect, type Page } from '@playwright/test'
-import { grupAkordion } from './support/sesi'
+import { grupAkordion, loginSebagai } from './support/sesi'
 
 // Shell ELGOS (B0): menu per tampilan, accordion, ganti tampilan, tema, drawer layar sempit.
 // Spek: docs/designs/b0-fondasi-ui.md. API di-mock; rute uji didaftarkan lewat localStorage (build VITE_UI_KIT=1).
@@ -311,4 +311,14 @@ test('shell + Beranda: snapshot visual', async ({ page }) => {
   await expect(page).toHaveScreenshot('shell-beranda-terang.png', { fullPage: true })
   await page.getByRole('button', { name: 'Mode gelap' }).click()
   await expect(page).toHaveScreenshot('shell-beranda-gelap.png', { fullPage: true })
+})
+
+test('Gap C9: alamat tidak dikenal menampilkan "Halaman tidak ditemukan" di dalam shell', async ({ page }) => {
+  await loginSebagai(page, 'hr')
+  await page.goto('/em')
+  await expect(page.getByRole('heading', { level: 1, name: 'Halaman tidak ditemukan' })).toBeVisible()
+  await expect(page.getByRole('navigation', { name: 'Navigasi utama' })).toBeVisible()
+  await expect(page).toHaveTitle(/Halaman tidak ditemukan/)
+  await page.getByRole('link', { name: 'Kembali ke beranda' }).click()
+  await expect(page).not.toHaveURL(/\/em$/)
 })

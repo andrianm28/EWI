@@ -8,6 +8,8 @@ const WATCH_LAG = 15;          // poin progres tertinggal dari jadwal linear
 const READY_WINDOW_DAYS = 7;   // offline yang mulai dalam sekian hari harus sudah siap
 const INSIGHT_WINDOW_DAYS = 14;
 const INACTIVE_DAYS = 14;
+/** Peserta online dengan progres minimal ini dianggap "hampir selesai" (sasaran "Kirim ajakan"). */
+const NEARLY_DONE_PCT = 75;
 
 /** Tanggal hari ini (YYYY-MM-DD) di zona waktu Asia/Jakarta. */
 function todayJakarta(now = new Date()) {
@@ -125,7 +127,8 @@ const fmt = (d) => { const s = day(d); return s ? `${s.slice(8, 10)}/${s.slice(5
 
 /**
  * Insight dan saran tindakan dari aturan (bukan LLM). Return { insights, actions }.
- * action.kind: remind (POST /trainings/:id/reminders) | open_training (buka detail pelatihan).
+ * action.kind: remind | invite | confirm (POST /trainings/:id/reminders dengan body kind) | open_training (buka detail pelatihan).
+ * invite dan confirm hanya saran tindakan, tanpa insight (mockup ACT0 a3, a4).
  */
 function buildInsights(rows, today) {
   const insights = []; const actions = [];
@@ -157,6 +160,14 @@ function buildInsights(rows, today) {
         add(r, 'readiness', `${r.title} ${fmt(r.startsOn)} belum lengkap`, 'Jadwal, materi, atau daftar peserta belum lengkap.',
           { kind: 'open_training', title: `Lengkapi persiapan ${r.title}`, detail: 'Jadwal dan tempat, materi, peserta' });
       }
+    }
+    if (r.mode === 'offline' && r.group === 'upcoming' && r.startsOn && daysBetween(today, day(r.startsOn)) <= INSIGHT_WINDOW_DAYS
+      && n(r.participants) > 0 && n(r.attendanceRecorded) === 0) {
+      actions.push({ key: `confirm:${r.id}`, trainingId: r.id, kind: 'confirm', title: `Minta konfirmasi kehadiran peserta ${r.title} ${fmt(r.startsOn)}`, detail: `${n(r.participants)} peserta terdaftar, kehadiran belum dicatat` });
+    }
+    if (r.mode === 'online' && r.group === 'running' && r.health === 'ok' && n(r.inactive) === 0 && n(r.nearlyDone) > 0) {
+      actions.push({ key: `invite:${r.id}`, trainingId: r.id, kind: 'invite', title: `Dorong ${n(r.nearlyDone)} peserta ${r.title} yang hampir selesai`,
+        detail: `Progres minimal ${NEARLY_DONE_PCT}%${r.endsOn ? `, batas ${fmt(r.endsOn)}` : ''}` });
     }
   }
   return { insights, actions };
@@ -211,6 +222,6 @@ function normalizeEvent(raw, now = new Date()) {
 }
 
 module.exports = {
-  WATCH_LAG, READY_WINDOW_DAYS, INACTIVE_DAYS, todayJakarta, day, progressOf, groupOf, assessmentStatus, readiness, upcomingChecks, health,
+  WATCH_LAG, READY_WINDOW_DAYS, INACTIVE_DAYS, NEARLY_DONE_PCT, todayJakarta, day, progressOf, groupOf, assessmentStatus, readiness, upcomingChecks, health,
   decorate, kpis, buildInsights, normalizeEvent,
 };

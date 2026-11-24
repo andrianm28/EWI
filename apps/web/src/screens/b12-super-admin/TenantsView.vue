@@ -18,6 +18,7 @@ const noticeTone = ref<'success' | 'warning'>('success')
 const errors = ref<{ message: string; fieldId?: string }[]>([])
 const sort = ref<UiSortState | null>(null)
 const fail = (e: unknown) => (e instanceof ApiError ? e.message : 'Terjadi kesalahan. Coba lagi.')
+let autoOpened = false
 
 async function load() {
   loadError.value = ''
@@ -25,6 +26,9 @@ async function load() {
     const [t, s] = await Promise.all([platform.tenants(), platform.settings()])
     list.value = t.data
     encryption.value = s.data.encryptionProvider
+    // Gap C8 (mockup super--tenants): kartu modul selalu tampil untuk satu tenant. Dibuka sekali untuk tenant pertama
+    // (urutan API); setelah itu pilihan HR/Super Admin tidak ditimpa saat daftar dimuat ulang.
+    if (!autoOpened && !selected.value && t.data.tenants[0]) { autoOpened = true; openModules(t.data.tenants[0]) }
   } catch (e) {
     loadError.value = fail(e)
   } finally {
@@ -99,6 +103,9 @@ async function create() {
       ? `Tenant ${res.data.tenant.name} dibuat. Undangan dikirim ke ${form.adminEmail.trim()} (berlaku 7 hari).`
       : `Tenant ${res.data.tenant.name} dibuat, tetapi email undangan gagal terkirim. Kirim ulang dari tabel.`
     await load()
+    // modul tenant baru langsung bisa dinyalakan (gap C8)
+    const created = list.value?.tenants.find((x) => x.id === res.data.tenant.id)
+    if (created) openModules(created)
   } catch (e) {
     errors.value = [{ message: fail(e) }]
   } finally { busy.value = false }

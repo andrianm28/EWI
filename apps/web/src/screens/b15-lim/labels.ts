@@ -51,3 +51,5 @@ export function withUnit(v: number | null, unit: string | null) {
   return unit === '%' ? `${n}%` : `${n} ${unit}`
 }
 export const targetText = (i: Indicator) => (i.target === null ? EMPTY : `${i.direction === 'lower_better' ? '≤' : '≥'} ${withUnit(i.target, i.unit)}`)
+/** Tanggal hari ini (YYYY-MM-DD) di Asia/Jakarta, sama dengan todayJakarta di API. */
+export const todayJakarta = (now = new Date()) => new Date(now.getTime() + 7 * 3600 * 1000).toISOString().slice(0, 10)

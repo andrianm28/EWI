@@ -10,6 +10,7 @@ import {
   type ActionCategory, type ActionStatus, type InaAction, type InaKpis, type InaLevel, type OwnerOption, type SupervisorAccess, type Verification,
 } from '@/api/ina'
 import { useSessionStore } from '@/stores/session'
+import { routeOpen } from '@/router'
 import { UiAgentCard, UiBreadcrumb, UiButton, UiCard, UiChip, UiDataTable, UiErrorSummary, UiField, UiKpiCard, UiNote, UiStatus, type UiColumn, type UiSortState } from '@/ui'
 
 const session = useSessionStore()
@@ -25,6 +26,30 @@ const loadError = ref('')
 const noAccess = ref(false)
 const notice = ref('')
 const manage = computed(() => level.value === 'manage')
+// "Buka wawancara AI" (mockup go.aiv, gap C7): HR ke bagian Verifikasi AI di halaman ini; pemilik tindakan ke daftar verifikasinya
+const verifTo = computed(() => (!manage.value && session.activeView && routeOpen('ina-verifikasi', session.activeView) ? { name: 'ina-verifikasi' } : null))
+async function toVerification() {
+  const heading = document.getElementById('ina-verifikasi-ai')
+  if (!heading) return
+  // tunggu gulir selesai baru pindah fokus (modern-web-guidance scroll-completion-effects).
+  // scrollIntoView mengembalikan Promise hanya di browser baru; selain itu tunggu scrollend, dengan batas waktu
+  // bila tidak ada gulir (judul sudah terlihat) atau scrollend tidak didukung.
+  await new Promise<void>((resolve) => {
+    let finished = false
+    const finish = () => {
+      if (finished) return
+      finished = true
+      clearTimeout(timer)
+      document.removeEventListener('scrollend', finish, true)
+      resolve()
+    }
+    const timer = setTimeout(finish, 800)
+    document.addEventListener('scrollend', finish, true)
+    const result = heading.scrollIntoView({ behavior: 'smooth', block: 'start' }) as unknown
+    if (result instanceof Promise) result.then(finish, finish)
+  })
+  heading.focus({ preventScroll: true })
+}
 
 const owners = ref<OwnerOption[]>([])
 const supervisors = ref<SupervisorAccess[]>([])
@@ -234,9 +259,10 @@ const REPORTED_TONE = { done: 'success', in_progress: 'info', blocked: 'critical
   <AppShell>
     <UiBreadcrumb :items="[{ label: 'Learning Needs Analysis' }, { label: 'Improvement Needs' }]" />
     <h1 class="el-h1">Improvement Needs</h1>
-    <!-- Tanpa tombol: verifikasi dimulai per tindakan ("Verifikasi lewat AI"), bukan dari layar wawancara (paritas P3, K-P3-2) -->
-    <UiAgentCard v-if="aiOn && !loadError" title="Verifikasi tindakan perbaikan" data-testid="ina-ai">
+    <!-- Gap C7 25 Nov (mengganti K-P3-2): verifikasi tetap dimulai per tindakan; tombol membuka bagian/daftar verifikasi -->
+    <UiAgentCard v-if="aiOn && !loadError" title="Verifikasi tindakan perbaikan" action="Buka wawancara AI" :to="verifTo" data-testid="ina-ai">
       AI menanyai pemilik tindakan perbaikan (atasan atau karyawan pada jabatan terkait) tentang hambatan dan status, lalu merangkum untuk HR.
+      <template v-if="manage" #action><UiButton variant="tonal" size="sm" @click="toVerification">Buka wawancara AI</UiButton></template>
     </UiAgentCard>
     <p class="el-muted ina__lead">Masalah non-pelatihan (SOP, alat, sistem, budaya) yang berjalan bersamaan dengan Training Needs agar solusi tepat sasaran.</p>
 
@@ -347,7 +373,7 @@ const REPORTED_TONE = { done: 'success', in_progress: 'info', blocked: 'critical
         </UiNote>
 
         <UiCard v-if="manage && aiOn" class="ina__section" data-testid="ina-verifikasi">
-          <h2 class="el-h3">Verifikasi AI</h2>
+          <h2 id="ina-verifikasi-ai" class="el-h3" tabindex="-1">Verifikasi AI</h2>
           <p class="el-muted">AI menanyakan status tindakan kepada pemiliknya lewat percakapan singkat, lalu meringkasnya untuk HR. Isi percakapan hanya bisa dibuka pemiliknya. Status tindakan tetap Anda yang memutuskan.</p>
           <UiDataTable
             v-if="verifications.length" :columns="[{ key: 'actionTitle', label: 'Tindakan' }, { key: 'ownerName', label: 'Pemilik' }, { key: 'status', label: 'Verifikasi' }, { key: 'reportedStatus', label: 'Dilaporkan pemilik' }, { key: 'summary', label: 'Ringkasan' }, { key: 'aksi', label: 'Aksi' }]"

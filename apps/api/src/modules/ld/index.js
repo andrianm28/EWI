@@ -272,27 +272,38 @@ module.exports = {
       res.status(204).end();
     }));
 
-    // --- Pengingat ke peserta (email), paling sering sekali per 24 jam per pelatihan ---
+    // --- Pengingat, ajakan, dan konfirmasi ke peserta (email), paling sering sekali per 24 jam per pelatihan ---
+    // kind: remind (bawaan) | invite (online berjalan, peserta hampir selesai) | confirm (offline akan datang, konfirmasi kehadiran)
+    const KINDS = ['remind', 'invite', 'confirm'];
     r.post('/trainings/:id/reminders', idParam, wrap(async (req, res) => {
+      const kind = req.body?.kind ?? 'remind';
+      if (!KINDS.includes(kind)) throw badRequest('Jenis pesan tidak dikenal. Pilih pengingat, ajakan, atau konfirmasi kehadiran.');
       const t = await loadOne(req);
       if (!['running', 'upcoming'].includes(t.group)) throw conflict('INVALID_STATE', 'Pengingat hanya untuk pelatihan yang berjalan atau akan datang');
-      const recipients = await stores.ld.reminderRecipients(req.tenantId, t.id, { pendingOnly: t.mode === 'online' });
-      if (!recipients.length) throw badRequest('Tidak ada peserta yang perlu diingatkan');
-      if (!(await stores.ld.claimReminder(req.tenantId, t.id, new Date(Date.now() - REMINDER_GAP_MS)))) throw conflict('REMINDER_RECENT', 'Pengingat untuk pelatihan ini sudah dikirim dalam 24 jam terakhir');
+      if (kind === 'invite' && !(t.mode === 'online' && t.group === 'running')) throw conflict('INVALID_STATE', 'Ajakan hanya untuk pelatihan online yang sedang berjalan');
+      if (kind === 'confirm' && !(t.mode === 'offline' && t.group === 'upcoming')) throw conflict('INVALID_STATE', 'Konfirmasi kehadiran hanya untuk pelatihan offline yang akan datang');
+      const recipients = await stores.ld.reminderRecipients(req.tenantId, t.id, { pendingOnly: t.mode === 'online', nearlyDoneOnly: kind === 'invite' });
+      if (!recipients.length) throw badRequest(kind === 'invite' ? 'Tidak ada peserta yang hampir selesai' : 'Tidak ada peserta yang perlu diingatkan');
+      if (!(await stores.ld.claimReminder(req.tenantId, t.id, new Date(Date.now() - REMINDER_GAP_MS)))) throw conflict('REMINDER_RECENT', 'Pesan HR untuk pelatihan ini (pengingat, ajakan, atau konfirmasi) sudah dikirim dalam 24 jam terakhir. Coba lagi besok.');
       const when = t.mode === 'offline' ? `Tanggal: ${t.startsOn}${t.venue ? `, ${t.venue}` : ''}.` : (t.endsOn ? `Batas penyelesaian: ${t.endsOn}.` : '');
+      const message = {
+        remind: { subject: `Pengingat pelatihan: ${t.title}`, body: t.mode === 'offline' ? `Anda terdaftar sebagai peserta pelatihan "${t.title}".` : `Pelatihan "${t.title}" Anda belum selesai.` },
+        invite: { subject: `Selesaikan pelatihan: ${t.title}`, body: `Pelatihan "${t.title}" Anda hampir selesai. Tinggal sedikit lagi; selesaikan kegiatan yang tersisa supaya hasilnya tercatat.` },
+        confirm: { subject: `Konfirmasi kehadiran: ${t.title}`, body: `Anda terdaftar sebagai peserta pelatihan "${t.title}". Mohon konfirmasi kehadiran Anda ke tim HR.` },
+      }[kind];
       let sent = 0; let failed = 0;
       for (const u of recipients) {
         try {
           await mailer.send({
-            to: u.email, subject: `Pengingat pelatihan: ${t.title}`,
-            text: [`Halo ${u.name || ''},`.replace(' ,', ','), '', t.mode === 'offline' ? `Anda terdaftar sebagai peserta pelatihan "${t.title}".` : `Pelatihan "${t.title}" Anda belum selesai.`, when, '',
+            to: u.email, subject: message.subject,
+            text: [`Halo ${u.name || ''},`.replace(' ,', ','), '', message.body, when, '',
               appBaseUrl ? `Lihat rencana belajar Anda di ELGOS: ${appBaseUrl}` : '', '', 'Pesan ini dikirim oleh tim HR lewat ELGOS.'].filter((l, i, a) => l !== '' || a[i - 1] !== '').join('\n'),
           });
           sent += 1;
         } catch (e) { failed += 1; console.error(`[ld.reminder] gagal kirim: ${e.message}`); }
       }
       if (!sent) await stores.ld.releaseReminder(req.tenantId, t.id);
-      await audit.record(req, 'create', 'ld.reminder', { trainingId: t.id, recipients: recipients.length, sent, failed, employeeIds: recipients.map((u) => u.id) });
+      await audit.record(req, 'create', 'ld.reminder', { trainingId: t.id, kind, recipients: recipients.length, sent, failed, employeeIds: recipients.map((u) => u.id) });
       res.status(201).json({ data: { recipients: recipients.length, sent, failed } });
     }));
 

@@ -70,9 +70,12 @@ export const lim = {
   overview: (id: string) => call<D<Overview>>(`/plans/${id}/overview`),
   preFromDna: (id: string) => send<D<{ filled: number }>>('POST', `/plans/${id}/pre-from-dna`),
   queue: (id: string) => call<D<QueueRow[]>>(`/plans/${id}/queue`),
-  schedule: (id: string, userIds: string[], date: string | null) =>
-    send<D<{ scheduled: string[]; skipped: { userId: string; reason: string }[]; rejected: { userId: string; message: string }[] }>>('POST', `/plans/${id}/queue/schedule`, { userIds, date }),
+  /** notify: kabari karyawan lewat email (aksi "Mulai sekarang"); hanya untuk penjadwalan, bukan pembatalan */
+  schedule: (id: string, userIds: string[], date: string | null, notify = false) =>
+    send<D<{ scheduled: string[]; skipped: { userId: string; reason: string }[]; rejected: { userId: string; message: string }[]; notified?: number }>>('POST', `/plans/${id}/queue/schedule`, notify ? { userIds, date, notify } : { userIds, date }),
   result: (id: string, userId: string) => call<D<ReinterviewResults>>(`/plans/${id}/reinterviews/${userId}`),
+  /** "Simpan hasil": catat bahwa HR sudah meninjau hasil wawancara ulang yang ditampilkan */
+  review: (id: string, userId: string, reinterviewId: string) => send<void>('POST', `/plans/${id}/reinterviews/${userId}/review`, { reinterviewId }),
   mine: () => call<D<MyReinterview[]>>('/me/reinterviews'),
   session: (planId: string) => call<D<ReinterviewSession>>(`/me/reinterviews/${planId}/session`),
   consent: (planId: string, consentVersion: string) => send<D<{ question: unknown }>>('POST', `/me/reinterviews/${planId}/consent`, { consentVersion }),

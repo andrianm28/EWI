@@ -46,6 +46,8 @@ const routes: RouteRecordRaw[] = [
   { path: '/', name: 'home', component: () => import('@/views/HomeView.vue'), meta: { title: 'Beranda' } },
   ...Object.keys(screenModules).sort().flatMap((k) => screenModules[k]!.default).filter((r) => !replaced(r)),
   ...tests,
+  // Gap C9: penangkap semua rute, harus paling akhir. Tidak publik: pengguna belum masuk diarahkan ke login.
+  { path: '/:pathMatch(.*)*', name: 'not-found', component: () => import('@/views/NotFoundView.vue'), meta: { title: 'Halaman tidak ditemukan' } },
 ]
 
 // vue-router menimpa nama rute ganda tanpa peringatan. Dengan banyak paket paralel, lebih baik gagal keras:
