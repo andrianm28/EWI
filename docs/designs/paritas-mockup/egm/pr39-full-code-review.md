@@ -125,3 +125,23 @@ Review ulang head `fd7bda2` (empat reviewer: egm API, egm web, Spec, Standards; 
 | AntreanView tab tanpa penjaga urutan respons | P3 | Terbuka | Pola `loadSeq` seperti TinjauanView |
 | Spec (a) 1 LD-10, (a) 3 LIM-6/LIM-8, (b) 4/6/7 | Spec | Terbuka | LD-10 sudah tercatat (SP-3); sisanya menunggu keputusan user |
 | Standards: nama branch, gerbang reviewer Andrian, smell duplikasi/switch | Standards | Terbuka | Butir badan PR (IR-2) dan refactor terpisah |
+
+### Review egm atas perbaikan 24 Nov
+
+Review independen atas empat commit di atas (tanpa P0/P1).
+
+| Temuan | Tingkat | Hasil | Catatan / commit |
+| --- | --- | --- | --- |
+| DraftView: penjaga keluar mengabaikan `busy`; PUT kedua bersamaan, `error` dibaca dari tindakan yang salah, `leaveTarget` basi | P2 | Diperbaiki | `act` mengembalikan true/false dan menyimpan promise berjalan; penjaga menunggunya, hanya navigasi terakhir yang membuka dialog. e2e "keluar saat simpan berjalan" merah (2 PUT) → hijau. `32b3e30` |
+| `router.push(...).catch` tidak pernah jalan (NavigationFailure di-resolve) | P3 | Diperbaiki | `isNavigationFailure`. `32b3e30` |
+| Setelah Back peramban, "Tinggalkan" mendorong `to.fullPath` (entri riwayat ganda) | P3 | Diperbaiki | `router.options.history.listen` mencatat `delta`; Tinggalkan memanggil `router.go(delta)`. e2e memeriksa `history.length` tetap, merah → hijau. `32b3e30` |
+| Dialog tanpa pesan galat API; ringkasan galat diumumkan bersamaan | P3 | Diperbaiki | Pesan API di dialog (UiNote critical); UiErrorSummary disembunyikan selama penjaga bekerja atau dialog terbuka. `32b3e30` |
+| `release()` tidak di `finally`; uji klik ganda tidak menguji penjaga `go()` sendiri | P3 | Diperbaiki | `release()` di `finally`; dua klik sinkron dalam satu tugas peramban (sebelum tombol dirender nonaktif). Diverifikasi dengan mutasi: tanpa `if (busy.value) return` test gagal. `32b3e30` |
+| `dashboard.spec.ts` regex nama aksesibel tidak berjangkar | P3 | Diperbaiki | Regex penuh `^…$`. `32b3e30` |
+| `metricKeySql`: `lower()` Postgres bergantung locale database | P2 | Diperbaiki | DB uji lokal `C.UTF-8` (libc) dan image deploy `en_US.utf8`; keduanya berbeda dari `toLowerCase` untuk İ. `lower(... COLLATE "und-x-icu")`, tanpa migrasi; syarat ICU dicatat di spek B7 butir 3. Jest non-ASCII merah → hijau. `f10dc32` |
+| Temuan uji fokus sesi tidak dihapus | P3 | Diperbaiki | Dibuat dan dihapus di test itu sendiri (`finally`). `f10dc32` |
+| Tidak ada test yang gagal bila `gap.keep` dihapus | P3 | Diperbaiki | Temuan disetujui tertaut kompetensi di sesi berfokus OKR: store memuatnya, solusi dan ekspor membuangnya. Diverifikasi dengan mutasi (tanpa `gap.keep` test gagal). `f10dc32` |
+| Uji reclassify `409 ALREADY_ACTIONED` | P3 | Ditolak | Sudah diuji di "koreksi salah klik" (classify setelah rencana dibuat → `ALREADY_ACTIONED`) |
+| Route `export.csv` dengan gap OKR lewat fokus sesi | P3 | Diperbaiki | Bagian dari test fokus sesi. `f10dc32` |
+| Join `users` lain tanpa `tenant_id` (listFindings, listNonTrainingSummary, nonTrainingGrants, listPlanItems, getPlanItem) | P3 | Diperbaiki | Satu test store merah → hijau. `f10dc32` |
+| Join `lna_competencies`, `lna_performance_records`, `lna_findings` di listFindings, listNonTrainingSummary, listPlanItems, listImprovementHandoffs tanpa `tenant_id` | P3 | Terbuka | Ditemukan saat mengerjakan butir di atas; pengerasan yang sama, di luar daftar review ini |

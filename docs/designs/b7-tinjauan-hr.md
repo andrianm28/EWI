@@ -83,7 +83,7 @@ Aturan CLAUDE.md nomor 3: klasifikasi, tahan, solusi, penugasan, ekspor, dan ser
    - Temuan `rejected` → `409 ALREADY_REVIEWED`. `classification` lain → `400`. `note` maks 2000 karakter.
    - Audit `update` `tna.finding_review` `{ employeeIds, objectIds, decision: 'approved' | 'edited' | 'hold' | 'reclassified', classification, from, confidence }`. Audit ditulis setelah perubahan tersimpan (pola PR #16) `[⏳ DITERIMA]`.
    - Respons: item review terbaru (bentuk butir 1).
-3. `GET /api/tna/review/solutions` (`projectId` opsional; filter gap opsional dengan parameter sama dengan butir 1: hanya temuan gap itu, validasi `400`/`404` sama). Predikat kandidat gap dijalankan di SQL (`gapSql`, sama dengan antrean per gap), keanggotaan pasti lewat `findingsInGap` (R6); `GET /plan-items/export.csv` memakai filter yang sama. Respons:
+3. `GET /api/tna/review/solutions` (`projectId` opsional; filter gap opsional dengan parameter sama dengan butir 1: hanya temuan gap itu, validasi `400`/`404` sama). Predikat kandidat gap dijalankan di SQL (`gapSql`, sama dengan antrean per gap), keanggotaan pasti lewat `findingsInGap` (R6). Nama target dinormalkan di SQL seperti `metricKey` (kelas spasi JavaScript lengkap, `lower()` dengan collation ICU `"und-x-icu"` supaya tidak bergantung locale database); syaratnya Postgres dibangun dengan ICU, yang dipenuhi image `pgvector/pgvector:pg16` di CI dan deploy; `GET /plan-items/export.csv` memakai filter yang sama. Respons:
    ```json
    { "data": {
        "training": [{ "findingId", "userId", "userName", "title", "competencyName",
