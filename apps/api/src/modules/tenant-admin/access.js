@@ -48,8 +48,14 @@ function requireTenantAdmin(store) {
   };
 }
 
-/** Peran yang boleh diberikan admin tenant: semua kecuali Super Admin (eta_admin). */
-const assignableRoles = () => ALL_ROLES.filter((r) => r !== ROLES.ETA_ADMIN);
+/**
+ * Peran yang boleh diberikan pelaku. Admin Tenant: semua kecuali Super Admin (eta_admin).
+ * Super Admin: hanya Admin Tenant (pemulihan tenant tanpa pengelola). Ia tidak boleh membuat atau menaikkan akun
+ * ke peran yang membaca isi data karyawan, karena itu jalan pintas melewati aturan inti 24 Nov (review malam, R8-1).
+ */
+const assignableRoles = (actor) => (actor && actor.role === ROLES.ETA_ADMIN
+  ? [ROLES.TENANT_ADMIN]
+  : ALL_ROLES.filter((r) => r !== ROLES.ETA_ADMIN));
 const roleLabel = (role) => ROLE_LABELS[role] || role;
 
 module.exports = { isTenantAdmin, requireTenantAdmin, assignableRoles, roleLabel };

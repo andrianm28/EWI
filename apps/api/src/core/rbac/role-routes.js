@@ -34,6 +34,20 @@ function roleRoutes({ userRoles, audit, flags }) {
       throw badRequest('roles harus berisi 1 sampai 4 peran yang berbeda');
     }
     if (roles.includes(ROLES.ETA_ADMIN)) throw badRequest('Peran Super Admin tidak bisa diberikan dari sini');
+    // R8-1 (review 24 Nov malam): Super Admin hanya memulihkan pengelola tenant, tidak memberi peran yang membaca isi karyawan
+    // (peran yang sudah dimiliki akun boleh tetap; yang ditambahkan Super Admin hanya tenant_admin)
+    if (req.user.role === ROLES.ETA_ADMIN) {
+      const before = await userRoles.get(req.tenantId, req.params.id);
+      const held = new Set(before ? before.roles : []);
+      if (roles.some((x) => !held.has(x) && x !== ROLES.TENANT_ADMIN)) {
+        throw forbidden('ROLE_FORBIDDEN', 'Super Admin hanya bisa memberi peran Admin Tenant. Peran lain diberikan oleh Admin Tenant.');
+      }
+      // ...dan hanya untuk memulihkan tenant tanpa Admin Tenant aktif
+      if (roles.includes(ROLES.TENANT_ADMIN) && !held.has(ROLES.TENANT_ADMIN) && userRoles.hasActiveTenantAdmin
+        && await userRoles.hasActiveTenantAdmin(req.tenantId)) {
+        throw new HttpError(409, 'TENANT_HAS_ADMIN', 'Tenant ini sudah punya Admin Tenant aktif. Super Admin hanya memberi peran Admin Tenant untuk memulihkan tenant tanpa pengelola; peran lain diberikan Admin Tenant tersebut.');
+      }
+    }
     if (roles.some((x) => !ASSIGNABLE_ROLES.includes(x))) throw badRequest('Ada peran yang tidak dikenal');
     if (!roles.includes(primary)) throw badRequest('primary harus salah satu dari roles');
     // Orang kedua wajib: admin tidak bisa memberi dirinya sendiri akses data HR

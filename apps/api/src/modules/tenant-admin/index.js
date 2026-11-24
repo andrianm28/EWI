@@ -48,9 +48,21 @@ function optionalId(body, key, label) {
   return body[key].toLowerCase();
 }
 
-function checkRole(role) {
+function checkRole(role, actor) {
   if (role === ROLES.ETA_ADMIN) throw forbidden('ROLE_FORBIDDEN', 'Peran Super Admin tidak bisa diberikan dari layar Admin Tenant');
-  if (!assignableRoles().includes(role)) throw badRequest(`Peran harus salah satu dari: ${assignableRoles().join(', ')}`);
+  if (actor && actor.role === ROLES.ETA_ADMIN && role !== ROLES.TENANT_ADMIN) {
+    throw forbidden('ROLE_FORBIDDEN', 'Super Admin hanya bisa memberi peran Admin Tenant. Peran lain diberikan oleh Admin Tenant.');
+  }
+  const allowed = assignableRoles(actor);
+  if (!allowed.includes(role)) throw badRequest(`Peran harus salah satu dari: ${allowed.join(', ')}`);
+}
+
+const RECOVERY_ONLY = 'Tenant ini sudah punya Admin Tenant aktif. Super Admin hanya memberi peran Admin Tenant untuk memulihkan tenant tanpa pengelola; peran lain diberikan Admin Tenant tersebut.';
+
+/** R8-1: Super Admin memberi tenant_admin hanya bila tenant belum punya Admin Tenant aktif (keputusan user, kartu 24 Nov malam). */
+async function assertRecoveryGrant(req, role, db) {
+  if (req.user.role !== ROLES.ETA_ADMIN || role !== ROLES.TENANT_ADMIN) return;
+  if (await db.hasActiveTenantAdmin(req.tenantId)) throw conflict('TENANT_HAS_ADMIN', RECOVERY_ONLY);
 }
 
 module.exports = {
@@ -116,7 +128,7 @@ module.exports = {
     }
 
     // ---------- Pengguna & peran ----------
-    r.get('/roles', (req, res) => res.json({ data: assignableRoles().map((key) => ({ key, label: roleLabel(key) })) }));
+    r.get('/roles', (req, res) => res.json({ data: assignableRoles(req.user).map((key) => ({ key, label: roleLabel(key) })) }));
 
     r.get('/users', wrap(async (req, res) => {
       const status = req.query.status ? String(req.query.status) : null;
@@ -134,7 +146,8 @@ module.exports = {
       if (!EMAIL_RE.test(email) || email.length > 320) throw badRequest('Email wajib diisi dengan format yang benar');
       const name = optionalText(body, 'name', 'Nama', 255);
       if (!name) throw badRequest('Nama wajib diisi');
-      checkRole(body.role);
+      checkRole(body.role, req.user);
+      await assertRecoveryGrant(req, body.role, db);
       const employeeId = optionalText(body, 'employeeId', 'ID karyawan', 64);
       const position = await resolvePosition(req, body, null);
       const user = await db.createUser(req.tenantId, { email, name, role: body.role, employeeId, ...position });
@@ -156,7 +169,11 @@ module.exports = {
         patch.name = optionalText(body, 'name', 'Nama', 255);
         if (!patch.name) throw badRequest('Nama tidak boleh kosong');
       }
-      if (has(body, 'role')) { checkRole(body.role); patch.role = body.role; }
+      if (has(body, 'role')) {
+        // peran yang sama dengan sekarang bukan pemberian peran (layar B11 selalu mengirim peran saat mengedit)
+        if (body.role !== current.role) { checkRole(body.role, req.user); await assertRecoveryGrant(req, body.role, db); }
+        patch.role = body.role;
+      }
       if (has(body, 'employeeId')) patch.employeeId = optionalText(body, 'employeeId', 'ID karyawan', 64);
       if (has(body, 'status')) {
         if (!['active', 'disabled'].includes(body.status)) throw badRequest('status harus active atau disabled');

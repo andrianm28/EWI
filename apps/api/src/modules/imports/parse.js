@@ -78,9 +78,25 @@ function filledRows() {
 async function assertUnzippedSize(buffer) {
   let zip;
   try { zip = await JSZip.loadAsync(buffer); } catch { throw badRequest('File Excel tidak bisa dibaca. Simpan ulang sebagai .xlsx atau .csv'); }
+  // R8-2 (review 24 Nov malam): ukuran di header zip ditulis pembuat file dan bisa dipalsukan, jadi yang dihitung
+  // adalah byte yang benar-benar keluar saat entri dibuka (bertahap, berhenti begitu melewati batas).
+  const tooBig = () => new HttpError(413, 'FILE_TOO_LARGE', 'Isi file Excel terlalu besar. Simpan ulang tanpa gambar atau lembar lain, atau pakai .csv');
+  const entries = [];
+  zip.forEach((_path, entry) => { if (!entry.dir) entries.push(entry); });
   let total = 0;
-  zip.forEach((_path, entry) => { total += (entry._data && entry._data.uncompressedSize) || 0; });
-  if (total > MAX_UNZIPPED_BYTES) throw new HttpError(413, 'FILE_TOO_LARGE', 'Isi file Excel terlalu besar. Simpan ulang tanpa gambar atau lembar lain, atau pakai .csv');
+  for (const entry of entries) {
+    await new Promise((resolve, reject) => {
+      const stream = entry.internalStream('uint8array');
+      stream
+        .on('data', (chunk) => {
+          total += chunk.length;
+          if (total > MAX_UNZIPPED_BYTES) { stream.pause(); reject(tooBig()); }
+        })
+        .on('error', () => reject(total > MAX_UNZIPPED_BYTES ? tooBig() : badRequest('File Excel tidak bisa dibaca. Simpan ulang sebagai .xlsx atau .csv')))
+        .on('end', resolve)
+        .resume();
+    });
+  }
 }
 
 /** Lembar -> [{ n: nomor baris, vals }] hanya untuk baris yang punya isi. */

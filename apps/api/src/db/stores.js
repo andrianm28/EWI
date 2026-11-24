@@ -129,6 +129,14 @@ function userRoleStore(sequelize) {
       if (!UUID_RE.test(String(userId))) return null;
       return read(tenantId, userId);
     },
+    /** Ada Admin Tenant aktif? Super Admin hanya memberi tenant_admin bila belum ada (pemulihan, R8-1). */
+    async hasActiveTenantAdmin(tenantId) {
+      const rows = await sequelize.query(
+        `SELECT 1 FROM users u JOIN user_roles ur ON ur.user_id = u.id AND ur.tenant_id = u.tenant_id
+          WHERE u.tenant_id = :tenantId AND ur.role = :role AND u.status = 'active' LIMIT 1`,
+        { replacements: { tenantId, role: ROLES.TENANT_ADMIN }, type: QueryTypes.SELECT });
+      return rows.length > 0;
+    },
     /**
      * Ganti peran akun. Satu transaksi yang mengunci baris tenant, supaya dua permintaan bersamaan tidak
      * mencabut dua Admin Tenant terakhir. Return { status: 'ok', from, to } | 'not_found' | 'protected' | 'last_admin'.

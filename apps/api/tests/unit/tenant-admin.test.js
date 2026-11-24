@@ -58,6 +58,12 @@ describe('Akses Admin Tenant (B11)', () => {
     expect(roleLabel('tenant_admin')).toBe('Admin Tenant');
   });
 
+  it('Super Admin hanya boleh memberi tenant_admin (R8-1); Admin Tenant semua kecuali eta_admin', () => {
+    expect(assignableRoles({ role: 'eta_admin' })).toEqual(['tenant_admin']);
+    expect(assignableRoles({ role: 'tenant_admin' })).toEqual(expect.arrayContaining(['tenant_admin', 'hr_admin', 'learner']));
+    expect(assignableRoles({ role: 'tenant_admin' })).not.toContain('eta_admin');
+  });
+
   it('gerbang membaca peran dan status pelaku dari store, bukan hanya dari token', async () => {
     const run = (user, actor) => new Promise((resolve) => {
       requireTenantAdmin({ actor: async () => actor })({ user, tenantId: 't' }, null, (err) => resolve(err ? err.code : 'ok'));

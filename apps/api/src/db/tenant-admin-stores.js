@@ -57,6 +57,11 @@ function createTenantAdminStores(sequelize) {
       } catch (e) { if (isUnique(e)) return null; throw e; }
       return tenantAdmin.getUser(tenantId, id);
     },
+    /** Ada Admin Tenant aktif (peran di user_roles, status active)? Dipakai batas pemulihan oleh Super Admin. */
+    async hasActiveTenantAdmin(tenantId) {
+      return !!(await one(`SELECT 1 AS x FROM users u JOIN user_roles ur ON ur.user_id = u.id AND ur.tenant_id = u.tenant_id
+         WHERE u.tenant_id = :tenantId AND ur.role = 'tenant_admin' AND u.status = 'active' LIMIT 1`, { tenantId }));
+    },
     /** Peran dan status terkini pelaku (bukan dari klaim token), untuk gerbang Admin Tenant. */
     async actor(tenantId, id) {
       // roles: peran utama + daftar peran B2 (user_roles), agar admin tenant multi-peran tidak ditolak (audit 23 Nov)

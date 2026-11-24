@@ -111,6 +111,38 @@ describe('Audit 24 Nov: XLSX jarang dan lebar tidak menghabiskan memori (8-9)', 
     expect(bomb.length).toBeLessThan(1024 * 1024);
     await expect(parseUpload(bomb, 'x.xlsx')).rejects.toMatchObject({ status: 413, code: 'FILE_TOO_LARGE' });
   });
+  it('bom zip yang memalsukan ukuran di header zip tetap ditolak: ukuran dihitung dari isi yang benar-benar dibuka (R8-2)', async () => {
+    const wb = new ExcelJS.Workbook();
+    wb.addWorksheet('Data').addRow(['Email']);
+    const zip = await JSZip.loadAsync(await wb.xlsx.writeBuffer());
+    zip.file('xl/media/besar.bin', Buffer.alloc(MAX_UNZIPPED_BYTES + 1, 0x41));
+    const bomb = await zip.generateAsync({ type: 'nodebuffer', compression: 'DEFLATE' });
+    // tulis ulang ukuran tak terkompresi entri besar.bin menjadi 10 byte, di header lokal (sig 0x04034b50: ukuran +22,
+    // panjang nama +26, nama +30) dan di direktori pusat (0x02014b50: ukuran +24, panjang nama +28, nama +46)
+    const forged = [];
+    for (let i = 0; i < bomb.length - 46; i += 1) {
+      const sig = bomb.readUInt32LE(i);
+      const at = sig === 0x04034b50 ? [22, 26, 30] : sig === 0x02014b50 ? [24, 28, 46] : null;
+      if (!at) continue;
+      const name = bomb.toString('utf8', i + at[2], i + at[2] + bomb.readUInt16LE(i + at[1]));
+      if (name === 'xl/media/besar.bin') { bomb.writeUInt32LE(10, i + at[0]); forged.push(sig); }
+    }
+    expect(forged).toHaveLength(2);
+    await expect(parseUpload(bomb, 'x.xlsx')).rejects.toMatchObject({ status: 413, code: 'FILE_TOO_LARGE' });
+  });
+  it('ukuran di header zip yang tidak cocok dengan isi (di bawah batas) ditolak 400 sebelum exceljs', async () => {
+    const wb = new ExcelJS.Workbook();
+    wb.addWorksheet('Data').addRow(['Email']);
+    const zip = await JSZip.loadAsync(await wb.xlsx.writeBuffer());
+    zip.file('xl/media/kecil.bin', Buffer.alloc(1024, 0x41));
+    const buf = await zip.generateAsync({ type: 'nodebuffer', compression: 'DEFLATE' });
+    for (let i = 0; i < buf.length - 46; i += 1) {
+      const sig = buf.readUInt32LE(i);
+      const at = sig === 0x04034b50 ? [22, 26, 30] : sig === 0x02014b50 ? [24, 28, 46] : null;
+      if (at && buf.toString('utf8', i + at[2], i + at[2] + buf.readUInt16LE(i + at[1])) === 'xl/media/kecil.bin') buf.writeUInt32LE(10, i + at[0]);
+    }
+    await expect(parseUpload(buf, 'x.xlsx')).rejects.toMatchObject({ status: 400 });
+  });
   it('CSV dari Excel dengan titik koma pengisi sampai ratusan kolom: lebar mengikuti isi', async () => {
     const pad = ';'.repeat(MAX_COLS + 50);
     const { headers, rows } = await parseUpload(Buffer.from(`Email;Nama${pad}\na@b.co;Ani${pad}\n`), 'a.csv');

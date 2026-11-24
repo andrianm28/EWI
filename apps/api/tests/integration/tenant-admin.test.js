@@ -11,7 +11,7 @@ const BASE = '/api/tenant-admin';
 
 run('Admin Tenant B11 (Postgres)', () => {
   let db; let app; let tokens; let mailer; let stores; let A; let B; let slugA;
-  const tok = {}; const id = {};
+  const tok = {}; const id = {}; const extraTenants = [];
   const as = (who) => ({ Authorization: `Bearer ${tok[who]}` });
   const get = (path, who = 'admin') => request(app).get(`${BASE}${path}`).set(as(who));
   const post = (path, body, who = 'admin') => request(app).post(`${BASE}${path}`).set(as(who)).send(body);
@@ -64,7 +64,7 @@ run('Admin Tenant B11 (Postgres)', () => {
   afterAll(async () => {
     await db.transaction(async (transaction) => {
       await db.query("SET LOCAL ewi.audit_maintenance = 'on'", { transaction });
-      await db.query('DELETE FROM tenants WHERE id IN (:ids)', { replacements: { ids: [A.id, B.id] }, transaction });
+      await db.query('DELETE FROM tenants WHERE id IN (:ids)', { replacements: { ids: [A.id, B.id, ...extraTenants] }, transaction });
     });
     await db.close();
   });
@@ -389,12 +389,39 @@ run('Admin Tenant B11 (Postgres)', () => {
     });
 
     it('tenant yang hanya punya hr_admin tidak terkunci: Super Admin menaikkan HR menjadi Admin Tenant', async () => {
-      await addUser(A.id, 'hrNaik', 'hr_admin');
+      const [[C]] = await db.query(`INSERT INTO tenants (slug, name) VALUES (:slug, 'Tenant C') RETURNING id`, { replacements: { slug: `${slugA}-c` } });
+      extraTenants.push(C.id);
+      await db.query(`INSERT INTO feature_flags (tenant_id, key, enabled) VALUES (:c, 'admin.tenant', true)`, { replacements: { c: C.id } });
+      await addUser(C.id, 'etaC', 'eta_admin');
+      await addUser(C.id, 'hrNaik', 'hr_admin');
       expect((await get('/users', 'hrNaik')).status).toBe(403);
-      const up = await patch(`/users/${id.hrNaik}`, { role: 'tenant_admin' }, 'eta');
+      const up = await patch(`/users/${id.hrNaik}`, { role: 'tenant_admin' }, 'etaC');
       expect([up.status, up.body.data.role]).toEqual([200, 'tenant_admin']);
-      tok.hrNaik = await tokens.sign({ id: id.hrNaik, tenantId: A.id, role: 'tenant_admin', email: 'hrNaik@b11.test' });
+      tok.hrNaik = await tokens.sign({ id: id.hrNaik, tenantId: C.id, role: 'tenant_admin', email: 'hrNaik@b11.test' });
       expect((await get('/users', 'hrNaik')).status).toBe(200);
+      // setelah ada Admin Tenant aktif, Super Admin tidak lagi menambah Admin Tenant (R8-1, keputusan 24 Nov malam)
+      const lagi = await post('/users', { email: `admin-c-${Date.now()}@b11.test`, name: 'Admin Kedua', role: 'tenant_admin' }, 'etaC');
+      expect([lagi.status, lagi.body.error && lagi.body.error.code]).toEqual([409, 'TENANT_HAS_ADMIN']);
+    });
+
+    it('Super Admin hanya boleh memberi peran Admin Tenant: tidak bisa membuat akun HR atau peran lain yang membaca isi karyawan (review 24 Nov malam, R8-1)', async () => {
+      expect((await get('/roles', 'eta')).body.data.map((r) => r.key)).toEqual(['tenant_admin']);
+      await addUser(A.id, 'sasaranEta', 'learner');
+      for (const role of ['hr_admin', 'supervisor', 'learner', 'pimpinan']) {
+        const made = await post('/users', { email: `eta-${role}-${Date.now()}@b11.test`, name: 'Lewat Super Admin', role }, 'eta');
+        expect([role, made.status, made.body.error && made.body.error.code]).toEqual([role, 403, 'ROLE_FORBIDDEN']);
+        if (role === 'learner') continue; // sasaran sudah learner: bukan perubahan peran
+        const naik = await patch(`/users/${id.sasaranEta}`, { role }, 'eta');
+        expect([role, naik.status, naik.body.error && naik.body.error.code]).toEqual([role, 403, 'ROLE_FORBIDDEN']);
+      }
+      // mengubah data lain sambil mengirim peran yang sama (bentuk kiriman layar B11) tetap boleh
+      const ubahNama = await patch(`/users/${id.hrA}`, { name: 'HR A', role: 'hr_admin' }, 'eta');
+      expect([ubahNama.status, ubahNama.body.data && ubahNama.body.data.role]).toEqual([200, 'hr_admin']);
+      // tenant A sudah punya Admin Tenant aktif: jalan dua langkah (buat Admin Tenant, lalu lewat akun itu buat HR) tertutup
+      const tadmin = await post('/users', { email: `eta-tadmin-${Date.now()}@b11.test`, name: 'Admin Pemulihan', role: 'tenant_admin' }, 'eta');
+      expect([tadmin.status, tadmin.body.error && tadmin.body.error.code]).toEqual([409, 'TENANT_HAS_ADMIN']);
+      const naikAdmin = await patch(`/users/${id.sasaranEta}`, { role: 'tenant_admin' }, 'eta');
+      expect([naikAdmin.status, naikAdmin.body.error && naikAdmin.body.error.code]).toEqual([409, 'TENANT_HAS_ADMIN']);
     });
 
     it('Admin Tenant boleh memberi peran Admin Tenant dan mengubah akun Admin Tenant lain', async () => {

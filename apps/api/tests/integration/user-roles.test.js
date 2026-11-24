@@ -94,8 +94,17 @@ run('B2 peran (Postgres)', () => {
     expect((await put(u.dimas, { roles: ['hr_admin'], primary: 'hr_admin' }, await sign('hr', 'a', 'hr_admin'))).status).toBe(403);
     expect((await request(app).get(`/api/users/${u.dimas}/roles`).set(bearer(await sign('dimas', 'a', 'learner')))).status).toBe(403);
     // Super Admin boleh (jalur membuat Admin Tenant pertama)
-    expect((await put(u.dimas, { roles: ['learner', 'tenant_admin'], primary: 'learner' }, await sign('eta', 'a', 'eta_admin'))).status).toBe(200);
-    await put(u.dimas, { roles: ['learner'], primary: 'learner' });
+    const eta = await sign('eta', 'a', 'eta_admin');
+    // R8-1 (review 24 Nov malam): Super Admin tidak menambah peran yang membaca isi karyawan
+    for (const extra of ['hr_admin', 'supervisor', 'pimpinan']) {
+      const res = await put(u.dimas, { roles: ['learner', extra], primary: 'learner' }, eta);
+      expect([extra, res.status, res.body.error && res.body.error.code]).toEqual([extra, 403, 'ROLE_FORBIDDEN']);
+    }
+    expect(await rolesOf('dimas')).toEqual(['learner']);
+    // tenant a sudah punya Admin Tenant aktif: Super Admin tidak menambah Admin Tenant (hanya pemulihan, R8-1)
+    const tambah = await put(u.dimas, { roles: ['learner', 'tenant_admin'], primary: 'learner' }, eta);
+    expect([tambah.status, tambah.body.error && tambah.body.error.code]).toEqual([409, 'TENANT_HAS_ADMIN']);
+    expect(await rolesOf('dimas')).toEqual(['learner']);
   });
 
   it('Admin Tenant terakhir tidak bisa dicabut, juga saat dua permintaan datang bersamaan', async () => {

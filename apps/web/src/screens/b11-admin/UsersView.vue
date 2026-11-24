@@ -66,9 +66,12 @@ const formOpen = ref(false)
 const editing = ref<AdminUser | null>(null)
 const form = reactive({ name: '', email: '', role: 'learner', jobRoleId: '', employeeId: '' })
 
+// Super Admin hanya ditawari Admin Tenant (R8-1), jadi bawaan mengikuti daftar peran dari API
+const defaultRole = () => (roles.value.some((r) => r.key === 'learner') ? 'learner' : roles.value[0]?.key ?? 'learner')
+
 function openForm(u?: AdminUser) {
   editing.value = u ?? null
-  Object.assign(form, { name: u?.name ?? '', email: u?.email ?? '', role: u?.role ?? 'learner', jobRoleId: u?.jobRoleId ?? '', employeeId: u?.employeeId ?? '' })
+  Object.assign(form, { name: u?.name ?? '', email: u?.email ?? '', role: u?.role ?? defaultRole(), jobRoleId: u?.jobRoleId ?? '', employeeId: u?.employeeId ?? '' })
   errors.value = []
   notice.value = ''
   formOpen.value = true
