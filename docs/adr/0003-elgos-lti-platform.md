@@ -13,6 +13,10 @@ ADR 0001 dan aturan arsitektur 1 menetapkan integrasi EliteMentor lewat API OAut
 
 ## Konsekuensi
 
+- Aturan arsitektur 1 di `CLAUDE.md` diubah: integrasi EliteMentor lewat API OAuth2 + webhook HMAC **atau LTI 1.3 Platform** (`src/integrations/elitementor/lti`, `src/modules/lti`).
+- Pengecualian aturan 2: rute LTI publik (authorize, token, AGS) tidak punya `req.tenantId` dari sesi; tenant diambil hanya dari tiket peluncuran atau token AGS di sisi server, tidak pernah dari parameter atau body.
+- AGS hanya dipakai simulator demo sampai EliteMentor membuat klien AGS.
+
 - Kunci RSA platform ELGOS wajib di produksi (`ELGOS_LTI_PRIVATE_KEY`). Token AGS memakai kunci ini dengan audience `elgos-lti-ags`, terpisah dari JWT sesi (`EWI_JWT_SECRET`, audience `ewi`), jadi aturan 5 tidak berubah.
 - Endpoint publik baru tanpa sesi Bearer (`/api/lti/authorize`, `/api/lti/token`, AGS). Keamanannya bergantung pada tiket peluncuran sekali pakai dan JWT assertion tool; wajib dites.
 - EliteMentor belum punya klien AGS. Sampai ada, skor dari EliteMentor asli tetap lewat webhook (B14); simulator demo memakai AGS.

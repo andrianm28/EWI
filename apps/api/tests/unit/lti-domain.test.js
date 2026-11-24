@@ -1,7 +1,7 @@
 'use strict';
 // EM-LTI (docs/designs/em-lti-platform.md §3): aturan murni platform LTI 1.3.
 const {
-  CLAIM, AGS_SCOPES, PASSING_SCORE, subOf, resolveUrl, validateAuthRequest, buildIdToken, loginUrl, toSyncEvent, parseScope,
+  CLAIM, AGS_SCOPES, PASSING_SCORE, newSub, contextKeyOf, resolveUrl, validateAuthRequest, buildIdToken, loginUrl, toSyncEvent, parseScope,
 } = require('../../src/modules/lti/domain');
 
 const tool = {
@@ -10,13 +10,13 @@ const tool = {
 };
 const base = 'https://elgos.test';
 
-describe('subOf', () => {
-  test('stabil, 32 hex, beda per tenant dan per karyawan', () => {
-    const a = subOf('rahasia', 't1', 'u1');
-    expect(a).toMatch(/^[0-9a-f]{32}$/);
-    expect(subOf('rahasia', 't1', 'u1')).toBe(a);
-    expect(subOf('rahasia', 't2', 'u1')).not.toBe(a);
-    expect(subOf('rahasia', 't1', 'u2')).not.toBe(a);
+describe('newSub dan contextKeyOf', () => {
+  test('sub acak 32 hex; kunci konteks stabil per tenant, 16 hex', () => {
+    expect(newSub()).toMatch(/^[0-9a-f]{32}$/);
+    expect(newSub()).not.toBe(newSub());
+    expect(contextKeyOf('rahasia', 't1')).toMatch(/^[0-9a-f]{16}$/);
+    expect(contextKeyOf('rahasia', 't1')).toBe(contextKeyOf('rahasia', 't1'));
+    expect(contextKeyOf('rahasia', 't2')).not.toBe(contextKeyOf('rahasia', 't1'));
   });
 });
 
@@ -62,7 +62,7 @@ describe('buildIdToken', () => {
   const link = { id: 'link-1', kind: 'plan_item', courseRef: 'SD-B1', title: 'Root Cause Analysis', tenantId: 't1' };
   const user = { name: 'Learner Demo', email: 'learner@demo.test' };
   test('klaim LTI 1.3 + AGS sesuai spek §3.2', () => {
-    const p = buildIdToken({ issuer: 'https://iss.test', tool, link, user, sub: 'abc', nonce: 'n1', base, now });
+    const p = buildIdToken({ issuer: 'https://iss.test', tool, link, user, sub: 'abc', nonce: 'n1', base, now, contextKey: 'k16' });
     expect(p).toMatchObject({ iss: 'https://iss.test', aud: 'em-client', sub: 'abc', nonce: 'n1', iat: now, exp: now + 300, name: 'Learner Demo', email: 'learner@demo.test' });
     expect(p[CLAIM.messageType]).toBe('LtiResourceLinkRequest');
     expect(p[CLAIM.version]).toBe('1.3.0');
@@ -70,7 +70,8 @@ describe('buildIdToken', () => {
     expect(p[CLAIM.targetLinkUri]).toBe('https://elgos.test/em-sim/lti/launch');
     expect(p[CLAIM.roles]).toEqual(['http://purl.imsglobal.org/vocab/lis/v2/membership#Learner']);
     expect(p[CLAIM.resourceLink]).toEqual({ id: 'link-1', title: 'Root Cause Analysis' });
-    expect(p[CLAIM.context]).toEqual({ id: 't1:SD-B1', label: 'SD-B1', title: 'Root Cause Analysis' });
+    expect(p[CLAIM.context]).toEqual({ id: 'k16:SD-B1', label: 'SD-B1', title: 'Root Cause Analysis' });
+    expect(JSON.stringify(p)).not.toContain('t1');
     expect(p[CLAIM.custom]).toEqual({ course_code: 'SD-B1', mode: 'online' });
     expect(p[CLAIM.launchPresentation]).toEqual({ document_target: 'window', return_url: 'https://elgos.test/k/rencana' });
     expect(p[CLAIM.agsEndpoint]).toEqual({
@@ -96,7 +97,7 @@ describe('toSyncEvent', () => {
   const online = { id: 'link-1', kind: 'plan_item', courseRef: 'SD-B1', title: 'RCA' };
   const offline = { id: 'link-2', kind: 'offline_training', courseRef: 'IAC-1512', title: 'IaC' };
   const user = { email: 'learner@demo.test' };
-  const ts = '2026-11-25T03:00:00.000Z';
+  const ts = '2026-11-24T03:00:00.000Z';
   const score = (extra) => ({ userId: 'abc', timestamp: ts, activityProgress: 'InProgress', gradingProgress: 'NotReady', ...extra });
 
   test('online mulai belajar = progres in_progress', () => {
@@ -130,6 +131,12 @@ describe('toSyncEvent', () => {
     [{ activityProgress: 'Terbang' }],
   ])('skor tidak valid ditolak %#', (extra) => {
     expect(toSyncEvent({ link: online, score: score(extra), user }).error).toBeTruthy();
+  });
+  test('timestamp jauh di depan ditolak; id event memakai ISO ternormalisasi', () => {
+    const now = new Date('2026-11-25T03:00:00Z');
+    expect(toSyncEvent({ link: online, score: score({ timestamp: '2026-11-25T04:00:00Z' }), user, now }).error).toMatch(/timestamp/);
+    const out = toSyncEvent({ link: online, score: score({ timestamp: '2026-11-25T10:00:00+07:00' }), user, now });
+    expect(out.event.id).toBe('lti:link-1:abc:2026-11-25T03:00:00.000Z:InProgress');
   });
   test('selesai tapi belum dinilai diabaikan', () => {
     expect(toSyncEvent({ link: online, score: score({ activityProgress: 'Completed', gradingProgress: 'Pending' }), user }).kind).toBe('ignored');
