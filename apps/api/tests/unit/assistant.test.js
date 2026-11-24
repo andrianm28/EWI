@@ -106,6 +106,28 @@ describe('penyedia AI assistantReply', () => {
     expect(b.answer).toBeNull();
   });
 
+  it('tiruan atasan: pertanyaan berbeda mendapat jawaban berbeda (kata kunci terbanyak menang)', async () => {
+    const ai = createStubProvider();
+    const tim = {
+      wawancaraTim: { members: 3, byStatus: { completed: 1 }, notCompleted: ['[[ORANG_1]]'] },
+      gapTim: { top: [{ competency: 'Eskalasi Insiden', employees: 2 }] },
+      rencanaTim: { byStatus: { new: 2 } },
+    };
+    const p = [{ key: 'tna', label: 'Training Needs' }];
+    const ask = (question) => ai.assistantReply({ view: 'atasan', roleLabel: 'Atasan', facts: tim, pages: p, question });
+    const status = await ask('Bagaimana status wawancara tim saya?');
+    const gap = await ask('Gap terbesar tim saya apa?');
+    expect(status.answer).toContain('Belum selesai wawancara');
+    expect(gap.answer).toContain('Eskalasi Insiden (2 orang)');
+    expect((await ask('Bagaimana rencana belajar tim saya?')).answer).toContain('Rencana tim per status');
+  });
+  it('tiruan HR: status pelatihan dijawab dari fakta Learning Delivery', async () => {
+    const ai = createStubProvider();
+    const pelatihan = { running: 3, online: 2, offline: 1, upcoming: 2, avgProgress: 64, attention: 1, late: ['Incident Intake'] };
+    const a = await ai.assistantReply({ view: 'hr', roleLabel: 'HR / L&D', facts: { pelatihan }, pages: [{ key: 'ld', label: 'Learning Delivery' }], question: 'Apa status pelatihan saat ini?' });
+    expect(a.answer).toBe('Ada 3 pelatihan berjalan (2 online, 1 offline) dengan rata-rata progres 64%, dan 2 akan datang. 1 perlu perhatian: Incident Intake.');
+    expect(a.page).toBe('ld');
+  });
   it('Bedrock: instruksi sistem statis, fakta dan pertanyaan berpembatas di pesan pengguna', async () => {
     const sent = [];
     const client = { async send(cmd) { sent.push(cmd.input); return { output: { message: { content: [{ text: '{"answer":"Ada 1 undangan.","page":"my","refused":false}' }] } }, usage: { inputTokens: 10, outputTokens: 5 } }; } };

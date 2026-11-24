@@ -54,11 +54,12 @@ function question(submodule, askedCount, context) {
 }
 
 // B17: tiruan Asisten ELGOS. Kata kunci pertanyaan -> kunci fakta (mengikuti RULES mockup), kalimat dari angka fakta.
+// Aturan dengan kata kunci cocok terbanyak menang; seri -> urutan di daftar.
 const ASSISTANT_RULES = [
   [['rencana', 'belajar', 'modul', 'course', 'kursus'], 'rencanaSaya', 'li', (f) => `Rencana belajar Anda ada ${f.total}: ${f.items.map((i) => i.title).join(', ')}.`],
   [['undangan', 'wawancara'], 'undanganSaya', 'iv', (f) => `Anda punya ${f.open} wawancara akar masalah terbuka, ${f.canStart} bisa dimulai sekarang.`],
   [['hasil', 'skor', 'kompetensi'], 'kompetensiSaya', 'my', (f) => `Dari ${f.summary.total} kompetensi, ${f.summary.met} sudah dikuasai dan ${f.summary.gaps} masih belum.`],
-  [['wawancara', 'tim', 'status'], 'wawancaraTim', 'tna', (f) => `Tim Anda ${f.members} orang. Belum selesai wawancara: ${f.notCompleted.join(', ') || 'tidak ada'}.`],
+  [['wawancara', 'status'], 'wawancaraTim', 'tna', (f) => `Tim Anda ${f.members} orang. Belum selesai wawancara: ${f.notCompleted.join(', ') || 'tidak ada'}.`],
   [['gap', 'kompetensi', 'pareto'], 'gapTim', 'tna', (f) => `Gap terbesar tim: ${f.top.map((g) => `${g.competency} (${g.employees} orang)`).join(', ') || 'belum ada'}.`],
   [['hari ini', 'perlu', 'tinjauan', 'menunggu'], 'tinjauan', 'review', (f, all) => [
     `Ada ${f.draft} temuan AI menunggu tinjauan, ${f.overdue} lewat target ${f.targetDays} hari kerja, ${f.held} ditahan.`,
@@ -70,12 +71,19 @@ const ASSISTANT_RULES = [
   [['wawancara', 'sesi'], 'wawancara', 'tna', (f) => `Sesi wawancara per status: ${Object.entries(f.byStatus).map(([k, n]) => `${k} ${n}`).join(', ') || 'belum ada'}.`],
   [['jabatan', 'posisi', 'jenjang'], 'saya', null, (f) => `Jabatan Anda ${f.jabatan || 'belum tercatat'}, jenjang ${f.jenjang || 'belum tercatat'}.`],
   [['gap', 'kompetensi', 'pareto'], 'gap', 'tna', (f) => `Gap terbesar: ${f.top.map((g) => `${g.competency} (${g.employees} orang)`).join(', ') || 'belum ada'}.`],
+  [['pelatihan', 'delivery'], 'pelatihan', 'ld', (f) => `Ada ${f.running} pelatihan berjalan (${f.online} online, ${f.offline} offline) dengan rata-rata progres ${f.avgProgress}%, dan ${f.upcoming} akan datang. ${f.attention} perlu perhatian${f.late.length ? `: ${f.late.join(', ')}` : ''}.`],
 ];
 
 function stubAssistantReply({ facts, pages, question }) {
   const q = String(question || '').toLowerCase();
   const keys = (pages || []).map((p) => p.key);
-  const hit = ASSISTANT_RULES.find(([words, key]) => facts[key] && words.some((w) => q.includes(w)));
+  let hit = null; let best = 0;
+  for (const rule of ASSISTANT_RULES) {
+    const [words, key] = rule;
+    if (!facts[key]) continue;
+    const score = words.filter((w) => q.includes(w)).length;
+    if (score > best) { best = score; hit = rule; }
+  }
   if (!hit) return { answer: null, page: null, refused: false };
   const [, key, page, say] = hit;
   return { answer: say(facts[key], facts), page: page && keys.includes(page) ? page : null, refused: false };

@@ -204,6 +204,25 @@ run('B17 Asisten ELGOS (Postgres)', () => {
     expect(own.undanganSaya.open).toBe(0);
   });
 
+  it('HR: status pelatihan dari Learning Delivery (gap C11), hanya bila modul ld aktif; tenant lain tidak ikut', async () => {
+    const day = (o) => new Date(Date.now() + 7 * 3600e3 + o * 86400e3).toISOString().slice(0, 10);
+    await stores.ld.createTraining(tenant.id, { title: 'Workshop RCA', startsOn: day(5) });
+    await stores.ld.createTraining(tenant.id, { title: 'Workshop Lama', startsOn: day(-10), endsOn: day(-3) });
+    await stores.ld.createTraining(other.id, { title: 'Pelatihan Lain', startsOn: day(5) });
+    const q = 'Apa status pelatihan saat ini?';
+    const off = recorder();
+    await ask(app(off), 'hr', q);
+    expect(off.calls[0].facts.pelatihan).toBeUndefined();
+    await setFlag('module.ld', true);
+    const ai = recorder();
+    const res = await ask(app(ai), 'hr', q);
+    expect(ai.calls[0].facts.pelatihan).toEqual({ running: 1, online: 0, offline: 1, upcoming: 1, avgProgress: 0, attention: 2, late: ['Workshop Lama'] });
+    expect(JSON.stringify(ai.calls[0].facts.pelatihan)).not.toMatch(/Pelatihan Lain/);
+    expect(res.body.data.answer).toContain('Ada 1 pelatihan berjalan');
+    expect(res.body.data.action).toEqual({ page: 'ld', label: 'Learning Delivery' });
+    await setFlag('module.ld', false);
+  });
+
   it('nama di teks pertanyaan disamarkan sebelum ke model (anggota tim = kodenya, orang lain = [[ORANG_LAIN]])', async () => {
     const ai = recorder((args) => ({ answer: `${args.question.match(/\[\[ORANG_\d+\]\]/)[0]} belum wawancara.`, page: null, refused: false, usage: [] }));
     const res = await ask(app(ai), 'spv', 'Apakah Beni Saputra dan dodi luar sudah wawancara?');
