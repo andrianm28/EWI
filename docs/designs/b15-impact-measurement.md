@@ -219,8 +219,10 @@ wawancara ulang. Tanpa bukti di tengah, klaim bahwa pelatihan memperbaiki kinerj
 ### 6.5 Visibilitas
 
 - HR (`hr_admin`, `eta_admin`): semua peserta tenant.
-- Atasan (`supervisor` dan `pimpinan`, sama dengan B10 `modules/cca` `LEADER_ROLES`): cakupan = bawahan langsung
-  (`people.directReportIds`), tanpa dirinya sendiri (beda dengan `visibleEmployeeScope()`, yang memasukkan id atasan).
+- Atasan (`supervisor` dan `pimpinan`, sama dengan B10 `modules/cca` `LEADER_ROLES`): cakupan lewat
+  `visibleEmployeeScope()` = dirinya + bawahan langsung (D23, keputusan user 24 Nov, menggantikan "tanpa dirinya
+  sendiri"). Bila atasan ikut pelatihan rencana, ia masuk angka timnya. Skor kinerja tetap hanya untuk bawahan
+  langsung: baris untuk dirinya ditolak "Skor kinerja Anda diisi HR, bukan oleh Anda sendiri".
   `GET /plans` dan `GET /plans/:id/overview` dihitung atas tim; indikator tim tetap tampil apa adanya. Atasan tidak
   menerima baris per orang, antrean, atau ringkasan wawancara; tab Pengukuran AI di layar atasan menampilkan catatan
   "Antrean wawancara ulang dikelola HR". Atasan boleh mengisi skor kinerja bawahan langsungnya (bagian 5).
@@ -355,7 +357,7 @@ diff yang sama. Laporan dan triase `egm-resolve`: `/mnt/project-files/elgos-ekse
 | D20 | `planData` sebaiknya pindah ke `domain.js`; UUID/`wrap`/`LEADER_ROLES` disalin (standards) | Tunda: pola repo saat ini; pindah ke core = kode bersama, diusulkan ke Andrian |
 | D21 | Enum `Verdict` berbahasa Indonesia, `GET /api/lim/` tidak di tabel 5 (standards, spek) | Tolak: nilai mengikuti spek 6.1; `GET /` sama dengan modul lain |
 | D22 | `job_role_id` ON DELETE SET NULL memperlebar kohort diam-diam (readiness) | Catat: perilaku sesuai bagian 4; layar menampilkan "semua jabatan" bila jabatan kosong |
-| D23 | `teamOf` tidak memakai `visibleEmployeeScope()` (aturan 4) (standards) | Eskalasi ke Andrian (sama dengan B10 E7): spek 6.5 membuang atasan dari cakupan, `visibleEmployeeScope` memasukkannya |
+| D23 | `teamOf` tidak memakai `visibleEmployeeScope()` (aturan 4) (standards) | ✅ Diputuskan user 24 Nov (review PR #8): samakan ke `visibleEmployeeScope()`; atasan masuk cakupan, tetapi tidak mengisi skor kinerja dirinya |
 
 ### Test alur B18 (19 Nov, PR susulan)
 
