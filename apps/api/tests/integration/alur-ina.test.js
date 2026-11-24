@@ -35,6 +35,7 @@ run('Alur akses atasan ke perbaikan (B9, B11)', () => {
       nama: `Contoh ${kunci}`, email: `${kunci}-${akhiran}@alur-ina.test`, employeeId: `E-${kunci}`, peran, atasanId,
     });
     orang.hr = await buatOrang('hr', 'hr_admin');
+    orang.adminTenant = await buatOrang('admin-tenant', 'tenant_admin');
     orang.atasanA = await buatOrang('atasan-a', 'supervisor');
     orang.atasanB = await buatOrang('atasan-b', 'supervisor');
     orang.timA = await buatOrang('tim-a', 'learner', orang.atasanA.id);
@@ -75,9 +76,10 @@ run('Alur akses atasan ke perbaikan (B9, B11)', () => {
     await a.ina.beriAkses(orang.hr, orang.atasanA);
     expect((await a.ina.daftarTindakan(orang.atasanA)).status).toBe(200);
 
-    // hr_admin berlaku sebagai Admin Tenant sampai B2 menambah peran tenant_admin (spek B11 4.2)
-    expect((await a.adminTenant.ubahPengguna(orang.hr, orang.atasanA, { role: 'learner' })).status).toBe(200);
-    expect((await a.adminTenant.ubahPengguna(orang.hr, orang.atasanA, { role: 'supervisor' })).status).toBe(200);
+    // masa interim hr_admin dicabut 24 Nov: HR ditolak, perubahan peran lewat tenant_admin
+    expect((await a.adminTenant.ubahPengguna(orang.hr, orang.atasanA, { role: 'learner' })).status).toBe(403);
+    expect((await a.adminTenant.ubahPengguna(orang.adminTenant, orang.atasanA, { role: 'learner' })).status).toBe(200);
+    expect((await a.adminTenant.ubahPengguna(orang.adminTenant, orang.atasanA, { role: 'supervisor' })).status).toBe(200);
     const res = await a.ina.daftarTindakan(orang.atasanA);
     expect([res.status, kodeGalat(res)]).toEqual([403, 'NO_INA_ACCESS']);
     // panel akses HR juga menampilkannya tanpa izin

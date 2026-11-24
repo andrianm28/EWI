@@ -125,7 +125,7 @@ run('B16 Career & Promotion (Postgres)', () => {
     expect((await get(`/employees/${u.hadi}/evidence`, 'hr')).status).toBe(404);
     expect((await get(`/employees/${u.hr2}/evidence`, 'hr')).status).toBe(404); // HR bukan subjek promosi
     expect((await get('/employees/bukan-uuid/evidence', 'hr')).status).toBe(404);
-    expect((await get('/map', 'eta')).status).toBe(200);
+    expect((await get('/map', 'eta')).body.error.code).toBe('EMPLOYEE_CONTENT_PRIVATE');
   });
 
   it('promotionVisibleTo tanpa supervisor menutup modul untuk atasan', async () => {
@@ -188,16 +188,14 @@ run('B16 Career & Promotion (Postgres)', () => {
     const spv = await get('/decisions', 'spv');
     expect(spv.body.data.map((d) => d.employee.name).sort()).toEqual(['ani', 'budi']);
     expect(rowOf(spv, 'ani').actions).toEqual(['recommend', 'hold']);
-    expect(rowOf(await get('/decisions', 'eta'), 'ani').blockedReason).toBe('view_only');
+    expect((await get('/decisions', 'eta')).body.error.code).toBe('EMPLOYEE_CONTENT_PRIVATE');
   });
 
   it('tahap atasan: hanya atasan langsung berperan supervisor, hanya untuk yang memenuhi syarat', async () => {
     const path = `/decisions/${u.ani}/supervisor`;
-    for (const who of ['hr', 'eta']) {
-      const res = await post(path, who, { decision: 'recommend' });
-      expect(res.status).toBe(403);
-      expect(res.body.error.code).toBe('ROLE_FORBIDDEN');
-    }
+    const hr = await post(path, 'hr', { decision: 'recommend' });
+    expect([hr.status, hr.body.error.code]).toEqual([403, 'ROLE_FORBIDDEN']);
+    expect((await post(path, 'eta', { decision: 'recommend' })).body.error.code).toBe('EMPLOYEE_CONTENT_PRIVATE');
     expect((await post(path, 'ani', { decision: 'recommend' })).status).toBe(403);
     expect((await post(path, 'spv2', { decision: 'recommend' })).status).toBe(404);
     expect((await post(`/decisions/${u.spv}/supervisor`, 'spv', { decision: 'recommend' })).status).toBe(404);
@@ -246,7 +244,6 @@ run('B16 Career & Promotion (Postgres)', () => {
     const list = await get('/decisions', 'hr');
     expect(rowOf(list, 'ani')).toMatchObject({ supervisor: { decision: 'recommend', byName: 'spv', note: 'Siap naik' }, actions: ['approve', 'hold'], blockedReason: null });
     expect(rowOf(await get('/decisions', 'spv'), 'ani').supervisor.note).toBe('Siap naik');
-    expect(rowOf(await get('/decisions', 'eta'), 'ani').supervisor).toMatchObject({ decision: 'recommend', note: null });
     expect((await get('/map', 'hr')).body.data.employees.find((e) => e.name === 'ani').decisionState).toBe('supervisor_recommend');
     expect((await get(`/employees/${u.ani}/evidence`, 'hr')).body.data.supervisorRecommendation).toMatchObject({ decision: 'recommend', byName: 'spv' });
     const audits = await q(`SELECT user_id, action, meta FROM audit_logs WHERE tenant_id = :t AND resource = 'dna.promotion_decision' ORDER BY id`, { t: tenant.id });
@@ -257,11 +254,9 @@ run('B16 Career & Promotion (Postgres)', () => {
   });
 
   it('tahap HR: hanya hr_admin; menyetujui tidak mengubah jenjang; setelah disetujui tidak ada tindakan lagi', async () => {
-    for (const who of ['spv', 'eta']) {
-      const res = await post(`/decisions/${u.ani}/hr`, who, { decision: 'approve' });
-      expect(res.status).toBe(403);
-      expect(res.body.error.code).toBe('ROLE_FORBIDDEN');
-    }
+    const spv = await post(`/decisions/${u.ani}/hr`, 'spv', { decision: 'approve' });
+    expect([spv.status, spv.body.error.code]).toEqual([403, 'ROLE_FORBIDDEN']);
+    expect((await post(`/decisions/${u.ani}/hr`, 'eta', { decision: 'approve' })).body.error.code).toBe('EMPLOYEE_CONTENT_PRIVATE');
     expect((await post(`/decisions/${u.ani}/hr`, 'luar', { decision: 'approve' })).status).toBe(404);
     expect((await post(`/decisions/${u.ani}/hr`, 'hr', { decision: 'tolak' })).status).toBe(400);
     const [a, b] = await Promise.all([post(`/decisions/${u.ani}/hr`, 'hr', { decision: 'approve', note: 'SK menyusul' }), post(`/decisions/${u.ani}/hr`, 'hr2', { decision: 'approve' })]);

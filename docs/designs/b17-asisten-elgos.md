@@ -66,7 +66,7 @@ ALTER TABLE ai_usage_logs ADD CONSTRAINT ai_usage_logs_operation_check
 `down`: hapus baris `ai_usage_logs` ber-`operation = 'assistant_reply'` atau ber-`submodule` lebih dari 8 karakter, pasang lagi CHECK lama dan `varchar(8)`, hapus tabel. `[⏳ DITERIMA]` `down` menghapus catatan pemakaian asisten secara permanen.
 
 - Pertanyaan (yang disimpan adalah teks asli pengguna) dan jawaban terenkripsi dan **tidak** ditaruh di `audit_logs.meta`. `audit_logs` memuat id log dan metadata; teksnya di `assistant_logs`. Teks kaki "Jawaban dicatat di log audit" tetap dipakai: jawaban tercatat di log asisten yang ditautkan dari audit.
-- Baris ikut terhapus saat akun penanya dihapus (FK cascade) dan ikut di ekspor data karyawan (`assistantLogs`: waktu, tampilan, pertanyaan, jawaban, hasil).
+- Baris ikut terhapus saat akun penanya dihapus (FK cascade) dan ikut di ekspor data karyawan **milik sendiri** (`assistantLogs`: waktu, tampilan, pertanyaan, jawaban, hasil; `assistantLogsIncluded: true`). Ekspor yang diminta HR/Admin ETA berisi `assistantLogs: []` dan `assistantLogsIncluded: false`, karena log atasan bisa memuat data anggota timnya (review 24 Nov).
 - Retensi: job **`assistant-logs-cleanup`** (`src/jobs/index.js`), satu `DELETE` lintas tenant dengan batas per tenant = `assistant.retentionDays` bila JSON number berisi 1–3 digit bernilai 1–365, selain itu 90. Pemeriksaan bertingkat (`CASE`) menjamin nilai rusak di satu tenant tidak menggagalkan job untuk semua tenant. Setting yang sama dinormalisasi `normalize()`. Job dijalankan timer systemd milik infra (harian). `[⏳ DITERIMA]` angka 90 hari belum diputuskan pemilik produk.
 
 ## Endpoint
@@ -203,7 +203,7 @@ assistantReply({ view, roleLabel, facts, pages: [{ key, label }], question })
 8. Penolakan dari model: kode dipulihkan ke nama, tanpa tombol.
 9. `pimpinan` → atasan dengan tim kosong; Admin ETA → `super` dengan fakta hr, audit mencatat penanya.
 10. `answer: null` → teks pengganti, `no_answer`.
-11. Log terenkripsi; audit tanpa teks; `ai_usage_logs` terisi; ekspor memuat `assistantLogs`.
+11. Log terenkripsi; audit tanpa teks; `ai_usage_logs` terisi; ekspor milik sendiri memuat `assistantLogs`, ekspor oleh HR tidak.
 12. Batas pakai: pertanyaan ke-21 → 429, termasuk yang gagal; penyedia gagal → 503, log `error`, pemakaian dicatat.
 13. Audit gagal → permintaan gagal dan log `error` (fail closed).
 14. Job retensi per tenant; nilai `retentionDays` rusak di tenant lain tidak menggagalkan job. Migrasi naik-turun-naik dijalankan CI (`.github/workflows/ci.yml`).

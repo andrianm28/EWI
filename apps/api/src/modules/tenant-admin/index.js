@@ -5,12 +5,13 @@
 const express = require('express');
 const { FLAGS, requireFlag } = require('../../core/flags');
 const { ROLES } = require('../../core/rbac/roles');
+const { denyEmployeeContent } = require('../../core/rbac');
 const { badRequest, forbidden, notFound, HttpError } = require('../../core/errors');
 const { RATE } = require('../../core/auth/email-link');
 const { importRouter } = require('../imports');
 const { requireSubmodule } = require('../../core/entitlement/guard');
 const { isUniqueViolation } = require('../../db/tenant-admin-stores');
-const { requireTenantAdmin, assignableRoles, roleLabel, assertCanGrant, assertCanManage } = require('./access');
+const { requireTenantAdmin, assignableRoles, roleLabel } = require('./access');
 
 const wrap = (fn) => (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -115,7 +116,7 @@ module.exports = {
     }
 
     // ---------- Pengguna & peran ----------
-    r.get('/roles', (req, res) => res.json({ data: assignableRoles(req.user).map((key) => ({ key, label: roleLabel(key) })) }));
+    r.get('/roles', (req, res) => res.json({ data: assignableRoles().map((key) => ({ key, label: roleLabel(key) })) }));
 
     r.get('/users', wrap(async (req, res) => {
       const status = req.query.status ? String(req.query.status) : null;
@@ -134,7 +135,6 @@ module.exports = {
       const name = optionalText(body, 'name', 'Nama', 255);
       if (!name) throw badRequest('Nama wajib diisi');
       checkRole(body.role);
-      assertCanGrant(req.user, body.role);
       const employeeId = optionalText(body, 'employeeId', 'ID karyawan', 64);
       const position = await resolvePosition(req, body, null);
       const user = await db.createUser(req.tenantId, { email, name, role: body.role, employeeId, ...position });
@@ -150,14 +150,13 @@ module.exports = {
     r.patch('/users/:id', wrap(async (req, res) => {
       const current = await loadUser(req);
       if (current.role === ROLES.ETA_ADMIN) throw forbidden('ROLE_FORBIDDEN', 'Akun Super Admin tidak bisa diubah dari layar Admin Tenant');
-      assertCanManage(req.user, await db.actor(req.tenantId, current.id));
       const body = req.body || {};
       const patch = {};
       if (has(body, 'name')) {
         patch.name = optionalText(body, 'name', 'Nama', 255);
         if (!patch.name) throw badRequest('Nama tidak boleh kosong');
       }
-      if (has(body, 'role')) { checkRole(body.role); assertCanGrant(req.user, body.role); patch.role = body.role; }
+      if (has(body, 'role')) { checkRole(body.role); patch.role = body.role; }
       if (has(body, 'employeeId')) patch.employeeId = optionalText(body, 'employeeId', 'ID karyawan', 64);
       if (has(body, 'status')) {
         if (!['active', 'disabled'].includes(body.status)) throw badRequest('status harus active atau disabled');
@@ -302,8 +301,11 @@ module.exports = {
     // submodulnya dan saklar darurat global, bukan flag modul tenant (requireSubmodule tenantFlag:false).
     // gerbang Admin Tenant sudah dipasang untuk seluruh router ini (r.use di atas), jadi tidak diulang di importRouter
     const passThrough = (_req, _res, next) => next();
+    // KPI/OKR per karyawan (tna_performance) adalah data karyawan: Super Admin ditolak seperti di /api/tna (24 Nov).
+    // Model kompetensi per jabatan (dna) tetap konfigurasi.
+    const CONTENT_IMPORTS = new Set(['tna']);
     for (const [sm, only] of Object.entries(IMPORT_KINDS)) {
-      r.use(`/imports/${sm}`, requireSubmodule(sm, { entitlements, flags }, { tenantFlag: false }), importRouter({ submodule: sm, stores, audit, flags, guard: passThrough, only, ownDrafts: true }));
+      r.use(`/imports/${sm}`, CONTENT_IMPORTS.has(sm) ? denyEmployeeContent : passThrough, requireSubmodule(sm, { entitlements, flags }, { tenantFlag: false }), importRouter({ submodule: sm, stores, audit, flags, guard: passThrough, only, ownDrafts: true }));
     }
 
     return r;

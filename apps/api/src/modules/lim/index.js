@@ -3,7 +3,7 @@
 // per kompetensi, indikator tim, isian skor, pre dari DNA, dan antrean wawancara ulang (satu baris per karyawan).
 // Spek: docs/designs/b15-impact-measurement.md. Tidak ada klaim sebab-akibat; insight berbasis aturan (generatedBy 'rules').
 const express = require('express');
-const { requireRole, ROLES } = require('../../core/rbac');
+const { requireRole, visibleEmployeeScope, ROLES } = require('../../core/rbac');
 const { badRequest, notFound } = require('../../core/errors');
 const { importRouter } = require('../imports');
 const { FLAGS, requireFlag } = require('../../core/flags');
@@ -100,10 +100,14 @@ module.exports = {
     const hr = requireRole(ROLES.HR_ADMIN);
     const idParam = (req, _res, next) => (UUID.test(req.params.id) ? next() : next(notFound()));
 
-    /** Cakupan: HR semua (null); atasan = bawahan langsung tanpa dirinya sendiri (spek 6.5). */
+    /**
+     * Cakupan: HR semua (null); atasan lewat visibleEmployeeScope() = dirinya + bawahan langsung (aturan 4; D23,
+     * keputusan user 24 Nov). pimpinan memakai cakupan atasan yang sama, seperti modul cca.
+     */
     async function teamOf(req) {
       if (isHr(req)) return null;
-      return new Set(await stores.people.directReportIds(req.tenantId, req.user.id));
+      const reports = await stores.people.directReportIds(req.tenantId, req.user.id);
+      return new Set(visibleEmployeeScope({ id: req.user.id, role: ROLES.SUPERVISOR }, reports).userIds);
     }
     async function loadPlan(req) {
       const plan = await stores.lim.getPlan(req.tenantId, req.params.id);
@@ -283,6 +287,8 @@ module.exports = {
           if (!e || typeof e !== 'object') return 'Baris tidak valid';
           // cek tim lebih dulu: atasan tidak boleh bisa menebak siapa peserta rencana di luar timnya
           if (team && !team.has(e.userId)) return 'Karyawan bukan anggota tim Anda';
+          // D23: tim atasan kini memuat dirinya (visibleEmployeeScope), tetapi skor kinerja hanya untuk bawahan langsung (bagian 5)
+          if (team && e.userId === req.user.id) return 'Skor kinerja Anda diisi HR, bukan oleh Anda sendiri';
           if (!members.has(String(e.userId))) return 'Karyawan bukan peserta rencana ini';
           if (!comps.has(String(e.competencyId))) return 'Kompetensi bukan bagian rencana ini';
           if (team && (e.preScore !== undefined || e.postScore !== undefined)) return 'Atasan hanya mengisi skor kinerja';

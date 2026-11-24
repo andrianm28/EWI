@@ -71,7 +71,8 @@ function normalizeSpec(raw, { requireId = false } = {}) {
     seen.add(email);
     users.push({ email, role, name: typeof u.name === 'string' && u.name.trim() ? u.name.trim() : null });
   }
-  if (!users.some((u) => u.role === 'tenant_admin' || u.role === 'hr_admin')) errors.push('users wajib berisi minimal satu tenant_admin atau hr_admin');
+  // Masa interim hr_admin dicabut 24 Nov (keputusan user): hanya tenant_admin yang mengelola tenant
+  if (!users.some((u) => u.role === 'tenant_admin')) errors.push('users wajib berisi minimal satu tenant_admin (pengelola tenant)');
 
   let settings = null;
   if (spec.settings !== undefined) {

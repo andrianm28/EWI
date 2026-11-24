@@ -107,7 +107,7 @@ run('PK-15 privasi dan audit (Postgres)', () => {
   });
 
   describe('transkrip mentah hanya untuk karyawan sendiri (PO-6 A)', () => {
-    it.each(['spv', 'hr', 'eta'])('%s melihat status sesi tanpa transkrip dan ditolak membaca transkrip', async (who) => {
+    it.each(['spv', 'hr'])('%s melihat status sesi tanpa transkrip dan ditolak membaca transkrip', async (who) => {
       const s = await request(app).get(`/api/tna/sessions/${sessionId}`).set(as(who));
       expect(s.status).toBe(200);
       expect(s.body.data.turns).toBeUndefined();
@@ -115,6 +115,12 @@ run('PK-15 privasi dan audit (Postgres)', () => {
       const t = await request(app).get(`/api/tna/sessions/${sessionId}/transcript`).set(as(who));
       expect(t.status).toBe(403);
       expect(t.body.error.code).toBe('TRANSCRIPT_PRIVATE');
+    });
+
+    it('Super Admin tidak melihat status sesi maupun transkrip (keputusan user 24 Nov)', async () => {
+      for (const path of [`/api/tna/sessions/${sessionId}`, `/api/tna/sessions/${sessionId}/transcript`]) {
+        expect((await request(app).get(path).set(as('eta'))).body.error.code).toBe('EMPLOYEE_CONTENT_PRIVATE');
+      }
     });
 
     it('karyawan sendiri membaca transkrip, tercatat di audit; karyawan lain tidak melihat sesinya', async () => {

@@ -40,4 +40,14 @@ describe('infra hanya etavm2', () => {
       .filter((p) => /etavm1/i.test(fs.readFileSync(p, 'utf8')));
     expect([...namaEtavm1, ...skripDeploy].map((p) => path.relative(root, p))).toEqual([]);
   });
+
+  it('review 24 Nov: dokumen operasi tidak menyuruh menjalankan skrip deploy yang sudah tidak ada', () => {
+    const dokumen = [
+      ...filesUnder(path.join(root, 'deploy')), ...filesUnder(path.join(root, 'docs/infra')), path.join(root, 'README.md'),
+    ].filter((p) => /\.(md|ya?ml)$/.test(p));
+    const hilang = dokumen.flatMap((p) => (fs.readFileSync(p, 'utf8').match(/deploy\/[\w./-]+\.sh/g) || [])
+      .filter((ref) => !fs.existsSync(path.join(root, ref)))
+      .map((ref) => `${path.relative(root, p)} -> ${ref}`));
+    expect(hilang).toEqual([]);
+  });
 });
