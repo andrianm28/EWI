@@ -21,7 +21,7 @@ Asumsi keputusan (★, belum dijawab user per 17 Nov): PD-19 butir 6 (UUID tenan
    | `slug`, `name` | Slug login (huruf kecil, angka, tanda hubung) dan nama organisasi. Slug tidak bisa diganti lewat skrip. |
    | `products` | `full_suite` atau sebagian dari `cca`, `dna`, `tna`, `ina`. Boleh kosong (B12): modul lalu dinyalakan per tenant dari konsol Super Admin. |
    | `flags` | Daftar flag yang dinyalakan, atau objek `{ "flag": true/false }`. Flag yang tidak disebut tetap mati. POC: `module.dna`, `module.tna`. |
-   | `users` | Akun pengelola: `tenant_admin` atau `hr_admin` (minimal satu dari keduanya), `eta_admin`, `pimpinan`. Karyawan masuk lewat impor, bukan di sini. |
+   | `users` | Akun pengelola: minimal satu `tenant_admin` (wajib sejak masa interim `hr_admin` dicabut 24 Nov), lalu opsional `hr_admin`, `eta_admin`, `pimpinan`. Karyawan masuk lewat impor, bukan di sini. |
    | `settings` | Opsional, digabung di tingkat atas, mis. `{ "tna": { "interviewScope": "all_members", "interviewJobRoleId": "..." } }`. |
 
 4. **Periksa tanpa menyimpan.** `node apps/api/scripts/onboard-tenant.js apps/api/scripts/tenants/<slug>.json --periksa`. Semua langkah dijalankan lalu dibatalkan. Di sini kunci KMS ikut diuji.

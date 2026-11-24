@@ -35,7 +35,7 @@ Tidak ada di mockup tetapi sudah diputuskan dan tetap dibangun (brief aturan 5):
 - **Penyimpangan aturan CLAUDE.md yang perlu persetujuan Andrian:**
   - `/api/my` tidak lewat `requireSubmodule()` karena isinya lintas DNA dan TNA; gantinya flag `learner.home` plus cek per bagian lewat helper baru `submoduleActive({ entitlements, flags }, tenantId, submodule)` (entitlement + flag + kill switch, logika yang sama dengan `requireSubmodule`).
   - `/api/my` tidak memanggil `visibleEmployeeScope()` karena selalu dan hanya data diri sendiri; scope-nya `{ userIds: [req.user.id] }`, sama dengan hasil `visibleEmployeeScope` untuk learner.
-  - Permintaan data (tarik persetujuan, minta hapus) tanpa flag, mengikuti ekspor dan hapus PR #11: hak subjek data tidak boleh bergantung pada flag fitur atau kill switch.
+  - Permintaan data (tarik persetujuan, minta hapus) tanpa flag, mengikuti ekspor dan hapus PR #11: hak subjek data tidak boleh bergantung pada flag fitur atau kill switch. ✅ Penyimpangan aturan 3 ini (juga pembekuan #32 dan butir menu `dsr` #38) diterima user 24 Nov di review PR #8.
 
 ## Data dan migrasi
 

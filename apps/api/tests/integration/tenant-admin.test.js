@@ -45,12 +45,13 @@ run('Admin Tenant B11 (Postgres)', () => {
     slugA = `b11-${Date.now()}`;
     [[A]] = await db.query(`INSERT INTO tenants (slug, name, elitementor_organization_id) VALUES (:slug, 'Tenant A', 77) RETURNING id`, { replacements: { slug: slugA } });
     [[B]] = await db.query(`INSERT INTO tenants (slug, name) VALUES (:slug, 'Tenant B') RETURNING id`, { replacements: { slug: `${slugA}-b` } });
-    await addUser(A.id, 'admin', 'hr_admin');
+    await addUser(A.id, 'admin', 'tenant_admin');
+    await addUser(A.id, 'hrA', 'hr_admin');
     await addUser(A.id, 'eta', 'eta_admin');
     await addUser(A.id, 'spv', 'supervisor', { emp: 'E-1' });
     await addUser(A.id, 'staf', 'learner', { emp: 'E-2' });
     await addUser(A.id, 'pim', 'pimpinan');
-    await addUser(B.id, 'adminB', 'hr_admin');
+    await addUser(B.id, 'adminB', 'tenant_admin');
     await addUser(B.id, 'stafB', 'learner');
     // token yang mengaku tenant_admin padahal di DB masih karyawan: gerbang membaca peran dari DB
     tok.fakeAdmin = await tokens.sign({ id: id.staf, tenantId: A.id, role: 'tenant_admin', email: 'staf@b11.test' });
@@ -77,8 +78,9 @@ run('Admin Tenant B11 (Postgres)', () => {
     expect((await get('/users')).status).toBe(200);
   });
 
-  it('hanya admin tenant: karyawan, atasan, pimpinan ditolak; hr_admin (sementara) dan eta_admin lolos; peran dibaca dari DB', async () => {
-    for (const who of ['staf', 'spv', 'pim']) {
+  it('hanya admin tenant: karyawan, atasan, pimpinan, HR ditolak; tenant_admin dan eta_admin lolos; peran dibaca dari DB', async () => {
+    // masa interim hr_admin dicabut (keputusan user 24 Nov, review PR #8)
+    for (const who of ['staf', 'spv', 'pim', 'hrA']) {
       const res = await get('/users', who);
       expect([who, res.status, res.body.error.code]).toEqual([who, 403, 'ROLE_FORBIDDEN']);
     }
@@ -86,7 +88,7 @@ run('Admin Tenant B11 (Postgres)', () => {
     // B2: sesi yang memakai peran di luar peran akunnya ditolak sejak autentikasi (401), bukan baru di gerbang peran
     expect((await get('/users', 'fakeAdmin')).body.error.code).toBe('UNAUTHORIZED');
     // admin yang diturunkan atau dinonaktifkan kehilangan akses walau tokennya masih berlaku
-    await addUser(A.id, 'eks', 'hr_admin');
+    await addUser(A.id, 'eks', 'tenant_admin');
     expect((await get('/users', 'eks')).status).toBe(200);
     await db.query(`UPDATE users SET status = 'disabled' WHERE id = :id`, { replacements: { id: id.eks } });
     // PK-16/B2: sesi akun nonaktif atau yang kehilangan perannya ditutup sejak autentikasi (401)
@@ -99,8 +101,8 @@ run('Admin Tenant B11 (Postgres)', () => {
 
   it('daftar pengguna dan peran yang boleh diberikan', async () => {
     const res = await get('/users');
-    expect(res.body.meta).toEqual({ total: 5, sso: false });
-    expect(res.body.data.map((u) => u.email).sort()).toEqual(['admin@b11.test', 'eta@b11.test', 'pim@b11.test', 'spv@b11.test', 'staf@b11.test']);
+    expect(res.body.meta).toEqual({ total: 6, sso: false });
+    expect(res.body.data.map((u) => u.email).sort()).toEqual(['admin@b11.test', 'eta@b11.test', 'hrA@b11.test', 'pim@b11.test', 'spv@b11.test', 'staf@b11.test']);
     expect(res.body.data.find((u) => u.email === 'spv@b11.test')).toMatchObject({ role: 'supervisor', status: 'active', employeeId: 'E-1', jobRoleName: null });
     expect(JSON.stringify(res.body)).not.toMatch(/password/i);
     expect((await get('/users?q=STAF')).body.data.map((u) => u.email)).toEqual(['staf@b11.test']);
@@ -141,7 +143,7 @@ run('Admin Tenant B11 (Postgres)', () => {
     expect(mail.to).toBe('baru@b11.test');
     expect(mail.subject).toMatch(/Undangan ELGOS dari Tenant A/);
     const token = mail.text.match(/\/masuk#token=([A-Za-z0-9_-]+)/)[1];
-    expect((await audits(A.id, 'tenant_admin.user')).pop()).toMatchObject({ action: 'create', meta: { employeeIds: [id.baru], role: 'hr_admin' } });
+    expect((await audits(A.id, 'tenant_admin.user')).pop()).toMatchObject({ action: 'create', meta: { employeeIds: [id.baru], role: 'tenant_admin' } });
     expect((await audits(A.id, 'tenant_admin.invitation')).length).toBe(1);
 
     expect((await post('/users', { email: 'baru@b11.test', name: 'Lagi', role: 'learner' })).body.error.code).toBe('DUPLICATE');
@@ -313,7 +315,7 @@ run('Admin Tenant B11 (Postgres)', () => {
     expect((await get(`/imports/dna/batches/${milikSendiri}`)).status).toBe(200);
     // rute HR lama tetap melihat semuanya (perilaku lama)
     await db.query(`INSERT INTO feature_flags (tenant_id, key, enabled) VALUES (:a, 'module.dna', true)`, { replacements: { a: A.id } });
-    expect((await request(app).get(`/api/dna/imports/batches/${milikEta}`).set(as('admin'))).status).toBe(200);
+    expect((await request(app).get(`/api/dna/imports/batches/${milikEta}`).set(as('hrA'))).status).toBe(200);
   });
 
   it('atasan: dua akun tidak boleh saling menjadi atasan; kirim ulang undangan ke Super Admin ditolak', async () => {
@@ -326,10 +328,13 @@ run('Admin Tenant B11 (Postgres)', () => {
 
   it('regresi: rute impor lama tetap hanya untuk HR dan tetap lewat gerbang submodul', async () => {
     // tenant B: full_suite tetapi module.dna mati -> rute lama tertutup, rute admin terbuka
-    expect((await request(app).get('/api/dna/imports/templates').set(as('adminB'))).body.error.code).toBe('FEATURE_DISABLED');
+    await addUser(B.id, 'hrB', 'hr_admin');
+    expect((await request(app).get('/api/dna/imports/templates').set(as('hrB'))).body.error.code).toBe('FEATURE_DISABLED');
     expect((await get('/imports/dna/templates', 'adminB')).status).toBe(200);
     await db.query(`INSERT INTO feature_flags (tenant_id, key, enabled) VALUES (:b, 'module.dna', true)`, { replacements: { b: B.id } });
-    expect((await request(app).get('/api/dna/imports/templates').set(as('adminB'))).status).toBe(200);
+    expect((await request(app).get('/api/dna/imports/templates').set(as('hrB'))).status).toBe(200);
+    // Admin Tenant memakai layar impornya sendiri, bukan rute HR lama
+    expect((await request(app).get('/api/dna/imports/templates').set(as('adminB'))).status).toBe(403);
     expect((await request(app).get('/api/dna/imports/templates').set(as('stafB'))).status).toBe(403);
   });
 
@@ -374,42 +379,20 @@ run('Admin Tenant B11 (Postgres)', () => {
       } finally { mailer.send = send; }
     });
   });
-  describe('audit 23 Nov: batas pengelola interim (hr_admin) dan admin multi-peran', () => {
-    it('hr_admin interim tidak bisa membuat atau menaikkan akun menjadi Admin Tenant', async () => {
-      const made = await post('/users', { email: `calon-admin-${Date.now()}@b11.test`, name: 'Calon', role: 'tenant_admin' }, 'adminB');
-      expect(made.status).toBe(403);
-      expect(made.body.error.code).toBe('ROLE_FORBIDDEN');
-      const up = await patch(`/users/${id.stafB}`, { role: 'tenant_admin' }, 'adminB');
-      expect(up.status).toBe(403);
-      expect(up.body.error.code).toBe('ROLE_FORBIDDEN');
-      // peran lain tetap bisa diberikan selama masa interim
-      expect((await patch(`/users/${id.stafB}`, { role: 'supervisor' }, 'adminB')).status).toBe(200);
-      await patch(`/users/${id.stafB}`, { role: 'learner' }, 'adminB');
+  describe('masa interim dicabut 24 Nov: hanya Admin Tenant yang mengelola tenant, termasuk akun Admin Tenant', () => {
+    it('hr_admin ditolak di semua layar Admin Tenant, termasuk impor dan daftar peran', async () => {
+      for (const res of [await get('/users', 'hrA'), await get('/roles', 'hrA'), await get('/imports/dna/templates', 'hrA'),
+        await post('/users', { email: `hr-coba-${Date.now()}@b11.test`, name: 'Coba', role: 'learner' }, 'hrA'),
+        await patch(`/users/${id.staf}`, { role: 'supervisor' }, 'hrA')]) {
+        expect([res.status, res.body.error.code]).toEqual([403, 'ROLE_FORBIDDEN']);
+      }
     });
 
-    it('hr_admin interim tidak bisa mengubah akun Admin Tenant yang sudah ada', async () => {
-      await addUser(B.id, 'realAdminB', 'tenant_admin');
-      const res = await patch(`/users/${id.realAdminB}`, { role: 'learner' }, 'adminB');
-      expect(res.status).toBe(403);
-      expect(res.body.error.code).toBe('ROLE_FORBIDDEN');
-      // review 24 Nov: kirim ulang undangan ke Admin Tenant juga bukan wewenang pengelola interim
-      const inv = await post(`/users/${id.realAdminB}/invite`, {}, 'adminB');
-      expect(inv.status).toBe(403);
-      expect(inv.body.error.code).toBe('ROLE_FORBIDDEN');
-    });
-
-    it('hr_admin interim tidak bisa mengubah atau menonaktifkan akun yang Admin Tenant lewat daftar peran', async () => {
-      await addUser(B.id, 'secAdminB', 'learner');
-      await db.query('INSERT INTO user_roles (tenant_id, user_id, role) VALUES (:t, :u, \'tenant_admin\')', { replacements: { t: B.id, u: id.secAdminB } });
-      const res = await patch(`/users/${id.secAdminB}`, { status: 'disabled' }, 'adminB');
-      expect(res.status).toBe(403);
-      expect(res.body.error.code).toBe('ROLE_FORBIDDEN');
-    });
-
-    it('daftar peran untuk hr_admin interim tidak menawarkan Admin Tenant', async () => {
-      const keys = (await get('/roles', 'adminB')).body.data.map((r) => r.key);
-      expect(keys).not.toContain('tenant_admin');
-      expect(keys).toContain('hr_admin');
+    it('Admin Tenant boleh memberi peran Admin Tenant dan mengubah akun Admin Tenant lain', async () => {
+      expect((await get('/roles', 'adminB')).body.data.map((r) => r.key)).toEqual(expect.arrayContaining(['tenant_admin', 'hr_admin']));
+      const made = await post('/users', { email: `admin-kedua-${Date.now()}@b11.test`, name: 'Admin Kedua', role: 'tenant_admin' }, 'adminB');
+      expect(made.status).toBe(201);
+      expect((await patch(`/users/${made.body.data.id}`, { role: 'learner' }, 'adminB')).status).toBe(200);
     });
 
     it('Admin Tenant dari daftar peran (user_roles), bukan peran utama, tetap lolos gerbang', async () => {

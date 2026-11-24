@@ -13,12 +13,12 @@ run('onboarding tenant (Postgres)', () => {
   const uji = {
     id: crypto.randomUUID(), slug: `uji-${sfx}`, name: 'Uji Internal', products: ['full_suite'],
     flags: ['module.dna', 'module.tna'], settings: { tna: { interviewScope: 'red_only' } },
-    users: [{ email: `hr-${sfx}@uji.test`, name: 'HR Uji', role: 'hr_admin' }, { email: `eta-${sfx}@uji.test`, role: 'eta_admin' }],
+    users: [{ email: `admin-${sfx}@uji.test`, name: 'Admin Uji', role: 'tenant_admin' }, { email: `hr-${sfx}@uji.test`, name: 'HR Uji', role: 'hr_admin' }, { email: `eta-${sfx}@uji.test`, role: 'eta_admin' }],
   };
   const elitery = {
     id: crypto.randomUUID(), slug: `elitery-${sfx}`, name: 'HR Elitery', products: ['dna', 'tna'],
     flags: { 'module.dna': true, 'module.tna': true, 'dna.ai_interview': false },
-    users: [{ email: `hr-${sfx}@elitery.test`, role: 'hr_admin' }],
+    users: [{ email: `admin-${sfx}@elitery.test`, role: 'tenant_admin' }],
   };
   const ids = [uji.id, elitery.id];
   const one = async (sql, p) => (await db.query(sql, p)).rows;
@@ -46,6 +46,7 @@ run('onboarding tenant (Postgres)', () => {
     }
     const users = await one('SELECT email, role, status FROM users WHERE tenant_id = $1 ORDER BY role DESC', [uji.id]);
     expect(users).toEqual([
+      { email: `admin-${sfx}@uji.test`, role: 'tenant_admin', status: 'invited' },
       { email: `hr-${sfx}@uji.test`, role: 'hr_admin', status: 'invited' },
       { email: `eta-${sfx}@uji.test`, role: 'eta_admin', status: 'invited' },
     ]);
@@ -77,7 +78,7 @@ run('onboarding tenant (Postgres)', () => {
   });
 
   it('perubahan nama, flag, dan peran berbeda dilaporkan', async () => {
-    const spec = { ...uji, name: 'Uji Internal 2', flags: { 'module.tna': false }, users: [{ email: `eta-${sfx}@uji.test`, role: 'hr_admin' }] };
+    const spec = { ...uji, name: 'Uji Internal 2', flags: { 'module.tna': false }, users: [{ email: `eta-${sfx}@uji.test`, role: 'tenant_admin' }] };
     const r = await onboardTenant({ db, provider, spec });
     const by = (step) => r.report.filter((x) => x.step === step).map((x) => x.status);
     expect(by('tenant')).toEqual(['diperbarui']);

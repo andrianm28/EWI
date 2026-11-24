@@ -11,7 +11,7 @@ const { RATE } = require('../../core/auth/email-link');
 const { importRouter } = require('../imports');
 const { requireSubmodule } = require('../../core/entitlement/guard');
 const { isUniqueViolation } = require('../../db/tenant-admin-stores');
-const { requireTenantAdmin, assignableRoles, roleLabel, assertCanGrant, assertCanManage } = require('./access');
+const { requireTenantAdmin, assignableRoles, roleLabel } = require('./access');
 
 const wrap = (fn) => (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -116,7 +116,7 @@ module.exports = {
     }
 
     // ---------- Pengguna & peran ----------
-    r.get('/roles', (req, res) => res.json({ data: assignableRoles(req.user).map((key) => ({ key, label: roleLabel(key) })) }));
+    r.get('/roles', (req, res) => res.json({ data: assignableRoles().map((key) => ({ key, label: roleLabel(key) })) }));
 
     r.get('/users', wrap(async (req, res) => {
       const status = req.query.status ? String(req.query.status) : null;
@@ -135,7 +135,6 @@ module.exports = {
       const name = optionalText(body, 'name', 'Nama', 255);
       if (!name) throw badRequest('Nama wajib diisi');
       checkRole(body.role);
-      assertCanGrant(req.user, body.role);
       const employeeId = optionalText(body, 'employeeId', 'ID karyawan', 64);
       const position = await resolvePosition(req, body, null);
       const user = await db.createUser(req.tenantId, { email, name, role: body.role, employeeId, ...position });
@@ -151,14 +150,13 @@ module.exports = {
     r.patch('/users/:id', wrap(async (req, res) => {
       const current = await loadUser(req);
       if (current.role === ROLES.ETA_ADMIN) throw forbidden('ROLE_FORBIDDEN', 'Akun Super Admin tidak bisa diubah dari layar Admin Tenant');
-      assertCanManage(req.user, await db.actor(req.tenantId, current.id));
       const body = req.body || {};
       const patch = {};
       if (has(body, 'name')) {
         patch.name = optionalText(body, 'name', 'Nama', 255);
         if (!patch.name) throw badRequest('Nama tidak boleh kosong');
       }
-      if (has(body, 'role')) { checkRole(body.role); assertCanGrant(req.user, body.role); patch.role = body.role; }
+      if (has(body, 'role')) { checkRole(body.role); patch.role = body.role; }
       if (has(body, 'employeeId')) patch.employeeId = optionalText(body, 'employeeId', 'ID karyawan', 64);
       if (has(body, 'status')) {
         if (!['active', 'disabled'].includes(body.status)) throw badRequest('status harus active atau disabled');
@@ -188,7 +186,6 @@ module.exports = {
     r.post('/users/:id/invite', wrap(async (req, res) => {
       const user = await loadUser(req);
       if (user.role === ROLES.ETA_ADMIN) throw forbidden('ROLE_FORBIDDEN', 'Akun Super Admin tidak dikelola dari layar Admin Tenant');
-      assertCanManage(req.user, await db.actor(req.tenantId, user.id)); // review 24 Nov: pengelola interim tidak menyentuh Admin Tenant
       if (!pendingLogin(user)) throw conflict('INVALID_STATE', 'Undangan hanya bisa dikirim ulang ke akun yang belum pernah masuk');
       if ((await links.recentCount({ id: user.id, tenantId: req.tenantId })) >= RATE.max) {
         throw new HttpError(429, 'RATE_LIMITED', 'Undangan untuk akun ini baru saja dikirim. Coba lagi 15 menit lagi.');

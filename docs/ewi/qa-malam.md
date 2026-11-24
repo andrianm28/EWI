@@ -41,7 +41,7 @@ Hanya dijalankan manusia (Andrian atau yang ditunjuk) di mesinnya sendiri, denga
 aws sso login --profile elgos-qa        # atau kredensial STS berumur pendek
 export AWS_PROFILE=elgos-qa
 NODE_ENV=test DATABASE_URL=postgres://ewi:ewi@localhost:5432/ewi_qa MAIL_PROVIDER=memory \
-AI_PROVIDER=bedrock BEDROCK_REGION=ap-southeast-1 BEDROCK_MODEL_ID=global.anthropic.claude-sonnet-5-5 \
+AI_PROVIDER=bedrock BEDROCK_REGION=ap-southeast-1 BEDROCK_MODEL_ID=global.anthropic.claude-sonnet-5-5 AI_ALLOW_GLOBAL_PROFILE=true \
 AI_PRICE_INPUT_PER_MTOK=<harga> AI_PRICE_OUTPUT_PER_MTOK=<harga> QA_MALAM_MAX_TOKENS=400000 \
   npm run qa:malam -w apps/api -- --siapkan-db --keluaran ./qa-malam-hasil
 ```

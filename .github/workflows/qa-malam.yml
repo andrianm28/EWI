@@ -49,6 +49,8 @@ jobs:
       # PD-2b (docs/designs/pd-2b-bedrock-singapura.md): Singapura bila variabel repo kosong
       BEDROCK_REGION: ${{ vars.QA_MALAM_BEDROCK_REGION || 'ap-southeast-1' }}
       BEDROCK_MODEL_ID: ${{ vars.QA_MALAM_BEDROCK_MODEL_ID }}
+      # Opt-in profil global. untuk QA malam (keputusan user 24 Nov): data sintetis saja, tanpa data karyawan sungguhan
+      AI_ALLOW_GLOBAL_PROFILE: 'true'
       AI_PRICE_INPUT_PER_MTOK: ${{ vars.QA_MALAM_AI_PRICE_INPUT_PER_MTOK }}
       AI_PRICE_OUTPUT_PER_MTOK: ${{ vars.QA_MALAM_AI_PRICE_OUTPUT_PER_MTOK }}
       QA_MALAM_MAX_TOKENS: ${{ vars.QA_MALAM_MAX_TOKENS || '400000' }}
