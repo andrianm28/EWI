@@ -45,6 +45,16 @@ export interface Programs {
   vendorName: string
 }
 
+/**
+ * Gap B1 (sementara, sampai semua stack demo di-seed ulang): draf seed lama menyimpan tujuan sebagai teks dan asesmen
+ * tanpa hitungan tujuan. Hanya dua bentuk lama itu yang diubah; data lain diteruskan apa adanya supaya galat server tetap terlihat.
+ */
+export function normalizeDraft(d: Draft): Draft {
+  const objectives = (d.objectives as unknown[]).map((o) => (typeof o === 'string' ? { kind: 'K' as const, item: o, text: o, assessment: '' } : o as Objective))
+  const assessments = d.assessments.map((a) => (Number.isInteger(a.objectives) ? a : { ...a, objectives: objectives.filter((o) => o.kind === a.kind).length }))
+  return { ...d, objectives, assessments }
+}
+
 const call = <T>(path: string, init: RequestInit = {}) => api<T>(`/li${path}`, init, useSessionStore().token)
 const send = <T>(method: string, path: string, body?: unknown) => call<T>(path, { method, body: JSON.stringify(body ?? {}) })
 const qs = (o: Record<string, string | null | undefined>) => {
@@ -66,7 +76,7 @@ export const li = {
   deleteDraft: (id: string) => call<unknown>(`/drafts/${id}`, { method: 'DELETE' }),
   programs: (f: { jobRoleId?: string | null; level?: Level } = {}) => call<Programs>(`/programs${qs(f)}`),
   startDraft: (moduleId: string) => send<{ data: Draft }>('POST', `/modules/${moduleId}/draft`),
-  draft: (id: string) => call<{ data: Draft }>(`/drafts/${id}`),
+  draft: async (id: string) => { const res = await call<{ data: Draft }>(`/drafts/${id}`); return { ...res, data: normalizeDraft(res.data) } },
   saveDraft: (id: string, body: Partial<Pick<Draft, 'objectives' | 'sessions' | 'assessments'>>) => send<{ data: Draft }>('PUT', `/drafts/${id}`, body),
   submitDraft: (id: string) => send<{ data: Draft }>('POST', `/drafts/${id}/submit`),
   reviewDraft: (id: string, body: { decision: 'approved' | 'returned'; note?: string; reviewerName: string }) => send<{ data: Draft }>('POST', `/drafts/${id}/review`, body),
