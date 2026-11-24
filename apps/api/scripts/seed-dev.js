@@ -5,6 +5,7 @@ require('dotenv').config();
 const { Client } = require('pg');
 const crypto = require('crypto');
 const bcrypt = require('bcryptjs');
+const { DEMO_FLAGS } = require('./demo-flags');
 
 (async () => {
   if (process.env.NODE_ENV === 'production') throw new Error('seed-dev dilarang di produksi');
@@ -24,6 +25,11 @@ const bcrypt = require('bcryptjs');
   // Pengelola tenant (B11): sejak masa interim HR dicabut 24 Nov, hanya tenant_admin yang membuka layar Admin Tenant
   await c.query(
     `INSERT INTO users (tenant_id, email, name, role, password_hash, status) VALUES ($1, 'admin@demo.test', 'Admin Tenant Demo', 'tenant_admin', $2, 'active')
+     ON CONFLICT (tenant_id, email) DO UPDATE SET password_hash = EXCLUDED.password_hash`, [t.id, hash]);
+  // Super Admin demo (eta_admin): konsol Tenant dan Konfigurasi platform. Bila ETA_ADMIN_EMAILS diisi, tambahkan
+  // eta@demo.test ke daftar itu; di produksi seed ini tidak pernah jalan.
+  await c.query(
+    `INSERT INTO users (tenant_id, email, name, role, password_hash, status) VALUES ($1, 'eta@demo.test', 'Super Admin Demo', 'eta_admin', $2, 'active')
      ON CONFLICT (tenant_id, email) DO UPDATE SET password_hash = EXCLUDED.password_hash`, [t.id, hash]);
   await c.query(
     `INSERT INTO users (tenant_id, email, name, role, password_hash, status, supervisor_id) VALUES ($1, 'learner@demo.test', 'Learner Demo', 'learner', $2, 'active', $3)
@@ -87,13 +93,13 @@ const bcrypt = require('bcryptjs');
     [t.id, JSON.stringify({ interviewScope: 'all_members', interviewJobRoleId: role.id })]);
   await c.query(`DELETE FROM entitlements WHERE tenant_id = $1`, [t.id]);
   await c.query(`INSERT INTO entitlements (tenant_id, product, source) VALUES ($1, 'full_suite', 'seed')`, [t.id]);
-  // learner.home: beranda karyawan B8 (Hasil saya, Rencana belajar) menyala di tenant dev
-  for (const key of ['module.dna', 'module.tna', 'learner.home']) {
+  // Demo 25 Nov: semua flag layar demo menyala di tenant dev (daftar di scripts/demo-flags.js, sama dengan e2e demo)
+  for (const key of DEMO_FLAGS) {
     await c.query(`INSERT INTO feature_flags (tenant_id, key, enabled) VALUES ($1, $2, true)
                    ON CONFLICT (tenant_id, key) DO UPDATE SET enabled = true`, [t.id, key]);
   }
   await c.end();
   // Password hanya dicetak bila dibuat acak di sini; bila dari DEV_SEED_PASSWORD, pemilik env sudah tahu
   const pwNote = process.env.DEV_SEED_PASSWORD ? 'password dari DEV_SEED_PASSWORD' : `password acak ${password} (set DEV_SEED_PASSWORD agar tidak dicetak)`;
-  console.log(`seed selesai: tenant demo, hr@demo.test, spv@demo.test, dimas|rina|budi@demo.test, ${pwNote}`);
+  console.log(`seed selesai: tenant demo, admin@demo.test, eta@demo.test, hr@demo.test, spv@demo.test, learner@demo.test, dimas|rina|budi@demo.test, ${pwNote}`);
 })().catch((e) => { console.error(e.message); process.exit(1); });
