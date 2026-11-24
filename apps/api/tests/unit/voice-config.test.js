@@ -43,11 +43,16 @@ describe('konfigurasi suara (B19)', () => {
 
   test('gemini-vertex dengan kunci: project dari kunci, bisa ditimpa GOOGLE_CLOUD_PROJECT; kunci tidak ikut di config', () => {
     const file = keyFile(saKey);
-    const c = loadConfig({ ...base, NODE_ENV: 'test', VOICE_PROVIDER: 'gemini-vertex', GOOGLE_APPLICATION_CREDENTIALS: file, VOICE_LOCATION: 'global' });
+    const c = loadConfig({ ...base, NODE_ENV: 'test', VOICE_PROVIDER: 'gemini-vertex', GOOGLE_APPLICATION_CREDENTIALS: file, VOICE_LOCATION: 'global', VOICE_ALLOW_GLOBAL: 'true' });
     expect(c.voice).toMatchObject({ provider: 'gemini-vertex', project: 'elgos-dev', location: 'global', credentialsFile: file });
     expect(JSON.stringify(c.voice)).not.toContain('PRIVATE KEY');
     const c2 = loadConfig({ ...base, NODE_ENV: 'test', VOICE_PROVIDER: 'gemini-vertex', GOOGLE_APPLICATION_CREDENTIALS: file, GOOGLE_CLOUD_PROJECT: 'lain' });
     expect(c2.voice.project).toBe('lain');
+  });
+
+  test('lokasi global (data bisa diproses di mana saja) hanya bila VOICE_ALLOW_GLOBAL=true', () => {
+    expect(() => loadConfig({ ...base, NODE_ENV: 'test', VOICE_LOCATION: 'global' })).toThrow(/VOICE_ALLOW_GLOBAL/);
+    expect(loadConfig({ ...base, NODE_ENV: 'test', VOICE_LOCATION: 'global', VOICE_ALLOW_GLOBAL: 'true' }).voice.location).toBe('global');
   });
 
   test('lokasi hanya huruf kecil, angka, tanda hubung', () => {

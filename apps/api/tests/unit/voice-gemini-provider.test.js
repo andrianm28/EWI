@@ -38,6 +38,7 @@ test('membuka sambungan dengan Bearer token lalu mengirim setup lengkap', async 
       outputAudioTranscription: {},
       realtimeInputConfig: { automaticActivityDetection: { silenceDurationMs: 1200 } },
       sessionResumption: {},
+      contextWindowCompression: { slidingWindow: {} },
     },
   });
 });

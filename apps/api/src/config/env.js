@@ -208,6 +208,8 @@ function loadVoiceConfig(env, errors) {
   if (production && provider === 'fake') errors.push('VOICE_PROVIDER=fake tidak boleh di produksi (pakai gemini-vertex atau none)');
   const location = env.VOICE_LOCATION || 'asia-southeast1';
   if (!/^[a-z0-9-]+$/.test(location)) errors.push('VOICE_LOCATION hanya boleh huruf kecil, angka, dan tanda hubung (mis. asia-southeast1 atau global)');
+  // Spek 4.5: endpoint global bisa memproses audio di region mana pun; harus dipilih sadar saat deploy.
+  if (location === 'global' && env.VOICE_ALLOW_GLOBAL !== 'true') errors.push('VOICE_LOCATION=global perlu VOICE_ALLOW_GLOBAL=true (audio bisa diproses di luar Asia)');
   const credentialsFile = env.GOOGLE_APPLICATION_CREDENTIALS || '';
   let project = env.GOOGLE_CLOUD_PROJECT || '';
   if (provider === 'gemini-vertex') {

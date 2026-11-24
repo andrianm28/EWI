@@ -22,6 +22,8 @@ function setupMessage(config, { systemInstruction, tools = [], resumptionHandle,
     outputAudioTranscription: {},
     realtimeInputConfig: { automaticActivityDetection: { silenceDurationMs: config.silenceMs } },
     sessionResumption: resumptionHandle ? { handle: resumptionHandle } : {},
+    // Tanpa kompresi sesi audio dibatasi 15 menit; batas wawancara 18/36 menit (spek 6.3).
+    contextWindowCompression: { slidingWindow: {} },
   });
   return { setup };
 }

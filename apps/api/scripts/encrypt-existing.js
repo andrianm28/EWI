@@ -13,6 +13,7 @@ const TARGETS = [
   ['lna_findings', 'detail', 'x.tenant_id', ''],
   ['lna_training_plan_items', 'note', 'x.tenant_id', ''],
   ['lna_interview_turns', 'text', 's.tenant_id', 'JOIN lna_interview_sessions s ON s.id = x.session_id'],
+  ['lna_interview_turns', 'corrected_text', 's.tenant_id', 'JOIN lna_interview_sessions s ON s.id = x.session_id'],
 ];
 
 (async () => {
