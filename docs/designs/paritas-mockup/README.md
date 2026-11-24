@@ -28,8 +28,8 @@ Yang sudah sama: 27 token warna `:root`, menu kelima peran (fungsi `N`) kecuali 
 
 | Layar | Pemilik paket | Catatan |
 | --- | --- | --- |
-| Panel Asisten ELGOS (FAB + chat di semua layar) | B17 (T5) | API dan flag `assistant` sudah ada, `ShellExtra.vue` belum |
-| Tinjauan temuan AI per gap (HR) | B7 (T5) | Dibangun di [b7-tinjauan-web.md](b7-tinjauan-web.md) (rute `review`); akses atasan RV-3 perlu keputusan |
+| Panel Asisten ELGOS (FAB + chat di semua layar) | B17 (T5) | Dibangun di PR #39: `screens/b17-asisten/ShellExtra.vue` di balik flag `assistant` ([b17-asisten-web.md](b17-asisten-web.md)) |
+| Tinjauan temuan AI per gap (HR) | B7 (T5) | Dibangun di [b7-tinjauan-web.md](b7-tinjauan-web.md) (rute `review`); akses atasan RV-3 diputuskan R1: tetap HR saja |
 | Alur wawancara ulang LIM (chat → benchmark → hasil bisnis → ringkasan) | B15 tahap 3 (T7) | Antrean saja yang ada |
 | EliteMentor di dalam shell (belajar online, check-in offline) | perlu keputusan | Aturan arsitektur 1 mengarah ke deep link |
 
@@ -38,7 +38,7 @@ Yang sudah sama: 27 token warna `:root`, menu kelima peran (fungsi `N`) kecuali 
 - LI: kelas `li-*` hanya didefinisikan di `<style>` milik `LibraryView.vue`. Bila Program, Permintaan, atau Draf dibuka langsung, tata letaknya rusak (gaps-modul X-1).
 - Top bar pecah dua baris di lebar 1280 px saat pemilih Tampilan muncul (gaps-shell S2).
 - Hasil saya: `.b8-list` menimpa margin `.b8-sub`, sehingga catatan undangan menempel ke tabel (gaps-peran).
-- Sisa gaya Tailwind POC di luar token: `/masuk` (`EmailLinkView.vue`), bagian "Pengelolaan TNA" di `/tna`, dan `ReviewView.vue`.
+- Sisa gaya Tailwind POC di luar token: `/masuk` (`EmailLinkView.vue`), bagian "Pengelolaan TNA" di `/tna`, dan `ReviewView.vue`. (Keadaan audit 23 Nov. `ReviewView.vue` sudah dihapus di B7 web; antrean kini `screens/b7-tinjauan/AntreanView.vue` bergaya token.)
 
 ## Rencana PR (semua berbasis scbrmb, kecil, satu tema per PR)
 
@@ -62,9 +62,11 @@ Semua tahap P1–P7 plus layar B17 (Asisten) dan B7 (Tinjauan per gap) ada di PR
 | File | Baris | Ditutup | Diputuskan | Sebagian | Terbuka |
 | --- | --- | --- | --- | --- | --- |
 | gaps-shell.md | 21 | 14 | 1 | 0 | 6 |
-| gaps-lna.md | 83 | 48 | 10 | 6 | 19 |
-| gaps-modul.md | 73 | 47 | 8 | 8 | 10 (7 di antaranya LIM, milik thread B15) |
-| gaps-peran.md | 52 | 36 | 2 | 2 | 12 (1 tidak dikerjakan, 2 bukan gap) |
+| gaps-lna.md | 83 | 45 | 13 | 6 | 19 |
+| gaps-modul.md | 73 | 45 | 8 | 8 | 12 (7 di antaranya LIM, milik thread B15) |
+| gaps-peran.md | 52 | 35 | 3 | 2 | 12 (1 tidak dikerjakan, 2 bukan gap) |
+
+Hitungan dikoreksi 24 Nov oleh P9 ([egm/pr39-full-code-review.md](egm/pr39-full-code-review.md), SP-1 sampai SP-3): AA-4, TN-10, IN-11, dan ADM-1 berpindah dari Ditutup ke Diputuskan (perilaku aplikasi dipertahankan); LI-14 dan LD-10 kembali Terbuka (chip "Contoh (dummy)" dan placeholder tanggal belum sama dengan mockup, alasannya di baris masing-masing). Selisih spek dan kode setelah P9: [egm/p9-drift.md](egm/p9-drift.md).
 
 Yang tersisa menunggu data API baru, paket lain (B6 untuk pilihan jawaban AI wawancara akar masalah), atau milik thread lain (LIM, termasuk dua gap tinggi LIM-6 dan LIM-8). Keputusan user 23 Nov: tampilan 1:1, keputusan spek paket tetap.
 

@@ -125,6 +125,8 @@ Semua di bawah `/api/tna`, sesudah `auth`, `tenantContext`, `requireSubmodule('t
 | GET | `/gaps/competencies?period=&jobRoleId=` | `tna.gap_board` |
 | GET | `/gaps/okr?period=&jobRoleId=` | `tna.gap_board` |
 | GET | `/gaps/detail?kind=competency&competencyId=` atau `?kind=okr&metricType=&name=&period=` | `tna.gap_board` |
+
+Catatan P9 (SP-4, IR-4): `parseGapQuery` (dipakai `/gaps/detail`, filter gap `GET /review`, `/review/solutions`, dan `/plan-items/export.csv`) kini sama dengan `parseGap`: nama target OKR dirapikan (`trim`, deret spasi termasuk tab menjadi satu spasi) sebelum dicocokkan, dan nama lebih dari 255 karakter ditolak `400` "Nama target maksimal 255 karakter". Jadi `name=  Waktu \t respons ` membuka gap yang sama dengan `name=Waktu respons`. Kunci gap memakai `metricKey` (huruf kecil); predikat SQL antrean menormalkan nama baris kinerja dengan kelas spasi yang sama (tab, NBSP, spasi Unicode lain, P9 CD-11). Test: `tna-gaps.test.js` (detail) dan `tinjauan-hr.test.js` (antrean).
 | POST | `/assignments` | `tna.interview_assignment` |
 | POST | `/assignments/:sessionId/cancel` | `tna.interview_assignment` |
 
