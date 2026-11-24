@@ -57,16 +57,17 @@ Keputusan user 19 Nov 20.36 WIB: PR paket digabung ke branch integrasi oleh thre
 
 ### 2.1 Syarat
 
-Diperketat 19 Nov atas permintaan user agar semua thread SDLC sepenuhnya memakai prinsip egm dan skill Matt Pocock. PR paket digabung hanya bila:
+Diperketat 19 Nov atas permintaan user agar semua thread SDLC sepenuhnya memakai prinsip egm dan skill Matt Pocock, lalu 24 Nov 23.18 WIB ditambah plugin `modern-web-guidance` (user: "pastikan seluruh threads sepenuhnya menegakkan seluruh prinsip penuh egm, matt skills dan modern-web-guidance plugins"). PR paket digabung hanya bila:
 
 1. CI PR hijau pada head terakhir, dan PR bisa digabung tanpa konflik ke head branch integrasi terbaru. Bila GitHub melaporkan konflik, thread pemilik menggabung branch integrasi ke branch-nya dulu.
 2. Deskripsi PR punya bagian **"Review egm"** berisi review spek oleh ikan mas beserta triasenya, review diff oleh ikan mas beserta triasenya, cek drift, dan asumsi ⚠️/⏳ yang tersisa.
 3. Deskripsi PR punya bagian **"TDD"**: test mana yang ditulis lebih dulu dan terlihat gagal sebelum kodenya ada (skill `mattpocock-skills:tdd`), atau urutan commit test lalu kode.
 4. Deskripsi PR punya bagian **"Code review (mattpocock-skills:code-review)"**: ringkasan temuan sumbu Standards dan Spec serta tindak lanjutnya.
-5. Deskripsi PR punya bagian **"Skill yang dipakai"**: satu baris per langkah 0–7 brief aturan 11, berisi skill egm atau Matt Pocock yang benar-benar dijalankan beserta buktinya, "manual", atau "tidak relevan: <alasan>" (user, 19 Nov: seluruh skill kedua plugin dipakai lengkap).
-6. Thread pemilik menyatakan siap (keluar dari draft, atau kabar lewat koordinator).
+5. Deskripsi PR punya bagian **"Skill yang dipakai"**: satu baris per langkah 0–7 brief aturan 11, berisi skill egm, Matt Pocock, atau `modern-web-guidance` yang benar-benar dijalankan beserta buktinya, "manual", atau "tidak relevan: <alasan>" (user, 19 Nov: seluruh skill kedua plugin dipakai lengkap).
+6. Bila PR mengubah `apps/web/` (layar, komponen, gaya, router, atau e2e web): deskripsi PR punya bagian **"Modern Web Guidance"** sesuai langkah 4 skill `modern-web-guidance:modern-web-guidance`. Bagian itu memuat satu butir per guide yang diterapkan (`<id>`, pilihan atau fallback yang dibuat, dan kutipan pendek aturan guide-nya), atau satu kalimat yang menyebut topik atau guide yang dicari (`search`/`list`) dan alasan tidak ada yang berlaku. Guide dicari di awal pekerjaan (langkah 1 skill), bukan sesudah kode jadi. Untuk PR tanpa perubahan web, baris langkah ini di "Skill yang dipakai" cukup "tidak relevan: tanpa perubahan `apps/web/`".
+7. Thread pemilik menyatakan siap (keluar dari draft, atau kabar lewat koordinator) dan menyebut head finalnya. Thread integrasi baru push hasil gabungan setelah itu, karena push yang memuat head PR membuat GitHub menandai PR itu merged dan PR tidak menerima push lagi.
 
-PR yang hanya mengubah dokumen (tanpa kode, migrasi, atau workflow CI) cukup syarat 1 dan 6, dan thread integrasi membaca diff-nya sebelum menggabung. PR yang belum memenuhi syarat dikembalikan ke pemiliknya lewat koordinator.
+PR yang hanya mengubah dokumen (tanpa kode, migrasi, atau workflow CI) cukup syarat 1 dan 7, dan thread integrasi membaca diff-nya sebelum menggabung. PR yang belum memenuhi syarat dikembalikan ke pemiliknya lewat koordinator.
 
 ### 2.2 Langkah per penggabungan
 
