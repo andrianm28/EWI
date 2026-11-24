@@ -1,6 +1,7 @@
 import { test, expect, type Page } from '@playwright/test'
 import { loginSebagai, type Peran } from './support/sesi'
 import { mockApi, permintaanBelumDimock } from './support/api'
+import { penanganDashboardHr } from './support/dashboard'
 import { papanGapTna, ID_KOMPETENSI } from './support/tna-gap'
 import { tinjauanGap, galatApi, RINCIAN_RAHASIA, T_DRAF, T_PERBAIKAN, T_PELATIHAN, TEMUAN_MOCKUP, type OpsiTinjauan } from './support/tinjauan'
 
@@ -261,6 +262,20 @@ test('atasan tidak bisa membuka tinjauan HR (spek B7: hanya HR; RV-3 perlu keput
   await setup(page, { peran: 'atasan' })
   await page.goto(ALAMAT)
   await expect(page).not.toHaveURL(/\/tna\/tinjauan/)
+})
+
+// P9 S-1/CD-5 (B0 5.3 aturan 2): rute antrean punya meta.views; tautan langsung dari tampilan Atasan pindah ke HR
+test('P9 S-1: akun HR yang juga atasan membuka antrean dari tampilan Atasan: tampilan pindah ke HR', async ({ page }) => {
+  await mockApi(page, papanGapTna({ peran: 'hr' }).penangan)
+  await mockApi(page, tinjauanGap().penangan)
+  await mockApi(page, penanganDashboardHr)
+  await loginSebagai(page, 'hr', { submodules: ['cca', 'dna', 'tna', 'ina'], flags: { ...FLAGS, 'dashboard.main': true }, peranLain: ['atasan'] })
+  const tampilan = page.getByRole('group', { name: 'Tampilan' })
+  await tampilan.getByRole('button', { name: 'Atasan' }).click()
+  await expect(tampilan.getByRole('button', { name: 'Atasan' })).toHaveAttribute('aria-pressed', 'true')
+  await page.goto('/m/tna/review')
+  await expect(page.getByRole('heading', { level: 1, name: 'Review hasil AI' })).toBeVisible()
+  await expect(tampilan.getByRole('button', { name: 'HR / L&D' })).toHaveAttribute('aria-pressed', 'true')
 })
 
 test('antrean lama memakai komponen ELGOS', async ({ page }) => {

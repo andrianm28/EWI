@@ -1,6 +1,7 @@
 import { test, expect, type Page } from '@playwright/test'
 import { loginSebagai } from './support/sesi'
 import { papanGapTna, COMP, DETAIL, ID_KOMPETENSI, ID_DIMAS, ID_PROYEK, type OpsiPapanGap } from './support/tna-gap'
+import { penanganDashboardHr } from './support/dashboard'
 import { cocok, mockApi, permintaanBelumDimock, responsData } from './support/api'
 
 // B5 Training Needs: papan gap, detail gap, dan penugasan wawancara. Spek: docs/designs/b5-training-needs.md bagian 16.
@@ -238,6 +239,22 @@ test('P5 triase M1: papan menyala, HR tetap melihat catatan temuan AI menunggu r
   const note = page.getByTestId('tna-review-ringkas')
   await expect(note).toContainText('3 temuan AI dari wawancara TNA menunggu review')
   await expect(note.getByRole('link', { name: 'Review' })).toHaveAttribute('href', '/m/tna/review')
+})
+
+// P9 CD-4 (B0 5.1): izin HR dibaca dari session.roles, bukan peran utama; akun atasan yang juga HR melihat bagian HR
+test('P9 CD-4: akun multi-peran (atasan utama + HR) di tampilan HR melihat catatan review dan bagian HR', async ({ page }) => {
+  const { penangan } = papanGapTna({ peran: 'atasan', reviewPending: 3 })
+  await mockApi(page, penangan)
+  await mockApi(page, penanganDashboardHr)
+  await loginSebagai(page, 'atasan', { submodules: ['cca', 'dna', 'tna', 'ina'], flags: { ...BOARD, 'dashboard.main': true }, peranLain: ['hr'] })
+  const tampilan = page.getByRole('group', { name: 'Tampilan' })
+  await tampilan.getByRole('button', { name: 'HR / L&D' }).click()
+  await expect(tampilan.getByRole('button', { name: 'HR / L&D' })).toHaveAttribute('aria-pressed', 'true')
+  await page.goto('/tna')
+  await expect(page.getByTestId('tna-review-ringkas')).toContainText('3 temuan AI dari wawancara TNA menunggu review')
+  await page.goto('/tna/kelola')
+  await expect(page.getByTestId('tna-review-banner')).toContainText('3 temuan AI dari wawancara TNA menunggu review')
+  await expect(page.getByTestId('tna-review-banner').getByRole('link', { name: 'Review' })).toHaveAttribute('href', '/m/tna/review')
 })
 
 test('P5 triase M1: tanpa temuan menunggu review, catatan tidak tampil', async ({ page }) => {
