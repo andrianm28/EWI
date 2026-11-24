@@ -36,6 +36,14 @@ function parseCsv(content) {
   return rows;
 }
 
+// Audit 24 Nov (8-9): file XLSX bisa menyimpan satu sel di baris 1.048.576 atau kolom XFD. Membaca semua
+// baris/kolom di antaranya membuat jutaan sel kosong (API macet). Karena itu hanya sel berisi yang dibaca,
+// lebar dibatasi MAX_COLS, dan pembacaan berhenti begitu baris berisi melewati batas baris.
+const MAX_COLS = 200;
+const tooWide = () => badRequest(`Maksimal ${MAX_COLS} kolom. Hapus isi sel di kanan tabel lalu unggah ulang.`);
+const tooManyRows = () => new HttpError(413, 'TOO_MANY_ROWS', `Maksimal ${MAX_ROWS} baris per file`);
+
+/** Lembar -> [{ n: nomor baris, vals }] hanya untuk baris yang punya sel berisi. */
 async function parseXlsx(buffer) {
   const wb = new ExcelJS.Workbook();
   try { await wb.xlsx.load(buffer); } catch { throw badRequest('File Excel tidak bisa dibaca. Simpan ulang sebagai .xlsx atau .csv'); }
@@ -43,39 +51,47 @@ async function parseXlsx(buffer) {
   const ws = wb.worksheets.find((w) => !/^petunjuk/i.test(w.name)) || wb.worksheets[0];
   if (!ws) return [];
   const out = [];
-  ws.eachRow({ includeEmpty: true }, (r, n) => {
+  ws.eachRow((r, n) => { // tanpa includeEmpty: baris kosong dilewati
     const vals = [];
-    for (let c = 1; c <= ws.columnCount; c += 1) vals.push(cellValue(r.getCell(c).value));
-    out[n - 1] = vals;
+    r.eachCell((cell, c) => { // tanpa includeEmpty: sel kosong dilewati
+      if (c > MAX_COLS) throw tooWide();
+      vals[c - 1] = cellValue(cell.value);
+    });
+    out.push({ n, vals: Array.from(vals, (v) => (v === undefined ? null : v)) });
+    if (out.length > MAX_ROWS + 1) throw tooManyRows(); // +1 = baris judul
   });
-  return Array.from(out, (r) => r || []);
+  return out;
 }
 
 /** buffer + nama file -> { headers, rows } (baris kosong dibuang). */
 async function parseUpload(buffer, filename) {
   if (!buffer || !buffer.length) throw badRequest('File kosong');
   const ext = String(filename || '').toLowerCase().split('.').pop();
-  let grid;
+  let grid; // [{ n: nomor baris di spreadsheet (1 = pertama), vals }]
   if (ext === 'xlsx') grid = await parseXlsx(buffer);
-  else if (ext === 'csv' || ext === 'txt') grid = parseCsv(buffer.toString('utf8'));
+  else if (ext === 'csv' || ext === 'txt') grid = parseCsv(buffer.toString('utf8')).map((vals, i) => ({ n: i + 1, vals }));
   else throw badRequest('Format file harus .xlsx atau .csv');
+  if (grid.some((r) => r.vals.length > MAX_COLS)) throw tooWide();
 
-  const headerIdx = grid.findIndex((r) => r.some((v) => v !== null && String(v).trim() !== ''));
+  const filled = (r) => r.vals.some((v) => v !== null && v !== undefined && String(v).trim() !== '');
+  const headerIdx = grid.findIndex(filled);
   if (headerIdx < 0) throw badRequest('File tidak berisi data');
-  const rawHeaders = grid[headerIdx].map((h) => (h === null || h === undefined ? '' : String(h).trim()));
+  // lebar tabel = sel berisi paling kanan di seluruh lembar (kolom tanpa judul jadi "Kolom N", seperti sebelumnya)
+  const width = grid.reduce((w, r) => Math.max(w, r.vals.length), 0);
+  const rawHeaders = Array.from({ length: width }, (_, c) => grid[headerIdx].vals[c] ?? null).map((h) => (h === null || h === undefined ? '' : String(h).trim()));
   const headers = rawHeaders.map((h, i) => h || `Kolom ${i + 1}`);
   if (new Set(headers).size !== headers.length) throw badRequest('Judul kolom tidak boleh kembar');
   const rows = [];
   for (let i = headerIdx + 1; i < grid.length; i += 1) {
-    const r = grid[i] || [];
-    if (!r.some((v) => v !== null && v !== undefined && String(v).trim() !== '')) continue;
-    const obj = { __row: i + 1 }; // nomor baris di spreadsheet (1 = baris pertama)
-    headers.forEach((h, c) => { obj[h] = r[c] === undefined ? null : r[c]; });
+    const { n, vals } = grid[i];
+    if (!filled(grid[i])) continue;
+    if (rows.length >= MAX_ROWS) throw tooManyRows();
+    const obj = { __row: n };
+    headers.forEach((h, c) => { obj[h] = vals[c] === undefined ? null : vals[c]; });
     rows.push(obj);
   }
   if (!rows.length) throw badRequest('File tidak berisi baris data di bawah judul kolom');
-  if (rows.length > MAX_ROWS) throw new HttpError(413, 'TOO_MANY_ROWS', `Maksimal ${MAX_ROWS} baris per file`);
   return { headers, rows };
 }
 
-module.exports = { parseUpload, parseCsv, cellValue, MAX_ROWS };
+module.exports = { parseUpload, parseCsv, cellValue, MAX_ROWS, MAX_COLS };
