@@ -44,8 +44,13 @@ const fabEl = ref<HTMLButtonElement | null>(null)
 const inputEl = ref<HTMLInputElement | null>(null)
 const bodyEl = ref<HTMLElement | null>(null)
 
+// Kunci halaman dari API ke nama rute. `review` di API berarti antrean tinjauan HR (sama dengan dashboard B3),
+// bukan rute `review` per gap yang butuh rujukan gap di query (P9 IR-1).
+const PAGE_ROUTE: Record<string, string> = { review: 'tna-review' }
+const routeOf = (page: string) => PAGE_ROUTE[page] ?? page
+
 function canGo(page: string) {
-  return !!view.value && routeOpen(page, view.value, session)
+  return !!view.value && routeOpen(routeOf(page), view.value, session)
 }
 
 async function show() {
@@ -74,7 +79,7 @@ function send(text: string) {
 
 function go(page: string) {
   store.refocus = true
-  router.push({ name: page })
+  router.push({ name: routeOf(page) })
 }
 
 watch(() => turns.value.length + (pending.value ? 1 : 0), async () => {
