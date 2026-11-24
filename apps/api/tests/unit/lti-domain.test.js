@@ -73,7 +73,7 @@ describe('buildIdToken', () => {
     expect(p[CLAIM.context]).toEqual({ id: 'k16:SD-B1', label: 'SD-B1', title: 'Root Cause Analysis' });
     expect(JSON.stringify(p)).not.toContain('t1');
     expect(p[CLAIM.custom]).toEqual({ course_code: 'SD-B1', mode: 'online' });
-    expect(p[CLAIM.launchPresentation]).toEqual({ document_target: 'window', return_url: 'https://elgos.test/k/rencana' });
+    expect(p[CLAIM.launchPresentation]).toEqual({ document_target: 'window', return_url: 'https://elgos.test/li' });
     expect(p[CLAIM.agsEndpoint]).toEqual({
       scope: [AGS_SCOPES.lineitem, AGS_SCOPES.score],
       lineitems: 'https://elgos.test/api/lti/ags/links/link-1/lineitems',

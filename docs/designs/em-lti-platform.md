@@ -47,7 +47,7 @@ Lihat `CONTEXT.md`: **Tool LTI**, **Resource link**, **Tiket peluncuran**, **AGS
 | `…/claim/resource_link` | `{ id: linkId, title }` |
 | `…/claim/context` | `{ id: "<HMAC tenant 16 hex>:<courseRef>", label: courseRef, title }` (tanpa UUID tenant, review egm #7) |
 | `…/claim/custom` | `{ course_code, mode: "online"/"offline", session_code? (offline), training_title? }` |
-| `…/claim/launch_presentation` | `{ document_target: "window", return_url: APP_BASE_URL + "/k/rencana" }` |
+| `…/claim/launch_presentation` | `{ document_target: "window", return_url: APP_BASE_URL + "/li" }` |
 | `lti-ags/claim/endpoint` | `{ scope: [lineitem, score], lineitems: <base>/api/lti/ags/links/:id/lineitems, lineitem: <base>/api/lti/ags/links/:id/lineitem }` |
 
 ### 3.3 Nilai balik (AGS 2.0)

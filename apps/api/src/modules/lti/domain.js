@@ -90,7 +90,7 @@ function buildIdToken({ issuer, tool, link, user, sub, nonce, base, contextKey, 
     [CLAIM.resourceLink]: { id: link.id, title: link.title },
     [CLAIM.context]: { id: `${contextKey}:${link.courseRef}`, label: link.courseRef, title: link.title },
     [CLAIM.custom]: custom,
-    [CLAIM.launchPresentation]: { document_target: 'window', return_url: `${root}/k/rencana` },
+    [CLAIM.launchPresentation]: { document_target: 'window', return_url: `${root}/li` },
     [CLAIM.agsEndpoint]: { scope: [AGS_SCOPES.lineitem, AGS_SCOPES.score], lineitems: `${ags}/lineitems`, lineitem: `${ags}/lineitem` },
   };
 }

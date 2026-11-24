@@ -101,7 +101,7 @@ function errorPage(base) {
 <title>Tautan EliteMentor tidak berlaku</title></head><body style="font-family:system-ui,sans-serif;max-width:32rem;margin:3rem auto;padding:0 1rem">
 <main><h1 style="font-size:1.25rem">Tautan EliteMentor sudah tidak berlaku</h1>
 <p>Kembali ke ELGOS dan tekan tombol EliteMentor di Rencana belajar sekali lagi.</p>
-<p><a href="${escapeHtml(`${base}/k/rencana`)}">Kembali ke ELGOS</a></p></main></body></html>`;
+<p><a href="${escapeHtml(`${base}/li`)}">Kembali ke ELGOS</a></p></main></body></html>`;
 }
 
 /** Router publik /api/lti. jwksClient: createJwksClient (kunci tool untuk JWT assertion). */

@@ -286,3 +286,29 @@ test('P8 R3/R16/R17: status titik + teks, undangan tentang KPI belum tercapai, t
   await expect(rencana.getByRole('button', { name: 'Lihat contoh rekomendasi' })).toHaveCount(0)
   await expect(rencana.getByRole('link', { name: 'Lihat contoh rekomendasi' })).toHaveCount(0)
 })
+
+test('EM-LTI: tombol EliteMentor meluncurkan lewat LTI; galat diumumkan', async ({ page }) => {
+  const kartu = [
+    { ...KARTU[3], id: 'lti-on', launchUrl: null, lti: { linkId: '11111111-1111-4111-8111-111111111111', label: 'Belajar dengan EliteMentor' } },
+    { ...KARTU[3], id: 'lti-off', mode: 'Offline', code: 'IAC-1512', launchUrl: null, lti: { linkId: '22222222-2222-4222-8222-222222222222', label: 'Ujian di EliteMentor' } },
+  ]
+  const sent: unknown[] = []
+  let gagal = true
+  await mockApi(page, (req) => {
+    if (!cocok(req, 'POST /my/elitementor/launch')) return undefined
+    sent.push(req.body)
+    if (gagal) return { status: 409, json: { error: { code: 'TOOL_UNAVAILABLE', message: 'EliteMentor sedang tidak tersedia untuk organisasi Anda' } } }
+    return { json: { data: { url: '/em-sim/lti/login?iss=x' } } }
+  })
+  await page.route('**/em-sim/lti/login**', (route) => route.fulfill({ contentType: 'text/html', body: '<title>EM</title><h1>EliteMentor (simulasi)</h1>' }))
+  await rencana(page, kartu)
+  await expect(page.getByTestId('li-card-lti-off').getByRole('button', { name: 'Ujian di EliteMentor' })).toBeVisible()
+  const tombol = page.getByTestId('li-card-lti-on').getByRole('button', { name: 'Belajar dengan EliteMentor' })
+  await tombol.click()
+  await expect(page.getByRole('alert')).toContainText('EliteMentor sedang tidak tersedia')
+  await expect(tombol).toBeEnabled()
+  gagal = false
+  await tombol.click()
+  await expect(page.getByRole('heading', { name: 'EliteMentor (simulasi)' })).toBeVisible()
+  expect(sent).toEqual([{ linkId: '11111111-1111-4111-8111-111111111111' }, { linkId: '11111111-1111-4111-8111-111111111111' }])
+})
