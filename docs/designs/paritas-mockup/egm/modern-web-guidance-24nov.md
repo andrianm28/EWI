@@ -2,7 +2,8 @@
 
 Lingkup: jalan-jalan demo di `apps/web/e2e/demo-alur.spec.ts` dan UI bersama yang disentuhnya (`src/ui/UiDialog`,
 `UiDataTable`, `UiSegmented`, `UiTabs`, `UiField`/`UiErrorSummary`, drawer dan top bar di `src/components`, panel Asisten
-ELGOS). Alat: CLI `modern-web-guidance` (skill-version 2026_10_12-dacb5911). Batasan: tata letak tidak berubah (snapshot
+ELGOS). Alat: CLI `modern-web-guidance` (skill-version 2026_10_12-dacb5911); semua kutipan di bawah dikutip dari keluaran CLI
+`retrieve`, diambil 24 Nov. Batasan: tata letak tidak berubah (snapshot
 paritas mockup tetap), hanya perbaikan berisiko rendah sebelum demo 25 Nov. Test: `apps/web/e2e/modern-web-guidance.spec.ts`.
 
 ## Guide yang dipakai
@@ -19,9 +20,10 @@ paritas mockup tetap), hanya perbaikan berisiko rendah sebelum demo 25 Nov. Test
   they are already using the `<dialog>` element."
 - `html`: Saya memakai aturan dialog native untuk memeriksa `UiDialog` (sudah `showModal()` dengan tombol Tutup
   terlihat); guide: "DO provide a visible control for closing modal overlays".
-- `accessibility`: Saya memeriksa IDREF, urutan fokus, dan tabindex; temuan `aria-controls` di `OfflinePanel` (form
-  `ld-form-em` hanya dirender bila terbuka) diperbaiki dengan aturan "Use `tabindex` only when necessary" sebagai
-  alasan untuk tidak menambah tab stop baru di tabel dan panel.
+- `accessibility`: Saya menjalankan pemeriksaan otomatis IDREF di layar demo (setara aturan axe `aria-valid-attr-value`),
+  yang menemukan `aria-controls` menggantung di `UiTabs` dan `OfflinePanel`; guide: "Run Automated checks via axe-core
+  or Lighthouse audits". Guide ini tidak punya aturan eksplisit tentang validitas IDREF; dasar perbaikannya adalah
+  aturan `tabs` di atas dan spesifikasi WAI-ARIA (IDREF harus menunjuk elemen yang ada).
 - `navigation-drawer`: Saya menilai drawer layar sempit sebagai modal, tetapi menundanya karena demo di desktop; guide:
   "Apply `aria-modal=\"true\"` while the drawer is open, and remove it when it closes."
 - `sortable-table`: Saya memeriksa `UiDataTable` (tombol di dalam `<th>`, `aria-sort`, label tetap nama kolom) dan
@@ -61,7 +63,8 @@ paritas mockup tetap), hanya perbaikan berisiko rendah sebelum demo 25 Nov. Test
 
 - Drawer layar sempit sebagai modal: `role="dialog"` + `aria-modal` saat melayang (butuh pembungkus karena `<nav>` tidak
   boleh ber-role dialog), dan skip link ikut inert saat drawer terbuka.
-- `tabindex="0"` pada tabpanel yang tidak berisi elemen fokus, dan pada pembungkus gulir tabel hanya saat meluap.
+- `tabindex="0"` pada tabpanel yang tidak berisi elemen fokus, dan pada pembungkus gulir tabel hanya saat meluap
+  (guide `accessibility`: "Use `tabindex` only when necessary", jadi bukan tab stop tetap di setiap tabel).
 - `UiDataTable`: satu `role="status"` tersembunyi yang mengumumkan kolom dan arah urutan.
 - Preload woff2 Roboto 400/500 lewat plugin Vite (`<link rel="preload" as="font" crossorigin>`).
 - `<meta name="color-scheme" content="light dark">` di `index.html` untuk mengurangi kilat putih sebelum JS

@@ -16,7 +16,16 @@ async function ariaControlsMenggantung(page: Page): Promise<string[]> {
       .map((id) => (el.textContent.trim() || el.tagName) + ': #' + id))`)
 }
 
+/** Panel tab yang aria-labelledby-nya tidak menunjuk tab terpilih (nama panel berasal dari tab-nya). */
+async function panelTanpaTabTerpilih(page: Page): Promise<string[]> {
+  return page.evaluate(`[...document.querySelectorAll('[role=tabpanel]')].filter((p) => {
+    const t = document.getElementById(p.getAttribute('aria-labelledby') || '')
+    return !t || t.getAttribute('role') !== 'tab' || t.getAttribute('aria-selected') !== 'true'
+  }).map((p) => p.id || p.outerHTML.slice(0, 80))`)
+}
+
 const gulirY = (page: Page) => page.evaluate<number>('window.scrollY')
+const duaFrame = (page: Page) => page.evaluate('new Promise((ok) => requestAnimationFrame(() => requestAnimationFrame(ok)))')
 
 test('tab layar demo tidak menunjuk panel yang tidak dirender (Training Needs, Learning Delivery)', async ({ page }) => {
   await mockApiDasar(page, penanganShellDemo)
@@ -33,6 +42,8 @@ test('tab layar demo tidak menunjuk panel yang tidak dirender (Training Needs, L
   await page.getByRole('tab', { name: 'Pelatihan offline', exact: true }).click()
   await expect(page.getByRole('tabpanel')).not.toBeEmpty()
   expect(await ariaControlsMenggantung(page)).toEqual([])
+  expect(await panelTanpaTabTerpilih(page)).toEqual([])
+  expect(await panelTanpaTabTerpilih(page)).toEqual([])
 })
 
 test('dialog modal: gulir di atas backdrop tidak menggulir halaman di belakangnya', async ({ page }) => {
@@ -49,13 +60,22 @@ test('dialog modal: gulir di atas backdrop tidak menggulir halaman di belakangny
   const dialog = page.getByRole('dialog', { name: 'Tugaskan wawancara akar masalah' })
   await expect(dialog).toBeVisible()
 
+  // Prasyarat: halaman memang bisa digulir, kalau tidak test lolos tanpa membuktikan apa pun
+  expect(await page.evaluate<boolean>('document.scrollingElement.scrollHeight > innerHeight')).toBe(true)
+
   const awal = await gulirY(page)
+  await page.evaluate('window.__roda = 0; addEventListener("wheel", () => { window.__roda++ }, { capture: true })')
   await page.mouse.move(8, 8) // pojok kiri atas: backdrop, di luar kotak dialog
   await page.mouse.wheel(0, 800)
-  await page.waitForTimeout(300)
+  // Tunggu sampai peristiwa roda benar-benar diproses, lalu beberapa frame untuk guliran yang (seharusnya tidak) terjadi
+  await expect.poll(() => page.evaluate<number>('window.__roda')).toBeGreaterThan(0)
+  await expect.poll(async () => { await duaFrame(page); return gulirY(page) }, { intervals: [50, 50, 50, 50] }).toBe(awal)
+  await duaFrame(page)
   expect(await gulirY(page)).toBe(awal)
 
-  // Esc tetap menutup dan fokus kembali ke tombol pembuka
+  // Esc tetap menutup dan fokus kembali ke tombol pembuka; sebelumnya fokus ada di dalam dialog
+  await expect(dialog.locator(':focus')).toHaveCount(1)
+  await expect(buka).not.toBeFocused()
   await page.keyboard.press('Escape')
   await expect(dialog).toBeHidden()
   await expect(buka).toBeFocused()
