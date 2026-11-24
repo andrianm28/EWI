@@ -198,6 +198,15 @@ test('P3 X-3: breadcrumb bersama di Library, Program, dan Permintaan', async ({ 
   }
 })
 
+test('paritas S4: judul top bar Learning Intervention mengikuti TITLES mockup', async ({ page }) => {
+  await setup(page)
+  for (const [path, teks] of [['/lib', 'Library'], ['/prog', 'Program & Course'], ['/req', 'Permintaan & pengembangan']] as const) {
+    await page.goto(path)
+    await expect(page.getByTestId('judul-layar')).toHaveText(`Learning Intervention · ${teks}`)
+    await expect(page).toHaveTitle(`Learning Intervention · ${teks} · ELGOS`)
+  }
+})
+
 test('P6 LI-5/LI-7: filter berupa baris chip dan baris modul seperti mockup', async ({ page }) => {
   const calls: { method: string; url: string; body: unknown }[] = []
   await setup(page, calls, { singleJob: true })
