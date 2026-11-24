@@ -43,8 +43,10 @@ Alur lengkap, pengaman, dan aturan migrasi: [alur-rilis.md](alur-rilis.md).
 `deploy/vps/deploy.sh` di runner etavm2:
 cek `.env` + `db.env` → pull image → backup schema `ewi` dan verifikasi terbaca (`pg_restore --list`) →
 migrasi sebagai pemilik `elgos` → pasang role aplikasi `elgos_app` (`ops/app-role.sql`) → ganti
-container → `/api/ready` lokal + publik. Gagal = rollback ke image sebelumnya; schema direstore hanya
-bila backupnya terverifikasi. Diuji lokal: deploy pertama, deploy ulang, v2 dengan migrasi baru + API
+container → `/api/ready` lokal + publik. Gagal sebelum siap lokal = rollback ke image sebelumnya. Di
+staging schema direstore otomatis bila backupnya terverifikasi; di prod tidak pernah (audit 3-2: tulisan
+pengguna selama migrasi bisa hilang), log menuliskan perintah `ops/restore.sh` untuk restore manual.
+Gagal cek publik sesudah siap lokal tidak memicu rollback, job hanya gagal dengan peringatan Caddy/DNS. Diuji lokal: deploy pertama, deploy ulang, v2 dengan migrasi baru + API
 crash (rollback, data tetap, role dipasang ulang).
 
 ### Pemisahan kredensial DB (PD-8 A)

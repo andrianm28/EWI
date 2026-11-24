@@ -51,7 +51,8 @@ uji asap staging ──> Actions > "Deploy staging/prod" > Run workflow (branch 
 
 ## Aturan migrasi (I-1)
 
-Rollback otomatis memasang image lama. Agar image lama tetap jalan di atas skema baru:
+Rollback otomatis memasang image lama. Di prod skema tidak pernah direstore otomatis (audit 3-2), jadi
+image lama harus tetap jalan di atas skema baru:
 
 - **Tambah dulu, hapus belakangan.** Kolom/tabel baru boleh di rilis N. Menghapus atau mengganti
   nama kolom yang masih dipakai image N-1 hanya di rilis N+1, setelah N stabil di produksi.

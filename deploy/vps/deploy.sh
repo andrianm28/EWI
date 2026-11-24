@@ -124,7 +124,13 @@ rollback() {
   trap - ERR
   log "GAGAL (exit $code) saat deploy $TAG. Rollback ke $OLD_SHA."
   dc logs --no-color --tail 80 api web >&2 || true
-  if [ "$MIGRATED" = 1 ]; then
+  if [ "$MIGRATED" = 1 ] && [ "$ENV" = prod ] && [ "${ROLLBACK_RESTORE_DB:-0}" != 1 ]; then
+    # Audit 3-2: container lama tetap melayani selama migrasi, jadi restore otomatis di prod bisa
+    # menghapus tulisan pengguna di sela itu. Prod hanya rollback image (aturan migrasi tambah-dulu);
+    # restore skema diputuskan manusia lewat ops/restore.sh (runbook-insiden.md).
+    log "Migrasi sudah jalan di prod: skema TIDAK direstore otomatis. Image lama dipasang di atas skema baru."
+    [ "$BACKUP_OK" = 1 ] && log "Backup pra-deploy untuk restore manual: KONFIRMASI=prod $DIR/ops/restore.sh pulihkan prod $BACKUP"
+  elif [ "$MIGRATED" = 1 ]; then
     if [ "$BACKUP_OK" = 1 ] && verify_backup "$BACKUP"; then
       log "Migrasi sudah jalan: pulihkan schema ewi dari $BACKUP"
       dc stop api web || true
@@ -193,12 +199,18 @@ apply_db_roles
 dc up -d --wait --wait-timeout 180 api web
 ready "$LOCAL_URL"
 log "Siap lokal ($LOCAL_URL)"
-if [ "${SKIP_PUBLIC_CHECK:-0}" != 1 ]; then
-  ready "$PUBLIC_URL" 15
-  log "Siap publik ($PUBLIC_URL)"
-fi
-
 trap - ERR
+
+# Cek publik sesudah trap dilepas (audit 3-2): aplikasi sudah siap lokal, jadi gangguan Cloudflare/
+# Caddy/DNS tidak boleh memicu rollback. Gagal publik = job gagal dengan peringatan, tanpa rollback.
+if [ "${SKIP_PUBLIC_CHECK:-0}" != 1 ]; then
+  if ready "$PUBLIC_URL" 15; then
+    log "Siap publik ($PUBLIC_URL)"
+  else
+    PUBLIC_FAIL=1
+    log "PERINGATAN: siap lokal tetapi tidak terjangkau di $PUBLIC_URL. Tidak di-rollback; cek Caddy/DNS."
+  fi
+fi
 
 # 6. Seed data demo hanya di staging, setelah deploy dinyatakan sukses (gagal seed = peringatan).
 #    Prod tidak pernah di-seed (data nyata, R2-4).
@@ -227,3 +239,7 @@ install -m 644 "$REPO_ROOT/deploy/vps/ops/app-role.sql" "$DIR/ops/"
 printf 'ELGOS_API_IMAGE=%s\nELGOS_WEB_IMAGE=%s\nELGOS_SHA=%s\n' "$NEW_API" "$NEW_WEB" "$TAG" > "$DIR/current.env"
 docker image prune -f --filter "until=336h" >/dev/null || true
 log "Deploy $TAG selesai"
+if [ "${PUBLIC_FAIL:-0}" = 1 ]; then
+  echo "::error::Deploy $TAG terpasang dan siap lokal, tetapi $PUBLIC_URL tidak terjangkau (Caddy/DNS)."
+  exit 1
+fi
