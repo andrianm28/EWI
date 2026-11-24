@@ -59,8 +59,8 @@ export interface ReviewSolutions {
   training: TrainingSolution[]; improvement: ImprovementSolution[]
   delivery: { target: 'elitementor' | 'lms'; label: string; assignAvailable: boolean }; inaEnabled: boolean
 }
-/** Paritas B7 web: rujukan gap untuk tinjauan per gap, mis. { kind: 'competency', competencyId }. */
-export type ReviewGapQuery = Record<string, string>
+/** Paritas B7 web: rujukan gap untuk tinjauan per gap (bentuk sama dengan `GapRef` B5 dan query /tna/gaps/detail). */
+export type ReviewGapQuery = { kind: 'competency'; competencyId: string } | { kind: 'okr'; metricType: string; name: string; period: string }
 export interface ReviewDecision { decision: 'approve' | 'edit' | 'reject'; title?: string; detail?: string; category?: 'training' | 'non_training'; note?: string }
 // B8 (flag learner.home): beranda karyawan dan permintaan data
 export type MyCompetencyStatus = 'met' | 'partial' | 'gap' | 'not_assessed'
@@ -113,9 +113,9 @@ export const lna = {
   classifyFinding: (id: string, classification: ReviewClassification, note?: string) => post<{ data: ReviewItem }>(`/tna/findings/${id}/classify`, { classification, note }),
   reviewSolutions: (gap?: ReviewGapQuery) => call<{ data: ReviewSolutions }>(`/tna/review/solutions${gap ? `?${new URLSearchParams(gap)}` : ''}`),
   assignPlanItem: (id: string) => post<{ data: PlanItem }>(`/tna/plan-items/${id}/assign`, {}),
-  /** B7: ekspor daftar gap (CSV) untuk LMS klien; diunduh lewat fetch karena butuh token. */
-  async downloadGapCsv(projectId?: string) {
-    await downloadFile(`/tna/plan-items/export.csv${projectId ? `?projectId=${encodeURIComponent(projectId)}` : ''}`, `elgos-gap-${new Date().toISOString().slice(0, 10)}.csv`)
+  /** B7: ekspor daftar gap (CSV) untuk LMS klien; diunduh lewat fetch karena butuh token. `gap`: hanya rencana gap itu (P9 IR-5). */
+  async downloadGapCsv(gap?: ReviewGapQuery) {
+    await downloadFile(`/tna/plan-items/export.csv${gap ? `?${new URLSearchParams(gap)}` : ''}`, `elgos-gap-${new Date().toISOString().slice(0, 10)}.csv`)
   },
   handoffImprovement: (findingIds: string[]) => post<{ data: { handedOff: string[]; already: string[]; skipped: string[] } }>('/tna/review/improvement-handoff', { findingIds }),
   reviewFinding: (id: string, body: ReviewDecision) => post<{ data: ReviewItem }>(`/tna/findings/${id}/review`, body),

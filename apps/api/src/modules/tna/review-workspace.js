@@ -195,9 +195,11 @@ function reviewWorkspaceRouter({ stores, settings, catalog, flags, audit, assign
     return res.json({ data: saved });
   }));
 
-  // --- Ekspor gap untuk LMS klien (K4). Hanya membaca ---
+  // --- Ekspor gap untuk LMS klien (K4). Hanya membaca. Filter gap opsional (layar per gap, P9 IR-5) ---
   r.get('/plan-items/export.csv', hr, flag, wrap(async (req, res) => {
-    const rows = await stores.tna.listPlanExport(req.tenantId, { projectId: projectIdOf(req) });
+    const gap = await gapFilterOf(req, stores);
+    const all = await stores.tna.listPlanExport(req.tenantId, { projectId: projectIdOf(req) });
+    const rows = gap ? gap.keep(all) : all;
     const csv = toCsv(EXPORT_HEADER, rows.map((p) => [
       p.employeeId, p.userName, p.email, p.competencyName, p.catalogItemRef, p.catalogItemTitle, p.programTier, PLAN_STATUS_LABEL[p.status] || p.status,
     ]));

@@ -6,7 +6,7 @@ import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import AppShell from '@/components/AppShell.vue'
 import { ApiError } from '@/api/client'
-import { lna, TIER_LABEL, type ReviewClassification, type ReviewItem, type ReviewSolutions } from '@/api/lna'
+import { lna, TIER_LABEL, type ReviewClassification, type ReviewGapQuery, type ReviewItem, type ReviewSolutions } from '@/api/lna'
 import { UiBreadcrumb, UiButton, UiCard, UiChip, UiErrorSummary, UiNote, UiSegmented } from '@/ui'
 import { gapRefFromQuery } from '@/screens/b5-tna/api'
 import { CLASSIFICATION_LABEL } from '@/screens/b5-tna/labels'
@@ -14,7 +14,7 @@ import './b7.css'
 
 const route = useRoute()
 const gapRef = computed(() => gapRefFromQuery(route.query))
-const gapQuery = computed(() => (gapRef.value ? (gapRef.value as unknown as Record<string, string>) : null))
+const gapQuery = computed<ReviewGapQuery | null>(() => gapRef.value)
 const backTab = computed(() => (typeof route.query.tab === 'string' ? route.query.tab : gapRef.value?.kind === 'okr' ? 'okr' : 'kompetensi'))
 
 const items = ref<ReviewItem[]>([])
@@ -30,7 +30,7 @@ const handedCount = ref<number | null>(null)
 const message = (e: unknown, fallback: string) => (e instanceof ApiError ? e.message : fallback)
 
 /** Muat ulang temuan dan solusi gap ini. Temuan yang ditolak tidak diklasifikasi lagi (menolak dan riwayatnya di antrean lama). */
-async function refresh(query: Record<string, string>) {
+async function refresh(query: ReviewGapQuery) {
   const [q, s] = await Promise.all([lna.reviewQueue('all', query), lna.reviewSolutions(query)])
   items.value = q.data.filter((f) => f.reviewStatus !== 'rejected')
   gapLabel.value = q.gap?.label ?? ''
@@ -129,7 +129,7 @@ async function runTraining() {
 }
 async function downloadCsv() {
   errors.value = []
-  try { await lna.downloadGapCsv() } catch (e) { errors.value = [{ message: message(e, 'Daftar gap tidak bisa diunduh') }] }
+  try { await lna.downloadGapCsv(gapQuery.value ?? undefined) } catch (e) { errors.value = [{ message: message(e, 'Daftar gap tidak bisa diunduh') }] }
 }
 
 // --- Tindakan perbaikan (mockup `makeIna`): temuan diteruskan, tindakannya dibuat modul Improvement Needs (B9) ---

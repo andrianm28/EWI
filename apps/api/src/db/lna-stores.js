@@ -38,6 +38,10 @@ const { scopeSql } = require('./scope-sql');
 const GAP_MATCH_COLS = `pr.metric_type AS "metricType", pr.period AS "metricPeriod", s.focus_kind AS "focusKind",
   s.focus_competency_id AS "focusCompetencyId", s.focus_metric_type AS "focusMetricType", s.focus_metric_key AS "focusMetricKey",
   s.focus_period AS "focusPeriod"`;
+// P9 CD-11: nama target dinormalkan persis seperti metricKey (performance.js): trim, spasi tunggal, huruf kecil.
+// `\s` JavaScript juga mencakup NBSP dan spasi Unicode lain; `\s` Postgres tidak, jadi kelasnya ditulis lengkap.
+const JS_SPACE_RUN = '[\\s\\u00a0\\u1680\\u2000-\\u200a\\u2028\\u2029\\u202f\\u205f\\u3000\\ufeff]+';
+const metricKeySql = (col) => `lower(btrim(regexp_replace(${col}, '${JS_SPACE_RUN}', ' ', 'g'), ' '))`;
 const REVIEW_COLS = `f.id, f.project_id AS "projectId", f.session_id AS "sessionId", f.user_id AS "userId", u.name AS "userName",
   f.category, f.title, f.detail, f.competency_id AS "competencyId", c.name AS "competencyName",
   f.performance_record_id AS "performanceRecordId", pr.name AS "metricName", pr.target::float AS target, pr.actual::float AS actual,
@@ -897,9 +901,9 @@ function createLnaStores(sequelize, { cipher } = {}) {
           sql += ` AND (f.competency_id = :gapCompetencyId OR (s.focus_kind = 'competency' AND s.focus_competency_id = :gapCompetencyId))`;
           rep.gapCompetencyId = gap.competencyId;
         } else {
-          // Nama target dinormalkan seperti metricKey (trim, spasi tunggal, huruf kecil) agar cocok dengan kunci gap
+          // Nama target dinormalkan seperti metricKey agar cocok dengan kunci gap
           sql += ` AND ((pr.metric_type = :gapMetricType AND pr.period = :gapPeriod
-                         AND lower(regexp_replace(btrim(pr.name), '\\s+', ' ', 'g')) = :gapMetricKey)
+                         AND ${metricKeySql('pr.name')} = :gapMetricKey)
                      OR (s.focus_kind = 'okr' AND s.focus_metric_type = :gapMetricType AND s.focus_metric_key = :gapMetricKey
                          AND s.focus_period = :gapPeriod))`;
           Object.assign(rep, { gapMetricType: gap.metricType, gapMetricKey: gap.metricKey, gapPeriod: gap.period });
@@ -1056,15 +1060,21 @@ function createLnaStores(sequelize, { cipher } = {}) {
       { replacements: { tenantId, id, status, ref: ref ? String(ref).slice(0, 128) : null, userId, claimedAt } });
       return rows.length ? tna.getPlanItem(tenantId, id) : null;
     },
-    /** Baris ekspor gap untuk LMS klien (K4): rencana aktif, termasuk yang belum punya course. */
+    /**
+     * Baris ekspor gap untuk LMS klien (K4): rencana aktif, termasuk yang belum punya course. Kolom temuan
+     * (`competencyId`, `sessionId`, `metricName`, GAP_MATCH_COLS) dipakai filter gap di router (P9 IR-5); tidak masuk CSV.
+     */
     async listPlanExport(tenantId, { projectId } = {}) {
       const rep = { tenantId };
       let sql = `SELECT p.id, p.user_id AS "userId", u.employee_id AS "employeeId", u.name AS "userName", u.email, c.name AS "competencyName",
-                        p.catalog_item_ref AS "catalogItemRef", p.catalog_item_title AS "catalogItemTitle", p.program_tier AS "programTier", p.status
+                        p.catalog_item_ref AS "catalogItemRef", p.catalog_item_title AS "catalogItemTitle", p.program_tier AS "programTier", p.status,
+                        f.competency_id AS "competencyId", f.session_id AS "sessionId", pr.name AS "metricName", ${GAP_MATCH_COLS}
                    FROM lna_training_plan_items p
                    JOIN users u ON u.id = p.user_id AND u.tenant_id = p.tenant_id
                    LEFT JOIN lna_findings f ON f.id = p.finding_id AND f.tenant_id = p.tenant_id
                    LEFT JOIN lna_competencies c ON c.id = f.competency_id AND c.tenant_id = p.tenant_id
+                   LEFT JOIN lna_interview_sessions s ON s.id = f.session_id AND s.tenant_id = p.tenant_id
+                   LEFT JOIN lna_performance_records pr ON pr.id = f.performance_record_id AND pr.tenant_id = p.tenant_id
                   WHERE p.tenant_id = :tenantId AND p.status IN ('new', 'in_progress') AND ${notFrozen('f')}`;
       if (projectId) { sql += ' AND f.project_id = :projectId'; rep.projectId = projectId; }
       return select(`${sql} ORDER BY u.name NULLS LAST, u.email, p.created_at`, rep);
