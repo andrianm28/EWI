@@ -276,15 +276,15 @@ module.exports = {
     // kind: remind (bawaan) | invite (online berjalan, peserta hampir selesai) | confirm (offline akan datang, konfirmasi kehadiran)
     const KINDS = ['remind', 'invite', 'confirm'];
     r.post('/trainings/:id/reminders', idParam, wrap(async (req, res) => {
-      const kind = (req.body && req.body.kind) || 'remind';
-      if (!KINDS.includes(kind)) throw badRequest('Jenis pesan harus remind, invite, atau confirm');
+      const kind = req.body?.kind ?? 'remind';
+      if (!KINDS.includes(kind)) throw badRequest('Jenis pesan tidak dikenal. Pilih pengingat, ajakan, atau konfirmasi kehadiran.');
       const t = await loadOne(req);
       if (!['running', 'upcoming'].includes(t.group)) throw conflict('INVALID_STATE', 'Pengingat hanya untuk pelatihan yang berjalan atau akan datang');
       if (kind === 'invite' && !(t.mode === 'online' && t.group === 'running')) throw conflict('INVALID_STATE', 'Ajakan hanya untuk pelatihan online yang sedang berjalan');
       if (kind === 'confirm' && !(t.mode === 'offline' && t.group === 'upcoming')) throw conflict('INVALID_STATE', 'Konfirmasi kehadiran hanya untuk pelatihan offline yang akan datang');
       const recipients = await stores.ld.reminderRecipients(req.tenantId, t.id, { pendingOnly: t.mode === 'online', nearlyDoneOnly: kind === 'invite' });
       if (!recipients.length) throw badRequest(kind === 'invite' ? 'Tidak ada peserta yang hampir selesai' : 'Tidak ada peserta yang perlu diingatkan');
-      if (!(await stores.ld.claimReminder(req.tenantId, t.id, new Date(Date.now() - REMINDER_GAP_MS)))) throw conflict('REMINDER_RECENT', 'Pengingat untuk pelatihan ini sudah dikirim dalam 24 jam terakhir');
+      if (!(await stores.ld.claimReminder(req.tenantId, t.id, new Date(Date.now() - REMINDER_GAP_MS)))) throw conflict('REMINDER_RECENT', 'Pesan HR untuk pelatihan ini (pengingat, ajakan, atau konfirmasi) sudah dikirim dalam 24 jam terakhir. Coba lagi besok.');
       const when = t.mode === 'offline' ? `Tanggal: ${t.startsOn}${t.venue ? `, ${t.venue}` : ''}.` : (t.endsOn ? `Batas penyelesaian: ${t.endsOn}.` : '');
       const message = {
         remind: { subject: `Pengingat pelatihan: ${t.title}`, body: t.mode === 'offline' ? `Anda terdaftar sebagai peserta pelatihan "${t.title}".` : `Pelatihan "${t.title}" Anda belum selesai.` },

@@ -344,11 +344,14 @@ module.exports = {
     }));
     r.post('/plans/:id/queue/schedule', hr, idParam, wrap(async (req, res) => {
       const plan = await loadPlan(req);
-      const { userIds, date, notify = false } = req.body || {};
+      const { userIds, date } = req.body || {};
+      const notify = req.body?.notify === true;
       if (!Array.isArray(userIds) || !userIds.length || userIds.length > MAX_SCHEDULE) throw badRequest(`userIds harus 1-${MAX_SCHEDULE} karyawan`);
       if (date === undefined) throw badRequest('date wajib diisi (atau null untuk membatalkan)');
       // "Mulai sekarang" (mockup): notify = kabari karyawan lewat email bahwa wawancara ulang sudah bisa dimulai
       if (notify && date === null) throw badRequest('notify hanya untuk penjadwalan, bukan pembatalan');
+      // email menunjuk menu Wawancara ulang, jadi hanya bila fitur itu menyala
+      if (notify && !(await flags.isEnabled(req.tenantId, FLAGS.LIM_REINTERVIEW))) throw badRequest('Wawancara ulang AI belum diaktifkan untuk organisasi Anda');
       const err = lim.checkScheduleDate(date, todayJakarta());
       if (err) throw badRequest(err);
       const [{ queue }, index] = await Promise.all([queueOf(req, plan), stores.lim.reinterviewIndex(req.tenantId, plan.id)]);
@@ -371,7 +374,7 @@ module.exports = {
             await mailer.send({
               to: p.email, subject: 'Wawancara ulang Anda sudah bisa dimulai',
               text: [`Halo ${p.name || ''},`.replace(' ,', ','), '', `Tim HR membuka wawancara ulang singkat untuk "${plan.title}". Buka menu Wawancara ulang di ELGOS untuk memulainya.`,
-                appBaseUrl ? `${appBaseUrl}` : '', '', 'Pesan ini dikirim oleh tim HR lewat ELGOS.'].filter((l, i, a) => l !== '' || a[i - 1] !== '').join('\n'),
+                appBaseUrl || '', '', 'Pesan ini dikirim oleh tim HR lewat ELGOS.'].filter((l, i, a) => l !== '' || a[i - 1] !== '').join('\n'),
             });
             notified += 1;
           } catch (e) { console.error(`[lim.notify] gagal kirim: ${e.message}`); }

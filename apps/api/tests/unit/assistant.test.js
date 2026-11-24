@@ -120,6 +120,7 @@ describe('penyedia AI assistantReply', () => {
     expect(status.answer).toContain('Belum selesai wawancara');
     expect(gap.answer).toContain('Eskalasi Insiden (2 orang)');
     expect((await ask('Bagaimana rencana belajar tim saya?')).answer).toContain('Rencana tim per status');
+    expect((await ask('Apa status rencana tim saya?')).answer).toContain('Rencana tim per status');
   });
   it('tiruan HR: status pelatihan dijawab dari fakta Learning Delivery', async () => {
     const ai = createStubProvider();
@@ -127,6 +128,12 @@ describe('penyedia AI assistantReply', () => {
     const a = await ai.assistantReply({ view: 'hr', roleLabel: 'HR / L&D', facts: { pelatihan }, pages: [{ key: 'ld', label: 'Learning Delivery' }], question: 'Apa status pelatihan saat ini?' });
     expect(a.answer).toBe('Ada 3 pelatihan berjalan (2 online, 1 offline) dengan rata-rata progres 64%, dan 2 akan datang. 1 perlu perhatian: Incident Intake.');
     expect(a.page).toBe('ld');
+    // seri satu kata kunci dengan tinjauan ("perlu", "hari ini"): pelatihan menang
+    const tinjauan = { draft: 4, overdue: 1, targetDays: 3, held: 0 };
+    const ask = (question) => ai.assistantReply({ view: 'hr', roleLabel: 'HR / L&D', facts: { pelatihan, tinjauan }, pages: [], question });
+    expect((await ask('Pelatihan mana yang perlu perhatian?')).answer).toContain('pelatihan berjalan');
+    expect((await ask('Bagaimana status pelatihan hari ini?')).answer).toContain('pelatihan berjalan');
+    expect((await ask('Apa yang perlu ditinjau hari ini?')).answer).toContain('temuan AI menunggu tinjauan');
   });
   it('Bedrock: instruksi sistem statis, fakta dan pertanyaan berpembatas di pesan pengguna', async () => {
     const sent = [];

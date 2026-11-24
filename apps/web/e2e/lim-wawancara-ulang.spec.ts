@@ -139,6 +139,9 @@ test('HR: "Lihat hasil" membuka empat langkah mockup tanpa transkrip; rekomendas
   await expect(page.getByTestId('info')).toHaveText('Karyawan B dikabari lewat email dan bisa mulai wawancara ulang hari ini dari menu Wawancara ulang.')
   const today = new Date(Date.now() + 7 * 3600e3).toISOString().slice(0, 10)
   expect(calls.find((c) => c.url === '/plans/p-1/queue/schedule')?.body).toEqual({ userIds: ['u-b'], date: today, notify: true })
+  // sudah dikabari di kunjungan ini: tombol nonaktif supaya email tidak terkirim berulang
+  await expect(q.getByRole('button', { name: 'Mulai sekarang Karyawan B' })).toBeDisabled()
+  await expect(q.getByRole('button', { name: 'Mulai sekarang Karyawan B' })).toHaveText('Sudah dikabari')
   await expect(page.getByText('Karyawan mengerjakannya sendiri dari menu Wawancara ulang setelah dijadwalkan.')).toBeVisible()
   await q.getByRole('button', { name: 'Lihat hasil Karyawan A' }).click()
 

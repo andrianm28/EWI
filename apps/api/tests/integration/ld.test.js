@@ -225,6 +225,7 @@ run('Learning Delivery (Postgres)', () => {
     const { id } = (await send('post', '/trainings', { title: 'Workshop Eskalasi', vendorName: 'Mahaka Institute', startsOn: day(7), venue: 'Ruang Elang' })).body.data;
     await send('put', `/trainings/${id}/participants`, { userIds: [u.dimas, u.sari] });
     expect((await send('post', `/trainings/${id}/reminders`, { kind: 'kirim' })).status).toBe(400);
+    expect((await send('post', `/trainings/${id}/reminders`, { kind: '' })).status).toBe(400);
     // ajakan hanya untuk pelatihan online yang berjalan
     expect((await send('post', `/trainings/${id}/reminders`, { kind: 'invite' })).body.error.code).toBe('INVALID_STATE');
     const dash = (await get('/dashboard')).body.data;

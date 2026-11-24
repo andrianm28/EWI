@@ -249,6 +249,11 @@ run('B15 Learning Impact Measurement (Postgres)', () => {
     expect((await get(`/plans/${plan.id}/queue`)).body.data.find((r) => r.userId === u.a).status).toBe('none');
     // "Mulai sekarang" (mockup): jadwal hari ini + email ke karyawan (notify), tercatat di audit
     mailer.sent.length = 0;
+    // email menunjuk menu Wawancara ulang: ditolak selama flag lim.reinterview mati; notify bukan boolean true diabaikan
+    expect((await send('post', `/plans/${plan.id}/queue/schedule`, { userIds: [u.a], date: day(0), notify: true })).status).toBe(400);
+    expect((await send('post', `/plans/${plan.id}/queue/schedule`, { userIds: [u.a], date: day(0), notify: 'false' })).body.data.notified).toBeUndefined();
+    expect(mailer.sent).toHaveLength(0);
+    await flag('lim.reinterview', true);
     const now = await send('post', `/plans/${plan.id}/queue/schedule`, { userIds: [u.a], date: day(0), notify: true });
     expect(now.body.data).toMatchObject({ scheduled: [u.a], notified: 1 });
     expect(mailer.sent).toHaveLength(1);
@@ -257,6 +262,7 @@ run('B15 Learning Impact Measurement (Postgres)', () => {
     expect((await q(`SELECT meta FROM audit_logs WHERE tenant_id = :t AND resource = 'lim.measurement' AND action = 'update' ORDER BY id DESC LIMIT 1`, { t: tenant.id }))[0].meta).toMatchObject({ notified: 1 });
     expect((await send('post', `/plans/${plan.id}/queue/schedule`, { userIds: [u.a], date: null, notify: true })).status).toBe(400);
     await send('post', `/plans/${plan.id}/queue/schedule`, { userIds: [u.a], date: null });
+    await flag('lim.reinterview', false);
 
     // done hanya lewat store (sambungan mesin wawancara tahap 3); karyawan tenant lain tidak bisa ditulis
     await stores.lim.recordReinterview(tenant.id, plan.id, u.luar, k1, { score: 99, sessionId: null });

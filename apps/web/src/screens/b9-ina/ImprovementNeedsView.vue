@@ -31,8 +31,23 @@ const verifTo = computed(() => (!manage.value && session.activeView && routeOpen
 async function toVerification() {
   const heading = document.getElementById('ina-verifikasi-ai')
   if (!heading) return
-  // tunggu gulir selesai baru pindah fokus (modern-web-guidance scroll-completion-effects); browser lama: tanpa Promise
-  await heading.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  // tunggu gulir selesai baru pindah fokus (modern-web-guidance scroll-completion-effects).
+  // scrollIntoView mengembalikan Promise hanya di browser baru; selain itu tunggu scrollend, dengan batas waktu
+  // bila tidak ada gulir (judul sudah terlihat) atau scrollend tidak didukung.
+  await new Promise<void>((resolve) => {
+    let finished = false
+    const finish = () => {
+      if (finished) return
+      finished = true
+      clearTimeout(timer)
+      document.removeEventListener('scrollend', finish, true)
+      resolve()
+    }
+    const timer = setTimeout(finish, 800)
+    document.addEventListener('scrollend', finish, true)
+    const result = heading.scrollIntoView({ behavior: 'smooth', block: 'start' }) as unknown
+    if (result instanceof Promise) result.then(finish, finish)
+  })
   heading.focus({ preventScroll: true })
 }
 

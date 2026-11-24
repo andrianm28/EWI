@@ -72,14 +72,14 @@ async function runAction(a: Dashboard['actions'][number]) {
     done.value = { ...done.value, [a.key]: true }
     notice.value = `${SENT_NOUN[a.kind]} dikirim ke ${data.sent} dari ${data.recipients} peserta${data.failed ? `, ${data.failed} gagal` : ''}.`
   } catch (e) {
-    // jatah 24 jam per pelatihan sudah terpakai: pesan sudah terkirim sebelumnya, tombol ditandai selesai
-    if (e instanceof ApiError && e.code === 'REMINDER_RECENT') done.value = { ...done.value, [a.key]: true }
+    // REMINDER_RECENT: jatah 24 jam per pelatihan (lintas jenis) terpakai; tombol tidak ditandai selesai karena
+    // pesan yang terkirim bisa berjenis lain. Pesan galat API menjelaskannya.
     error.value = e instanceof ApiError ? e.message : 'Pesan gagal dikirim'
   } finally { busy.value = false }
 }
 /** "Lihat program" (mockup ldSoon): baris online yang semua cek kesiapannya terpenuhi, bila layar Program terbuka. */
 const progOpen = computed(() => routeOpen('prog', 'hr'))
-const ready = (t: Training) => t.checks.every((c) => c.ok)
+const ready = (t: Training) => t.checks.length > 0 && t.checks.every((c) => c.ok)
 </script>
 
 <template>

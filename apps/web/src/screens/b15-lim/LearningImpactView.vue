@@ -87,10 +87,13 @@ async function schedule(userIds: string[], when: string | null) {
 }
 
 /** "Mulai sekarang" (mockup limQueue, status Dijadwalkan): buka wawancara ulang hari ini dan kabari karyawan lewat email. */
+// Karyawan yang sudah dikabari di kunjungan ini: tombol nonaktif supaya email tidak terkirim berulang
+const started = ref<Record<string, boolean>>({})
 async function startNow(row: QueueRow) {
   error.value = ''; notice.value = ''; busy.value = true
   try {
     const { data: r } = await lim.schedule(planId.value, [row.userId], todayJakarta(), true)
+    if (r.scheduled.length) started.value = { ...started.value, [row.userId]: true }
     if (r.scheduled.length) notice.value = r.notified ? `${row.name} dikabari lewat email dan bisa mulai wawancara ulang hari ini dari menu Wawancara ulang.` : `${row.name} bisa mulai wawancara ulang hari ini dari menu Wawancara ulang. Email pemberitahuan gagal terkirim.`
     else if (r.skipped.length) notice.value = r.skipped[0]!.reason === 'done' ? `${row.name} sudah menyelesaikan wawancara ulang.` : `${row.name} sedang diwawancara; jadwalnya tidak diubah.`
     else if (r.rejected.length) error.value = r.rejected[0]!.message
@@ -259,7 +262,7 @@ const chainLabel = (r: Record<string, unknown>) => `${r.level} · ${r.label}`
             <template #cell-aksi="{ row }">
               <UiButton v-if="Q(row).canView && canReinterview" variant="tonal" size="sm" :aria-label="`Lihat hasil ${Q(row).name}`" @click="viewing = Q(row)">Lihat hasil</UiButton>
               <span v-if="Q(row).status !== 'done'" class="lim-actions">
-                <UiButton v-if="Q(row).status === 'scheduled' && canReinterview" variant="tonal" size="sm" :disabled="busy" :aria-label="`Mulai sekarang ${Q(row).name}`" @click="startNow(Q(row))">Mulai sekarang</UiButton>
+                <UiButton v-if="Q(row).status === 'scheduled' && canReinterview" variant="tonal" size="sm" :disabled="busy || started[Q(row).userId]" :aria-label="`Mulai sekarang ${Q(row).name}`" @click="startNow(Q(row))">{{ started[Q(row).userId] ? 'Sudah dikabari' : 'Mulai sekarang' }}</UiButton>
                 <UiButton v-else variant="tonal" size="sm" :disabled="busy || !Q(row).postCompletedOn" :aria-label="`Jadwalkan ${Q(row).name}`" @click="schedule([Q(row).userId], date)">Jadwalkan</UiButton>
                 <UiButton v-if="Q(row).status === 'scheduled'" variant="text" size="sm" :disabled="busy" :aria-label="`Batalkan jadwal ${Q(row).name}`" @click="schedule([Q(row).userId], null)">Batalkan</UiButton>
               </span>
