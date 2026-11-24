@@ -194,6 +194,22 @@ run('Impor file R3-3 (Postgres)', () => {
     expect(n).toBe(0);
     const audits = await db.query(`SELECT resource FROM audit_logs WHERE tenant_id = :t AND action = 'create' AND resource LIKE 'import.%'`, { replacements: { t: tenant.id }, type: 'SELECT' });
     expect(audits.length).toBe(8);
+
+    // C5 demo 25 Nov: isian Periode kosong, periode dibaca dari kolom berkas; baris tanpa periode tetap ditolak per baris
+    up = await upload('tna', 'tna_performance', 'kpi-periode.csv', csv([
+      'NIK,Jenis,Key Result,Goal,Pencapaian,Periode',
+      'E-1001,kpi,Tiket per jam C5,10,8,2026-10',
+      'E-1001,kpi,Tiket per jam C5,10,11,',
+    ]));
+    id = up.body.data.id;
+    const c5Map = { ...up.body.data.mapping, metricType: 'Jenis', period: 'Periode' };
+    const pv = await request(app).post(`/api/tna/imports/batches/${id}/preview`).set(as('hr')).send({ mapping: c5Map, options: {} });
+    expect(pv.status).toBe(200);
+    done = await request(app).post(`/api/tna/imports/batches/${id}/commit`).set(as('hr')).send({ mapping: c5Map, options: {} });
+    expect(done.status).toBe(200);
+    expect(done.body.data.result).toMatchObject({ imported: 1, rejectedCount: 1 });
+    const c5 = (await request(app).get('/api/tna/performance').set(as('hr'))).body.data.filter((p) => p.name === 'Tiket per jam C5');
+    expect(c5.map((p) => p.period)).toEqual(['2026-10']);
   });
 
   it('flag dna.development mati: impor kamus berperilaku seperti sebelum B4 (tanpa kolom B4, "Level" = Jenjang, tanpa jenis Job function)', async () => {

@@ -51,20 +51,23 @@ module.exports = {
     { key: 'period', header: 'Periode', aliases: ['period', 'bulan', 'kuartal'], example: '2026-11', help: 'Kosong = memakai periode di layar impor.' },
   ],
   options: [
-    { key: 'period', label: 'Periode (bila kolom kosong)', type: 'text', required: true },
+    // C5 demo 25 Nov: tidak wajib bila kolom Periode di berkas terisi; wajib bila ada baris tanpa periode (checkOptions)
+    { key: 'period', label: 'Periode (bila kolom kosong)', type: 'text' },
     { key: 'projectId', label: 'Proyek', type: 'project' },
     // B11: asal data (mis. HRIS, HappyFive, Berkas); hanya tercatat di riwayat impor
     { key: 'source', label: 'Sumber data (mis. HRIS)', type: 'text' },
   ],
-  checkOptions(o) {
-    if (!v.text(o.period)) return 'Periode wajib diisi (mis. 2026-11)';
+  checkOptions(o, rows = []) {
+    // Satu baris saja yang punya periode sudah cukup untuk membaca berkas: baris lain tanpa periode ditolak per baris
+    if (!v.text(o.period) && !rows.some((r) => r && v.text(r.period))) return 'Periode wajib diisi: isi kolom Periode di berkas atau isian Periode (mis. 2026-11)';
     if (v.text(o.source).length > 64) return 'Sumber data maksimal 64 karakter';
     return null;
   },
   async context({ stores, tenantId, rows, options }) {
     if (options.projectId && !(await stores.projectsExtra.exists(tenantId, options.projectId))) return { fatal: 'Proyek tidak ditemukan' };
     const rules = new Map((await stores.tna.listKpiRules(tenantId)).map((r) => [`${r.metricType}|${r.metricKey}`, r]));
-    return { find: await employeeFinder(stores, tenantId, rows), rules, fileRules: new Map() };
+    // C5: tanpa isian Periode, setiap baris wajib membawa periodenya sendiri (ditolak per baris di validate)
+    return { find: await employeeFinder(stores, tenantId, rows), rules, fileRules: new Map(), rowPeriodRequired: !v.text(options.period) };
   },
   validate(row, ctx, options = {}) {
     const e = employeeError(row); if (e) return { error: e };
@@ -92,6 +95,7 @@ module.exports = {
     const val = values(valueType, row.target, row.actual, rule.direction);
     if (val.error) return { error: val.error };
     const u = ctx.find(row); if (!u) return { error: NOT_FOUND };
+    if (ctx.rowPeriodRequired && !v.text(row.period)) return { error: 'Periode kosong: isi kolom Periode atau isian Periode di layar impor' };
     if (!inFile) ctx.fileRules.set(rk, { direction: rule.direction, tolerance: rule.tolerance });
     const ruleChanged = (dirGiven || tolGiven) && (!saved || saved.direction !== rule.direction || Number(saved.tolerance) !== rule.tolerance);
     const { isMet } = evaluate({ ...val, tolerance: rule.tolerance });
