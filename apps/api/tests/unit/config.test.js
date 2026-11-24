@@ -48,9 +48,9 @@ describe('loadConfig', () => {
     it('produksi memakai bedrock dan menolak stub', () => {
       expect(() => loadConfig({ ...prod, AI_PROVIDER: 'stub' })).toThrow(/AI_PROVIDER=stub tidak boleh di produksi/);
       expect(() => loadConfig(prod)).toThrow(/BEDROCK_MODEL_ID wajib/);
-      // Model terpilih PD-2b (docs/designs/pd-2b-bedrock-singapura.md) lolos tanpa izin lintas region
-      const cfg = loadConfig({ ...prod, BEDROCK_MODEL_ID: 'global.anthropic.claude-sonnet-5-5' });
-      expect(cfg.ai).toMatchObject({ provider: 'bedrock', region: 'ap-southeast-1', modelId: 'global.anthropic.claude-sonnet-5-5', maxQuestions: 8, processing: 'cross-region:global', allowCrossRegion: false });
+      // Model terpilih PD-2b (docs/designs/pd-2b-bedrock-singapura.md) butuh opt-in global per lingkungan (keputusan 24 Nov)
+      const cfg = loadConfig({ ...prod, BEDROCK_MODEL_ID: 'global.anthropic.claude-sonnet-5-5', AI_ALLOW_GLOBAL_PROFILE: 'true' });
+      expect(cfg.ai).toMatchObject({ provider: 'bedrock', region: 'ap-southeast-1', modelId: 'global.anthropic.claude-sonnet-5-5', maxQuestions: 8, processing: 'cross-region:global', allowCrossRegion: false, allowGlobalProfile: true });
     });
     it('PD-2b: bawaan Singapura, Jakarta boleh eksplisit, profil apac. atau global.; profil lain ditolak kecuali diizinkan', () => {
       const t = { ...base, NODE_ENV: 'test', AI_PROVIDER: 'bedrock' };
@@ -64,11 +64,23 @@ describe('loadConfig', () => {
       expect(loadConfig({ ...t, BEDROCK_MODEL_ID: 'm', BEDROCK_REGION: 'ap-southeast-1' }).ai.processing).toBe('in-region:ap-southeast-1');
       expect(loadConfig({ ...t, BEDROCK_MODEL_ID: 'apac.anthropic.x', BEDROCK_REGION: 'ap-southeast-1' }).ai.processing).toBe('cross-region:apac');
       expect(() => loadConfig({ ...t, BEDROCK_MODEL_ID: 'm', BEDROCK_REGION: 'us-east-1' })).toThrow(/ap-southeast-3, ap-southeast-1/);
-      // Profil global. dipilih user 23 Nov (Sonnet 5.5 tidak tersedia in-region di Singapura); daftar region tetap berlaku
-      expect(loadConfig({ ...t, BEDROCK_MODEL_ID: 'arn:aws:bedrock:ap-southeast-1:1:inference-profile/global.anthropic.x' }).ai.processing).toBe('cross-region:global');
+      // Profil global. (user 23 Nov) hanya dengan opt-in eksplisit AI_ALLOW_GLOBAL_PROFILE=true (keputusan 24 Nov, UU PDP)
+      const g = { ...t, AI_ALLOW_GLOBAL_PROFILE: 'true' };
+      expect(loadConfig({ ...g, BEDROCK_MODEL_ID: 'arn:aws:bedrock:ap-southeast-1:1:inference-profile/global.anthropic.x' }).ai.processing).toBe('cross-region:global');
       // Hanya galat region; penjaga profil tidak ikut menolak
-      expect(() => loadConfig({ ...t, BEDROCK_MODEL_ID: 'global.anthropic.x', BEDROCK_REGION: 'us-east-1' })).toThrow(/tidak valid:\n- BEDROCK_REGION harus[^\n]*$/);
-      expect(loadConfig({ ...t, BEDROCK_MODEL_ID: 'GLOBAL.anthropic.x' }).ai.processing).toBe('cross-region:global');
+      expect(() => loadConfig({ ...g, BEDROCK_MODEL_ID: 'global.anthropic.x', BEDROCK_REGION: 'us-east-1' })).toThrow(/tidak valid:\n- BEDROCK_REGION harus[^\n]*$/);
+      expect(loadConfig({ ...g, BEDROCK_MODEL_ID: 'GLOBAL.anthropic.x' }).ai.processing).toBe('cross-region:global');
+      for (const flag of [undefined, '', 'false', 'TRUE', '1']) {
+        for (const id of ['global.anthropic.x', 'GLOBAL.anthropic.x', 'arn:aws:bedrock:ap-southeast-1:1:inference-profile/global.anthropic.x']) {
+          expect(() => loadConfig({ ...t, BEDROCK_MODEL_ID: id, AI_ALLOW_GLOBAL_PROFILE: flag })).toThrow(/profil global\. butuh opt-in: isi AI_ALLOW_GLOBAL_PROFILE=true/);
+        }
+      }
+      // Opt-in global tidak membuka us./eu. dan tidak melonggarkan daftar region
+      expect(() => loadConfig({ ...g, BEDROCK_MODEL_ID: 'us.anthropic.x' })).toThrow(/profil lintas region "us\."/);
+      expect(() => loadConfig({ ...g, BEDROCK_MODEL_ID: 'm', BEDROCK_REGION: 'us-east-1' })).toThrow(/BEDROCK_REGION harus/);
+      // apac. tetap tanpa opt-in; AI_ALLOW_CROSS_REGION (izin lebar) juga menerima global.
+      expect(loadConfig({ ...t, BEDROCK_MODEL_ID: 'apac.anthropic.x' }).ai.allowGlobalProfile).toBe(false);
+      expect(loadConfig({ ...t, BEDROCK_MODEL_ID: 'global.anthropic.x', AI_ALLOW_CROSS_REGION: 'true' }).ai.processing).toBe('cross-region:global');
       for (const id of ['us.anthropic.x', 'arn:aws:bedrock:ap-southeast-1:1:inference-profile/eu.anthropic.x']) {
         expect(() => loadConfig({ ...t, BEDROCK_MODEL_ID: id })).toThrow(/profil lintas region "(us|eu)\."; .* atau profil apac\.\/global\./);
       }

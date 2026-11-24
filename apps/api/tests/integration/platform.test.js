@@ -53,7 +53,9 @@ run('B12 Super Admin (Postgres)', () => {
     await setFlag('eta', 'platform.console');
     // tenant contoh untuk status turunan
     await tenant('aktif'); await user('aktif', 'aktifAdm', 'tenant_admin', { login: false });
-    await tenant('tunggu'); await user('tunggu', 'tungguAdm', 'hr_admin', { status: 'invited', login: false });
+    await tenant('tunggu'); await user('tunggu', 'tungguAdm', 'tenant_admin', { status: 'invited', login: false });
+    // masa interim dicabut 24 Nov: hr_admin bukan pengelola tenant, jadi tenant ini tetap draf tanpa admin
+    await tenant('hrSaja'); await user('hrSaja', 'hrSajaAktif', 'hr_admin', { login: false }); await user('hrSaja', 'hrSajaUndang', 'hr_admin', { status: 'invited', login: false });
     await tenant('draf');
     await tenant('mati'); await user('mati', 'matiAdm', 'tenant_admin', { status: 'disabled', login: false });
     await tenant('beku', { status: 'suspended' }); await user('beku', 'bekuAdm', 'tenant_admin', { login: false });
@@ -105,6 +107,7 @@ run('B12 Super Admin (Postgres)', () => {
       expect(row('tunggu')).toMatchObject({ status: 'pending_admin', adminEmail: `tungguAdm-${stamp}@b12.test` });
       expect(row('draf')).toMatchObject({ status: 'draft', adminEmail: null, users: 0, activeModules: 0 });
       expect(row('mati')).toMatchObject({ status: 'draft', users: 0 });
+      expect(row('hrSaja')).toMatchObject({ status: 'draft', adminEmail: null, users: 2 });
       expect(row('beku')).toMatchObject({ status: 'suspended' });
       expect(res.body.data.kpis).toMatchObject({ modulesAvailable: 8, users: expect.any(Number) });
       expect(res.body.data.kpis.tenants).toBeGreaterThanOrEqual(6);
@@ -258,10 +261,13 @@ run('B12 Super Admin (Postgres)', () => {
       expect([active.status, active.body.error.code]).toEqual([409, 'ADMIN_ALREADY_ACTIVE']);
       const none = await invite('draf');
       expect([none.status, none.body.error.code]).toEqual([404, 'NO_PENDING_ADMIN']);
+      // hr_admin invited bukan sasaran kirim ulang pengelola (masa interim dicabut 24 Nov)
+      const hr = await invite('hrSaja');
+      expect([hr.status, hr.body.error.code]).toEqual([404, 'NO_PENDING_ADMIN']);
     });
 
     it('mailer gagal: 502 MAIL_FAILED, link tetap tersimpan', async () => {
-      await tenant('gagalKirim'); await user('gagalKirim', 'gagalAdm', 'hr_admin', { status: 'invited', login: false });
+      await tenant('gagalKirim'); await user('gagalKirim', 'gagalAdm', 'tenant_admin', { status: 'invited', login: false });
       const send = mailer.send;
       mailer.send = async () => { throw new Error('SES mati'); };
       try {

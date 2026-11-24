@@ -68,7 +68,10 @@ function firstInWindow(limits, key) {
  * PK-16: batas per akun (RATE, di database) ditambah batas per IP (`limits.linkIp`, `limits.verifyIp`);
  * kebijakan login (daftar email Admin ETA) dicek saat link dikirim dan saat ditukar; penukaran membuat sesi.
  */
-function emailLinkRoutes({ users, links, sessions, policy, audit, limits, attempts }) {
+/**
+ * `queue` (createBackgroundQueue): tempat pekerjaan akun terdaftar dijalankan setelah jawaban 202 (audit 8-11).
+ */
+function emailLinkRoutes({ users, links, sessions, policy, audit, limits, attempts, queue }) {
   const r = express.Router();
   const GENERIC = 'Bila email terdaftar di organisasi ini, link masuk sudah dikirim. Periksa kotak masuk Anda.';
   const INVALID = 'Link masuk tidak valid, sudah dipakai, atau kedaluwarsa. Minta link baru.';
@@ -76,10 +79,17 @@ function emailLinkRoutes({ users, links, sessions, policy, audit, limits, attemp
   r.post('/', limitByIp(limits.linkIp, 'link'), wrap(async (req, res) => {
     const { tenant, email } = req.body || {};
     if (!tenant || !email) throw badRequest('Organisasi dan email wajib diisi');
-    const user = await users.findByEmail(String(tenant).trim(), String(email).trim().toLowerCase());
-    // Jawaban sama untuk email terdaftar atau tidak, atau tidak diizinkan (mencegah enumerasi akun)
+    const slug = String(tenant).trim();
+    const user = await users.findByEmail(slug, String(email).trim().toLowerCase());
+    // Jawaban sama untuk email terdaftar atau tidak, atau tidak diizinkan (mencegah enumerasi akun), dan dikirim
+    // sebelum pekerjaan yang hanya ada untuk akun terdaftar, supaya waktu jawab juga sama (audit 24 Nov, 8-11).
+    res.status(202).json({ message: GENERIC });
     // B1: percobaan untuk akun yang dikenal dicatat di audit tenant; email tak dikenal tidak (lihat attempts.js)
-    if (user) {
+    if (!user) {
+      queue.run(Symbol('unknown'), () => attempts.unknownAccount(users, slug, 'email_link')); // tanpa status: tidak perlu berurutan
+      return;
+    }
+    queue.run(`user:${user.id}`, async () => {
       const blocked = !policy.allows(user) ? 'policy' : ((await links.recentCount(user)) >= RATE.max ? 'rate' : null);
       if (blocked) {
         // Review egm: penolakan dicatat sekali per akun per jendela, supaya audit append-only
@@ -87,15 +97,17 @@ function emailLinkRoutes({ users, links, sessions, policy, audit, limits, attemp
         if (firstInWindow(limits, `audit:link:${blocked}:${user.id}`)) {
           await attempts.record(user, { method: 'email_link', outcome: 'blocked', reason: blocked });
         }
-      } else {
-        await links.issue(user, 'login', { tenantName: users.tenantName ? await users.tenantName(user.tenantId) : null });
-        await attempts.record(user, { method: 'email_link', outcome: 'link_sent' });
+        return;
       }
-    } else {
-      // tidak ditunggu: waktu jawaban email tak dikenal tidak bertambah satu query
-      attempts.unknownAccount(users, String(tenant).trim(), 'email_link');
-    }
-    res.status(202).json({ message: GENERIC });
+      try {
+        await links.issue(user, 'login', { tenantName: users.tenantName ? await users.tenantName(user.tenantId) : null });
+      } catch (e) {
+        // jawaban sudah terkirim; kegagalan tetap terlihat di audit tenant (dulu 500 ke pemanggil)
+        await attempts.record(user, { method: 'email_link', outcome: 'link_failed' });
+        throw e;
+      }
+      await attempts.record(user, { method: 'email_link', outcome: 'link_sent' });
+    });
   }));
 
   r.post('/verify', limitByIp(limits.verifyIp, 'verify'), wrap(async (req, res) => {

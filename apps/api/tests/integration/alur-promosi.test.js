@@ -75,13 +75,13 @@ run('Alur rekomendasi promosi (HR, atasan, karyawan, Super Admin)', () => {
 
   it('atasan langsung merekomendasi, HR menyetujui; nama dan waktu tercatat, satu audit per keputusan, jenjang tidak berubah', async () => {
     expect((await a.dna.karier.putusanAtasan(orang.atasan, orang.karyawan, 'recommend')).status).toBe(200);
-    expect((await a.dna.karier.putusanHr(orang.super, orang.karyawan, 'approve')).status).toBe(403); // Super Admin hanya melihat
+    expect((await a.dna.karier.putusanHr(orang.super, orang.karyawan, 'approve')).status).toBe(403); // Super Admin ditolak (24 Nov)
     expect((await a.dna.karier.putusanHr(orang.hr, orang.karyawan, 'approve')).status).toBe(200);
 
     const baris = barisKaryawan(await a.dna.karier.keputusan(orang.hr));
     expect(baris.supervisor).toMatchObject({ decision: 'recommend', byName: 'Atasan Contoh', at: expect.any(String) });
     expect(baris.hr).toMatchObject({ decision: 'approved', byName: 'HR Contoh', at: expect.any(String) });
-    expect(barisKaryawan(await a.dna.karier.keputusan(orang.super)).hr).toMatchObject({ decision: 'approved' });
+    expect((await a.dna.karier.keputusan(orang.super)).body.error.code).toBe('EMPLOYEE_CONTENT_PRIVATE');
 
     const [audit] = await db.query(
       `SELECT user_id, action, meta->>'event' AS event FROM audit_logs WHERE tenant_id = :t AND resource = 'dna.promotion_decision' ORDER BY id`,
