@@ -11,9 +11,9 @@ describe('Gerbang impor Admin Tenant (B11)', () => {
   // kill switch bersifat global, jadi diuji dengan flag tiruan (bukan di DB bersama test lain)
   function makeApp({ killed = [], entitled = ['dna', 'tna'] } = {}) {
     const app = express();
-    app.use((req, _res, next) => { req.user = { id: 'u', role: 'hr_admin' }; req.tenantId = 't'; next(); });
+    app.use((req, _res, next) => { req.user = { id: 'u', role: 'tenant_admin' }; req.tenantId = 't'; next(); });
     app.use(tenantAdmin.router({
-      stores: { tenantAdmin: { actor: async () => ({ role: 'hr_admin', status: 'active' }) } },
+      stores: { tenantAdmin: { actor: async () => ({ role: 'tenant_admin', status: 'active' }) } },
       flags: {
         isEnabled: async (_t, key) => key === 'admin.tenant',
         isKnown: () => false,
@@ -42,11 +42,10 @@ describe('Gerbang impor Admin Tenant (B11)', () => {
 });
 
 describe('Akses Admin Tenant (B11)', () => {
-  it('eta_admin dan tenant_admin lolos; hr_admin lolos sementara sampai B2; peran lain tidak', () => {
+  it('hanya eta_admin dan tenant_admin lolos; masa interim hr_admin dicabut (keputusan user 24 Nov)', () => {
     expect(isTenantAdmin({ role: 'eta_admin' })).toBe(true);
     expect(isTenantAdmin({ role: 'tenant_admin' })).toBe(true);
-    expect(isTenantAdmin({ role: 'hr_admin' })).toBe(true); // ⏳ dicabut setelah B2 (spek 4.2)
-    for (const role of ['learner', 'supervisor', 'pimpinan', 'role_leader', 'sme']) expect(isTenantAdmin({ role })).toBe(false);
+    for (const role of ['hr_admin', 'learner', 'supervisor', 'pimpinan', 'role_leader', 'sme']) expect(isTenantAdmin({ role })).toBe(false);
     // kontrak B2: hanya peran aktif yang dihitung, bukan daftar peran yang boleh dipilih
     expect(isTenantAdmin({ role: 'learner', roles: ['learner', 'tenant_admin'] })).toBe(false);
     expect(isTenantAdmin(null)).toBe(false);
@@ -63,11 +62,13 @@ describe('Akses Admin Tenant (B11)', () => {
     const run = (user, actor) => new Promise((resolve) => {
       requireTenantAdmin({ actor: async () => actor })({ user, tenantId: 't' }, null, (err) => resolve(err ? err.code : 'ok'));
     });
-    expect(await run({ id: 'u', role: 'hr_admin' }, { role: 'hr_admin', status: 'active' })).toBe('ok');
-    expect(await run({ id: 'u', role: 'hr_admin' }, { role: 'learner', status: 'active' })).toBe('ROLE_FORBIDDEN');
-    expect(await run({ id: 'u', role: 'hr_admin' }, { role: 'hr_admin', status: 'disabled' })).toBe('ROLE_FORBIDDEN');
-    expect(await run({ id: 'u', role: 'hr_admin' }, null)).toBe('ROLE_FORBIDDEN');
-    expect(await run({ id: 'u', role: 'learner' }, { role: 'hr_admin', status: 'active' })).toBe('ROLE_FORBIDDEN');
+    expect(await run({ id: 'u', role: 'tenant_admin' }, { role: 'tenant_admin', status: 'active' })).toBe('ok');
+    expect(await run({ id: 'u', role: 'tenant_admin' }, { role: 'learner', status: 'active' })).toBe('ROLE_FORBIDDEN');
+    expect(await run({ id: 'u', role: 'tenant_admin' }, { role: 'tenant_admin', status: 'disabled' })).toBe('ROLE_FORBIDDEN');
+    expect(await run({ id: 'u', role: 'tenant_admin' }, null)).toBe('ROLE_FORBIDDEN');
+    expect(await run({ id: 'u', role: 'learner' }, { role: 'tenant_admin', status: 'active' })).toBe('ROLE_FORBIDDEN');
+    // hr_admin tidak lagi lolos, walau DB mencatat peran itu aktif
+    expect(await run({ id: 'u', role: 'hr_admin' }, { role: 'hr_admin', status: 'active' })).toBe('ROLE_FORBIDDEN');
     expect(await run(null, null)).toBe('UNAUTHORIZED');
   });
 

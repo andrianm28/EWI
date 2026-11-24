@@ -3,7 +3,7 @@ const { normalizeSpec, onboardTenant } = require('../../src/core/tenant/onboardi
 const ID = '3f2b8c1e-5d4a-4e6b-9c7d-0a1b2c3d4e5f';
 const base = () => ({
   id: ID, slug: 'uji-internal', name: 'Uji Internal', products: ['full_suite'], flags: ['module.dna'],
-  users: [{ email: 'HR@Uji.test', name: 'HR', role: 'hr_admin' }],
+  users: [{ email: 'HR@Uji.test', name: 'HR', role: 'hr_admin' }, { email: 'admin@uji.test', name: 'Admin', role: 'tenant_admin' }],
 });
 
 describe('normalizeSpec', () => {
@@ -18,8 +18,9 @@ describe('normalizeSpec', () => {
       .toThrow(/id harus UUID[\s\S]*slug wajib[\s\S]*name wajib[\s\S]*produk tidak dikenal: emas[\s\S]*flag tidak dikenal[\s\S]*role harus/);
   });
 
-  it('wajib minimal satu tenant_admin atau hr_admin (B12)', () => {
-    expect(() => normalizeSpec({ ...base(), users: [{ email: 'a@b.test', role: 'eta_admin' }] })).toThrow(/minimal satu tenant_admin atau hr_admin/);
+  it('wajib minimal satu tenant_admin; hr_admin saja tidak cukup sejak masa interim dicabut 24 Nov', () => {
+    expect(() => normalizeSpec({ ...base(), users: [{ email: 'a@b.test', role: 'eta_admin' }] })).toThrow(/minimal satu tenant_admin/);
+    expect(() => normalizeSpec({ ...base(), users: [{ email: 'a@b.test', role: 'hr_admin' }] })).toThrow(/minimal satu tenant_admin/);
     expect(normalizeSpec({ ...base(), users: [{ email: 'a@b.test', role: 'tenant_admin' }] }).users[0].role).toBe('tenant_admin');
   });
 
