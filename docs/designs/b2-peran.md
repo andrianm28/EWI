@@ -54,7 +54,9 @@ Flag baru `auth.multi_role` (default mati, per tenant): bila mati, `switchableRo
 
 ## Super Admin dan isi wawancara
 
-Keputusan user 19 Nov 20.30 WIB (kartu keputusan, pilihan "Seperti sekarang"): Super Admin tetap melihat hasil karyawan, termasuk kutipan jawaban yang tersimpan di hasil analisis (`evidence`, `detail`); **hanya transkrip mentah yang ditutup**.
+> **Diganti 24 Nov 2026.** Kartu keputusan "Block Super Admin from reading employee content in every module?" → "Yes, one core rule": Super Admin tidak membaca isi data karyawan di modul mana pun. Aturan inti `denyEmployeeContent` (`core/rbac`) dipasang di `app.js` pada `/employees`, `/dashboard`, `/assistant`, dan setiap router submodul (403 `EMPLOYEE_CONTENT_PRIVATE`), dan `visibleEmployeeScope` memberi Super Admin cakupan kosong. Super Admin bekerja lewat konsol platform (ADR 0002). Spek: `docs/designs/review-24nov-perbaikan.md` bagian Super Admin. Teks di bawah ini riwayat.
+
+~~Keputusan user 19 Nov 20.30 WIB (kartu keputusan, pilihan "Seperti sekarang"): Super Admin tetap melihat hasil karyawan, termasuk kutipan jawaban yang tersimpan di hasil analisis (`evidence`, `detail`); **hanya transkrip mentah yang ditutup**.~~
 
 - `visibleEmployeeScope` untuk `eta_admin` tidak berubah (`{ all: true }`).
 - Transkrip: sudah ditutup oleh PR #11 (PK-15, kini di branch integrasi). `GET /:id/transcript` menjawab 403 `TRANSCRIPT_PRIVATE` untuk semua orang selain yang diwawancarai, termasuk Super Admin; `GET /:id` hanya memberi status sesi. B2 tidak mengubah kontrak itu.

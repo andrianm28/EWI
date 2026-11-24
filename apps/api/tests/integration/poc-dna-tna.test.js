@@ -362,10 +362,12 @@ run('POC DNA + TNA (Postgres)', () => {
     const row = (await auditRows('dna.employee_result')).filter((r) => r.userId === u.spv).pop();
     expect(row).toMatchObject({ action: 'read', meta: { employeeIds: [u.dimas], self: false, role: 'supervisor', objectType: 'dna_profile' } });
 
-    await request(app).get('/api/tna/findings').set(as('eta')).expect(200);
-    const findings = (await auditRows('tna.findings')).filter((r) => r.userId === u.eta);
-    expect(findings.length).toBe(1);
-    expect(findings[0].meta.employeeIds.length).toBeGreaterThan(0);
+    // Super Admin ditolak sejak 24 Nov, jadi baca temuan dicek lewat HR: satu baca = satu baris audit baru
+    const findingsBefore = (await auditRows('tna.findings')).filter((r) => r.userId === u.hr).length;
+    await request(app).get('/api/tna/findings').set(as('hr')).expect(200);
+    const findings = (await auditRows('tna.findings')).filter((r) => r.userId === u.hr);
+    expect(findings.length).toBe(findingsBefore + 1);
+    expect(findings.pop().meta.employeeIds.length).toBeGreaterThan(0);
 
     const [[s]] = await db.query(`SELECT id FROM lna_interview_sessions WHERE tenant_id = :t AND submodule = 'tna' LIMIT 1`, { replacements: { t: tenant.id } });
     // PO-6 A: HR melihat status sesi tanpa transkrip; baca transkrip oleh karyawan sendiri tercatat
