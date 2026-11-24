@@ -99,6 +99,38 @@ test('1. Super Admin mendarat di Tenant; KPI dan status tenant tampil sebagai te
   await expect(rows.filter({ hasText: 'PT Elitery' })).toContainText(/\d+ \/ \d+/)
 })
 
+test('1b. Jawaban tenant berbentuk salah: layar memberi pesan galat, bukan halaman kosong', async ({ page }) => {
+  // Bentuk asli (API lokal 24 Nov): { data: { kpis, tenants } }. Di sini data berupa array mentah.
+  await mockApi(page, (req) => {
+    if (req.method === 'GET' && req.path === '/platform/tenants') return { json: { data: TENANTS } }
+    if (req.method === 'GET' && req.path === '/platform/settings') return { json: { data: SETTINGS } }
+    return undefined
+  })
+  await loginSebagai(page, 'super', { flags: ON })
+  await expect(page.getByRole('heading', { level: 1, name: 'Tenant' })).toBeVisible()
+  await expect(page.getByText('Data tenant tidak bisa dibaca. Muat ulang halaman; bila masih gagal, hubungi tim ELGOS.')).toBeVisible()
+})
+
+test('1c. Panel Modul: jawaban modul berbentuk salah atau kosong diberi pesan', async ({ page }) => {
+  let modules: unknown = { modules: MODULES }
+  await mockApi(page, (req) => {
+    if (req.method === 'GET' && req.path === '/platform/tenants') {
+      return { json: { data: { kpis: { tenants: 1, activeTenants: 1, users: 42, modulesAvailable: 8 }, tenants: TENANTS.slice(0, 1) } } }
+    }
+    if (req.method === 'GET' && req.path === '/platform/settings') return { json: { data: SETTINGS } }
+    if (cocok(req, 'GET /platform/tenants/:id/modules')) return { json: { data: modules } }
+    return undefined
+  })
+  await loginSebagai(page, 'super', { flags: ON })
+  await page.getByRole('button', { name: 'Modul', exact: true }).click()
+  const panel = page.getByRole('region', { name: 'Modul PT Elitery' })
+  await expect(panel).toContainText('Data modul tidak bisa dibaca. Tutup panel lalu coba lagi.')
+  await panel.getByRole('button', { name: 'Tutup' }).click()
+  modules = []
+  await page.getByRole('button', { name: 'Modul', exact: true }).click()
+  await expect(panel).toContainText('Belum ada modul untuk tenant ini.')
+})
+
 test('2. Buat tenant: Periksa memberi slug, slug ganda diperingatkan, simpan, undangan gagal bisa dikirim ulang', async ({ page }) => {
   const { sent } = await konsol(page)
   await loginSebagai(page, 'super', { flags: ON })
