@@ -1,7 +1,6 @@
 import { createRouter, createWebHistory, type RouteLocationNormalized, type RouteRecordRaw } from 'vue-router'
 import { bindRoutes, useSessionStore, type Gates } from '@/stores/session'
 import type { SubmoduleKey } from '@/modules'
-import { menuLabel } from '@/shell/menu'
 import { VIEW_HOME, type ViewKey } from '@/shell/views'
 import { testRoutes } from '@/screens/ui-kit/test-routes'
 
@@ -132,10 +131,6 @@ router.beforeEach(async (to) => {
   return true
 })
 
-router.afterEach((to) => {
-  const session = useSessionStore()
-  const title = to.meta.title ?? menuLabel(to.meta.menuKey ?? String(to.name ?? ''), session.activeView)
-  document.title = title ? `${title} · ELGOS` : 'ELGOS'
-})
+// Judul tab dipasang shell/title.ts dari main.ts (router tidak mengimpor shell/menu.ts, P9 IR-3)
 
 export default router

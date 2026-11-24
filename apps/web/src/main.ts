@@ -11,9 +11,11 @@ import '@fontsource/roboto-mono/latin-400.css'
 import '@fontsource/roboto-mono/latin-500.css'
 import './style.css'
 import { initTheme } from './shell/theme'
+import { installTitle } from './shell/title'
 
 initTheme()
 
+installTitle(router)
 const app = createApp(App).use(createPinia()).use(router)
 
 // PK-16: sesi habis atau dicabut -> kembali ke halaman login dengan pesan, lalu ke halaman semula setelah masuk
