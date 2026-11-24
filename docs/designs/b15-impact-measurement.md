@@ -523,3 +523,64 @@ Review goldfish atas diff (codebase-details) dan mattpocock-skills:code-review (
 | 10 | Nama `tanggal` lokal menutupi helper labels | Diganti `tanggalWaktu` |
 | — | "Kembali ke antrean" di semua langkah; hasil dibuka dari langkah 1 | [⏳ DITERIMA: memudahkan HR keluar; spek mengizinkan] |
 | — | T-7 sudah ikut di komit API pertama (12.7 #12) | [⏳ DITERIMA: dua komit API lalu layar; T-7 punya test sendiri] |
+
+### 12.9 Paritas mockup dan demo 25 Nov (24 Nov)
+
+Status: thread B15 diserahkan ke thread demo 24 Nov dengan tujuan "alur wawancara ulang LIM dari mockup final Pak Eji:
+chat → benchmark → hasil bisnis → ringkasan". Pemeriksaan awal: alur itu **sudah dibangun** (12.1–12.8, komit
+`93d50b2`, `e66ba1a`, `37cdc20`; migrasi `20261123003000-lim-wawancara-ulang.js`; flag `lim.reinterview`), tetapi
+katalog paritas (`paritas-mockup/gaps-modul.md`) masih mencatat tujuh baris LIM Terbuka, termasuk LIM-8 "Tidak ada",
+dan `e2e/demo-alur.spec.ts` belum menyalakan `lim.reinterview`. Jadi bagian ini tidak menambah API, migrasi, atau flag:
+isinya keputusan per baris LIM, perbaikan layar kecil, dan alur demo. Tidak ada kode bersama API yang disentuh.
+
+Acuan mockup (`/mnt/project-files/mockup-pak-eji/Main.dc.html`, ditulis `M:<baris>`): kartu agen M:1064, antrean
+M:1065-1068 dan `limQueue` M:1568-1569, catatan M:1069, panel langkah M:1074 dan `limSteps` M:1574, chat M:1077-1085,
+benchmark M:1087-1093 dan `limBench`/`limFind` M:1577-1581, hasil bisnis M:1095-1101, ringkasan M:1103-1110 dan
+`limEvid`/`limRecs` M:1583-1591, baris audit M:1111 dan `limAudit` M:2131.
+
+#### Keputusan per baris katalog
+
+| Baris | Mockup | Keputusan | Status katalog |
+| --- | --- | --- | --- |
+| LIM-1 | Rujukan "panduan Scheer IMC" (M:1016) | Sudah netral tenant (R5). Tidak berubah | Ditutup |
+| LIM-3 | "Insight AI" | Sudah "Insight dari data pengukuran" (R8; insight dihitung aturan) | Ditutup |
+| LIM-4 | Catatan rantai tanpa "Peserta terhitung: n." | Kalimat dihapus dari catatan; jumlah peserta pindah ke baris rencana ("Rencana: Pilot L1 · 6 peserta") | Ditutup |
+| LIM-5 | Kartu "Agen AI · Pengukuran dampak", chip Pilot kuning, teks M:1064 | Pakai `UiAgentCard` (chip `review` = `c-rv`) dengan teks mockup kata per kata | Ditutup |
+| LIM-6 | "Dijadwalkan"; tombol "Jadwalkan" / "Mulai sekarang" / "Lihat hasil"; satu tanggal mono | Label "Dijadwalkan". "Lihat hasil" sudah ada (12.4). "Mulai sekarang" **tidak** dibuat: T-1, HR tidak boleh memulai atau menjawab atas nama karyawan (mockup sendiri menulis "di mockup ini HR memulainya untuk demonstrasi"). Pemilih tanggal, tombol massal, dan rentang jendela 4–6 pekan dipertahankan karena produk menjadwalkan tanggal nyata (PK-2) | Diputuskan |
+| LIM-7 | "… Dalam produk, karyawan mengerjakannya sendiri lewat EliteMentor; di mockup ini HR memulainya untuk demonstrasi." | "Wawancara ulang dijadwalkan 4 sampai 6 pekan setelah belajar. Karyawan mengerjakannya sendiri dari menu Wawancara ulang setelah dijadwalkan." (ELGOS terpisah dari EliteMentor, bagian 12) | Ditutup |
+| LIM-8 | Alur empat langkah | Sudah dibangun (12.1–12.8). Ditambah baris audit mockup M:1111 lewat `UiAuditLine`: "ELGOS-AI (POC) · log audit: n kompetensi dinilai · dibuka HR tercatat". Penyimpangan sengaja: HR melihat skor dan alasan, bukan percakapan (T-6); tanpa "Simpan hasil" (tersimpan otomatis, 12.7 #9); "Rekomendasi" dan "Tingkat keyakinan" tanpa kata AI (T-7) | Ditutup |
+| LIM-9 | Atasan melihat antrean yang sama, dengan aksi | Tetap 6.5: atasan tidak menerima antrean per orang; tab Pengukuran AI atasan berisi kartu agen dan catatan "dikelola HR". R22 menyerahkan keputusan ke thread B15; alasan: jadwal wawancara ulang adalah data individual yang tidak perlu untuk tugas atasan (mengisi skor kinerja) | Diputuskan |
+| LIM-10 | Tabel tanpa "n=", tanpa "dinilai HR/dihitung aturan", tanpa kartu isi pre dan impor | "n=" dan sumber kekuatan bukti pindah ke tooltip (`title`) dan teks pembaca layar; kartu HR (isi pre dari DNA, impor) dilipat di bawah tabel dalam `<details>` "Isi data pengukuran (HR)" | Ditutup |
+
+[❓ PERLU KEPUTUSAN] **Demo "Mulai sekarang".** Mockup memperlihatkan HR memulai wawancara dari antrean. Pilihan:
+(a) **rekomendasi:** tetap T-1; pembawa demo memperlihatkan alur dari dua peran (karyawan menjalankan wawancara di
+menu Wawancara ulang, HR membuka "Lihat hasil"); `demo-alur.spec.ts` menjalankan keduanya; (b) tombol "Mulai sekarang"
+untuk HR yang membuka pratinjau percakapan contoh tanpa menyimpan; (c) HR boleh memulai atas nama karyawan
+(mengubah T-1, persetujuan, dan privasi). Yang dikerjakan: (a).
+
+[⚠️ BELUM TERVERIFIKASI] Teks persetujuan `lim-consent-id-v1.0` masih draf menunggu legal (T-3); demo memakai teks itu
+apa adanya.
+
+#### Demo dan test
+
+- `e2e/support/demo.ts`: `lim.reinterview` ikut `FLAG_DEMO`. `penanganLimDemo` memuat antrean (satu selesai, satu
+  dijadwalkan), hasil satu karyawan, dan sesi karyawan.
+- `e2e/demo-alur.spec.ts`: HR membuka tab Pengukuran AI → "Lihat hasil" → empat langkah sampai Ringkasan dan "Kembali ke
+  antrean"; Karyawan membuka menu Wawancara ulang → persetujuan → pertanyaan pertama → jawab sampai selesai. Atasan
+  hanya memastikan catatan "dikelola HR" (LIM-9).
+- `e2e/lim.spec.ts` dan `e2e/lim-wawancara-ulang.spec.ts`: LIM-4, LIM-5, LIM-6, LIM-7, LIM-10, baris audit LIM-8 (ditulis
+  lebih dulu, merah lalu hijau).
+- Test alur B18 `alur-impact-measurement.test.js`: langkah baru setelah penjadwalan: karyawan memberi persetujuan,
+  menjawab semua pertanyaan (AI tiruan), antrean menjadi `done` dengan `canView`, HR membuka hasil tanpa transkrip,
+  atasan 403 untuk hasil. Pembantu baru di `tests/alur/driver.js` (`a.lim.wawancaraUlang`, `a.lim.hasil`).
+
+#### Triase review (egm design + implementation-readiness, 24 Nov)
+
+| # | Lensa | Temuan | Keputusan |
+| --- | --- | --- | --- |
+| 1 | design | Menghapus "n=" dari sel membuat HR tidak tahu skor rata-rata dari berapa orang | Tooltip `title` plus teks `el-sr-only`, jadi tetap terbaca pembaca layar; mockup tidak menampilkannya |
+| 2 | design | Melipat kartu isi pre dan impor menyembunyikan aksi HR yang sering dipakai saat menyiapkan rencana | [⏳ DITERIMA: lipatan tertutup sesuai mockup, judulnya jelas ("Isi data pengukuran (HR)"); e2e membuka lipatan] |
+| 3 | design | "Mulai sekarang" di mockup adalah titik cerita demo | ❓ di atas, rekomendasi (a) |
+| 4 | implementation-readiness | `FLAG_DEMO` menyalakan `lim.reinterview` untuk semua peran demo: menu "Wawancara ulang" muncul juga di atasan, dan layar lain tidak boleh mengirim permintaan yang tidak di-mock | `penanganLimDemo` menjawab `GET /lim/me/reinterviews`; atasan tidak membuka menu itu di demo; `permintaanBelumDimock` tetap menjaga |
+| 5 | implementation-readiness | Baris audit menyebut "dibuka HR tercatat": benar hanya bila API mencatat `audit.readIndividual` | Sudah (12.3, `GET /plans/:id/reinterviews/:userId`); test integrasi 12.6 memeriksanya |
+| 6 | implementation-readiness | Test alur B18 memakai AI tiruan; jumlah pertanyaan bergantung kompetensi rencana (2 kompetensi → 5 pertanyaan) | Driver menjawab sampai `done: true`, maks 9 putaran, tanpa angka tetap |
