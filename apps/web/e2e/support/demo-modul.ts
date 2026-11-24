@@ -1,4 +1,5 @@
 import { cocok, responsData as data, type Penangan } from './api'
+import { tanggalWib } from './tanggal'
 
 // Demo langsung 25 Nov: penangan API layar modul untuk e2e/demo-alur.spec.ts. Data karangan tangan; bentuknya sama
 // dengan mock di spec paket masing-masing (core-competencies, b4-dna, improvement-needs, li, ld, lim, b16-cp,
@@ -46,7 +47,7 @@ const CC_REPORT = {
   divisions: [divisi('IT Service Delivery', 80, 45, 25), divisi('Sales', 55, 24, 14)], allDivisions: divisi('Semua divisi', 135, 69, 39),
   insight: 'Skor akhir tertahan kuis.', recommendations: [{ title: 'Selesaikan kegiatan', detail: 'Dampingi yang belum selesai.' }],
 }
-const pimpinan = (userId: string, name: string, status: string, extra = {}) => ({ userId, name, division: 'IT Service Delivery', jobRoleName: 'Kepala Divisi', assignmentId: status === 'none' ? null : `a-${userId}`, status, dueDate: status === 'none' ? null : '2026-11-30', teamTotal: 6, teamAssigned: 0, teamDone: 0, ...extra })
+const pimpinan = (userId: string, name: string, status: string, extra = {}) => ({ userId, name, division: 'IT Service Delivery', jobRoleName: 'Kepala Divisi', assignmentId: status === 'none' ? null : `a-${userId}`, status, dueDate: status === 'none' ? null : tanggalWib(6), teamTotal: 6, teamAssigned: 0, teamDone: 0, ...extra })
 const CC_ASSIGN_HR = {
   role: 'hr', mine: { leader: null, employee: null },
   kpis: { leadersEligible: 3, leadersAssigned: 1, leadersCompleted: 1, employeesAssigned: 4, employeesCompleted: 3 },
@@ -358,7 +359,7 @@ export const DASHBOARD_TIM = {
   pareto: { rows: [{ key: 'c1', competencyId: null, label: 'Root Cause Analysis', people: 2, score: 3, share: 1, cumulativeShare: 1, hot: true }], total: 1, hotCount: 1 },
   actions: [{ key: 'interviews_open', count: 1 }],
 }
-const penugasanCc = (tier: string, status: string) => ({ id: `as-${tier}`, tier, status, dueDate: '2026-11-30', durationMinutes: 10, completedAt: status === 'completed' ? '2026-11-20T03:00:00Z' : null })
+const penugasanCc = (tier: string, status: string) => ({ id: `as-${tier}`, tier, status, dueDate: tanggalWib(6), durationMinutes: 10, completedAt: status === 'completed' ? '2026-11-20T03:00:00Z' : null })
 
 /** Atasan: Dashboard tim, Wawancara AI (status tim), dan Improvement Needs level baca. */
 export const penanganAtasanDemo: Penangan = (req) => {

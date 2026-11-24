@@ -32,6 +32,8 @@ interface Tumpukan {
   test: Penangan[]
   dasar: Penangan[]
   belumDimock: string[]
+  /** Penangan yang melempar galat (dijawab 500 MOCK_GALAT), mis. "GET /ina/actions/a-1: TypeError ...". */
+  galat: string[]
 }
 
 const perHalaman = new WeakMap<Page, Tumpukan>()
@@ -43,7 +45,7 @@ function bacaBody(request: Request): unknown {
 async function pasang(page: Page): Promise<Tumpukan> {
   const ada = perHalaman.get(page)
   if (ada) return ada
-  const t: Tumpukan = { test: [], dasar: [], belumDimock: [] }
+  const t: Tumpukan = { test: [], dasar: [], belumDimock: [], galat: [] }
   perHalaman.set(page, t)
   await page.route('**/api/**', async (route) => {
     const request = route.request()
@@ -55,6 +57,7 @@ async function pasang(page: Page): Promise<Tumpukan> {
       try {
         respons = await penangan(req)
       } catch (e) {
+        t.galat.push(`${req.method} ${req.path}: ${String(e)}`)
         return route.fulfill({ status: 500, json: { error: { code: 'MOCK_GALAT', message: `Penangan mock gagal: ${String(e)}` } } })
       }
       if (respons) return route.fulfill({ status: respons.status ?? 200, json: respons.json })
@@ -78,6 +81,11 @@ export async function mockApiDasar(page: Page, penangan: Penangan): Promise<void
 /** Permintaan yang sampai ke jaring pengaman (tidak ditangani penangan mana pun), mis. "GET /tna/review". */
 export function permintaanBelumDimock(page: Page): string[] {
   return [...(perHalaman.get(page)?.belumDimock ?? [])]
+}
+
+/** Penangan mock yang melempar galat (dijawab 500 MOCK_GALAT); test yang sehat mengharapkan daftar kosong. */
+export function galatMock(page: Page): string[] {
+  return [...(perHalaman.get(page)?.galat ?? [])]
 }
 
 /**
