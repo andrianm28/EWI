@@ -266,6 +266,12 @@ test('P6 Program & Permintaan: kartu jabatan, tab, catatan, dan chip hitungan se
   await setup(page)
   await page.goto('/prog')
   await expect(page.getByRole('button', { name: /Engineer Service Delivery/ })).toContainText('Kamus tersedia')
+  // LI-14 (keputusan user 24 Nov): hijau bila kamus ada, netral bila belum; tanpa chip "Contoh (dummy)"
+  await expect(page.getByRole('button', { name: /Engineer Service Delivery/ }).locator('.el-chip')).toHaveClass(/el-chip--success/)
+  const tanpaKamus = page.getByRole('button', { name: /Project Manager/ }).locator('.el-chip')
+  await expect(tanpaKamus).toHaveText('Belum tersedia')
+  await expect(tanpaKamus).toHaveClass(/el-chip--neutral/)
+  await expect(page.getByText('Contoh (dummy)')).toHaveCount(0)
   await expect(page.getByRole('tab', { name: 'Basic · 1 course' })).toBeVisible()
   await expect(page.getByText('Program ini untuk jabatan Engineer Service Delivery.')).toBeVisible()
   await expect(page.getByText('Diminta / draf')).toBeVisible()

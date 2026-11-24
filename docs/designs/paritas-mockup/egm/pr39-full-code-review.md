@@ -72,7 +72,7 @@ P9 (branch `paritas-p9` dari `ea7d1c4`, 24 Nov). Perbaikan perilaku dikerjakan t
 | SM-8 | Tunda | Nada mode online/offline: B8 menerima `mode` string bebas dari API, B14 enum; warnanya sudah sama (training/improvement). Menyatukan butuh modul lintas paket; nilai kecil, risiko impor lintas layar |
 | SM-9 | Tolak | `gapFilterOf.keep` mengikat kunci gap; menghapusnya menyebar `findingsInGap(rows, key)` ke tiga pemanggil (antrean, solusi, ekspor). Bukan middle man murni |
 | SP-1 | Perbaiki | AA-4, TN-10, IN-11, ADM-1 menjadi Diputuskan; hitungan README dikoreksi. `d2d3a7c` |
-| SP-2 | Tunda | LI-14 kembali Terbuka: chip "Contoh (dummy)" menyebut data contoh yang tidak ada di aplikasi; perlu keputusan user (label jujur atau 1:1). `d2d3a7c` |
+| SP-2 | Tunda | LI-14 kembali Terbuka: chip "Contoh (dummy)" menyebut data contoh yang tidak ada di aplikasi; perlu keputusan user (label jujur atau 1:1). `d2d3a7c`. 24 Nov: user memilih label jujur (hijau/netral); LI-14 Diputuskan, e2e penjaga ditambah |
 | SP-3 | Tunda | LD-10 kembali Terbuka: placeholder tanggal tidak bisa tampil di `input type=date`; butuh input teks + parser (bukan kecil) atau keputusan. `d2d3a7c` |
 | SP-4 | Perbaiki | `competencyId` baris Pareto ditulis di B3; perubahan `parseGapQuery` ditulis di B5. `AdminLinks.vue` sudah diterima user di triase P7 (dicatat di baris ADM-1). `d2d3a7c` |
 | SP-5 | Perbaiki | B7 web Keputusan 2/3 mengikuti R1 dan audit 39-2; komentar `b7-tinjauan/routes.ts` diperbarui. `c5aabc3`, `d2d3a7c` |

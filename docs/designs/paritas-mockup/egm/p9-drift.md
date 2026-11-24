@@ -25,7 +25,7 @@ Dasar: branch `paritas-p9` (dari `ea7d1c4`), setelah triase [pr39-full-code-revi
 | D1 | B0 5.3 aturan 1: `views` rute = `views` butir menu | Rute `users`, `jobs`, `cfg` memakai `['admin','hr','super']`, menu `['admin']` | Menunggu persetujuan Andrian (S-2); alasan di komentar `b11-admin/routes.ts` |
 | D2 | B0: hanya token `--el-*` | `box-shadow` mentah di `b17-asisten/ShellExtra.vue` (panel) dan `b9-ina/ShellExtra.vue` | Usul token bayangan di B0 (S-3) |
 | D3 | B0 bagian 4: komponen `Ui*` untuk kontrol | `<button>` bergaya sendiri: `b17-chip`, `iv-ac`, `cp-pick`, pemilih jabatan `ProgramView.vue` | Usul `UiChoiceChip` di B0 (S-4) |
-| D4 | Mockup LI-14 | Chip netral "Belum tersedia" untuk jabatan tanpa kamus | Terbuka, perlu keputusan user (SP-2) |
+| D4 | Mockup LI-14 | Chip netral "Belum tersedia" untuk jabatan tanpa kamus | Selesai: keputusan user 24 Nov memilih hijau bila kamus ada, netral bila belum (perilaku sekarang) |
 | D5 | Mockup LD-10 | `input type=date` tanpa placeholder tanggal | Terbuka (SP-3) |
 | D6 | B5 §15: tipe `Gap` bersama | Kolom `focus*` masih lima field datar (sumber kolom kini satu, `GAP_MATCH_COLUMNS`) | Ditunda ke S2 (SM-5) |
 | D7 | `?ubah=` satu pola (K-P3-10) | Dua implementasi (CC, INA) dengan perilaku sedikit berbeda | Ditunda (CD-9) |
