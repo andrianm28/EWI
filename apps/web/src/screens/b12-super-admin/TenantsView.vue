@@ -18,18 +18,12 @@ const noticeTone = ref<'success' | 'warning'>('success')
 const errors = ref<{ message: string; fieldId?: string }[]>([])
 const sort = ref<UiSortState | null>(null)
 const fail = (e: unknown) => (e instanceof ApiError ? e.message : 'Terjadi kesalahan. Coba lagi.')
-// Jawaban yang bentuknya tidak dikenal diberi pesan, bukan layar kosong (cek data asli 24 Nov).
-const BAD_TENANTS = 'Data tenant tidak bisa dibaca. Muat ulang halaman; bila masih gagal, hubungi tim ELGOS.'
-const BAD_MODULES = 'Data modul tidak bisa dibaca. Tutup panel lalu coba lagi.'
-const isObj = (x: unknown): x is Record<string, unknown> => !!x && typeof x === 'object' && !Array.isArray(x)
-const isTenantList = (x: unknown): x is TenantList => isObj(x) && isObj(x.kpis) && Array.isArray(x.tenants)
 
 async function load() {
   loadError.value = ''
   try {
     const [t, s] = await Promise.all([platform.tenants(), platform.settings()])
-    if (isTenantList(t.data)) list.value = t.data
-    else { list.value = null; loadError.value = BAD_TENANTS }
+    list.value = t.data
     encryption.value = s.data.encryptionProvider
   } catch (e) {
     loadError.value = fail(e)
@@ -115,16 +109,22 @@ const selected = ref<PlatformTenant | null>(null)
 const modules = ref<TenantModule[]>([])
 const moduleError = ref('')
 const modulesLoading = ref(false)
+// Token permintaan: jawaban tenant yang sudah ditinggalkan (pindah tenant cepat) dibuang
+let moduleRequest = 0
 async function openModules(t: PlatformTenant) {
+  const req = ++moduleRequest
   selected.value = t
   moduleError.value = ''
   modules.value = []
   modulesLoading.value = true
   try {
-    const data: unknown = (await platform.modules(t.id)).data
-    if (Array.isArray(data)) modules.value = data as TenantModule[]
-    else moduleError.value = BAD_MODULES
-  } catch (e) { moduleError.value = fail(e) } finally { modulesLoading.value = false }
+    const rows = (await platform.modules(t.id)).data
+    if (req === moduleRequest) modules.value = rows
+  } catch (e) {
+    if (req === moduleRequest) moduleError.value = fail(e)
+  } finally {
+    if (req === moduleRequest) modulesLoading.value = false
+  }
 }
 async function toggle(m: TenantModule, enabled: boolean) {
   if (!selected.value) return
@@ -223,7 +223,8 @@ const accessLabel = (m: TenantModule) => (m.entitled === null ? 'Tidak perlu lan
             <caption class="el-sr-only">Modul {{ selected.name }}</caption>
             <thead><tr><th scope="col">Modul</th><th scope="col">Akses</th><th scope="col">Status</th><th scope="col">Nyalakan</th></tr></thead>
             <tbody>
-              <tr v-if="!modulesLoading && !moduleError && modules.length === 0"><td colspan="4" class="el-muted">Belum ada modul untuk tenant ini.</td></tr>
+              <tr v-if="modulesLoading"><td colspan="4" class="el-muted">Memuat modul…</td></tr>
+              <tr v-else-if="!moduleError && modules.length === 0"><td colspan="4" class="el-muted">Belum ada modul untuk tenant ini.</td></tr>
               <tr v-for="m in modules" :key="m.key">
                 <th scope="row">{{ m.name }} <UiChip v-if="m.earlyAccess" tone="review">Akses awal</UiChip></th>
                 <td>{{ accessLabel(m) }}</td>

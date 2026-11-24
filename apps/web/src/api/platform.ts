@@ -55,16 +55,29 @@ export const ATTEMPT_LABEL: Record<AttemptOutcome, string> = {
 }
 
 const token = () => useSessionStore().token
+
+// Jawaban yang bentuknya tidak dikenal menjadi ApiError berpesan, bukan layar kosong (cek data asli 24 Nov).
+const BAD_TENANTS = 'Data tenant tidak bisa dibaca. Muat ulang halaman; bila masih gagal, hubungi tim ELGOS.'
+const BAD_MODULES = 'Data modul tidak bisa dibaca. Tutup panel lalu coba lagi.'
+const isObj = (x: unknown): x is Record<string, unknown> => !!x && typeof x === 'object' && !Array.isArray(x)
+const isModule = (x: unknown): x is TenantModule => isObj(x) && typeof x.key === 'string'
+function shaped<T>(res: { data: unknown }, ok: (x: unknown) => boolean, message: string): { data: T } {
+  if (!isObj(res) || !ok(res.data)) throw new ApiError(200, 'BAD_RESPONSE', message)
+  return res as { data: T }
+}
 const call = <T>(path: string, init: RequestInit = {}) => api<T>(`${ROOT}${path}`, init, token())
 const send = <T>(method: string, path: string, body?: unknown) => call<T>(path, { method, body: body === undefined ? undefined : JSON.stringify(body) })
 
 export const platform = {
-  tenants: () => call<{ data: TenantList }>('/tenants'),
+  tenants: async () => shaped<TenantList>(await call<{ data: unknown }>('/tenants'),
+    (x) => isObj(x) && isObj(x.kpis) && Array.isArray(x.tenants), BAD_TENANTS),
   checkTenant: (body: CreateTenantInput) => send<{ data: CheckTenantResult }>('POST', '/tenants?dryRun=1', body),
   createTenant: (body: CreateTenantInput) => send<{ data: CreateTenantResult }>('POST', '/tenants', body),
   reinvite: (tenantId: string) => send<{ data: { invitation: 'sent' } }>('POST', `/tenants/${tenantId}/invite`, {}),
-  modules: (tenantId: string) => call<{ data: TenantModule[] }>(`/tenants/${tenantId}/modules`),
-  setModule: (tenantId: string, key: string, enabled: boolean) => send<{ data: TenantModule }>('PUT', `/tenants/${tenantId}/modules/${key}`, { enabled }),
+  modules: async (tenantId: string) => shaped<TenantModule[]>(await call<{ data: unknown }>(`/tenants/${tenantId}/modules`),
+    (x) => Array.isArray(x) && x.every(isModule), BAD_MODULES),
+  setModule: async (tenantId: string, key: string, enabled: boolean) =>
+    shaped<TenantModule>(await send<{ data: unknown }>('PUT', `/tenants/${tenantId}/modules/${key}`, { enabled }), isModule, BAD_MODULES),
   settings: () => call<{ data: PlatformSettings }>('/settings'),
   updateSettings: (patch: Partial<PlatformSettings['editable']>) => send<{ data: PlatformSettings }>('PUT', '/settings', patch),
   aiQuality: (days = 30) => call<{ data: AiQualityRow[] }>(`/ai-quality?days=${days}`),
