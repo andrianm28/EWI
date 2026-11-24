@@ -43,24 +43,60 @@ test('HR membuka tinjauan dari detail gap; breadcrumb kembali ke asal gap', asyn
   await expect(page).toHaveURL(/\/tna\?tab=kompetensi$/)
 })
 
-test('daftar temuan: keyakinan AI, saran AI untuk draf, pilihan sesuai keputusan, tanpa rincian (PO-6)', async ({ page }) => {
-  await setup(page)
+// Keputusan user 24 Nov "Ikuti mockup penuh": saran AI dipilihkan, meta hanya "· AI n%", tanpa tautan antrean lama
+test('daftar temuan: saran AI dipilihkan untuk draf, meta hanya keyakinan AI, tanpa rincian (PO-6) dan tanpa tautan antrean', async ({ page }) => {
+  const sent = await setup(page)
   await page.goto(ALAMAT)
   const temuan = kartu(page, 'Temuan dan klasifikasi')
   await expect(temuan.getByRole('listitem')).toHaveCount(3)
   const draf = baris(page, 'Kesulitan menentukan akar masalah')
-  await expect(draf).toContainText('· AI 90%')
-  await expect(draf).toContainText('saran AI: Training Needs')
-  // draf belum diputus: tidak ada pilihan aktif
-  for (const label of ['Training Needs', 'Improvement Needs', 'Perlu ditinjau HR']) await expect(draf.getByRole('button', { name: label })).toHaveAttribute('aria-pressed', 'false')
+  await expect(draf.locator('.b7-finding__text')).toHaveText('Kesulitan menentukan akar masalah (teknik analisis) · AI 90%')
+  // draf belum diputus: saran AI tampil terpilih (mockup `rev`), belum dikirim ke server
+  await expect(draf.getByRole('button', { name: 'Training Needs' })).toHaveAttribute('aria-pressed', 'true')
+  for (const label of ['Improvement Needs', 'Perlu ditinjau HR']) await expect(draf.getByRole('button', { name: label })).toHaveAttribute('aria-pressed', 'false')
+  expect(sent.filter((x) => x.path.startsWith('classify'))).toEqual([])
   const perbaikan = baris(page, 'Tidak ada template baku')
+  await expect(perbaikan.locator('.b7-finding__text')).toHaveText('Tidak ada template baku · AI 92%')
   await expect(perbaikan.getByRole('button', { name: 'Improvement Needs' })).toHaveAttribute('aria-pressed', 'true')
-  await expect(perbaikan).not.toContainText('saran AI')
   // sudah diputus: tidak bisa kembali ke "Perlu ditinjau HR" (API 409 ALREADY_REVIEWED)
   await expect(perbaikan.getByRole('button', { name: 'Perlu ditinjau HR' })).toBeDisabled()
   await expect(page.getByText(RINCIAN_RAHASIA)).toHaveCount(0)
-  // fitur kelola di luar mockup: lewat antrean lama
-  await expect(temuan.getByRole('link', { name: 'Ubah teks atau tolak temuan di antrean tinjauan' })).toHaveAttribute('href', '/m/tna/review')
+  await expect(page.getByText('saran AI')).toHaveCount(0)
+  await expect(page.getByText('Dimas')).toHaveCount(0)
+  await expect(temuan.getByRole('link')).toHaveCount(0)
+})
+
+test('saran AI terpilih: klik pilihan yang sama menyimpannya lewat classify', async ({ page }) => {
+  const sent = await setup(page)
+  await page.goto(ALAMAT)
+  const draf = baris(page, 'Kesulitan menentukan akar masalah')
+  await draf.getByRole('button', { name: 'Training Needs' }).click()
+  await expect.poll(() => sent.filter((x) => x.path === `classify ${T_DRAF}`).map((x) => x.body)).toEqual([{ classification: 'training' }])
+  await expect(draf.getByRole('button', { name: 'Training Needs' })).toHaveAttribute('aria-pressed', 'true')
+})
+
+test('hanya temuan dengan saran AI: kartu solusi menghitungnya; tombol menyimpan klasifikasi lalu menjalankan solusi', async ({ page }) => {
+  const sent = await setup(page, {
+    temuan: [
+      { ...TEMUAN_MOCKUP[0]! },
+      { ...TEMUAN_MOCKUP[1]!, reviewStatus: 'draft' },
+    ],
+  })
+  await page.goto(ALAMAT)
+  const solusi = kartu(page, 'Solusi pelatihan')
+  await expect(solusi).not.toContainText('Belum ada temuan yang diklasifikasi sebagai pelatihan.')
+  await solusi.getByRole('button', { name: 'Tugaskan di EliteMentor' }).click()
+  await expect(solusi.getByRole('note')).toHaveText('Penugasan terkirim ke EliteMentor. Progres akan tersinkron kembali ke ELGOS.')
+  const ina = kartu(page, 'Tindakan perbaikan')
+  await expect(ina).not.toContainText('Belum ada temuan non-pelatihan.')
+  await ina.getByRole('button', { name: 'Buat tindakan di Improvement Needs' }).click()
+  await expect(ina.getByRole('note')).toHaveText('1 tindakan perbaikan dibuat dan muncul di Improvement Needs.')
+  // klik HR = konfirmasi: klasifikasi saran disimpan dulu, baru solusinya
+  expect(sent.map((x) => x.path).filter((x) => /^(classify|plan|assign|handoff)/.test(x))).toEqual([
+    `classify ${T_DRAF}`, `plan ${T_DRAF}`, 'assign plan-1', `classify ${T_PERBAIKAN}`, 'handoff',
+  ])
+  expect(sent.find((x) => x.path === `classify ${T_PERBAIKAN}`)?.body).toEqual({ classification: 'improvement' })
+  expect(sent.find((x) => x.path === 'handoff')?.body).toEqual({ findingIds: [T_PERBAIKAN] })
 })
 
 test('klasifikasi tersimpan langsung lewat classify', async ({ page }) => {
@@ -69,7 +105,7 @@ test('klasifikasi tersimpan langsung lewat classify', async ({ page }) => {
   const draf = baris(page, 'Kesulitan menentukan akar masalah')
   await draf.getByRole('button', { name: 'Improvement Needs' }).click()
   await expect(draf.getByRole('button', { name: 'Improvement Needs' })).toHaveAttribute('aria-pressed', 'true')
-  await expect(draf).not.toContainText('saran AI')
+  await expect(draf.getByRole('button', { name: 'Training Needs' })).toHaveAttribute('aria-pressed', 'false')
   expect(sent.find((s) => s.path === `classify ${T_DRAF}`)?.body).toEqual({ classification: 'improvement' })
 })
 
@@ -126,7 +162,8 @@ test('klasifikasi terkunci selama solusi dijalankan', async ({ page }) => {
   await expect(pilih).toHaveAttribute('aria-disabled', 'true')
   await pilih.click({ force: true })
   await expect(kartu(page, 'Solusi pelatihan').getByRole('note')).toBeVisible()
-  expect(sent.filter((s) => s.path.startsWith('classify'))).toEqual([])
+  // hanya konfirmasi saran AI dari tombol solusi; klik selama solusi berjalan diabaikan
+  expect(sent.filter((s) => s.path.startsWith('classify'))).toEqual([{ path: `classify ${T_DRAF}`, body: { classification: 'training' } }])
 })
 
 test('klasifikasi 409: pesan API dan nilai dari server tampil setelah dimuat ulang', async ({ page }) => {
@@ -186,7 +223,7 @@ test('penugasan 409 untuk satu temuan: pesan "{judul}: …", temuan lain tetap t
   await kartu(page, 'Solusi pelatihan').getByRole('button', { name: 'Tugaskan di EliteMentor' }).click()
   await expect(galatTeks(page)).toContainText('Praktik dan umpan balik sangat minim: Penugasan rencana ini sedang dikirim. Coba lagi sebentar.')
   await expect(galatTeks(page)).not.toContainText('Belum terbiasa menulis laporan insiden')
-  expect(sent.map((s) => s.path).filter((p) => /^(plan|assign)/.test(p))).toEqual([`plan ${T_PELATIHAN}`, 'assign plan-3', `plan ${T_KEDUA}`, 'assign plan-4'])
+  expect(sent.map((s) => s.path).filter((p) => /^(plan|assign)/.test(p))).toEqual([`plan ${T_DRAF}`, 'assign plan-1', `plan ${T_PELATIHAN}`, 'assign plan-3', `plan ${T_KEDUA}`, 'assign plan-4'])
   // yang gagal masih bisa dicoba lagi
   await expect(kartu(page, 'Solusi pelatihan').getByRole('button', { name: 'Tugaskan di EliteMentor' })).toBeVisible()
 })
@@ -203,7 +240,8 @@ test('solusi pelatihan: modul rekomendasi, tugaskan di EliteMentor (rencana lalu
   await solusi.getByRole('button', { name: 'Tugaskan di EliteMentor' }).click()
   await expect(solusi.getByRole('note')).toHaveText('Penugasan terkirim ke EliteMentor. Progres akan tersinkron kembali ke ELGOS.')
   await expect(solusi.getByRole('button', { name: 'Tugaskan di EliteMentor' })).toHaveCount(0)
-  expect(sent.map((s) => s.path).filter((p) => p.startsWith('plan') || p.startsWith('assign'))).toEqual([`plan ${T_PELATIHAN}`, 'assign plan-3'])
+  // saran AI temuan draf ikut dikonfirmasi lebih dulu (keputusan user 24 Nov)
+  expect(sent.map((s) => s.path).filter((p) => /^(classify|plan|assign)/.test(p))).toEqual([`classify ${T_DRAF}`, `plan ${T_DRAF}`, 'assign plan-1', `plan ${T_PELATIHAN}`, 'assign plan-3'])
 })
 
 test('tenant belajar di LMS sendiri: buat rencana saja, lalu unduh daftar gap', async ({ page }) => {
@@ -217,7 +255,7 @@ test('tenant belajar di LMS sendiri: buat rencana saja, lalu unduh daftar gap', 
   const unduh = page.waitForEvent('download')
   await solusi.getByRole('button', { name: 'Unduh daftar gap (CSV)' }).click()
   await unduh
-  expect(sent.map((s) => s.path).filter((p) => /^(plan|assign|export)/.test(p))).toEqual([`plan ${T_PELATIHAN}`, 'export.csv'])
+  expect(sent.map((s) => s.path).filter((p) => /^(plan|assign|export)/.test(p))).toEqual([`plan ${T_DRAF}`, `plan ${T_PELATIHAN}`, 'export.csv'])
   // P9 IR-5: CSV di layar per gap hanya gap ini (rujukan gap ikut, tanpa tab asal)
   expect(sent.find((s) => s.path === 'export.csv')?.body).toEqual({ kind: 'competency', competencyId: ID_KOMPETENSI })
 })
@@ -245,7 +283,8 @@ test('modul Improvement Needs mati: tombol serah tidak tampil', async ({ page })
 })
 
 test('tanpa temuan pelatihan dan non-pelatihan: teks kosong mockup', async ({ page }) => {
-  await setup(page, { temuan: [TEMUAN_MOCKUP[0]!] })
+  // saran AI "Perlu ditinjau HR" (keyakinan rendah) tidak dihitung kartu solusi mana pun (mockup)
+  await setup(page, { temuan: [{ ...TEMUAN_MOCKUP[0]!, confidence: 0.4 }] })
   await page.goto(ALAMAT)
   await expect(kartu(page, 'Solusi pelatihan')).toContainText('Belum ada temuan yang diklasifikasi sebagai pelatihan.')
   await expect(kartu(page, 'Tindakan perbaikan')).toContainText('Belum ada temuan non-pelatihan.')

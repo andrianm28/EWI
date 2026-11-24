@@ -10,13 +10,16 @@ withDefaults(defineProps<{
   variant?: 'joined' | 'chips'
 }>(), { variant: 'joined' })
 const model = defineModel<string>({ required: true })
+// `select` dikirim di setiap klik, juga pada opsi yang sudah terpilih (B7: klik saran AI yang tampil terpilih = konfirmasi)
+const emit = defineEmits<{ select: [key: string] }>()
+function pick(key: string) { model.value = key; emit('select', key) }
 </script>
 
 <template>
   <div :class="['el-seg', { 'el-seg--chips': variant === 'chips' }]" role="group" :aria-label="label">
     <button
       v-for="o in options" :key="o.key" type="button" :class="{ 'is-on': o.key === model }" :aria-pressed="o.key === model"
-      :disabled="o.disabled" :aria-disabled="o.pending ? 'true' : undefined" @click="!o.pending && (model = o.key)"
+      :disabled="o.disabled" :aria-disabled="o.pending ? 'true' : undefined" @click="!o.pending && pick(o.key)"
     >
       {{ o.label }}
     </button>

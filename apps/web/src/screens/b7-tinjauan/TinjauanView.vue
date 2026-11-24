@@ -58,8 +58,29 @@ const LABEL: Record<ReviewClassification, string> = {
   training: CLASSIFICATION_LABEL.training, improvement: CLASSIFICATION_LABEL.non_training, needs_review: CLASSIFICATION_LABEL.review,
 }
 const decided = (f: ReviewItem) => f.reviewStatus === 'approved' || f.reviewStatus === 'edited'
-/** Pilihan tersimpan; '' = draf yang belum diputus (saran AI tidak dipilihkan, keputusan 4 spek tahap). */
+/** Pilihan tersimpan di server; '' = draf yang belum diputus HR. */
 const current = (f: ReviewItem): string => (decided(f) ? KEY_OF_CATEGORY[f.category] : f.held ? 'needs_review' : '')
+/**
+ * Keputusan user 24 Nov "Ikuti mockup penuh" (mockup `rev`: `decided[i] || f.type`): draf yang belum diputus tampil
+ * dengan saran AI terpilih. Saran itu belum tersimpan; klik HR pada pilihan itu atau pada tombol solusi menyimpannya.
+ */
+const preselected = (f: ReviewItem): string => (f.reviewStatus === 'draft' && !f.held ? f.suggestedClassification : '')
+const shown = (f: ReviewItem): string => current(f) || preselected(f)
+/** Temuan draf yang saran AI-nya `key` dan belum dikonfirmasi HR (dihitung kartu solusi seperti mockup). */
+const unconfirmed = (key: ReviewClassification) => items.value.filter((f) => !current(f) && preselected(f) === key)
+/** Simpan saran AI `key` yang belum dikonfirmasi (klik tombol solusi = konfirmasi HR). Return galat per temuan. */
+async function confirmSuggestions(key: ReviewClassification) {
+  const failed: { message: string }[] = []
+  const todo = unconfirmed(key)
+  for (const f of todo) {
+    try {
+      const out = (await lna.classifyFinding(f.id, key)).data
+      items.value = items.value.map((x) => (x.id === f.id ? out : x))
+    } catch (e) { failed.push({ message: `${f.title}: ${message(e, 'klasifikasi gagal disimpan')}` }) }
+  }
+  if (todo.length > failed.length) solutions.value = (await lna.reviewSolutions(gapQuery.value!)).data
+  return failed
+}
 const planned = computed(() => new Set((solutions.value?.training ?? []).filter((t) => t.planItem).map((t) => t.findingId)))
 /** Sudah ditindaklanjuti (rencana atau serah ke Improvement Needs): API menolak klasifikasi ulang (409 ALREADY_ACTIONED). */
 const actioned = (f: ReviewItem) => !!f.handedOffAt || planned.value.has(f.id)
@@ -74,7 +95,7 @@ function setPending(id: string, on: boolean) {
   if (on) next.add(id); else next.delete(id)
   pendingIds.value = next
 }
-const pct = (c: number | null) => (c === null ? '' : `· AI ${Math.round(c * 100)}%`)
+const pct = (c: number | null) => (c === null ? '' : ` · AI ${Math.round(c * 100)}%`)
 
 async function classify(f: ReviewItem, key: string) {
   if (key === current(f) || busy.value || pendingIds.value.has(f.id)) return
@@ -110,14 +131,20 @@ const moduleMeta = computed(() => {
   if (!m) return ''
   return [m.tier ? `Level ${TIER_LABEL[m.tier] ?? m.tier}` : '', m.competency ?? ''].filter(Boolean).join(' · ')
 })
-const allSent = computed(() => training.value.length > 0 && training.value.every((t) => t.planItem?.assignmentStatus === 'sent'))
-const allPlanned = computed(() => training.value.length > 0 && training.value.every((t) => t.planItem))
+const pendingTraining = computed(() => unconfirmed('training').length)
+const hasTraining = computed(() => training.value.length > 0 || pendingTraining.value > 0)
+const allSent = computed(() => !pendingTraining.value && training.value.length > 0 && training.value.every((t) => t.planItem?.assignmentStatus === 'sent'))
+const allPlanned = computed(() => !pendingTraining.value && training.value.length > 0 && training.value.every((t) => t.planItem))
 
 async function runTraining() {
   if (!delivery.value) return
   errors.value = []; busy.value = true
   const failed: { message: string }[] = []
   let wrote = false
+  try { failed.push(...(await confirmSuggestions('training'))) } catch {
+    // klasifikasi tersimpan, hanya muat ulang solusi yang gagal: solusi tidak dijalankan dengan data lama
+    errors.value = [savedButStale('Klasifikasi tersimpan')]; busy.value = false; return
+  }
   for (const t of training.value) {
     try {
       const planId = t.planItem?.id ?? (await lna.planFinding(t.findingId)).data.id
@@ -140,21 +167,30 @@ async function downloadCsv() {
 
 // --- Tindakan perbaikan (mockup `makeIna`): temuan diteruskan ke modul Improvement Needs (B9); teks sukses persis mockup (review 24 Nov) ---
 const improvement = computed(() => solutions.value?.improvement ?? [])
+const pendingImprovement = computed(() => unconfirmed('improvement').length)
+const hasImprovement = computed(() => improvement.value.length > 0 || pendingImprovement.value > 0)
 const pendingHandoff = computed(() => improvement.value.filter((i) => !i.handedOffAt))
 const handedNote = computed(() => {
+  if (pendingImprovement.value) return null
   if (handedCount.value !== null) return handedCount.value
   return improvement.value.length && !pendingHandoff.value.length ? improvement.value.length : null
 })
 async function handoff() {
   errors.value = []; busy.value = true
   let saved = false
+  let failed: { message: string }[] = []
   try {
-    const r = (await lna.handoffImprovement(pendingHandoff.value.map((i) => i.findingId))).data
-    handedCount.value = r.handedOff.length + r.already.length
-    saved = true
-    await refresh(gapQuery.value!)
+    failed = await confirmSuggestions('improvement')
+    const ids = pendingHandoff.value.map((i) => i.findingId)
+    if (ids.length) {
+      const r = (await lna.handoffImprovement(ids)).data
+      handedCount.value = r.handedOff.length + r.already.length
+      saved = true
+      await refresh(gapQuery.value!)
+    }
+    errors.value = failed
   } catch (e) {
-    errors.value = [saved ? savedButStale('Temuan diteruskan ke Improvement Needs dan tersimpan') : { message: message(e, 'Temuan tidak bisa diteruskan') }]
+    errors.value = [...failed, saved ? savedButStale('Temuan diteruskan ke Improvement Needs dan tersimpan') : { message: message(e, 'Temuan tidak bisa diteruskan') }]
   } finally { busy.value = false }
 }
 </script>
@@ -173,23 +209,23 @@ async function handoff() {
         <ul class="b7-findings">
           <li v-for="f in items" :key="f.id" class="b7-finding">
             <div class="b7-finding__text">
-              {{ f.title }} <span class="el-muted b7-small">{{ pct(f.confidence) }}<template v-if="f.userName"> · {{ f.userName }}</template><template v-if="!current(f)"> · saran AI: {{ LABEL[f.suggestedClassification] }}</template></span>
+              {{ f.title }}<span class="el-muted b7-small">{{ pct(f.confidence) }}</span>
             </div>
             <UiSegmented
-              :model-value="current(f)" :options="optionsFor(f)" variant="chips" :label="`Klasifikasi: ${f.title}`"
-              @update:model-value="classify(f, $event)"
+              :model-value="shown(f)" :options="optionsFor(f)" variant="chips" :label="`Klasifikasi: ${f.title}`"
+              @select="classify(f, $event)"
             />
           </li>
         </ul>
         <p v-if="!items.length" class="el-muted">Belum ada temuan AI untuk gap ini.</p>
-        <p class="b7-small b7-gap-m"><RouterLink :to="{ name: 'tna-review' }" class="b7-link">Ubah teks atau tolak temuan di antrean tinjauan</RouterLink></p>
       </UiCard>
 
       <div class="b7-col">
         <UiCard>
           <div class="b7-head"><h3 class="el-h3 b7-h3">Solusi pelatihan</h3><UiChip tone="training">Training Needs</UiChip></div>
-          <template v-if="training.length">
-            <div class="b7-mod">
+          <template v-if="hasTraining">
+            <!-- hanya saran AI yang belum dikonfirmasi: rekomendasi modul belum dihitung server, blok modul tidak ditampilkan -->
+            <div v-if="training.length" class="b7-mod">
               <template v-if="module_">
                 <span class="el-mono b7-mod__code">{{ module_.code }}</span>
                 <div class="b7-mod__name">{{ module_.name }}</div>
@@ -220,7 +256,7 @@ async function handoff() {
 
         <UiCard>
           <div class="b7-head"><h3 class="el-h3 b7-h3">Tindakan perbaikan</h3><UiChip tone="improvement">Improvement Needs</UiChip></div>
-          <template v-if="improvement.length">
+          <template v-if="hasImprovement">
             <div class="el-muted b7-explain">Temuan non-pelatihan menjadi tindakan perbaikan (SOP, alat, sistem, atau budaya) dengan pemilik dan tenggat.</div>
             <UiNote v-if="handedNote !== null" tone="success">{{ handedNote }} tindakan perbaikan dibuat dan muncul di Improvement Needs.</UiNote>
             <template v-else-if="solutions.inaEnabled">
