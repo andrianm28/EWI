@@ -1,6 +1,6 @@
 # Rencana migrasi frontend ELGOS: Vue 3 ke React (+ Next.js)
 
-Status: **draf rencana v2, belum ada kode. D2 diputuskan user 24 Nov 23.30 WIB: React + Vite (N3), Next.js tidak wajib** (v1 direview tiga ikan mas egm, triase di `migrasi-react-nextjs-egm.md`).
+Status: **rencana disimpan untuk masa depan, migrasi DIBATALKAN user 24 Nov 23.34 WIB** ("abort migrasi"; "tetap simpan rencana migrasi mungkin kedepannya akan dilakukan"). Sebelumnya D2 diputuskan 23.30 WIB: React + Vite (N3), Next.js tidak wajib. Tidak ada kode migrasi yang dibuat di repo. Riset popularitas dan pemahaman agen AI ada di bagian 13 (v1 direview tiga ikan mas egm, triase di `migrasi-react-nextjs-egm.md`).
 Diminta user 24 Nov 2026: "plan refactor frontend vue ke react dan nextjs".
 Cakupan: `apps/web` di repo ini (ELGOS). `elitery/lti-dashboard-vue` (EliteMentor) tidak termasuk.
 Dasar kode yang diukur: `claude/project-thread-scbrmb` head `7df8dc4` (cabang integrasi ELGOS; sudah berisi PR #39 paritas mockup dan PR #47 data demo).
@@ -224,6 +224,47 @@ Tiket perbaikan sesudah potong-alih (F5):
 - [ ] F3: satu PR per paket sesuai urutan bagian 8
 - [ ] F4: rencana potong-alih dan rollback bersama thread infra
 - [ ] F5: hapus Vue, perbarui `b0-fondasi-ui.md`, CLAUDE.md, CI; buka tiket bagian 9
+
+## 13. Riset: apakah React paling populer dan paling dipahami agen AI? (24 Nov 2026)
+
+Diminta user 24 Nov 23.36 WIB. Sumber primer diambil pada hari yang sama.
+
+**Kesimpulan singkat.** React memang paling **populer**, dan selisihnya jelas. Untuk **pemahaman agen AI**, React ada di atau dekat posisi teratas pada benchmark yang tersedia, tetapi buktinya tipis, sebagian besar memakai model 2025, dan tidak konsisten antar-metrik. Selisih React dan Vue di kemampuan agen tidak cukup besar untuk membenarkan migrasi sendirian.
+
+### 13.1 Popularitas (bukti kuat)
+
+| Sumber | React | Vue | Angular | Svelte | Catatan |
+| --- | --- | --- | --- | --- | --- |
+| [Stack Overflow Developer Survey 2026](https://survey.stackoverflow.co/2026/technology/data/web-framework), dipakai (n = 10.281) | 41,5% | 17,2% | 16,0% | 7,8% | Next.js 20,6%, Nuxt 4,4% |
+| [SO 2026 admired/desired](https://survey.stackoverflow.co/2026/technology/data/da-webframe): ingin dipakai / dikagumi | 24,2% / 46,7% | 13,4% / 47,2% | 10,4% / 42,1% | 9,9% / 59,4% | Vue sedikit lebih dikagumi daripada React; Svelte tertinggi |
+| npm, unduhan 25 Okt – 23 Nov 2026 ([api.npmjs.org](https://api.npmjs.org/downloads/point/last-month/react)) | 1,10 miliar | 108 juta | 35 juta (`@angular/core`) | 41 juta | Termasuk unduhan sebagai dependensi tidak langsung, jadi melebih-lebihkan angka pemakaian; rasio React:Vue sekitar 10:1 |
+| [State of JS 2025](https://2025.stateofjs.com/en-US/libraries/front-end-frameworks/) | — | — | — | — | Halaman tidak bisa diverifikasi angkanya dari sini; ringkasan sekunder saling bertentangan, jadi tidak dipakai |
+
+### 13.2 Pemahaman agen/LLM per framework (bukti tipis)
+
+| Studi | Yang diukur | Hasil React vs Vue | Catatan |
+| --- | --- | --- | --- |
+| [Web-Bench (arXiv 2505.07473)](https://arxiv.org/html/2505.07473v1) | Pass@2 tugas proyek web | Claude 3.7: React 65, Vue 30, Angular 40, Svelte 25. Dengan thinking: 60 / 40 / 50 / 55. GPT-4o: 35 / 30 / 5 / 20 | React unggul di semua model yang diuji. Penulis mengaitkannya dengan data latih React yang lebih banyak; Angular dinilai tata bahasanya paling rumit |
+| [DesignBench (arXiv 2506.06251)](https://arxiv.org/html/2506.06251) | Kompilasi berhasil, kemiripan visual, edit, perbaikan | Claude 3.7: kompilasi React 0,954 vs Vue 0,975; skor edit Vue 8,36 vs React 8,18; skor perbaikan React 6,79 vs Vue 6,59 | Vue setara atau sedikit lebih baik di beberapa metrik. Angular paling lemah. HTML/CSS polos paling mudah |
+| [WebCompass (arXiv 2604.18224)](https://arxiv.org/abs/2604.18224) | Evaluasi web coding multimodal | Dilaporkan: Vue terendah di sebagian besar kombinasi model–tugas | `[⚠️ BELUM TERVERIFIKASI]`: PDF tidak bisa dibaca, klaim hanya dari ringkasan pencarian |
+| [MulFCoder (arXiv 2610.34418)](https://arxiv.org/html/2610.34418) | Jenis galat per framework | React gagal di parsing JSX dan batas komponen klien; Vue gagal di template dan atribut | Pola galat berbeda, bukan peringkat |
+
+Batasan bukti:
+- Benchmark kebanyakan memakai model awal–pertengahan 2025 (Claude 3.7, GPT-4o). Belum ada benchmark publik untuk model akhir 2026 atau untuk agen yang bekerja di dalam repo nyata.
+- Benchmark mengukur pembuatan dari nol (layar dari tangkapan gambar). Pekerjaan ELGOS lain jenisnya: agen membaca repo yang sudah punya kontrak (`routes.ts`, `Ui*`), CLAUDE.md, spek di `docs/designs/` dan 401 e2e.
+- Kesulitan framework yang paling terdokumentasi adalah **sintaks yang baru berubah** (contohnya Svelte 4 vs Svelte 5 runes, sehingga Svelte menerbitkan [llms.txt](https://svelte.dev/llms.txt)). Vue 3 Composition API dan `<script setup>` sudah stabil sejak 2020–2021, jadi risiko ini kecil untuk ELGOS.
+
+### 13.3 Inferensi (bukan fakta terukur)
+
+- Data latih React lebih banyak, jadi agen lebih jarang salah di React saat membuat kode tanpa konteks. Di repo dengan konvensi dan test yang kuat, keunggulan ini kemungkinan menyempit, karena agen meniru pola yang ada. Belum ada studi yang mengukurnya.
+- Yang terbukti meningkatkan hasil agen di repo ini adalah konteks (spek, CLAUDE.md, e2e). Kapasitas itu sudah ada dan tidak bergantung pada framework.
+
+### 13.4 Arti untuk ELGOS
+
+- Alasan "React paling populer" benar, dan relevan untuk rekrutmen serta ekosistem.
+- Alasan "agen AI paling paham React" didukung sebagian, tetapi lemah: satu benchmark menunjukkan selisih besar, satu lagi menunjukkan Vue setara. Itu tidak cukup kuat untuk membenarkan migrasi 25–35 hari kerja menjelang dan sesudah live.
+- Tujuan menegakkan modern-web-guidance (alasan user 24 Nov) tidak menuntut React. Guide-nya tidak bergantung framework dan bisa diterapkan langsung di Vue (mis. `UiDialog` tanpa perangkap fokus manual, fokus setelah navigasi).
+- Rekomendasi: tetap di Vue. Simpan rencana ini. Tinjau ulang bila (a) tim manusia yang merawat frontend lebih kuat di React, (b) muncul benchmark agen di repo nyata dengan model terbaru yang menunjukkan selisih besar, atau (c) dibutuhkan pustaka yang hanya ada di React.
 
 ## Glosarium singkat
 
