@@ -1,11 +1,11 @@
 <script setup lang="ts">
 // Pengembangan modul (mockup, layar `lidev`): tujuan → rancangan materi → asesmen → tinjau dan ajukan ke SME.
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
-import { onBeforeRouteLeave, useRoute, useRouter } from 'vue-router'
+import { onBeforeRouteLeave, useRoute, useRouter, type RouteLocationNormalized } from 'vue-router'
 import AppShell from '@/components/AppShell.vue'
 import './li.css'
 import { ApiError } from '@/api/client'
-import { UiAuditLine, UiBreadcrumb, UiButton, UiCard, UiChip, UiErrorSummary, UiField, UiIcon, UiNote, UiStepper } from '@/ui'
+import { UiAuditLine, UiBreadcrumb, UiButton, UiCard, UiChip, UiDialog, UiErrorSummary, UiField, UiIcon, UiNote, UiStepper } from '@/ui'
 import { useSessionStore } from '@/stores/session'
 import { li, type Draft } from './api'
 import { DRAFT_LABEL, KIND_LABEL, LEVEL_LABEL } from './labels'
@@ -25,7 +25,9 @@ const STEPS = [{ key: 'tujuan', label: 'Tujuan pembelajaran' }, { key: 'materi',
 const NEXT_LABEL: Record<string, string> = { tujuan: 'Lanjut: rancang materi', materi: 'Lanjut: asesmen', asesmen: 'Lanjut: tinjau dan ajukan' }
 // K-P6-5: "Simpan perubahan" ada di menu sekunder, jadi perubahan disimpan otomatis saat pindah langkah dan saat
 // meninggalkan layar (tanpa dialog). Bila simpan gagal, langkah/rute tidak berpindah dan galat tampil.
+// Review 24 Nov: selama simpan berjalan klik berikutnya diabaikan (klik ganda tidak melompati langkah).
 async function go(d: number) {
+  if (busy.value) return
   if (dirty.value) { await save(AUTO_SAVED); if (error.value) return }
   step.value = STEPS[STEPS.findIndex((s) => s.key === step.value) + d]!.key
 }
@@ -35,11 +37,23 @@ const saved = ref('')
 const dirty = computed(() => !!draft.value && editable.value && content(draft.value) !== saved.value)
 // P9 CD-1: keluar, sesi habis, atau tujuan rute publik (login) tidak menyimpan dan tidak pernah ditahan;
 // simpan yang gagal karena sesi berakhir (401) juga tidak menahan navigasi ke login.
+// Review 24 Nov: simpan gagal (bukan 401) menawarkan "Tinggalkan tanpa menyimpan?" supaya layar tidak terkunci.
+const leaveTarget = ref<RouteLocationNormalized | null>(null)
+let discard = false
 onBeforeRouteLeave(async (to) => {
-  if (!dirty.value || !session.isAuthenticated || to.meta.public) return true
+  if (discard || !dirty.value || !session.isAuthenticated || to.meta.public) return true
   await save(AUTO_SAVED)
-  return !error.value || !session.isAuthenticated
+  if (!error.value || !session.isAuthenticated) return true
+  leaveTarget.value = to
+  return false
 })
+function leaveWithoutSaving() {
+  const to = leaveTarget.value
+  if (!to) return
+  discard = true
+  leaveTarget.value = null
+  router.push(to.fullPath).catch(() => { discard = false })
+}
 // menutup tab atau memuat ulang: hanya peringatan bawaan peramban
 const onUnload = (e: BeforeUnloadEvent) => { if (dirty.value) e.preventDefault() }
 onMounted(() => window.addEventListener('beforeunload', onUnload))
@@ -187,8 +201,8 @@ const review = (decision: 'approved' | 'returned') => act(
           </template>
 
           <div class="li-actions">
-            <UiButton v-if="step !== 'tujuan'" variant="outlined" @click="go(-1)">Kembali</UiButton>
-            <UiButton v-if="step !== 'ajukan'" @click="go(1)">{{ NEXT_LABEL[step] }}</UiButton>
+            <UiButton v-if="step !== 'tujuan'" variant="outlined" :disabled="busy" @click="go(-1)">Kembali</UiButton>
+            <UiButton v-if="step !== 'ajukan'" :disabled="busy" @click="go(1)">{{ NEXT_LABEL[step] }}</UiButton>
             <template v-else>
               <UiButton v-if="editable" :disabled="busy || vague > 0" @click="submit">Kirim ke SME untuk tinjauan</UiButton>
               <UiButton variant="tonal" :to="{ name: 'req' }">Ke daftar permintaan</UiButton>
@@ -213,6 +227,13 @@ const review = (decision: 'approved' | 'returned') => act(
         </UiCard>
       </div>
     </template>
+    <UiDialog :open="!!leaveTarget" title="Tinggalkan tanpa menyimpan?" @close="leaveTarget = null">
+      <p>Perubahan pada draf gagal disimpan. Bila Anda meninggalkan layar ini, perubahan tersebut hilang.</p>
+      <div class="li-actions">
+        <UiButton variant="outlined" @click="leaveTarget = null">Tetap di sini</UiButton>
+        <UiButton @click="leaveWithoutSaving">Tinggalkan tanpa menyimpan</UiButton>
+      </div>
+    </UiDialog>
   </AppShell>
 </template>
 

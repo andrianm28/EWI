@@ -402,6 +402,58 @@ test('P9 CD-1: sesi habis saat simpan otomatis waktu meninggalkan draf: tetap pi
   expect(calls.filter((c) => c.method === 'PUT')).toHaveLength(1)
 })
 
+// Review 24 Nov: klik ganda Lanjut saat simpan otomatis berjalan tidak melompati langkah
+test('Draf: klik ganda Lanjut saat simpan otomatis hanya maju satu langkah dan menyimpan sekali', async ({ page }) => {
+  const calls: { method: string; url: string; body: unknown }[] = []
+  await setup(page, calls)
+  let release!: () => void
+  const held = new Promise<void>((ok) => { release = ok })
+  await page.route('**/api/li/drafts/d-1', async (r: Route) => {
+    if (r.request().method() !== 'PUT') return r.fallback()
+    calls.push({ method: 'PUT', url: '/drafts/d-1', body: JSON.parse(r.request().postData() ?? 'null') })
+    await held
+    return r.fulfill({ json: { data: { ...DRAFT, ...JSON.parse(r.request().postData() ?? '{}') } } })
+  })
+  await page.goto('/req/draf/d-1')
+  await page.getByLabel('Tujuan terukur 1').fill('Menjelaskan 5 Whys pada 4 dari 5 soal')
+  const next = page.getByRole('button', { name: 'Lanjut: rancang materi' })
+  await next.dblclick()
+  await expect(next).toBeDisabled()
+  release()
+  await expect(page.getByRole('heading', { name: 'Rancangan materi' })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Kembali' })).toBeEnabled()
+  expect(calls.filter((c) => c.method === 'PUT')).toHaveLength(1)
+})
+
+// Review 24 Nov: simpan otomatis gagal saat meninggalkan draf tidak boleh mengunci layar
+test('Draf: simpan otomatis gagal saat keluar menawarkan "Tinggalkan tanpa menyimpan?"', async ({ page }) => {
+  const calls: { method: string; url: string; body: unknown }[] = []
+  await setup(page, calls)
+  await page.route('**/api/li/drafts/d-1', async (r: Route) => {
+    if (r.request().method() !== 'PUT') return r.fallback()
+    calls.push({ method: 'PUT', url: '/drafts/d-1', body: null })
+    return r.fulfill({ status: 500, json: { error: { code: 'INTERNAL', message: 'Draf tidak bisa disimpan' } } })
+  })
+  await page.goto('/req/draf/d-1')
+  await page.getByLabel('Tujuan terukur 1').fill('Menjelaskan 5 Whys pada 4 dari 5 soal')
+  const crumb = page.getByRole('navigation', { name: 'Lokasi' }).getByRole('link', { name: 'Permintaan & pengembangan' })
+  await crumb.click()
+  const dialog = page.getByRole('dialog', { name: 'Tinggalkan tanpa menyimpan?' })
+  await expect(dialog).toBeVisible()
+  await expect(page).toHaveURL(/\/req\/draf\/d-1$/)
+  // Tetap di sini: dialog tertutup, perubahan masih ada
+  await dialog.getByRole('button', { name: 'Tetap di sini' }).click()
+  await expect(dialog).toBeHidden()
+  await expect(page.getByLabel('Tujuan terukur 1')).toHaveValue('Menjelaskan 5 Whys pada 4 dari 5 soal')
+  // coba lagi lalu tinggalkan: pindah tanpa simpan ulang
+  await crumb.click()
+  await expect(dialog).toBeVisible()
+  const putsBefore = calls.filter((c) => c.method === 'PUT').length
+  await dialog.getByRole('button', { name: 'Tinggalkan tanpa menyimpan' }).click()
+  await expect(page).toHaveURL(/\/req$/)
+  expect(calls.filter((c) => c.method === 'PUT')).toHaveLength(putsBefore)
+})
+
 // Paritas P8 (docs/designs/paritas-mockup/p8-keputusan-r1-r22.md)
 test('P8 R8: rancangan modul memakai label jujur "Templat ELGOS"', async ({ page }) => {
   await setup(page)
