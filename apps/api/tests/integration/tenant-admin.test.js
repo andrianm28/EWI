@@ -216,6 +216,7 @@ run('Admin Tenant B11 (Postgres)', () => {
     expect((await patch(`/users/${id.spv}`, { status: 'disabled' })).body.data.status).toBe('disabled');
     const before = mailer.sent.length;
     await request(app).post('/api/auth/email-link').send({ tenant: slugA, email: 'spv@b11.test' });
+    await app.locals.emailLinks.drain();
     expect(mailer.sent.length).toBe(before);
     // belum pernah masuk -> kembali "diundang"; sudah pernah masuk -> aktif
     expect((await patch(`/users/${id.spv}`, { status: 'active' })).body.data.status).toBe('invited');
@@ -391,6 +392,10 @@ run('Admin Tenant B11 (Postgres)', () => {
       const res = await patch(`/users/${id.realAdminB}`, { role: 'learner' }, 'adminB');
       expect(res.status).toBe(403);
       expect(res.body.error.code).toBe('ROLE_FORBIDDEN');
+      // review 24 Nov: kirim ulang undangan ke Admin Tenant juga bukan wewenang pengelola interim
+      const inv = await post(`/users/${id.realAdminB}/invite`, {}, 'adminB');
+      expect(inv.status).toBe(403);
+      expect(inv.body.error.code).toBe('ROLE_FORBIDDEN');
     });
 
     it('hr_admin interim tidak bisa mengubah atau menonaktifkan akun yang Admin Tenant lewat daftar peran', async () => {

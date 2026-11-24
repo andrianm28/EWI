@@ -187,6 +187,7 @@ module.exports = {
     r.post('/users/:id/invite', wrap(async (req, res) => {
       const user = await loadUser(req);
       if (user.role === ROLES.ETA_ADMIN) throw forbidden('ROLE_FORBIDDEN', 'Akun Super Admin tidak dikelola dari layar Admin Tenant');
+      assertCanManage(req.user, await db.actor(req.tenantId, user.id)); // review 24 Nov: pengelola interim tidak menyentuh Admin Tenant
       if (!pendingLogin(user)) throw conflict('INVALID_STATE', 'Undangan hanya bisa dikirim ulang ke akun yang belum pernah masuk');
       if ((await links.recentCount({ id: user.id, tenantId: req.tenantId })) >= RATE.max) {
         throw new HttpError(429, 'RATE_LIMITED', 'Undangan untuk akun ini baru saja dikirim. Coba lagi 15 menit lagi.');

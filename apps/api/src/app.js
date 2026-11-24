@@ -10,6 +10,7 @@ const { sessionRoutes } = require('./core/auth/session-routes');
 const { createLoginPolicy } = require('./core/auth/policy');
 const { createRateLimiter } = require('./core/auth/rate-limit');
 const { createEmailLinkService, emailLinkRoutes, invitationRoutes } = require('./core/auth/email-link');
+const { createBackgroundQueue } = require('./core/background-queue');
 const { createAttemptLog } = require('./core/auth/attempts');
 const { createMailer } = require('./integrations/mailer');
 const { tenantContext } = require('./core/tenant');
@@ -127,7 +128,13 @@ function createApp({ config, stores, ai, catalog, mailer, rateLimits, readiness,
       ...(stores.cipher?.healthCheck ? { encryption: () => stores.cipher.healthCheck() } : {}),
     },
   })));
-  if (stores.loginLinks) app.use('/api/auth/email-link', emailLinkRoutes({ users: stores.users, links, sessions, policy, audit, limits, attempts }));
+  // Audit 8-11: pekerjaan link email akun terdaftar berjalan setelah jawaban. app.locals.emailLinks.drain() dipakai test.
+  app.locals.emailLinks = createBackgroundQueue({
+    onError: (e, key) => console.error(`[email-link] permintaan link gagal diproses (${key}):`, (e && e.stack) || String(e)),
+  });
+  if (stores.loginLinks) {
+    app.use('/api/auth/email-link', emailLinkRoutes({ users: stores.users, links, sessions, policy, audit, limits, attempts, queue: app.locals.emailLinks }));
+  }
   app.use('/api/auth', authRoutes({
     users: stores.users, sessions, policy, audit, requireAuth: auth, limits, attempts, flags,
     tenantPicker: config.loginTenantPicker, localLogin: authConfig.localLogin,

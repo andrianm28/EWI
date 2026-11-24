@@ -266,6 +266,12 @@ run('B17 Asisten ELGOS (Postgres)', () => {
     expect(usage).toEqual({ submodule: 'assistant', operation: 'assistant_reply', userId: u.ani });
     const exp = await request(app()).get(`/api/employees/${u.ani}/export`).set(as('ani'));
     expect(exp.body.data.assistantLogs[0]).toMatchObject({ question: 'Apa rencana belajar saya?', outcome: 'answered', view: 'karyawan' });
+    // review 24 Nov: log asisten hanya ikut ekspor milik sendiri (spek B17: "ekspor hanya ke atasan itu sendiri")
+    const byHr = await request(app()).get(`/api/employees/${u.ani}/export`).set(as('hr'));
+    expect(byHr.status).toBe(200);
+    expect(byHr.body.data.assistantLogs).toEqual([]);
+    expect(byHr.body.data.assistantLogsIncluded).toBe(false);
+    expect(exp.body.data.assistantLogsIncluded).toBe(true);
   });
 
   it('batas pakai 20 per 10 menit termasuk yang gagal; penyedia gagal -> 503, log error, pemakaian dicatat', async () => {

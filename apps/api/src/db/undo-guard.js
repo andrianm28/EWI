@@ -30,9 +30,52 @@ async function encryptedDataCheck(query) {
     : null;
 }
 
+// Audit 24 Nov: migrasi lain yang arah turunnya menghapus catatan hukum (UU PDP) atau mengubah hak akses.
+// Di basis data kosong (CI naik-turun-naik) semua hitungan 0, jadi tidak ada yang ditolak.
+/** [ [label, SQL yang mengembalikan { n }] ] -> pemeriksaan: tolak bila ada n > 0. */
+function rowsCheck(items) {
+  return async (query) => {
+    const found = [];
+    for (const [label, sql] of items) {
+      const [{ n }] = await query(sql);
+      if (n > 0) found.push(`${n} ${label}`);
+    }
+    return found.length
+      ? `masih ada ${found.join('; ')}. Menurunkan migrasi ini menghapus atau mengubah data tersebut tanpa jejak. Pulihkan dari backup bila memang perlu kembali.`
+      : null;
+  };
+}
+
 /** Nama migrasi -> pemeriksaan async(query) yang mengembalikan alasan penolakan (string) atau null. */
 const GUARDS = {
   '20261113000008-tenant-keys.js': encryptedDataCheck,
+  // turun = penarikan persetujuan batal diam-diam (temuan kembali ke review/analisis) dan catatan permintaan hilang
+  '20261119000800-permintaan-data-karyawan.js': rowsCheck([
+    ['penarikan persetujuan wawancara', 'SELECT count(*)::int AS n FROM lna_interview_sessions WHERE consent_withdrawn_at IS NOT NULL'],
+    ['permintaan data karyawan', 'SELECT count(*)::int AS n FROM data_subject_requests'],
+  ]),
+  // turun = bukti versi persetujuan yang disetujui karyawan hilang (PK-15)
+  '20261117000501-consent-version.js': rowsCheck([
+    ['sesi dengan versi persetujuan tercatat', 'SELECT count(*)::int AS n FROM lna_interview_sessions WHERE consent_version IS NOT NULL'],
+  ]),
+  // turun = Admin Tenant diturunkan jadi karyawan dan peran tambahan hilang
+  '20261119000200-user-roles.js': rowsCheck([
+    ['akun Admin Tenant', "SELECT count(*)::int AS n FROM users WHERE role = 'tenant_admin'"],
+    ['peran tambahan', 'SELECT count(*)::int AS n FROM user_roles ur JOIN users u ON u.id = ur.user_id WHERE ur.role <> u.role'],
+  ]),
+  // turun = keputusan review HR atas hasil AI dan teks asli AI hilang (PK-14)
+  '20261117000400-ai-review.js': rowsCheck([
+    // reviewed_by, bukan reviewed_at: arah naik mengisi reviewed_at untuk temuan lama tanpa peninjau
+    ['keputusan review HR atas temuan', 'SELECT count(*)::int AS n FROM lna_findings WHERE reviewed_by IS NOT NULL'],
+  ]),
+  // turun = bukti persetujuan dan transkrip wawancara Core Competencies hilang
+  '20261123001000-cca-wawancara.js': rowsCheck([
+    ['persetujuan wawancara Core Competencies', 'SELECT count(*)::int AS n FROM cca_assignments WHERE consent_version IS NOT NULL'],
+  ]),
+  // turun = wawancara ulang dampak belajar (beserta persetujuannya) hilang
+  '20261123003000-lim-wawancara-ulang.js': rowsCheck([
+    ['wawancara ulang dampak belajar', 'SELECT count(*)::int AS n FROM lim_reinterviews'],
+  ]),
 };
 
 /** Migrasi yang akan diturunkan: satu terakhir, semua (all), atau sampai dan termasuk `to`. */
@@ -59,4 +102,4 @@ async function checkUndo(query, targets, guards = GUARDS) {
   return refusals;
 }
 
-module.exports = { GUARDS, migrationsToUndo, checkUndo, encryptedDataCheck, ENCRYPTED_COLUMNS };
+module.exports = { GUARDS, migrationsToUndo, checkUndo, encryptedDataCheck, rowsCheck, ENCRYPTED_COLUMNS };
