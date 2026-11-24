@@ -6,7 +6,7 @@ import { useRoute } from 'vue-router'
 import AppShell from '@/components/AppShell.vue'
 import { ApiError } from '@/api/client'
 import { formatWib } from '@/api/lna'
-import { UiBreadcrumb, UiButton, UiCard, UiChip, UiDataTable, UiDialog, UiErrorSummary, UiField, UiKpiCard, UiStatus, formatScore, type UiColumn } from '@/ui'
+import { UiBreadcrumb, UiButton, UiCard, UiChip, UiDataTable, UiDialog, UiErrorSummary, UiField, UiIcon, UiKpiCard, UiStatus, formatScore, type UiColumn } from '@/ui'
 import { useSessionStore } from '@/stores/session'
 import { routeOpen } from '@/router'
 import { HR_ROLES, gaps, gapRefFromQuery, type DetailEmployee, type GapDetail, type Project } from './api'
@@ -137,8 +137,9 @@ const kpis = computed(() => {
   const g = d.value
   if (!g) return []
   // P8 R4 (TN-8): skor 0-100 tanpa "%"
-  if (g.kind === 'competency') return [{ l: 'TARGET', v: formatScore(g.targetPct) }, { l: 'AKTUAL', v: formatScore(g.actualPct) }, { l: 'GAP', v: gapScore(g.gapPct) }]
-  return [{ l: 'TARGET', v: num(g.target, g.unit) }, { l: 'AKTUAL', v: num(g.actual, g.unit) }, { l: 'GAP', v: num(g.diff, g.unit) }]
+  // TD-2: nilai GAP merah seperti mockup
+  if (g.kind === 'competency') return [{ l: 'TARGET', v: formatScore(g.targetPct) }, { l: 'AKTUAL', v: formatScore(g.actualPct) }, { l: 'GAP', v: gapScore(g.gapPct), critical: true }]
+  return [{ l: 'TARGET', v: num(g.target, g.unit) }, { l: 'AKTUAL', v: num(g.actual, g.unit) }, { l: 'GAP', v: num(g.diff, g.unit), critical: true }]
 })
 const SESSION_LABEL: Record<string, string> = { scheduled: 'Ditugaskan', in_progress: 'Berjalan', completed: 'Selesai' }
 const sessionText = (e: DetailEmployee) => {
@@ -170,15 +171,20 @@ const cols: UiColumn[] = [
         </div>
         <UiChip :tone="CLASSIFICATION_TONE[d.classification]">{{ CLASSIFICATION_LABEL[d.classification] }}</UiChip>
       </div>
-      <div class="el-grid el-grid-3 tna-gap"><UiKpiCard v-for="k in kpis" :key="k.l" :label="k.l" :value="k.v" /></div>
+      <div class="el-grid el-grid-3 tna-gap"><UiKpiCard v-for="k in kpis" :key="k.l" :label="k.l" :value="k.v" :tone="k.critical ? 'critical' : undefined" /></div>
       <div class="el-grid el-grid-2 tna-gap">
         <UiCard>
-          <h2 class="tna-h2">Bukti yang terdeteksi</h2>
-          <ul class="tna-list"><li v-for="e in d.evidence" :key="e">{{ e }}</li></ul>
+          <h2 id="tna-bukti" class="tna-h2">Bukti yang terdeteksi</h2>
+          <!-- TD-3: baris ikon bergaris pemisah seperti mockup -->
+          <ul class="tna-iconlist" aria-labelledby="tna-bukti">
+            <li v-for="e in d.evidence" :key="e"><UiIcon name="insights" class="tna-iconlist__ikon tna-iconlist__ikon--bukti" />{{ e }}</li>
+          </ul>
         </UiCard>
         <UiCard>
-          <h2 class="tna-h2">Hipotesis awal (belum terverifikasi)</h2>
-          <ul class="tna-list"><li v-for="h in d.hypotheses" :key="h.text">{{ h.text }}</li></ul>
+          <h2 id="tna-hipotesis" class="tna-h2">Hipotesis awal (belum terverifikasi)</h2>
+          <ul class="tna-iconlist" aria-labelledby="tna-hipotesis">
+            <li v-for="h in d.hypotheses" :key="h.text"><UiIcon name="help" class="tna-iconlist__ikon tna-iconlist__ikon--hipotesis" />{{ h.text }}</li>
+          </ul>
           <p class="el-muted tna-small">Gap hanya menunjukkan adanya masalah. Penyebabnya dicari lewat wawancara.</p>
         </UiCard>
       </div>
