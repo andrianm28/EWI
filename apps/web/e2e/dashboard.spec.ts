@@ -161,8 +161,9 @@ test('P3 D1: baris Pareto kompetensi menaut ke Detail gap bila papan gap terbuka
   const rows = page.getByTestId('pareto').getByTestId('pareto-baris')
   await expect(rows).toHaveCount(3)
   await expect(rows.nth(0)).toHaveAttribute('href', '/tna/gap?kind=competency&competencyId=c1')
-  // review P3: nama aksesibel tautan cukup label kompetensi, bukan seluruh isi kartu
-  await expect(rows.nth(0)).toHaveAttribute('aria-label', /\S/)
+  // review 24 Nov: tanpa aria-label yang menimpa teks tautan; nama aksesibel dari isi yang terlihat (label di depan)
+  await expect(rows.nth(0)).not.toHaveAttribute('aria-label', /.*/)
+  await expect(rows.nth(0)).toHaveAccessibleName(/^Root Cause Analysis\b.*9 orang · kum\. 50%/)
   // temuan tanpa kompetensi tidak punya detail gap
   await expect(rows.nth(2)).not.toHaveAttribute('href', /.*/)
   await rows.nth(1).focus()

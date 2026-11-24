@@ -247,10 +247,16 @@ test('P9 CD-12: jawaban basi setelah ganti tampilan bolak-balik dibuang', async 
   await input.press('Enter')
   await expect(panel(page).getByText('Jawaban baru')).toBeVisible()
   await expect.poll(() => lepas !== null).toBe(true)
+  // review 24 Nov: tanpa jeda tetap; tunggu respons lambat benar-benar tiba, lalu satu pertanyaan lagi sebagai pembatas
+  // (jawabannya tiba sesudah respons basi, jadi saat jawaban itu tampil respons basi pasti sudah diproses)
+  const basi = page.waitForResponse((r) => r.url().includes('/api/assistant/ask') && (r.request().postData() ?? '').includes('Pertanyaan lambat'))
   lepas!()
-  await page.evaluate(() => new Promise((ok) => setTimeout(ok, 300)))
+  await (await basi).finished()
+  await input.fill('Pertanyaan pembatas')
+  await input.press('Enter')
+  await expect(panel(page).getByText('Jawaban baru')).toHaveCount(2)
   await expect(panel(page).getByText('JAWABAN-BASI')).toHaveCount(0)
-  await expect(panel(page).locator('.b17-msg--me')).toHaveCount(1)
+  await expect(panel(page).locator('.b17-msg--me')).toHaveCount(2)
 })
 
 test('snapshot: panel terbuka dengan percakapan (karyawan)', async ({ page }) => {
@@ -365,7 +371,11 @@ test('review: isian kosong atau spasi saja tidak dikirim', async ({ page }) => {
   await input.fill('   ')
   await input.press('Enter')
   await expect(input).toHaveAttribute('maxlength', '500')
-  expect(diterima.filter((r) => r.method === 'POST')).toHaveLength(0)
+  // review 24 Nov: pembatas positif; POST pertama yang tiba harus pertanyaan berikutnya, bukan isian spasi
+  await input.fill('Apa rencana belajar saya?')
+  await input.press('Enter')
+  await expect.poll(() => diterima.filter((r) => r.method === 'POST').map((r) => (r.body as { question: string }).question))
+    .toEqual(['Apa rencana belajar saya?'])
 })
 
 test('review: permintaan yang menggantung dihentikan setelah 30 detik dengan pesan cadangan', async ({ page }) => {

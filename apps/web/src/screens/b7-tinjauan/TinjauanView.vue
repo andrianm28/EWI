@@ -138,7 +138,7 @@ async function downloadCsv() {
   try { await lna.downloadGapCsv(gapQuery.value ?? undefined) } catch (e) { errors.value = [{ message: message(e, 'Daftar gap tidak bisa diunduh') }] }
 }
 
-// --- Tindakan perbaikan (mockup `makeIna`): temuan diteruskan, tindakannya dibuat modul Improvement Needs (B9) ---
+// --- Tindakan perbaikan (mockup `makeIna`): temuan diteruskan ke modul Improvement Needs (B9); teks sukses persis mockup (review 24 Nov) ---
 const improvement = computed(() => solutions.value?.improvement ?? [])
 const pendingHandoff = computed(() => improvement.value.filter((i) => !i.handedOffAt))
 const handedNote = computed(() => {
@@ -222,7 +222,7 @@ async function handoff() {
           <div class="b7-head"><h3 class="el-h3 b7-h3">Tindakan perbaikan</h3><UiChip tone="improvement">Improvement Needs</UiChip></div>
           <template v-if="improvement.length">
             <div class="el-muted b7-explain">Temuan non-pelatihan menjadi tindakan perbaikan (SOP, alat, sistem, atau budaya) dengan pemilik dan tenggat.</div>
-            <UiNote v-if="handedNote !== null" tone="success">{{ handedNote }} temuan diteruskan ke Improvement Needs.</UiNote>
+            <UiNote v-if="handedNote !== null" tone="success">{{ handedNote }} tindakan perbaikan dibuat dan muncul di Improvement Needs.</UiNote>
             <template v-else-if="solutions.inaEnabled">
               <UiButton :disabled="busy" @click="handoff">Buat tindakan di Improvement Needs</UiButton>
             </template>
