@@ -388,6 +388,15 @@ run('Admin Tenant B11 (Postgres)', () => {
       }
     });
 
+    it('tenant yang hanya punya hr_admin tidak terkunci: Super Admin menaikkan HR menjadi Admin Tenant', async () => {
+      await addUser(A.id, 'hrNaik', 'hr_admin');
+      expect((await get('/users', 'hrNaik')).status).toBe(403);
+      const up = await patch(`/users/${id.hrNaik}`, { role: 'tenant_admin' }, 'eta');
+      expect([up.status, up.body.data.role]).toEqual([200, 'tenant_admin']);
+      tok.hrNaik = await tokens.sign({ id: id.hrNaik, tenantId: A.id, role: 'tenant_admin', email: 'hrNaik@b11.test' });
+      expect((await get('/users', 'hrNaik')).status).toBe(200);
+    });
+
     it('Admin Tenant boleh memberi peran Admin Tenant dan mengubah akun Admin Tenant lain', async () => {
       expect((await get('/roles', 'adminB')).body.data.map((r) => r.key)).toEqual(expect.arrayContaining(['tenant_admin', 'hr_admin']));
       const made = await post('/users', { email: `admin-kedua-${Date.now()}@b11.test`, name: 'Admin Kedua', role: 'tenant_admin' }, 'adminB');
