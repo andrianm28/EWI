@@ -29,7 +29,8 @@ const allowed = computed(() => !!session.user && session.hasFlag('assistant') &&
 const enabled = computed(() => allowed.value && !unavailable.value)
 
 // Percakapan milik satu akun (tenant + pengguna) dan satu tampilan (mockup mengosongkan asTurns saat ganti peran).
-// Salam dimuat lebih dulu supaya tampilan yang ditolak server (403 VIEW_FORBIDDEN) tidak pernah menampilkan tombol.
+// FAB tampil langsung seperti mockup (keputusan user 24 Nov); salam dimuat di latar. Bila server menolak tampilan
+// (403 VIEW_FORBIDDEN), FAB dan panel disembunyikan saat jawaban itu tiba.
 watch(() => `${session.user?.tenantId ?? ''}|${session.user?.id ?? ''}|${view.value ?? ''}`, (k) => {
   store.bind(k)
   if (allowed.value) store.loadIntro(view.value!)
@@ -82,7 +83,7 @@ function go(page: string) {
   router.push({ name: routeOf(page) })
 }
 
-watch(() => turns.value.length + (pending.value ? 1 : 0), async () => {
+watch(() => turns.value.length, async () => {
   await nextTick()
   if (bodyEl.value) bodyEl.value.scrollTop = bodyEl.value.scrollHeight
 })
@@ -119,7 +120,6 @@ onMounted(async () => {
             <UiButton variant="tonal" size="sm" @click="go(t.action.page)">Buka {{ t.action.label }}</UiButton>
           </div>
         </div>
-        <div v-if="pending" class="b17-msg b17-msg--ai"><small>Asisten ELGOS</small>Sedang menyiapkan jawaban…</div>
       </div>
       <div class="b17-asst__ft">
         <div v-if="suggestions.length" class="b17-asst__chips">

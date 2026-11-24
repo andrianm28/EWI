@@ -237,7 +237,7 @@ test('P9 CD-12: jawaban basi setelah ganti tampilan bolak-balik dibuang', async 
   const input = panel(page).getByRole('textbox', { name: 'Pertanyaan' })
   await input.fill('Pertanyaan lambat')
   await input.press('Enter')
-  await expect(panel(page)).toContainText('Sedang menyiapkan jawaban…')
+  await expect(panel(page).getByRole('button', { name: 'Kirim' })).toBeDisabled()
   const tampilan = page.getByRole('group', { name: 'Tampilan' })
   await tampilan.getByRole('button', { name: 'Karyawan (saya)' }).click()
   await expect(panel(page)).toContainText('Tanyakan urusan Anda · Karyawan')
@@ -304,7 +304,21 @@ test('review: server menolak tampilan (403 VIEW_FORBIDDEN): tombol asisten disem
   await mockAsisten(page, { intro: () => ({ status: 403, json: { error: { code: 'VIEW_FORBIDDEN', message: 'Tampilan ini tidak tersedia untuk peran Anda' } } }) })
   await masuk(page, 'karyawan')
   await expect(page.getByRole('button', { name: 'Keluar' })).toBeVisible()
+  // keputusan user 24 Nov: FAB tampil langsung (mockup); setelah salam ditolak, FAB disembunyikan
   await expect(fab(page)).toHaveCount(0)
+})
+
+// Keputusan user 24 Nov "Ikuti mockup penuh": FAB tampil langsung, tidak menunggu salam dari API
+test('FAB tampil langsung walau salam belum dimuat', async ({ page }) => {
+  await mockAsisten(page)
+  // salam tidak pernah tiba (route terakhir didahulukan Playwright)
+  await page.route(/\/api\/assistant\?/, () => { /* tidak dijawab */ })
+  await masuk(page, 'karyawan')
+  await expect(fab(page)).toBeVisible()
+  await fab(page).click()
+  await expect(panel(page).getByText('Halo, saya Asisten ELGOS. Tanyakan apa pun tentang urusan Anda sebagai Karyawan di sini.')).toBeVisible()
+  // salam API memang belum tiba: chip saran (dari API) belum ada
+  await expect(panel(page).locator('.b17-chip')).toHaveCount(0)
 })
 
 test('review: salam gagal dimuat (500): salam dan catatan bawaan tampil tanpa chip', async ({ page }) => {
@@ -315,7 +329,8 @@ test('review: salam gagal dimuat (500): salam dan catatan bawaan tampil tanpa ch
   await expect(panel(page).locator('.b17-chip')).toHaveCount(0)
 })
 
-test('review: selama menunggu ada gelembung "Sedang menyiapkan jawaban…" dan Kirim nonaktif', async ({ page }) => {
+// Keputusan user 24 Nov "Ikuti mockup penuh": tanpa gelembung menunggu (mockup tidak punya); Kirim tetap nonaktif
+test('review: selama menunggu tanpa gelembung tambahan dan Kirim nonaktif', async ({ page }) => {
   let lepas: () => void = () => {}
   const tunggu = new Promise<void>((r) => { lepas = r })
   await mockAsisten(page, { jawab: async () => { await tunggu; return responsData({ answer: 'Selesai.', action: null, outcome: 'answered' }) } })
@@ -324,11 +339,14 @@ test('review: selama menunggu ada gelembung "Sedang menyiapkan jawaban…" dan K
   const input = panel(page).getByRole('textbox', { name: 'Pertanyaan' })
   await input.fill('Apa rencana belajar saya?')
   await input.press('Enter')
-  await expect(panel(page).getByText('Sedang menyiapkan jawaban…')).toBeVisible()
   await expect(panel(page).getByRole('button', { name: 'Kirim' })).toBeDisabled()
+  // hanya salam dan pertanyaan: tidak ada gelembung asisten selama menunggu
+  await expect(panel(page).locator('.b17-msg--ai')).toHaveCount(1)
+  await expect(panel(page).locator('.b17-msg--me')).toHaveCount(1)
+  await expect(panel(page).getByText('Sedang menyiapkan jawaban…')).toHaveCount(0)
   lepas()
   await expect(panel(page).getByText('Selesai.')).toBeVisible()
-  await expect(panel(page).getByText('Sedang menyiapkan jawaban…')).toHaveCount(0)
+  await expect(panel(page).locator('.b17-msg--ai')).toHaveCount(2)
 })
 
 for (const [nama, respons] of [
@@ -387,7 +405,7 @@ test('review: permintaan yang menggantung dihentikan setelah 30 detik dengan pes
   const input = panel(page).getByRole('textbox', { name: 'Pertanyaan' })
   await input.fill('Halo')
   await input.press('Enter')
-  await expect(panel(page).getByText('Sedang menyiapkan jawaban…')).toBeVisible()
+  await expect(panel(page).getByRole('button', { name: 'Kirim' })).toBeDisabled()
   await page.clock.fastForward(31_000)
   await expect(panel(page).getByText('Asisten sedang tidak bisa menjawab. Coba lagi nanti.')).toBeVisible()
   await expect(panel(page).getByRole('button', { name: 'Kirim' })).toBeEnabled()
