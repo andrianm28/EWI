@@ -209,6 +209,10 @@ async function seedDemoData(c, { stores, tenantId: t, jobRoleId, levelIds, hrId,
     inaActionIds.push(found ? found.id : await findOrInsert(c, 'ina_actions', key, { title: await enc(title), detail: await enc(detail), created_by: hrId, ...values }));
   }
   await findOrInsert(c, 'lna_non_training_grants', { tenant_id: t, supervisor_id: spvId, revoked_at: null }, { granted_by: hrId });
+  // Kepala Divisi (pimpinan@, peran supervisor sejak PR #60) juga diberi akses tindakan perbaikan oleh HR, supaya menu
+  // Improvement Needs di tampilan Atasan terbuka seperti untuk Atasan Demo
+  const { rows: [head] } = await c.query(`SELECT id FROM users WHERE tenant_id = $1 AND email = 'pimpinan@demo.test' AND role = 'supervisor'`, [t]);
+  if (head) await findOrInsert(c, 'lna_non_training_grants', { tenant_id: t, supervisor_id: head.id, revoked_at: null }, { granted_by: hrId });
 
   // ---------- Library, Program & Course, Permintaan, draf modul ----------
   const MODULES = [
