@@ -22,9 +22,14 @@ const MAX_HANDOFF = 200;
 const BOM = String.fromCharCode(0xfeff);
 const EXPORT_HEADER = ['ID Karyawan', 'Nama', 'Email', 'Kompetensi', 'Kode Course', 'Judul Course', 'Program', 'Status Rencana'];
 
+/** Salinan baris tanpa field tertentu. */
+const omit = (fields) => (row) => Object.fromEntries(Object.entries(row).filter(([k]) => !fields.includes(k)));
 // Kolom internal pencocokan gap (lna-stores GAP_MATCH_COLS); tidak dikirim ke klien
 const GAP_MATCH_FIELDS = ['metricType', 'metricPeriod', 'focusKind', 'focusCompetencyId', 'focusMetricType', 'focusMetricKey', 'focusPeriod'];
-const withoutGapFields = (row) => Object.fromEntries(Object.entries(row).filter(([k]) => !GAP_MATCH_FIELDS.includes(k)));
+const withoutGapFields = omit(GAP_MATCH_FIELDS);
+// Layar tinjauan per gap tanpa rincian temuan maupun catatan ringkasan karyawan (PO-6 A); rincian di antrean lama
+const GAP_HIDDEN_FIELDS = ['detail', 'originalDetail', 'summaryNote'];
+const withoutDetail = omit(GAP_HIDDEN_FIELDS);
 
 /**
  * Paritas B7 web: filter gap opsional dari query (parameter sama dengan `/tna/gaps/detail`). Tanpa `kind` -> null
@@ -55,10 +60,6 @@ function projectIdOf(req) {
   return v;
 }
 
-// Layar tinjauan per gap tanpa rincian temuan maupun catatan ringkasan karyawan (PO-6 A); rincian di antrean lama
-const GAP_HIDDEN_FIELDS = ['detail', 'originalDetail', 'summaryNote'];
-const withoutDetail = (item) => Object.fromEntries(Object.entries(item).filter(([k]) => !GAP_HIDDEN_FIELDS.includes(k)));
-
 /** Bentuk satu butir antrean tinjauan: field tahan, saran klasifikasi, dan batas tinjauan. */
 function toReviewItem(row, targetDays, now = new Date()) {
   const { sessionEndedAt, ...item } = withoutGapFields(row);
@@ -86,6 +87,8 @@ function reviewWorkspaceRouter({ stores, settings, catalog, flags, audit, assign
   }
 
   // --- Klasifikasi tiga tombol ---
+  // Hanya dipakai layar tinjauan per gap, jadi respons tanpa rincian dan catatan ringkasan (PO-6 A, P9 CD-3)
+  const classifiedItem = (row, conf) => withoutDetail(toReviewItem(row, conf.tna.reviewTargetDays));
   r.post('/findings/:id/classify', hr, flag, wrap(async (req, res) => {
     const { classification, note } = req.body || {};
     if (!CLASSIFICATIONS.includes(classification)) throw badRequest(`classification harus ${CLASSIFICATIONS.join(', ')}`);
@@ -116,7 +119,7 @@ function reviewWorkspaceRouter({ stores, settings, catalog, flags, audit, assign
       throw reviewed;
     } else {
       const category = categoryFor(classification);
-      if (category === current.category) return res.json({ data: toReviewItem(current, conf.tna.reviewTargetDays) });
+      if (category === current.category) return res.json({ data: classifiedItem(current, conf) });
       out = await stores.tna.reclassifyFinding(req.tenantId, current.id, { category, reviewerId: base.reviewerId });
       if (!out) throw conflict('ALREADY_ACTIONED', 'Temuan ini sudah ditindaklanjuti, klasifikasinya tidak bisa diubah lagi');
       decision = 'reclassified';
@@ -124,7 +127,7 @@ function reviewWorkspaceRouter({ stores, settings, catalog, flags, audit, assign
     await audit.record(req, 'update', 'tna.finding_review', {
       employeeIds: [current.userId], objectType: 'tna_finding', objectIds: [current.id], decision, classification, from: current.category, confidence: current.confidence,
     });
-    return res.json({ data: toReviewItem(out, conf.tna.reviewTargetDays) });
+    return res.json({ data: classifiedItem(out, conf) });
   }));
 
   // --- Solusi: rekomendasi course untuk temuan pelatihan, daftar temuan perbaikan ---

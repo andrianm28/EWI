@@ -164,11 +164,15 @@ run('B7 tinjauan HR (Postgres)', () => {
     it('respons classify tanpa detail, originalDetail, dan summaryNote (semua cabang)', async () => {
       const a = app();
       const hidden = ['detail', 'originalDetail', 'summaryNote'];
-      const fresh = (await finding('ani', { title: 'Rincian rahasia', detail: 'RINCIAN-KLASIFIKASI' })).id;
+      const made = [];
+      const make = async (title) => { const { id } = await finding('ani', { title, detail: 'RINCIAN-KLASIFIKASI' }); made.push(id); return id; };
+      const fresh = await make('Rincian rahasia');
       const approved = await classify(a, fresh, 'training');
-      const edited = await classify(a, (await finding('ani', { title: 'Diubah', detail: 'RINCIAN-KLASIFIKASI' })).id, 'improvement');
-      const held = await classify(a, (await finding('ani', { title: 'Ditahan', detail: 'RINCIAN-KLASIFIKASI' })).id, 'needs_review');
+      const edited = await classify(a, await make('Diubah'), 'improvement');
+      const held = await classify(a, await make('Ditahan'), 'needs_review');
       const same = await classify(a, fresh, 'training'); // sudah diputus, kategori sama: cabang tanpa tulis
+      // temuan uji ini dihapus lagi supaya hitungan antrean di test berikutnya tidak berubah
+      await db.query('DELETE FROM lna_findings WHERE id IN (:ids)', { replacements: { ids: made } });
       for (const res of [approved, edited, held, same]) {
         expect(res.status).toBe(200);
         for (const k of hidden) expect(res.body.data).not.toHaveProperty(k);
