@@ -61,12 +61,14 @@ Semua tahap P1–P7 plus layar B17 (Asisten) dan B7 (Tinjauan per gap) ada di PR
 
 | File | Baris | Ditutup | Diputuskan | Sebagian | Terbuka |
 | --- | --- | --- | --- | --- | --- |
-| gaps-shell.md | 21 | 14 | 1 | 0 | 6 |
-| gaps-lna.md | 83 | 45 | 13 | 6 | 19 |
+| gaps-shell.md | 21 | 15 | 1 | 0 | 5 |
+| gaps-lna.md | 83 | 52 | 13 | 6 | 12 (1 bukan gap) |
 | gaps-modul.md | 73 | 45 | 9 | 8 | 11 (7 di antaranya LIM, milik thread B15) |
 | gaps-peran.md | 52 | 35 | 3 | 2 | 12 (1 tidak dikerjakan, 2 bukan gap) |
 
 Hitungan dikoreksi 24 Nov oleh P9 ([egm/pr39-full-code-review.md](egm/pr39-full-code-review.md), SP-1 sampai SP-3): AA-4, TN-10, IN-11, dan ADM-1 berpindah dari Ditutup ke Diputuskan (perilaku aplikasi dipertahankan); LI-14 dan LD-10 kembali Terbuka (chip "Contoh (dummy)" dan placeholder tanggal belum sama dengan mockup, alasannya di baris masing-masing). Selisih spek dan kode setelah P9: [egm/p9-drift.md](egm/p9-drift.md). 24 Nov: LI-14 menjadi Diputuskan (keputusan user: hijau bila kamus ada, netral bila belum).
+
+24 Nov (persiapan demo 25 Nov): `apps/web/e2e/demo-alur.spec.ts` menjalankan cerita utama mockup per peran (HR, Atasan, Karyawan, Admin Tenant, Super Admin) dengan API di-mock; setiap layar wajib berisi, tanpa galat, dan tanpa permintaan yang tidak di-mock. Gap web yang tampil di alur demo ditutup: S4, TD-2, TD-3, DN-5, DN-6, DN-9, DN-12, AH-4 (tabel di atas sudah memuatnya). Setiap baris Terbuka kini menyebut alasannya (butuh API, butuh keputusan, atau ditunda setelah demo).
 
 Yang tersisa menunggu data API baru, paket lain (B6 untuk pilihan jawaban AI wawancara akar masalah), atau milik thread lain (LIM, termasuk dua gap tinggi LIM-6 dan LIM-8). Keputusan user 23 Nov: tampilan 1:1, keputusan spek paket tetap.
 
