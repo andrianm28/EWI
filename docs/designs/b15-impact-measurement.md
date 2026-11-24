@@ -103,7 +103,7 @@ baru `lim.reinterview`.
 | `POST /plans/:id/indicators` | HR | tambah indikator |
 | `PATCH /indicators/:id`, `DELETE /indicators/:id` | HR | ubah, hapus |
 | `GET /plans/:id/measurements` | HR | baris per karyawan per kompetensi (nama, kompetensi, pre, post, sumber post, wawancara ulang, kinerja); dicatat `audit.readIndividual` |
-| `PUT /plans/:id/measurements` | HR, atasan | `{ entries: [{ userId, competencyId, preScore?, postScore?, performanceScore?, performanceNote? }] }`, maks 500; `null` mengosongkan, tidak dikirim = tetap. `userId` harus peserta rencana dan `competencyId` kompetensi rencana, selain itu baris `rejected` ("Karyawan bukan peserta rencana ini", "Kompetensi bukan bagian rencana ini", "Skor harus bilangan bulat 0–100"). Atasan hanya untuk bawahan langsungnya ("Karyawan bukan anggota tim Anda", diperiksa sebelum cek peserta supaya atasan tidak bisa menebak peserta di luar timnya) dan hanya `performanceScore`/`performanceNote` (field lain → `rejected` "Atasan hanya mengisi skor kinerja") (keputusan user 23 Nov, kartu tingkat 4: "Atasan untuk timnya, HR untuk semua") |
+| `PUT /plans/:id/measurements` | HR, atasan | `{ entries: [{ userId, competencyId, preScore?, postScore?, performanceScore?, performanceNote? }] }`, maks 500; `null` mengosongkan, tidak dikirim = tetap. `userId` harus peserta rencana dan `competencyId` kompetensi rencana, selain itu baris `rejected` ("Karyawan bukan peserta rencana ini", "Kompetensi bukan bagian rencana ini", "Skor harus bilangan bulat 0–100"). Atasan hanya untuk bawahan langsungnya ("Karyawan bukan anggota tim Anda", diperiksa sebelum cek peserta supaya atasan tidak bisa menebak peserta di luar timnya), tidak untuk dirinya sendiri ("Skor kinerja Anda diisi HR, bukan oleh Anda sendiri", D23 24 Nov), dan hanya `performanceScore`/`performanceNote` (field lain → `rejected` "Atasan hanya mengisi skor kinerja") (keputusan user 23 Nov, kartu tingkat 4: "Atasan untuk timnya, HR untuk semua") |
 | `POST /plans/:id/pre-from-dna` | HR | isi pre kosong dari asesmen DNA; `{ filled }` |
 | `GET /plans/:id/queue` | HR | antrean wawancara ulang (aturan 6.4); dicatat `audit.readIndividual` |
 | `POST /plans/:id/queue/schedule` | HR | `{ userIds: [...], date }`, maks 200; `date` `YYYY-MM-DD` dari hari ini sampai +180 hari, atau `null` untuk membatalkan jadwal |
@@ -218,7 +218,7 @@ wawancara ulang. Tanpa bukti di tengah, klaim bahwa pelatihan memperbaiki kinerj
 
 ### 6.5 Visibilitas
 
-- HR (`hr_admin`, `eta_admin`): semua peserta tenant.
+- HR (`hr_admin`): semua peserta tenant. `eta_admin` ditolak sejak #43 (`EMPLOYEE_CONTENT_PRIVATE`).
 - Atasan (`supervisor` dan `pimpinan`, sama dengan B10 `modules/cca` `LEADER_ROLES`): cakupan lewat
   `visibleEmployeeScope()` = dirinya + bawahan langsung (D23, keputusan user 24 Nov, menggantikan "tanpa dirinya
   sendiri"). Bila atasan ikut pelatihan rencana, ia masuk angka timnya. Skor kinerja tetap hanya untuk bawahan

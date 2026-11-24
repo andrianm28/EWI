@@ -164,6 +164,13 @@ dengan ID profil bila ada.
   tersedia in-region atau lewat `apac.` di Singapura. Profil lain tidak ikut dibuka. Menulisnya di kode membuat pilihan
   itu terlihat di review dan di test. Andrian bisa meminta opt-in eksplisit saat review PR #8.
 
+**Pembaruan 24 Nov (keputusan user, review PR #8):** dipilih opt-in sempit `AI_ALLOW_GLOBAL_PROFILE=true`, bukan
+`AI_ALLOW_CROSS_REGION`. Opt-in ini hanya membuka `global.` (tidak membuka `us.`/`eu.` dan tidak melonggarkan
+`AI_ALLOWED_REGIONS`). Risiko "lupa variabel lalu gagal boot pada hari rilis" diterima sebagai harga pilihan sadar dan
+ditekan oleh pre-flight `deploy.sh` (PR #3 `1464690`) yang menolak deploy sebelum container lama dihentikan. Prod
+dengan ID `global.` baru boleh mengisi `true` setelah DPIA dan teks persetujuan diperbarui; sebelum itu prod tidak
+punya model cadangan in-region untuk Sonnet 5.5 (pilihan cadangan: `anthropic.claude-sonnet-5` in-region Singapura).
+
 Yang tetap dijaga: `BEDROCK_REGION` harus ada di `AI_ALLOWED_REGIONS` juga untuk profil `global.` (endpoint tetap
 Singapura atau Jakarta), dan `processing` tercetak `cross-region:global` saat boot untuk log dan DPIA.
 
