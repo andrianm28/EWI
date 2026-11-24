@@ -1,6 +1,7 @@
 // seed-dev (dev/staging): tenant demo menampilkan isi nyata di setiap langkah demo-alur.spec.ts, aman diulang,
 // dan mengikuti aturan peran (tenant_admin ada; Super Admin tidak membaca isi karyawan).
 // Jalan hanya bila DATABASE_URL di-set dan migrasi sudah dijalankan.
+const crypto = require('crypto');
 const request = require('supertest');
 const { Client } = require('pg');
 const { createDb } = require('../../src/db');
@@ -9,6 +10,8 @@ const { createApp } = require('../../src/app');
 const { makeConfig, sessionSigner } = require('../helpers');
 const { seedDev } = require('../../scripts/seed-dev');
 const { DEMO_FLAGS } = require('../../scripts/demo-flags');
+// Sandi acak per run (pola db-app-role.test.js): tidak ada sandi literal di repo
+const SANDI = crypto.randomBytes(12).toString('hex');
 
 const run = process.env.DATABASE_URL ? describe : describe.skip;
 // Tenant baru per run (slug unik): kunci induk acak bawaan test aman, dan sisa run lain tidak memengaruhi hasil.
@@ -37,7 +40,7 @@ run('seed-dev: tenant demo untuk demo langsung (Postgres)', () => {
     c = new Client({ connectionString: process.env.DATABASE_URL });
     await c.connect();
     await c.query(`SET search_path TO "${process.env.DB_SCHEMA || 'ewi'}"`);
-    ids = await seedDev(c, { password: 'sandi-uji-seed', stores, slug: SLUG, env: { NODE_ENV: 'test' } });
+    ids = await seedDev(c, { password: SANDI, stores, slug: SLUG, env: { NODE_ENV: 'test' } });
     const { rows } = await c.query(`SELECT id, email, role FROM users WHERE tenant_id = $1`, [ids.tenantId]);
     for (const u of rows) tok[u.email.split('@')[0]] = await tokens.sign({ id: u.id, tenantId: ids.tenantId, role: u.role, email: u.email });
   }, 60000);
@@ -45,13 +48,13 @@ run('seed-dev: tenant demo untuk demo langsung (Postgres)', () => {
 
   test('menolak produksi sebelum menyentuh database', async () => {
     const fake = { query: jest.fn() };
-    await expect(seedDev(fake, { password: 'x', env: { NODE_ENV: 'production' } })).rejects.toThrow('dilarang di produksi');
+    await expect(seedDev(fake, { password: SANDI, env: { NODE_ENV: 'production' } })).rejects.toThrow('dilarang di produksi');
     expect(fake.query).not.toHaveBeenCalled();
   });
 
   test('idempoten: jalan kedua tidak menambah baris', async () => {
     const before = await counts();
-    await seedDev(c, { password: 'sandi-uji-seed', stores, slug: SLUG, env: { NODE_ENV: 'test' } });
+    await seedDev(c, { password: SANDI, stores, slug: SLUG, env: { NODE_ENV: 'test' } });
     expect(await counts()).toEqual(before);
   }, 60000);
 
@@ -75,7 +78,7 @@ run('seed-dev: tenant demo untuk demo langsung (Postgres)', () => {
   test('hanya kompetensi seed yang disahkan; draf lain di tenant tetap draf', async () => {
     const { rows: [draft] } = await c.query(
       `INSERT INTO lna_competencies (tenant_id, kind, name, source, importance) VALUES ($1, 'core', 'Draf staging', 'hr_rule', 3) RETURNING id`, [ids.tenantId]);
-    await seedDev(c, { password: 'sandi-uji-seed', stores, slug: SLUG, env: { NODE_ENV: 'test' } });
+    await seedDev(c, { password: SANDI, stores, slug: SLUG, env: { NODE_ENV: 'test' } });
     const { rows: [row] } = await c.query('SELECT approved_at, approved_by, program_tier FROM lna_competencies WHERE id = $1', [draft.id]);
     expect(row).toEqual({ approved_at: null, approved_by: null, program_tier: null });
     await c.query('DELETE FROM lna_competencies WHERE id = $1', [draft.id]);
