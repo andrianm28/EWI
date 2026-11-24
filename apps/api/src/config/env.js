@@ -2,6 +2,7 @@
 // Konfigurasi dibaca sekali dan divalidasi saat boot. Tidak ada fallback untuk secret
 // (keputusan B22: ELGOS punya secret & audience JWT sendiri, tanpa fallback hardcoded).
 require('dotenv').config();
+const { DEFAULT_PRICES: DEFAULT_VOICE_PRICES } = require('../voice/pricing');
 
 // Domain internal yang boleh menerima email dari staging bila MAIL_ALLOWED_DOMAINS kosong.
 const STAGING_DEFAULT_MAIL_DOMAINS = Object.freeze(['eliteacademy.id', 'elitery.com']);
@@ -232,14 +233,20 @@ function loadVoiceConfig(env, errors) {
       if (key && !project) errors.push('GOOGLE_CLOUD_PROJECT wajib diisi bila kunci tidak memuat project_id');
     }
   }
+  const model = env.VOICE_MODEL || 'gemini-3.8-live';
+  // Harga bawaan per model (src/voice/pricing.js) supaya biaya tidak kosong; env VOICE_PRICE_* menimpa
+  const dp = DEFAULT_VOICE_PRICES[model] || {};
+  const price = (name, key) => numberOr(env[name], dp[key] ?? null);
   const nums = {
     silenceMs: numberOr(env.VOICE_SILENCE_MS, 1200, { min: 100 }),
-    priceInputPerMTok: numberOr(env.VOICE_PRICE_INPUT_PER_MTOK, null),
-    priceOutputPerMTok: numberOr(env.VOICE_PRICE_OUTPUT_PER_MTOK, null),
+    priceInputPerMTok: price('VOICE_PRICE_INPUT_PER_MTOK', 'priceInputPerMTok'),
+    priceOutputPerMTok: price('VOICE_PRICE_OUTPUT_PER_MTOK', 'priceOutputPerMTok'),
+    priceAudioInputPerMTok: price('VOICE_PRICE_AUDIO_INPUT_PER_MTOK', 'priceAudioInputPerMTok'),
+    priceAudioOutputPerMTok: price('VOICE_PRICE_AUDIO_OUTPUT_PER_MTOK', 'priceAudioOutputPerMTok'),
   };
   for (const [k, v] of Object.entries(nums)) if (Number.isNaN(v)) errors.push(`Nilai ${k} untuk suara tidak valid`);
   return Object.freeze({
-    provider, model: env.VOICE_MODEL || 'gemini-3.8-live', location, project, credentialsFile,
+    provider, model, location, project, credentialsFile,
     voiceName: env.VOICE_NAME || '', ...nums,
   });
 }

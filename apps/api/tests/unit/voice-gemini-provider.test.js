@@ -81,7 +81,12 @@ test('pesan server diterjemahkan menjadi event', async () => {
   ws.server({ sessionResumptionUpdate: { resumable: false } });
   ws.server({ goAway: { timeLeft: '10s' } });
   // smoke etavm2 25 Nov: usageMetadata per giliran; token berpikir (thoughts) ditagih sebagai keluaran
-  ws.server({ usageMetadata: { promptTokenCount: 120, candidatesTokenCount: 80, thoughtsTokenCount: 20, totalTokenCount: 220 } });
+  // Rincian modalitas (AUDIO/TEXT) dipakai untuk harga per modalitas (Live API: audio jauh lebih mahal dari teks)
+  ws.server({ usageMetadata: {
+    promptTokenCount: 120, candidatesTokenCount: 80, thoughtsTokenCount: 20, totalTokenCount: 220,
+    promptTokensDetails: [{ modality: 'TEXT', tokenCount: 20 }, { modality: 'AUDIO', tokenCount: 100 }],
+    candidatesTokensDetails: [{ modality: 'AUDIO', tokenCount: 70 }, { modality: 'TEXT', tokenCount: 10 }],
+  } });
   ws.close(1000);
   expect(got).toEqual([
     ['ready', undefined],
@@ -93,7 +98,7 @@ test('pesan server diterjemahkan menjadi event', async () => {
     ['toolCall', { calls: [{ id: 'c1', name: 'akhiri_wawancara', args: {} }] }],
     ['resumption', { handle: 'H2' }],
     ['goAway', { timeLeft: '10s' }],
-    ['usage', { inputTokens: 120, outputTokens: 100, totalTokens: 220 }],
+    ['usage', { inputTokens: 120, outputTokens: 100, totalTokens: 220, inputAudioTokens: 100, outputAudioTokens: 70 }],
     ['close', { code: 1000, reason: '' }],
   ]);
 });
@@ -125,4 +130,14 @@ test('upgrade ditolak 401/403/404/429 menjadi VOICE_UPSTREAM_REJECTED (tidak dic
   b.ws.emit('unexpected-response', { destroy: () => { destroyed += 1; } }, { statusCode: 503 });
   expect(errs.map((e) => [e.code, e.status])).toEqual([['VOICE_UPSTREAM_REJECTED', 403], ['VOICE_UPSTREAM', 503]]);
   expect(destroyed).toBe(2);
+});
+
+test('usageMetadata tanpa rincian modalitas: token audio tidak diketahui (null), bukan 0', async () => {
+  const got = [];
+  const { s, ws } = await open();
+  s.on('usage', (u) => got.push(u));
+  ws.open();
+  ws.server({ usageMetadata: { promptTokenCount: 5, responseTokenCount: 3, responseTokensDetails: [{ modality: 'AUDIO', tokenCount: 3 }] } });
+  ws.server({ usageMetadata: { promptTokenCount: 5, candidatesTokenCount: 3 } });
+  expect(got.map((u) => [u.inputAudioTokens, u.outputAudioTokens])).toEqual([[null, 3], [null, null]]);
 });

@@ -23,6 +23,16 @@ describe('konfigurasi suara (B19)', () => {
     expect(c.voice).toMatchObject({ provider: 'fake', model: 'gemini-3.8-live', location: 'asia-south1', silenceMs: 1200 });
   });
 
+  test('harga bawaan gemini-3.8-live per modalitas (halaman harga Vertex, 25 Nov 2026); env bisa menimpa; model lain tanpa harga', () => {
+    const c = loadConfig({ ...base, NODE_ENV: 'test' });
+    expect(c.voice).toMatchObject({ priceInputPerMTok: 0.75, priceOutputPerMTok: 4.5, priceAudioInputPerMTok: 3, priceAudioOutputPerMTok: 12 });
+    const o = loadConfig({ ...base, NODE_ENV: 'test', VOICE_PRICE_AUDIO_OUTPUT_PER_MTOK: '10' });
+    expect(o.voice.priceAudioOutputPerMTok).toBe(10);
+    const other = loadConfig({ ...base, NODE_ENV: 'test', VOICE_MODEL: 'model-lain' });
+    expect(other.voice).toMatchObject({ priceInputPerMTok: null, priceAudioInputPerMTok: null });
+    expect(() => loadConfig({ ...base, NODE_ENV: 'test', VOICE_PRICE_AUDIO_INPUT_PER_MTOK: 'abc' })).toThrow(/suara tidak valid/);
+  });
+
   test('bawaan di produksi: suara mati (none)', () => {
     expect(loadConfig(prod).voice.provider).toBe('none');
   });

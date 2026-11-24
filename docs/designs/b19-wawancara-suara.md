@@ -205,7 +205,7 @@ Migrasi `20261125001900-b19-wawancara-suara.js` (raw SQL, schema `ewi`, dengan `
 - `ai_usage_logs`: `audio_seconds_in numeric(10,2)`, `audio_seconds_out numeric(10,2)`; CHECK `operation` ditulis ulang lengkap: `next_question, assess_competencies, analyze_tna, assistant_reply, summarize_cca, lim_question, summarize_lim, voice_live`.
 - `down`: menghapus baris `voice_live`, lalu kolom dan CHECK lama (7 nilai). Entri `GUARDS` di `undo-guard.js` menolak turun bila ada persetujuan suara atau koreksi tersimpan.
 
-**Biaya**: satu baris `operation='voice_live'` per sambungan Gemini, ditulis saat sambungan itu ditutup (termasuk sambung ulang dan SIGTERM) lewat `recordUsage` yang diperluas dengan `audioSecondsIn/Out`. Detik audio dari byte PCM hasil decode (masuk 32.000 B/s, keluar 48.000 B/s). Token: `usageMetadata` per giliran (smoke 25 Nov: prompt 68 lalu 560 karena prompt giliran kedua memuat riwayat), jadi semua giliran dijumlah; `thoughtsTokenCount` ditambahkan ke token keluaran. Harga `estimateCost(u, config.voice)`; tanpa harga = null. `latencyMs` = waktu sampai audio pertama pada sambungan itu. Proses yang mati mendadak (bukan SIGTERM) kehilangan baris sambungan yang sedang berjalan [⏳ DITERIMA].
+**Biaya**: satu baris `operation='voice_live'` per sambungan Gemini, ditulis saat sambungan itu ditutup (termasuk sambung ulang dan SIGTERM) lewat `recordUsage` yang diperluas dengan `audioSecondsIn/Out`. Detik audio dari byte PCM hasil decode (masuk 32.000 B/s, keluar 48.000 B/s). Token: `usageMetadata` per giliran (smoke 25 Nov: prompt 68 lalu 560 karena prompt giliran kedua memuat riwayat), jadi semua giliran dijumlah; `thoughtsTokenCount` ditambahkan ke token keluaran. Harga per modalitas `estimateVoiceCost(u, config.voice)` (`src/voice/pricing.js`): token AUDIO dan TEXT dari `promptTokensDetails`/`responseTokensDetails` diberi harga masing-masing; tanpa rincian semua token dihitung dengan harga audio (batas atas). Harga bawaan gemini-3.8-live dari halaman harga Vertex AI 25 Nov 2026 (USD per 1 juta token: teks masuk 0,75, audio masuk 3, teks keluar 4,5, audio keluar 12), ditimpa env `VOICE_PRICE_*`; model lain tanpa harga = null. `latencyMs` = waktu sampai audio pertama pada sambungan itu. Proses yang mati mendadak (bukan SIGTERM) kehilangan baris sambungan yang sedang berjalan [⏳ DITERIMA].
 
 **Audit**: `tna.voice_session` `create` saat sesi suara terhubung (lokasi, model) dan `update` saat ditutup (alasan, detik masuk/keluar, jumlah giliran, jumlah topik selesai). Caption, transkrip, dan isi galat Gemini tidak pernah ditulis ke log atau audit.
 
@@ -221,7 +221,7 @@ Migrasi `20261125001900-b19-wawancara-suara.js` (raw SQL, schema `ewi`, dengan `
 | `GOOGLE_CLOUD_PROJECT` | opsional; bawaan `project_id` di kunci |
 | `VOICE_SILENCE_MS` | bawaan 1200 (V2) |
 | `VOICE_NAME` | opsional |
-| `VOICE_PRICE_INPUT_PER_MTOK`, `VOICE_PRICE_OUTPUT_PER_MTOK` | opsional |
+| `VOICE_PRICE_INPUT_PER_MTOK`, `VOICE_PRICE_OUTPUT_PER_MTOK` (teks), `VOICE_PRICE_AUDIO_INPUT_PER_MTOK`, `VOICE_PRICE_AUDIO_OUTPUT_PER_MTOK` (audio) | opsional; bawaan untuk gemini-3.8-live |
 
 Kunci tidak pernah masuk repo, log, atau respons. `voice.realtime` tetap mati untuk tenant sungguhan sampai teks persetujuan suara v1.0 terbit (legal); v0.1 hanya untuk demo dan tenant uji.
 
