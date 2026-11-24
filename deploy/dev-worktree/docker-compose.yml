@@ -49,6 +49,10 @@ services:
       ENCRYPTION_PROVIDER: local
       MAIL_PROVIDER: log
       TENANT_KEY_PROVIDER: local
+      # B14: dokumentasi pelatihan offline (foto/video). Tanpa ini unggah menjawab 501 STORAGE_NOT_CONFIGURED.
+      EWI_UPLOAD_DIR: /app/uploads
+    volumes:
+      - uploads:/app/uploads
     deploy:
       resources:
         limits: { cpus: "1", memory: 768m }
@@ -81,3 +85,4 @@ services:
 
 volumes:
   db-data:
+  uploads:
