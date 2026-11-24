@@ -44,8 +44,8 @@ async function seedDev(c, { password, stores, slug = 'demo', env = process.env }
   // Gap B2 (K2, mockup admin 3 tampilan): Admin Tenant juga HR. Tampilan "Karyawan (saya)" untuk HR, Atasan, dan Admin
   // ditambahkan API sendiri (switchableRoles) selama flag auth.multi_role menyala (DEMO_FLAGS).
   await c.query(`INSERT INTO user_roles (tenant_id, user_id, role, granted_by)
-                 SELECT u.tenant_id, u.id, 'hr_admin', $2 FROM users u WHERE u.tenant_id = $1 AND u.email = 'admin@demo.test'
-                 ON CONFLICT (user_id, role) DO NOTHING`, [t.id, hr.id]);
+                 SELECT u.tenant_id, u.id, 'hr_admin', NULL FROM users u WHERE u.tenant_id = $1 AND u.email = 'admin@demo.test'
+                 ON CONFLICT (user_id, role) DO NOTHING`, [t.id]);
   // Pimpinan kedua (gap B4): belum ditugaskan wawancara visi & nilai oleh HR, supaya Tugaskan / Tugaskan semua aktif
   await c.query(
     `INSERT INTO users (tenant_id, email, name, role, password_hash, status, employee_id) VALUES ($1, 'pimpinan@demo.test', 'Kepala Divisi Demo', 'pimpinan', $2, 'active', 'D-PIMPINAN')

@@ -45,24 +45,14 @@ export interface Programs {
   vendorName: string
 }
 
-const KINDS: ItemKind[] = ['K', 'S', 'A']
-const kindOf = (v: unknown): ItemKind => (KINDS.includes(v as ItemKind) ? (v as ItemKind) : 'K')
 /**
- * Gap B1: draf lama (seed sebelum 25 Nov) menyimpan tujuan sebagai teks dan asesmen tanpa hitungan tujuan.
- * Dinormalkan ke bentuk kontrak generateDraft supaya layar bisa menyunting dan PUT tidak ditolak.
+ * Gap B1 (sementara, sampai semua stack demo di-seed ulang): draf seed lama menyimpan tujuan sebagai teks dan asesmen
+ * tanpa hitungan tujuan. Hanya dua bentuk lama itu yang diubah; data lain diteruskan apa adanya supaya galat server tetap terlihat.
  */
 export function normalizeDraft(d: Draft): Draft {
-  const objectives = (d.objectives as unknown[] ?? []).map((o): Objective => {
-    if (typeof o === 'string') return { kind: 'K', item: o, text: o, assessment: '' }
-    const x = (o ?? {}) as Partial<Objective>
-    return { kind: kindOf(x.kind), item: x.item ?? '', text: x.text ?? '', assessment: x.assessment ?? '' }
-  })
-  const assessments = (d.assessments ?? []).map((a) => ({
-    ...a,
-    kind: kindOf(a.kind),
-    objectives: Number.isInteger(a.objectives) ? a.objectives : objectives.filter((o) => o.kind === kindOf(a.kind)).length,
-  }))
-  return { ...d, objectives, sessions: d.sessions ?? [], assessments }
+  const objectives = (d.objectives as unknown[]).map((o) => (typeof o === 'string' ? { kind: 'K' as const, item: o, text: o, assessment: '' } : o as Objective))
+  const assessments = d.assessments.map((a) => (Number.isInteger(a.objectives) ? a : { ...a, objectives: objectives.filter((o) => o.kind === a.kind).length }))
+  return { ...d, objectives, assessments }
 }
 
 const call = <T>(path: string, init: RequestInit = {}) => api<T>(`/li${path}`, init, useSessionStore().token)

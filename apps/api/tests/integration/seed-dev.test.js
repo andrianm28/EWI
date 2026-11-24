@@ -179,6 +179,8 @@ run('seed-dev: tenant demo untuk demo langsung (Postgres)', () => {
     expect(byName(hr, 'Rina')).toMatchObject({ eligible: false });
     const spv = (await get('spv', '/dna/career/decisions').expect(200)).body.data;
     expect(byName(spv, 'Budi')).toMatchObject({ actions: ['recommend', 'hold'] });
+    // rekomendasi Learner Demo berasal dari atasannya sendiri (RG-3: atasan melihat timnya)
+    expect(byName(spv, 'Learner Demo')).toMatchObject({ supervisor: { decision: 'recommend' } });
   });
 
   test('B4/B5/B7: CC punya pimpinan belum ditugaskan, anggota tim belum ditugaskan dan belum mulai, persyaratan Misi, indikator Integritas, program nilai', async () => {
@@ -205,12 +207,15 @@ run('seed-dev: tenant demo untuk demo langsung (Postgres)', () => {
     expect(open.map((m) => m.recommendation).sort()).toEqual(expect.arrayContaining(['dev', 'vendor']));
   });
 
-  test('B8: LD menyarankan Kirim pengingat, Kirim ajakan (bila didukung), dan Minta konfirmasi (bila didukung)', async () => {
+  test('B8/C6: LD punya data Kirim pengingat, Kirim ajakan, Minta konfirmasi, Lihat program; LIM punya jadwal belum mulai', async () => {
     const dash = (await get('hr', '/ld/dashboard').expect(200)).body.data;
     expect(dash.actions.some((a) => a.kind === 'remind')).toBe(true);
     const trainings = JSON.stringify((await get('hr', '/ld/trainings').expect(200)).body.data);
     expect(trainings).toContain('Komunikasi insiden ke pelanggan');
     expect(trainings).toContain('Root Cause Analysis (angkatan 2)');
+    expect(trainings).toContain('ITIL Foundation (angkatan 2)');
+    const antrean = (await get('hr', `/lim/plans/${ids.planId}/queue`).expect(200)).body.data;
+    expect(antrean.find((x) => x.userId === ids.memberIds[1])).toMatchObject({ status: 'scheduled' });
   });
 
   test('Super Admin tidak membaca isi karyawan walau tenant demo menyalakan semua modul', async () => {

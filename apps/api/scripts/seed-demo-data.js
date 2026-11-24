@@ -3,11 +3,14 @@
 // Tujuan: setiap langkah apps/web/e2e/demo-alur.spec.ts menampilkan isi nyata dari API asli, bukan layar kosong.
 // Aturan:
 // - Idempoten: setiap baris dicari lewat kunci alaminya dulu (find-or-insert), jadi seed aman dijalankan ulang.
+// - Langkah perbaikan (gap demo 25 Nov) mengembalikan keadaan demo saat seed diulang: draf seed lama berbentuk string,
+//   penugasan CC Budi dari seed lama, peserta ITIL yang tidak aktif, dan atasan Learner Demo. Hanya baris buatan seed.
 // - Temuan AI adalah baris seed (tidak pernah memanggil LLM). Judul/detail temuan disimpan lewat store TNA,
 //   sehingga terenkripsi per tenant seperti data asli.
 // - Tidak ada data untuk Super Admin: konsol Super Admin hanya membaca metadata tenant (denyEmployeeContent).
 
 const { generateDraft } = require('../src/modules/li/design');
+const { validateProgramConfig } = require('../src/modules/cca/program-report');
 
 const DAY = 24 * 60 * 60 * 1000;
 // Kompetensi milik seed (seed-dev + seed ini). Hanya ini yang disahkan dan diberi tingkat.
@@ -49,6 +52,9 @@ async function seedDemoData(c, { stores, tenantId: t, jobRoleId, levelIds, hrId,
             supervisor_id = COALESCE(supervisor_id, $4), employee_id = COALESCE(employee_id, 'D-LEARNER')
       WHERE tenant_id = $1 AND email = 'learner@demo.test' RETURNING id`, [t, jobRoleId, levelIds[1], spvId]);
   if (!learner) throw new Error('seed-demo-data: akun learner@demo.test tidak ditemukan di tenant demo');
+  // seed-dev membuat Learner Demo dengan HR sebagai atasan; data demo memperlakukannya sebagai anggota tim Atasan Demo
+  // (CC, LD, LIM, promosi). Hanya nilai bawaan seed itu yang dipindah, atasan yang diubah lewat aplikasi tidak disentuh.
+  await c.query('UPDATE users SET supervisor_id = $3 WHERE tenant_id = $1 AND id = $2 AND supervisor_id = $4', [t, learner.id, spvId, hrId]);
   const team = [dimas, rina, budi, learner.id];
 
   // ---------- Kamus kompetensi disahkan HR + target skor (syarat papan gap R2) ----------
@@ -121,13 +127,16 @@ async function seedDemoData(c, { stores, tenantId: t, jobRoleId, levelIds, hrId,
                      VALUES ($1, $2, $3, 'passed', '2026-11-05', $4) ON CONFLICT (tenant_id, user_id, program_tier) DO NOTHING`, [t, userId, tier, hrId]);
     }
   }
-  const { rows: [{ career_level_id: learnerLevel }] } = await c.query('SELECT career_level_id FROM users WHERE id = $1', [learner.id]);
-  const nextLevel = levelIds[levelIds.indexOf(learnerLevel) + 1];
-  if (nextLevel) {
-    await findOrInsert(c, 'lna_promotion_decisions', { tenant_id: t, user_id: learner.id, to_level_id: nextLevel }, {
-      from_level_id: learnerLevel, okr_achievement: 100, supervisor_decision: 'recommend', supervisor_by: spvId, supervisor_at: '2026-11-21T03:00:00Z',
-      supervisor_note: 'Konsisten menyelesaikan insiden P2 dalam SLA dan sudah lulus program Intermediate.',
-    });
+  // Siklus Junior -> Senior lewat store (aturan C6 + baris audit). Bila HR sudah memutuskan saat gladi, siklus terbuka baru
+  // dibuat lagi (kecuali sudah disetujui: store menolak), jadi tombol Setujui kembali setelah seed diulang.
+  const { rows: [{ career_level_id: learnerLevel }] } = await c.query('SELECT career_level_id FROM users WHERE tenant_id = $1 AND id = $2', [t, learner.id]);
+  const { rows: openCycle } = await c.query(`SELECT 1 FROM lna_promotion_decisions WHERE tenant_id = $1 AND user_id = $2 AND to_level_id = $3 AND hr_decision IS NULL`,
+    [t, learner.id, levelIds[2]]);
+  if (learnerLevel === levelIds[1] && !openCycle.length) {
+    await stores.promotion.supervisorDecide(t, {
+      userId: learner.id, fromLevelId: levelIds[1], toLevelId: levelIds[2], okrAchievement: 100, decision: 'recommend', by: spvId,
+      note: 'Konsisten menyelesaikan insiden P2 dalam SLA dan sudah lulus program Intermediate.',
+    }, { event: 'supervisor_decision', decision: 'recommend', employeeId: learner.id, fromLevelId: levelIds[1], toLevelId: levelIds[2], decidedByName: 'Atasan Demo', role: 'supervisor', source: 'seed' });
   }
 
   // ---------- Sesi wawancara akar masalah (TNA) ----------
@@ -225,14 +234,12 @@ async function seedDemoData(c, { stores, tenantId: t, jobRoleId, levelIds, hrId,
   // Draf SD-B1 (gap B1): bentuk sama dengan POST /li/modules/:id/draft (generateDraft dari butir KSA), bukan daftar string.
   // Draf lama berbentuk string (seed sebelum 25 Nov) diganti di tempat agar layar draf tidak galat.
   const rcaItems = (await c.query('SELECT kind, text FROM li_module_items WHERE tenant_id = $1 AND module_id = $2 ORDER BY position', [t, mod['Root Cause Analysis']])).rows;
-  const rcaDraft = generateDraft({ name: 'Root Cause Analysis', items: rcaItems });
-  const draftId = await findOrInsert(c, 'li_module_drafts', { tenant_id: t, module_id: mod['Root Cause Analysis'] }, {
-    status: 'draft', generated_by: 'template', created_by: hrId,
-    objectives: JSON.stringify(rcaDraft.objectives), sessions: JSON.stringify(rcaDraft.sessions), assessments: JSON.stringify(rcaDraft.assessments),
-  });
+  const rcaDraft = Object.fromEntries(Object.entries(generateDraft({ name: 'Root Cause Analysis', items: rcaItems })).map(([k, v]) => [k, JSON.stringify(v)]));
+  const draftId = await findOrInsert(c, 'li_module_drafts', { tenant_id: t, module_id: mod['Root Cause Analysis'] },
+    { status: 'draft', generated_by: 'template', created_by: hrId, ...rcaDraft });
   await c.query(`UPDATE li_module_drafts SET objectives = $3::jsonb, sessions = $4::jsonb, assessments = $5::jsonb
                   WHERE tenant_id = $1 AND id = $2 AND jsonb_typeof(objectives -> 0) = 'string'`,
-  [t, draftId, JSON.stringify(rcaDraft.objectives), JSON.stringify(rcaDraft.sessions), JSON.stringify(rcaDraft.assessments)]);
+  [t, draftId, rcaDraft.objectives, rcaDraft.sessions, rcaDraft.assessments]);
 
   // ---------- Learning Delivery ----------
   const training = (title, values) => findOrInsert(c, 'ld_trainings', { tenant_id: t, title }, { created_by: hrId, ...values });
@@ -250,13 +257,13 @@ async function seedDemoData(c, { stores, tenantId: t, jobRoleId, levelIds, hrId,
   // Gap B8 (aturan ld/domain.js buildInsights): Budi tidak aktif > 14 hari di ITIL -> saran "Kirim pengingat".
   await c.query(`UPDATE ld_participants SET last_activity_at = now() - interval '16 days'
                   WHERE tenant_id = $1 AND training_id = $2 AND user_id = $3 AND status = 'in_progress'`, [t, ldItil, budi]);
-  // Online berjalan sesuai jadwal dengan peserta belum selesai -> "Kirim ajakan" (C6, thread aksi LD).
+  // Online berjalan sesuai jadwal, tanpa peserta tidak aktif, Rina hampir selesai (>= 75%) -> "Kirim ajakan" (C6, thread aksi LD).
   const ldKom = await training('Komunikasi insiden ke pelanggan', { mode: 'online', source: 'elitementor', program_tier: 'basic',
     starts_on: isoDate(-6), ends_on: isoDate(24), session_count: 4, sessions_done: 1, status: 'running', materials_ready: true, assessment_mode: 'elitementor' });
   for (const [i, userId] of team.entries()) {
     const done = i === 0;
     await findOrInsert(c, 'ld_participants', { tenant_id: t, training_id: ldKom, user_id: userId }, {
-      progress_pct: [100, 35, 30, 25][i], status: done ? 'completed' : 'in_progress', completed_at: done ? new Date(Date.now() - DAY) : null });
+      progress_pct: [100, 80, 30, 25][i], status: done ? 'completed' : 'in_progress', completed_at: done ? new Date(Date.now() - DAY) : null });
   }
   await c.query(`UPDATE ld_participants SET last_activity_at = now() - interval '1 day' WHERE tenant_id = $1 AND training_id = $2`, [t, ldKom]);
   // Offline akan datang (<= 14 hari) dengan peserta, kehadiran belum dicatat -> "Minta konfirmasi" (C6).
@@ -265,6 +272,13 @@ async function seedDemoData(c, { stores, tenantId: t, jobRoleId, levelIds, hrId,
     session_count: 2, sessions_done: 0, status: 'scheduled', materials_ready: true, assessment_mode: 'vendor_manual' });
   for (const userId of team) {
     await findOrInsert(c, 'ld_participants', { tenant_id: t, training_id: ldRca2, user_id: userId }, { progress_pct: 0, status: 'enrolled' });
+  }
+  // Akan datang dari EliteMentor (bukan manual) dengan peserta -> "Lihat program" di tab Akan datang (C6).
+  const ldItil2 = await training('ITIL Foundation (angkatan 2)', { mode: 'online', source: 'elitementor', module_id: mod['ITIL Foundation'],
+    program_tier: 'intermediate', starts_on: isoDate(7), ends_on: isoDate(37), session_count: 6, sessions_done: 0, status: 'scheduled',
+    materials_ready: true, assessment_mode: 'elitementor' });
+  for (const userId of [dimas, budi]) {
+    await findOrInsert(c, 'ld_participants', { tenant_id: t, training_id: ldItil2, user_id: userId }, { progress_pct: 0, status: 'enrolled' });
   }
   // Angkatan RCA yang sudah selesai di dalam periode rencana LIM (mulai 1 Nov): skor post dari LD membuat tim masuk
   // antrean tab Pengukuran AI, sehingga hasil wawancara ulang Dimas bisa dibuka dari "Lihat hasil" (gladi demo 25 Nov).
@@ -300,6 +314,9 @@ async function seedDemoData(c, { stores, tenantId: t, jobRoleId, levelIds, hrId,
   // karyawan demo punya jadwal terbuka untuk menu "Wawancara ulang".
   await c.query(`UPDATE lim_measurements SET reinterview_status = 'scheduled', reinterview_on = $4
                   WHERE tenant_id = $1 AND plan_id = $2 AND user_id = $3 AND reinterview_status = 'none'`, [t, planId, learner.id, isoDate(3)]);
+  // Rina juga terjadwal dan belum mulai: HR bisa menekan "Mulai sekarang" (C6) tanpa memakai undangan Learner Demo
+  await c.query(`UPDATE lim_measurements SET reinterview_status = 'scheduled', reinterview_on = $4
+                  WHERE tenant_id = $1 AND plan_id = $2 AND user_id = $3 AND reinterview_status = 'none'`, [t, planId, rina, isoDate(5)]);
   if (!(await stores.lim.completedReinterviews(t, dimas, { planId })).length) {
     await c.query(`UPDATE lim_measurements SET reinterview_status = 'scheduled', reinterview_on = $4
                     WHERE tenant_id = $1 AND plan_id = $2 AND user_id = $3 AND reinterview_status <> 'done'`, [t, planId, dimas, isoDate(-2)]);
@@ -335,21 +352,24 @@ async function seedDemoData(c, { stores, tenantId: t, jobRoleId, levelIds, hrId,
       { assigned_by: spvId, parent_id: leader, due_date: isoDate(7), duration_minutes: 15, status: userId === dimas ? 'completed' : 'assigned',
         completed_at: userId === dimas ? '2026-11-21T04:00:00Z' : null });
   }
-  // Seed sebelum 25 Nov menugaskan Budi; penugasan yang belum dimulai itu dicabut supaya tombol Tugaskan tampil
-  await c.query(`DELETE FROM cca_assignments WHERE tenant_id = $1 AND assignee_id = $2 AND tier = 'employee' AND status = 'assigned'
-                   AND parent_id = $3 AND session_id IS NULL AND created_at < '2026-11-25'`, [t, budi, leader]);
+  // Seed sebelum 25 Nov menugaskan Budi; penugasan seed yang belum dimulai itu dibatalkan (bukan dihapus) supaya tombol Tugaskan tampil
+  await c.query(`UPDATE cca_assignments SET status = 'cancelled', updated_at = now()
+                  WHERE tenant_id = $1 AND assignee_id = $2 AND tier = 'employee' AND status = 'assigned'
+                    AND parent_id = $3 AND assigned_by = $4 AND session_id IS NULL AND created_at < '2026-11-25'`, [t, budi, leader, spvId]);
 
   // Program nilai korporasi (gap B7): hasil per karyawan, satu belum menyelesaikan semua kegiatan
   // ("Wawancarai karyawan yang belum selesai"). Bentuk config sama dengan validateProgramConfig.
-  const programId = await findOrInsert(c, 'cca_programs', { tenant_id: t, key: 'nilai-2026' }, {
-    name: 'Program Nilai Perusahaan 2026', provider: 'Tim Budaya Perusahaan', cutoff_date: '2026-11-15', updated_by: hrId,
-    config: JSON.stringify({
+  const PROGRAM_CONFIG = {
       values: [{ name: 'Fokus pelanggan' }, { name: 'Integritas' }],
       components: [{ name: 'Kuis', weight: 40 }, { name: 'Asesmen akhir', weight: 60 }],
       totalActivities: 6, passScore: 70,
       bands: [{ key: 'strong', label: 'Strong Culture Alignment', min: 85, description: 'Skor akhir 85 atau lebih' },
         { key: 'baseline', label: 'Baseline Implementation', min: 70, description: null }],
-    }),
+    };
+  if (validateProgramConfig(PROGRAM_CONFIG).error) throw new Error(`seed-demo-data: config program nilai tidak valid: ${validateProgramConfig(PROGRAM_CONFIG).error}`);
+  const programId = await findOrInsert(c, 'cca_programs', { tenant_id: t, key: 'nilai-2026' }, {
+    name: 'Program Nilai Perusahaan 2026', provider: 'Tim Budaya Perusahaan', cutoff_date: '2026-11-15', updated_by: hrId,
+    config: JSON.stringify(PROGRAM_CONFIG),
     insight: 'Skor Integritas tertahan pada kuis studi kasus pelaporan insiden.',
     recommendations: JSON.stringify([{ title: 'Selesaikan kegiatan yang tertinggal', detail: 'Ajak karyawan yang belum selesai menuntaskan kuis sebelum cut off berikutnya.' }]),
   });
