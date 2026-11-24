@@ -358,6 +358,41 @@ test('P6 Draf: Simpan perubahan, simpan otomatis saat pindah langkah dan keluar,
   expect(calls.find((c) => c.method === 'DELETE')?.url).toBe('/drafts/d-1')
 })
 
+// P9 CD-1: keluar atau sesi habis di layar draf tidak boleh tertahan simpan otomatis onBeforeRouteLeave
+async function putDrafButuhToken(page: Page, calls: { method: string; url: string; body: unknown }[], status = 401) {
+  await page.route('**/api/li/drafts/d-1', async (r: Route) => {
+    const req = r.request()
+    if (req.method() !== 'PUT') return r.fallback()
+    calls.push({ method: 'PUT', url: '/drafts/d-1', body: JSON.parse(req.postData() ?? 'null') })
+    const auth = await req.headerValue('authorization')
+    return r.fulfill({ status, json: { error: { code: auth ? 'SESSION_EXPIRED' : 'UNAUTHORIZED', message: 'Sesi berakhir' } } })
+  })
+}
+
+test('P9 CD-1: tombol Keluar di layar draf dengan perubahan langsung ke login, tanpa simpan tanpa token', async ({ page }) => {
+  const calls: { method: string; url: string; body: unknown }[] = []
+  await setup(page, calls)
+  await putDrafButuhToken(page, calls)
+  await page.goto('/req/draf/d-1')
+  await page.getByLabel('Tujuan terukur 1').fill('Menjelaskan 5 Whys pada 4 dari 5 soal')
+  await page.getByRole('button', { name: 'Keluar' }).click()
+  await expect(page).toHaveURL(/\/login/)
+  await expect(page.getByRole('button', { name: 'Keluar' })).toHaveCount(0)
+  expect(calls.filter((c) => c.method === 'PUT')).toEqual([])
+})
+
+test('P9 CD-1: sesi habis saat simpan otomatis waktu meninggalkan draf: tetap pindah ke login', async ({ page }) => {
+  const calls: { method: string; url: string; body: unknown }[] = []
+  await setup(page, calls)
+  await putDrafButuhToken(page, calls)
+  await page.goto('/req/draf/d-1')
+  await page.getByLabel('Tujuan terukur 1').fill('Menjelaskan 5 Whys pada 4 dari 5 soal')
+  await page.getByRole('navigation', { name: 'Lokasi' }).getByRole('link', { name: 'Permintaan & pengembangan' }).click()
+  await expect(page).toHaveURL(/\/login\?alasan=sesi-habis/)
+  // satu percobaan simpan dengan token; tidak ada percobaan ulang tanpa token
+  expect(calls.filter((c) => c.method === 'PUT')).toHaveLength(1)
+})
+
 // Paritas P8 (docs/designs/paritas-mockup/p8-keputusan-r1-r22.md)
 test('P8 R8: rancangan modul memakai label jujur "Templat ELGOS"', async ({ page }) => {
   await setup(page)
