@@ -165,6 +165,25 @@ test('P9 IR-1: HR menekan "Buka Tinjauan HR" dari asisten dan sampai di antrean 
   await expect(page.getByText('Alamat gap tidak lengkap')).toHaveCount(0)
 })
 
+test('P9 CD-2: FAB asisten dan pengingat verifikasi INA bertumpuk tanpa saling menutupi', async ({ page }) => {
+  await mockAsisten(page)
+  await mockApi(page, (req) => (cocok(req, 'GET /ina/access/me') ? responsData({ level: null, pendingVerifications: 2 }) : undefined))
+  await masuk(page, 'karyawan', semuaModulDengan({ assistant: true, 'ina.ai_verification': true }))
+  const pengingat = page.getByTestId('ina-pengingat')
+  await expect(pengingat).toContainText('2 verifikasi tindakan perbaikan menunggu jawaban Anda.')
+  await expect(fab(page)).toBeVisible()
+  const a = (await fab(page).boundingBox())!
+  const b = (await pengingat.boundingBox())!
+  const tumpang = a.x < b.x + b.width && b.x < a.x + a.width && a.y < b.y + b.height && b.y < a.y + a.height
+  expect(tumpang).toBe(false)
+  // tombol Buka pengingat tetap bisa diklik (tidak tertutup FAB)
+  await pengingat.getByRole('link', { name: 'Buka' }).click({ trial: true })
+  // panel asisten terbuka juga tidak menutupi pengingat
+  await fab(page).click()
+  const p = (await panel(page).boundingBox())!
+  expect(p.y + p.height <= b.y || b.y + b.height <= p.y).toBe(true)
+})
+
 test('Esc dan tombol Tutup menutup panel; fokus kembali ke FAB', async ({ page }) => {
   await mockAsisten(page)
   await masuk(page, 'hr')
