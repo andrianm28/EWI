@@ -207,7 +207,7 @@ test('paritas DN-5/DN-6/DN-9/DN-12: note KPI kamus, copy status kamus, catatan k
   const sel = page.getByRole('row', { name: /Budi/ }).getByRole('cell').nth(2)
   await sel.hover()
   await expect(sel).toHaveCSS('background-color', 'rgb(236, 239, 245)')
-  await page.evaluate(() => { document.documentElement.dataset.theme = 'dark' })
+  await page.evaluate("document.documentElement.dataset.theme = 'dark'")
   await expect(sel).toHaveCSS('background-color', 'rgb(39, 42, 47)')
 })
 
