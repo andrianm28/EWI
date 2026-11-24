@@ -29,11 +29,12 @@ const projects = ref<Project[]>([])
 const error = ref('')
 const notice = ref('')
 
-// B0 5.1: izin dari semua peran akun (session.roles), bukan peran utama; akun atasan yang juga HR melihat bagian HR
-const isHr = computed(() => session.hasAnyRole(HR_ROLES))
-const isSupervisor = computed(() => session.hasAnyRole(['supervisor']))
+// B2 (R39-3): kontrol mengikuti peran aktif sesi, bukan semua peran akun; akun atasan yang juga HR melihat bagian HR
+// di tampilan HR saja, dan akun HR di tampilan Karyawan melihat layar karyawan
+const isHr = computed(() => session.hasActiveRole(HR_ROLES))
+const isSupervisor = computed(() => session.hasActiveRole(['supervisor']))
 /** Hanya peran karyawan (tanpa HR maupun atasan). */
-const isLearner = computed(() => session.hasAnyRole(['learner']) && !isHr.value && !isSupervisor.value)
+const isLearner = computed(() => session.hasActiveRole(['learner']) && !isHr.value && !isSupervisor.value)
 // R-1: saat penugasan dari papan gap menyala, jadwal massal lama disembunyikan (penugasan lewat detail gap)
 const assignmentOn = computed(() => session.hasFlag('tna.interview_assignment'))
 // PM-8 B: BT-31 ditunda, tombol permintaan training hanya tampil bila flag dinyalakan

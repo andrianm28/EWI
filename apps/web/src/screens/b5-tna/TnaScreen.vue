@@ -26,7 +26,7 @@ const showBoard = useShowBoard()
 // Triase P5 M1: banner temuan AI menunggu review ikut pindah ke Kelola TNA, jadi HR diberi catatan ringkas di papan
 const reviewPending = ref(0)
 async function loadReviewPending() {
-  if (!showBoard.value || !session.hasAnyRole(HR_ROLES)) return
+  if (!showBoard.value || !session.hasActiveRole(HR_ROLES)) return
   try { reviewPending.value = (await lna.tnaDashboard()).data.reviewPending ?? 0 } catch { /* catatan opsional; galat papan ditangani loadBoard */ }
 }
 

@@ -17,7 +17,7 @@ const session = useSessionStore()
 const route = useRoute()
 const ref_ = computed(() => gapRefFromQuery(route.query))
 const backTab = computed(() => (typeof route.query.tab === 'string' ? route.query.tab : route.query.kind === 'okr' ? 'okr' : 'kompetensi'))
-const isHr = computed(() => session.hasAnyRole(HR_ROLES))
+const isHr = computed(() => session.hasActiveRole(HR_ROLES))
 const assignOn = computed(() => session.hasFlag('tna.interview_assignment'))
 // Paritas B7 web: tinjauan per gap bila rutenya terbuka (flag tna.review_workspace), selain itu antrean lama
 const reviewTo = computed(() => (routeOpen('review', session.activeView)

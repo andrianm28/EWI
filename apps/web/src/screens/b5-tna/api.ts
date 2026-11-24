@@ -50,9 +50,13 @@ export const gaps = {
   jobRoles: () => call<{ data: { id: string; name: string }[]; defaults?: { scope?: string; jobRoleId?: string | null } }>('/tna/job-roles'),
 }
 
-/** Peran yang diterima API papan gap (R1). Peran lain mendapat 403, jadi papan tidak dimuat sama sekali. */
-export const BOARD_ROLES = ['hr_admin', 'eta_admin', 'supervisor']
-export const HR_ROLES = ['hr_admin', 'eta_admin']
+/**
+ * Peran yang diterima API papan gap (R1). Peran lain mendapat 403, jadi papan tidak dimuat sama sekali.
+ * Tanpa eta_admin: Super Admin diblokir dari isi karyawan (aturan 24 Nov, 403 EMPLOYEE_CONTENT_PRIVATE; R39-2).
+ * Dicocokkan dengan peran aktif sesi (session.hasActiveRole), bukan semua peran akun (B2, R39-3).
+ */
+export const BOARD_ROLES = ['hr_admin', 'supervisor']
+export const HR_ROLES = ['hr_admin']
 
 /** Ubah query rute menjadi rujukan gap; null bila tidak lengkap. */
 export function gapRefFromQuery(q: Record<string, unknown>): GapRef | null {

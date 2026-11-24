@@ -89,17 +89,36 @@ for (const peran of ['karyawan', 'atasan', 'hr'] as const) {
   })
 }
 
-test('Keputusan user 23 Nov: tampilan Super Admin tanpa asisten; akun eta_admin yang sama memakainya dari tampilan HR', async ({ page }) => {
-  const diterima = await mockAsisten(page)
+// Aturan 24 Nov (core/rbac denyEmployeeContent): Super Admin diblokir dari semua isi karyawan, termasuk asisten.
+// Tampilan super tidak memuat asisten sama sekali; tampilan lain akun eta_admin ditolak server (403 EMPLOYEE_CONTENT_PRIVATE).
+test('Super Admin: tanpa asisten di tampilan super; tampilan HR akun yang sama ditolak server (EMPLOYEE_CONTENT_PRIVATE)', async ({ page }) => {
+  const diterima = await mockAsisten(page, {
+    intro: () => ({ status: 403, json: { error: { code: 'EMPLOYEE_CONTENT_PRIVATE', message: 'Super Admin tidak dapat melihat isi karyawan' } } }),
+  })
   await masuk(page, 'super', { ...DENGAN_ASISTEN, peranLain: ['hr'] })
   const tampilan = page.getByRole('group', { name: 'Tampilan' })
   await expect(tampilan.getByRole('button', { name: 'Super Admin' })).toHaveAttribute('aria-pressed', 'true')
   await expect(fab(page)).toHaveCount(0)
   expect(diterima.filter((r) => r.query.get('view') === 'super')).toEqual([])
   await tampilan.getByRole('button', { name: 'HR / L&D' }).click()
-  await expect(fab(page)).toBeVisible()
+  await expect(tampilan.getByRole('button', { name: 'HR / L&D' })).toHaveAttribute('aria-pressed', 'true')
+  await expect.poll(() => diterima.filter((r) => r.query.get('view') === 'hr').length).toBeGreaterThan(0)
+  await expect(fab(page)).toHaveCount(0)
+  await expect(panel(page)).toHaveCount(0)
+})
+
+// R39-1: 403 EMPLOYEE_CONTENT_PRIVATE diperlakukan sama dengan VIEW_FORBIDDEN, juga saat menjawab pertanyaan
+test('R39-1: pertanyaan ditolak 403 EMPLOYEE_CONTENT_PRIVATE: asisten disembunyikan seperti VIEW_FORBIDDEN', async ({ page }) => {
+  await mockAsisten(page, {
+    jawab: () => ({ status: 403, json: { error: { code: 'EMPLOYEE_CONTENT_PRIVATE', message: 'Super Admin tidak dapat melihat isi karyawan' } } }),
+  })
+  await masuk(page, 'karyawan')
   await fab(page).click()
-  await expect(panel(page)).toContainText('Tanyakan urusan Anda · HR / L&D')
+  const input = panel(page).getByRole('textbox', { name: 'Pertanyaan' })
+  await input.fill('Apa rencana belajar saya?')
+  await input.press('Enter')
+  await expect(panel(page)).toHaveCount(0)
+  await expect(fab(page)).toHaveCount(0)
 })
 
 test('Admin Tenant: tidak ada asisten (di luar lingkup B17)', async ({ page }) => {

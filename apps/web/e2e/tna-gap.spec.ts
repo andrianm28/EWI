@@ -4,6 +4,7 @@ import { papanGapTna, COMP, DETAIL, ID_KOMPETENSI, ID_DIMAS, ID_PROYEK, type Ops
 import { penanganDashboardHr } from './support/dashboard'
 import { cocok, mockApi, permintaanBelumDimock, responsData } from './support/api'
 import { tanggalWib } from './support/tanggal'
+import { penanganHasilSaya } from './support/hasil-saya'
 
 /** Tenggat uji relatif (tanggal tetap kedaluwarsa karena batas 30 hari). */
 const TENGGAT = tanggalWib(11)
@@ -494,4 +495,52 @@ test('paritas TD-2/TD-3: nilai GAP merah; bukti dan hipotesis berupa baris ikon 
   const hipotesis = page.getByRole('list', { name: 'Hipotesis awal (belum terverifikasi)' })
   await expect(hipotesis.getByRole('listitem')).toHaveText(['Materi pelatihan belum mencakup langkah ini.'])
   await expect(hipotesis.getByRole('listitem').locator('svg')).toHaveCount(1)
+})
+
+// R39-2 (aturan 24 Nov, core/rbac denyEmployeeContent): Super Admin diblokir dari isi karyawan, jadi rute TNA memantul
+test('R39-2: Super Admin membuka rute TNA (papan, detail gap, kelola): dialihkan, tanpa memanggil API TNA', async ({ page }) => {
+  const minta: string[] = []
+  await mockApi(page, (req) => { if (req.path.startsWith('/tna/')) minta.push(`${req.method} ${req.path}`); return undefined })
+  await setup(page, { peran: 'super', flags: BOARD })
+  for (const alamat of ['/tna', `/tna/gap?kind=competency&competencyId=${ID_KOMPETENSI}&tab=kompetensi`, '/tna/kelola']) {
+    await page.goto(alamat)
+    await expect(page.getByRole('button', { name: 'Keluar' })).toBeVisible()
+    await expect(page).not.toHaveURL(/\/tna(\/|\?|$)/)
+  }
+  expect(minta).toEqual([])
+})
+
+// R39-3 (B2 multi-peran): kontrol mengikuti peran/tampilan aktif, bukan semua peran akun
+test('R39-3: akun HR + karyawan di tampilan Karyawan tidak melihat kontrol HR di /tna', async ({ page }) => {
+  const { penangan } = papanGapTna({ peran: 'hr', reviewPending: 3 })
+  await mockApi(page, penangan)
+  await mockApi(page, penanganDashboardHr)
+  await mockApi(page, penanganHasilSaya('u-hr'))
+  await loginSebagai(page, 'hr', { submodules: ['cca', 'dna', 'tna', 'ina'], flags: { 'dashboard.main': true, 'learner.home': true }, peranLain: ['karyawan'] })
+  const tampilan = page.getByRole('group', { name: 'Tampilan' })
+  await tampilan.getByRole('button', { name: 'Karyawan' }).click()
+  await expect(tampilan.getByRole('button', { name: 'Karyawan' })).toHaveAttribute('aria-pressed', 'true')
+  await page.goto('/tna')
+  await expect(page.getByTestId('tna-findings')).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Hasil TNA Anda' })).toBeVisible()
+  await expect(page.getByTestId('tna-review-banner')).toHaveCount(0)
+  await expect(page.locator('[data-import-panel]')).toHaveCount(0)
+  await expect(page.getByRole('link', { name: 'Riwayat review hasil AI' })).toHaveCount(0)
+  await expect(page.getByRole('button', { name: 'Buat training plan' })).toHaveCount(0)
+})
+
+test('R39-3: akun atasan + HR di tampilan Atasan: detail gap tanpa tautan tinjauan HR', async ({ page }) => {
+  const { penangan } = papanGapTna({ peran: 'atasan' })
+  await mockApi(page, penangan)
+  await mockApi(page, penanganDashboardHr)
+  await loginSebagai(page, 'atasan', { submodules: ['cca', 'dna', 'tna', 'ina'], flags: { ...BOARD, 'tna.interview_assignment': true, 'dashboard.main': true }, peranLain: ['hr'] })
+  const tampilan = page.getByRole('group', { name: 'Tampilan' })
+  await tampilan.getByRole('button', { name: 'Atasan' }).click()
+  await expect(tampilan.getByRole('button', { name: 'Atasan' })).toHaveAttribute('aria-pressed', 'true')
+  await page.goto(`/tna/gap?kind=competency&competencyId=${ID_KOMPETENSI}&tab=kompetensi`)
+  await expect(page.getByRole('heading', { level: 1 })).toBeVisible()
+  await expect(tampilan.getByRole('button', { name: 'Atasan' })).toHaveAttribute('aria-pressed', 'true')
+  await expect(page.getByText('Analisis insiden').first()).toBeVisible()
+  await expect(page.getByRole('link', { name: 'Langsung ke tinjauan HR' })).toHaveCount(0)
+  await expect(page.getByRole('button', { name: 'Langsung ke tinjauan HR' })).toHaveCount(0)
 })

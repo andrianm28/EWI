@@ -2,7 +2,7 @@ import { defineStore } from 'pinia'
 import { computed, ref } from 'vue'
 import { api } from '@/api/client'
 import type { SubmoduleKey } from '@/modules'
-import { viewsOfRoles, type ViewKey } from '@/shell/views'
+import { viewOfRole, viewsOfRoles, type ViewKey } from '@/shell/views'
 
 export interface SessionUser {
   id: string
@@ -159,7 +159,10 @@ export const useSessionStore = defineStore('session', () => {
     if (!u) return []
     return Array.isArray(u.roles) && u.roles.length ? u.roles : [u.role]
   })
-  /** Akun punya salah satu peran asli ini (B0 5.1: izin dari `roles`, bukan peran utama `role`). Penjaga UI saja. */
+  /**
+   * Akun punya salah satu peran asli ini, di tampilan mana pun. Jangan dipakai untuk menampilkan kontrol layar:
+   * akun multi-peran (B2) memakai satu peran aktif, jadi pakai `hasActiveRole` (R39-3).
+   */
   const hasAnyRole = (list: readonly string[]) => roles.value.some((r) => list.includes(r))
   // B2: bila API mengirim daftar peran yang bisa dipilih, tampilan diambil dari sana (otorisasi di API).
   // Tanpa itu (API lama), tampilan diturunkan di browser dari peran akun seperti B0.
@@ -182,6 +185,19 @@ export const useSessionStore = defineStore('session', () => {
     const picked = views.value.find((v) => v === pickedView.value)
     return picked ?? views.value[0] ?? 'karyawan'
   })
+  /**
+   * B2 (R39-3): peran yang sedang dipakai sesi. Dari API (peran aktif, `access.role`) bila dikirim; API lama: peran akun
+   * yang tampilan utamanya sama dengan tampilan aktif. Tampilan Karyawan tanpa peran karyawan asli (K2: HR dan atasan
+   * juga karyawan) dibaca sebagai `learner`.
+   */
+  const activeRoles = computed<string[]>(() => {
+    if (!user.value) return []
+    if (apiRoles.value && access.value?.role) return [access.value.role]
+    const own = roles.value.filter((r) => viewOfRole(r) === activeView.value)
+    return own.length || activeView.value !== 'karyawan' ? own : ['learner']
+  })
+  /** Peran aktif sesi termasuk salah satu dari daftar ini. Penjaga UI saja; data tetap diotorisasi API. */
+  const hasActiveRole = (list: readonly string[]) => activeRoles.value.some((r) => list.includes(r))
   async function setView(v: ViewKey) {
     if (!views.value.includes(v)) return
     const target = apiRoles.value?.find((r) => r.view === v)
@@ -226,5 +242,5 @@ export const useSessionStore = defineStore('session', () => {
 
   if (token.value) { scheduleExpiry(); startHeartbeat() }
 
-  return { token, user, role, roles, hasAnyRole, views, activeView, setView, homeReady, access, isAuthenticated, canOpen, hasFlag, login, loginWithEmailLink, loadAccess, logout, clear, expire, setExpiredHandler }
+  return { token, user, role, roles, hasAnyRole, activeRoles, hasActiveRole, views, activeView, setView, homeReady, access, isAuthenticated, canOpen, hasFlag, login, loginWithEmailLink, loadAccess, logout, clear, expire, setExpiredHandler }
 })
