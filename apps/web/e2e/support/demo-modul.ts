@@ -392,6 +392,8 @@ export const penanganAtasanDemo: Penangan = (req) => {
   }
   if (cocok(req, 'GET /ina/access/me')) return data({ level: 'read', pendingVerifications: 0 })
   if (cocok(req, 'GET /ina/actions')) return { json: { data: INA_ACTIONS, kpis: { total: 2, done: 0, process: 1, culture: 1, overdue: 0 }, meta: { level: 'read', hiddenIndividual: 0 } } }
+  // B15 tahap 3: menu Wawancara ulang atasan hanya memuat wawancara miliknya sendiri; atasan demo belum dijadwalkan
+  if (cocok(req, 'GET /lim/me/reinterviews')) return data([])
   return undefined
 }
 
