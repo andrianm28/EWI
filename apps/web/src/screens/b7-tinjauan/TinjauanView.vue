@@ -29,17 +29,23 @@ const handedCount = ref<number | null>(null)
 
 const message = (e: unknown, fallback: string) => (e instanceof ApiError ? e.message : fallback)
 
+// P9 CD-12: pindah gap (watch fullPath) saat respons gap sebelumnya belum tiba; respons lama dibuang (pola listSeq LibraryView)
+let loadSeq = 0
 /** Muat ulang temuan dan solusi gap ini. Temuan yang ditolak tidak diklasifikasi lagi (menolak dan riwayatnya di antrean lama). */
-async function refresh(query: ReviewGapQuery) {
+async function refresh(query: ReviewGapQuery, seq = loadSeq) {
   const [q, s] = await Promise.all([lna.reviewQueue('all', query), lna.reviewSolutions(query)])
+  if (seq !== loadSeq) return
   items.value = q.data.filter((f) => f.reviewStatus !== 'rejected')
   gapLabel.value = q.gap?.label ?? ''
   solutions.value = s.data
 }
 async function load() {
+  const seq = ++loadSeq
   if (!gapQuery.value) { errors.value = [{ message: 'Alamat gap tidak lengkap. Buka tinjauan dari detail gap Training Needs.' }]; return }
   loading.value = true
-  try { await refresh(gapQuery.value) } catch (e) { errors.value = [{ message: message(e, 'Tinjauan temuan tidak bisa dimuat') }] } finally { loading.value = false }
+  try { await refresh(gapQuery.value, seq) } catch (e) {
+    if (seq === loadSeq) errors.value = [{ message: message(e, 'Tinjauan temuan tidak bisa dimuat') }]
+  } finally { if (seq === loadSeq) loading.value = false }
 }
 /** Tulis sudah berhasil, hanya muat ulang yang gagal: jangan laporkan sebagai gagal menyimpan. */
 const savedButStale = (what: string) => ({ message: `${what}, tetapi data tidak bisa dimuat ulang.` })

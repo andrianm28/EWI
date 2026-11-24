@@ -38,9 +38,12 @@ export const useAsistenStore = defineStore('b17-asisten', () => {
   // Kunci {tenant}|{user.id}|{tampilan}: berubah saat ganti tampilan, keluar, atau akun lain
   let key = ''
   let seq = 0
+  /** P9 CD-12: naik di setiap pertanyaan dan reset; jawaban untuk nomor lama dibuang walau kunci kembali sama. */
+  let askSeq = 0
   let introLoading: Promise<void> | null = null
 
   function reset() {
+    askSeq++
     open.value = false
     turns.value = []
     intro.value = null
@@ -91,7 +94,8 @@ export const useAsistenStore = defineStore('b17-asisten', () => {
   async function ask(question: string, view: AssistantView) {
     const q = question.trim()
     if (!q || pending.value) return
-    const k = key
+    const mine = ++askSeq
+    const stale = () => mine !== askSeq
     push({ who: 'me', text: q })
     draft.value = ''
     pending.value = true
@@ -99,17 +103,17 @@ export const useAsistenStore = defineStore('b17-asisten', () => {
     const timer = setTimeout(() => ctl.abort(), ASK_TIMEOUT_MS)
     try {
       const res = await assistant.ask(q, view, ctl.signal)
-      if (k !== key) return
+      if (stale()) return
       push({ who: 'ai', text: res.data.answer, action: res.data.action })
     } catch (e) {
-      if (k !== key) return
+      if (stale()) return
       if (isViewForbidden(e)) unavailable.value = true
       push({ who: 'ai', text: errorText(e) })
       // Draf dikembalikan supaya bisa dikirim ulang (kecuali pengguna sudah mengetik yang baru)
       if (!draft.value) draft.value = q
     } finally {
       clearTimeout(timer)
-      if (k === key) pending.value = false
+      if (!stale()) pending.value = false
     }
   }
 

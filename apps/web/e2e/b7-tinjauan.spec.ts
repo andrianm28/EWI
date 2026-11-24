@@ -299,7 +299,9 @@ test('P9 CD-12: respons gap lama yang tiba belakangan tidak menimpa gap yang sed
   await loginSebagai(page, 'hr', { submodules: ['cca', 'dna', 'tna', 'ina'], flags: FLAGS })
   await page.goto(ALAMAT)
   await expect.poll(() => sent.filter((x) => x.path === 'GET /tna/review').length).toBe(1)
-  await page.evaluate((url) => { history.pushState({}, '', url); dispatchEvent(new PopStateEvent('popstate')) }, `/tna/tinjauan?kind=competency&competencyId=${GAP_B}&tab=kompetensi`)
+  // navigasi di dalam aplikasi (tanpa memuat ulang) supaya permintaan gap pertama tetap berjalan
+  const alamatB = `/tna/tinjauan?kind=competency&competencyId=${GAP_B}&tab=kompetensi`
+  await page.evaluate(`history.pushState({}, '', ${JSON.stringify(alamatB)}); dispatchEvent(new PopStateEvent('popstate'))`)
   await expect(page.getByText('Gap kedua. HR memastikan klasifikasi')).toBeVisible()
   await page.evaluate(() => new Promise((ok) => setTimeout(ok, 1200)))
   await expect(page.getByText('Gap kedua. HR memastikan klasifikasi')).toBeVisible()
