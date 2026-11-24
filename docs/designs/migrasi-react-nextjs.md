@@ -207,7 +207,7 @@ Tiket perbaikan sesudah potong-alih (F5):
 
 | ID | Pertanyaan | Rekomendasi |
 | --- | --- | --- |
-| D0 | Alasan utama migrasi, dan apakah Next.js wajib | **Diputuskan 24 Nov: Next tidak wajib** (alasan rinci belum disebut) |
+| D0 | Alasan utama migrasi, dan apakah Next.js wajib | **Diputuskan 24 Nov: Next tidak wajib.** Alasan user (23.41 WIB): "react paling populer dan menghasilkan training data lebih banyak dibanding frameworks lain"; juga menegakkan modern-web-guidance (23.32 WIB). Lihat bagian 13 |
 | D1 | Pola migrasi | C: bangun paralel, potong sekali |
 | D2 | Teknologi | **Diputuskan 24 Nov: N3 React + Vite + React Router** |
 | D3 | Waktu | Spike 3–5 Des, F1 8–9 Des, F2–F3 14 Des – 9 Jan, potong-alih minggu kedua Jan |
