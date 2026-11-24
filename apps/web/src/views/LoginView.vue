@@ -34,10 +34,16 @@ const expiredText = computed(() => (route.query.alasan === 'sesi-diam'
   ? 'Sesi Anda berakhir karena tidak aktif. Silakan masuk lagi.'
   : 'Sesi Anda sudah berakhir. Silakan masuk lagi.'))
 
-interface Methods { password?: boolean; emailLink?: boolean; sso?: boolean }
-// Kata sandi ditentukan lingkungan (tanpa organisasi); SSO ditentukan flag organisasi, jadi ditanya terpisah
+interface Methods { password?: boolean; emailLink?: boolean; sso?: boolean; tenantPicker?: boolean }
+// Kata sandi ditentukan lingkungan (tanpa organisasi); SSO ditentukan flag organisasi, jadi ditanya terpisah.
+// C10 demo 25 Nov: daftar organisasi hanya diminta bila API menyatakan tersedia (tanpa panggilan 404 di /login).
 async function loadMethods() {
-  try { passwordEnabled.value = (await api<Methods>('/auth/methods')).password === true } catch { passwordEnabled.value = false }
+  let m: Methods = {}
+  try { m = await api<Methods>('/auth/methods') } catch { /* anggap link email saja */ }
+  passwordEnabled.value = m.password === true
+  if (m.tenantPicker === true) {
+    try { tenants.value = (await api<{ data: { slug: string; name: string }[] }>('/auth/tenants')).data } catch { tenants.value = [] }
+  }
 }
 async function loadSso() {
   const slug = tenant.value.trim()
@@ -46,8 +52,7 @@ async function loadSso() {
 }
 
 onMounted(async () => {
-  const [t] = await Promise.allSettled([api<{ data: { slug: string; name: string }[] }>('/auth/tenants'), loadMethods()])
-  tenants.value = t.status === 'fulfilled' ? t.value.data : []
+  await loadMethods()
   if (tenants.value.length === 1 && !tenant.value) tenant.value = tenants.value[0]!.slug
   await loadSso()
 })

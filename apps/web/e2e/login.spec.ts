@@ -192,3 +192,25 @@ test('P4 L7: layar sempit, panel kiri di atas dengan semua teks, tanpa gulir hor
   const melebar = await page.evaluate('document.documentElement.scrollWidth > document.documentElement.clientWidth')
   expect(melebar).toBe(false)
 })
+
+// C10 demo 25 Nov: /login tidak lagi memanggil GET /auth/tenants yang menjawab 404 saat daftar organisasi mati
+test('C10: daftar organisasi hanya diminta bila /auth/methods menyatakan tersedia', async ({ page }) => {
+  const asked: string[] = []
+  page.on('request', (r) => { if (r.url().includes('/api/auth/tenants')) asked.push(r.url()) })
+  await mockBase(page)
+  await page.goto('/login')
+  await expect(page.getByRole('heading', { name: 'Masuk ke ELGOS' })).toBeVisible()
+  await expect(page.getByLabel('Organisasi')).toHaveJSProperty('tagName', 'INPUT')
+  expect(asked).toEqual([])
+})
+
+test('C10: picker menyala -> organisasi dipilih dari daftar', async ({ page }) => {
+  await mockBase(page)
+  await page.route(/\/api\/auth\/methods(\?.*)?$/, (r) => r.fulfill({ json: { password: false, emailLink: true, sso: false, tenantPicker: true } }))
+  await page.route('**/api/auth/tenants', (r) => r.fulfill({ json: { data: [{ slug: 'demo', name: 'Demo' }, { slug: 'lain', name: 'Lain' }] } }))
+  await page.goto('/login')
+  const org = page.getByLabel('Organisasi')
+  await expect(org).toHaveJSProperty('tagName', 'SELECT')
+  await org.selectOption('lain')
+  await expect(org).toHaveValue('lain')
+})
