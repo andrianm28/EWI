@@ -111,8 +111,13 @@ const RESULT = {
 }
 
 test('HR: "Lihat hasil" membuka empat langkah mockup tanpa transkrip; rekomendasi dan keyakinan tanpa kata AI', async ({ page }) => {
+  const calls: { url: string; body: unknown }[] = []
   await page.route(/\/api\/lim\//, async (r: Route) => {
     const path = new URL(r.request().url()).pathname.replace(/^.*\/api\/lim/, '')
+    const body = r.request().postData() ? JSON.parse(r.request().postData()!) : null
+    if (r.request().method() === 'POST') calls.push({ url: path, body })
+    if (path === '/plans/p-1/queue/schedule') return r.fulfill({ json: { data: { scheduled: ['u-b'], skipped: [], rejected: [], notified: 1 } } })
+    if (path === '/plans/p-1/reinterviews/u-a/review') return r.fulfill({ status: 204, body: '' })
     if (path === '/plans') return r.fulfill({ json: { data: [{ id: 'p-1', title: 'Pilot L1', jobRoleName: 'Engineer L1', moduleCount: 1, participantCount: 2 }] } })
     if (path === '/plans/p-1/overview') return r.fulfill({ json: { data: { plan: PLAN, participants: 2, chain: CHAIN, insight: { level: 1, text: 'x' }, competencies: [], indicators: [], valueEstimate: null, factors: [], generatedBy: 'rules' } } })
     if (path === '/plans/p-1/queue') return r.fulfill({ json: { data: [
@@ -127,9 +132,13 @@ test('HR: "Lihat hasil" membuka empat langkah mockup tanpa transkrip; rekomendas
   await page.getByRole('tab', { name: 'Pengukuran AI' }).click()
   const q = page.getByRole('table', { name: 'Antrean wawancara ulang' })
   await expect(q.getByRole('button', { name: 'Lihat hasil Karyawan B' })).toHaveCount(0)
-  // LIM-6: label mockup "Dijadwalkan"; HR tidak punya "Mulai sekarang" (T-1)
+  // LIM-6: label mockup "Dijadwalkan". Gap C6 25 Nov (mengganti T-1): "Mulai sekarang" membuka wawancara hari ini dan mengabari karyawan
   await expect(q.getByRole('row', { name: /Karyawan B/ })).toContainText('Dijadwalkan')
-  await expect(q.getByRole('button', { name: /Mulai sekarang/ })).toHaveCount(0)
+  await expect(q.getByRole('button', { name: 'Jadwalkan Karyawan B' })).toHaveCount(0)
+  await q.getByRole('button', { name: 'Mulai sekarang Karyawan B' }).click()
+  await expect(page.getByTestId('info')).toHaveText('Karyawan B dikabari lewat email dan bisa mulai wawancara ulang hari ini dari menu Wawancara ulang.')
+  const today = new Date(Date.now() + 7 * 3600e3).toISOString().slice(0, 10)
+  expect(calls.find((c) => c.url === '/plans/p-1/queue/schedule')?.body).toEqual({ userIds: ['u-b'], date: today, notify: true })
   await expect(page.getByText('Karyawan mengerjakannya sendiri dari menu Wawancara ulang setelah dijadwalkan.')).toBeVisible()
   await q.getByRole('button', { name: 'Lihat hasil Karyawan A' }).click()
 
@@ -152,6 +161,12 @@ test('HR: "Lihat hasil" membuka empat langkah mockup tanpa transkrip; rekomendas
   await expect(flow.getByTestId('wu-keyakinan')).toContainText('tingkat keyakinan dari data pengukuran: Sedang')
   await expect(flow.getByTestId('wu-rekomendasi')).toHaveText(['Jadwalkan penguatan Eskalasi Insiden dan ulangi wawancara dalam 4 pekan.'])
   await expect(flow).not.toContainText('Rekomendasi AI')
+  // Gap C6 (mockup limFinish): "Simpan hasil" hanya di langkah Ringkasan, mencatat tinjauan hasil yang dibaca lalu kembali ke antrean
+  await flow.getByRole('button', { name: 'Simpan hasil' }).click()
+  await expect(page.getByTestId('info')).toHaveText('Hasil wawancara ulang Karyawan A disimpan.')
+  expect(calls.find((c) => c.url === '/plans/p-1/reinterviews/u-a/review')?.body).toEqual({ reinterviewId: 'ri-1' })
+  await expect(q).toBeVisible()
+  await q.getByRole('button', { name: 'Lihat hasil Karyawan A' }).click()
   await expect(flow.getByRole('button', { name: 'Simpan hasil' })).toHaveCount(0)
   await flow.getByRole('button', { name: 'Kembali ke antrean' }).click()
   await expect(q).toBeVisible()

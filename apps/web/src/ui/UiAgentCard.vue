@@ -1,6 +1,7 @@
 <script setup lang="ts">
 // Kartu "Agen AI · …" mockup (`.card.t`): judul tebal, chip Pilot, teks muted, tombol tonal kecil di kanan.
 // Tombol hanya ada bila pemanggil memberi `action` dan `to` (pemanggil memeriksa rute/flag dengan routeOpen).
+// Slot `action` untuk tombol yang bukan tautan rute (mis. menggulir ke bagian di halaman yang sama).
 import type { RouteLocationRaw } from 'vue-router'
 import UiButton from './UiButton.vue'
 import UiChip from './UiChip.vue'
@@ -21,7 +22,7 @@ defineProps<{
       </div>
       <div class="el-muted el-agent__body"><slot /></div>
     </div>
-    <UiButton v-if="action && to" variant="tonal" size="sm" :to="to">{{ action }}</UiButton>
+    <slot name="action"><UiButton v-if="action && to" variant="tonal" size="sm" :to="to">{{ action }}</UiButton></slot>
   </div>
 </template>
 

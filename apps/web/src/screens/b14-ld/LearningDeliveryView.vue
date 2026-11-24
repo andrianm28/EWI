@@ -5,7 +5,8 @@ import AppShell from '@/components/AppShell.vue'
 import { ApiError } from '@/api/client'
 import { UiBreadcrumb, UiButton, UiCard, UiChip, UiDataTable, UiField, UiKpiCard, UiNote, UiProgressBar, UiSegmented, UiTabs, type UiColumn } from '@/ui'
 import { ld, type Dashboard, type Training } from './api'
-import { CHECK_LABEL, CHECK_SHORT, HEALTH, MODE, SOURCE_LABEL, TIER_LABEL, tanggal, tanggalPendek } from './labels'
+import { routeOpen } from '@/router'
+import { ACTION_LABEL, SENT_NOUN, CHECK_LABEL, CHECK_SHORT, HEALTH, MODE, SOURCE_LABEL, TIER_LABEL, tanggal, tanggalPendek } from './labels'
 import OfflinePanel from './OfflinePanel.vue'
 
 const TABS = [{ key: 'ringkasan', label: 'Ringkasan' }, { key: 'berjalan', label: 'Sedang berjalan' }, { key: 'akan-datang', label: 'Akan datang' }, { key: 'offline', label: 'Pelatihan offline' }]
@@ -60,16 +61,25 @@ function readinessTip(t: Training) {
 const soonSub = (t: Training) => [t.vendorName ?? SOURCE_LABEL[t.source], t.venue ?? (t.mode === 'offline' ? 'tempat belum diisi' : null)].filter(Boolean).join(' · ')
 async function toSaran() { tab.value = 'ringkasan'; await nextTick(); document.getElementById('ld-saran')?.focus() }
 function open(id: string) { openId.value = id; tab.value = 'offline' }
+// Aksi yang sudah terkirim di kunjungan ini (mockup ldDone): tombol berganti teks selesai dan nonaktif
+const done = ref<Record<string, boolean>>({})
 async function runAction(a: Dashboard['actions'][number]) {
   const t = rows.value.find((x) => x.id === a.trainingId)
-  if (a.kind === 'open_training' && t?.source === 'manual') return open(a.trainingId)
-  if (a.kind !== 'remind') { tab.value = 'berjalan'; return }
+  if (a.kind === 'open_training') { if (t?.source === 'manual') return open(a.trainingId); tab.value = 'berjalan'; return }
   busy.value = true; error.value = ''; notice.value = ''
   try {
-    const { data } = await ld.remind(a.trainingId)
-    notice.value = `Pengingat dikirim ke ${data.sent} dari ${data.recipients} peserta${data.failed ? `, ${data.failed} gagal` : ''}.`
-  } catch (e) { error.value = e instanceof ApiError ? e.message : 'Pengingat gagal dikirim' } finally { busy.value = false }
+    const { data } = await ld.remind(a.trainingId, a.kind)
+    done.value = { ...done.value, [a.key]: true }
+    notice.value = `${SENT_NOUN[a.kind]} dikirim ke ${data.sent} dari ${data.recipients} peserta${data.failed ? `, ${data.failed} gagal` : ''}.`
+  } catch (e) {
+    // jatah 24 jam per pelatihan sudah terpakai: pesan sudah terkirim sebelumnya, tombol ditandai selesai
+    if (e instanceof ApiError && e.code === 'REMINDER_RECENT') done.value = { ...done.value, [a.key]: true }
+    error.value = e instanceof ApiError ? e.message : 'Pesan gagal dikirim'
+  } finally { busy.value = false }
 }
+/** "Lihat program" (mockup ldSoon): baris online yang semua cek kesiapannya terpenuhi, bila layar Program terbuka. */
+const progOpen = computed(() => routeOpen('prog', 'hr'))
+const ready = (t: Training) => t.checks.every((c) => c.ok)
 </script>
 
 <template>
@@ -103,7 +113,7 @@ async function runAction(a: Dashboard['actions'][number]) {
           <p v-if="!dash.actions.length" class="el-muted">Belum ada saran tindakan.</p>
           <div v-for="a in dash.actions" :key="a.key" class="ld-item ld-row">
             <div class="ld-min"><p class="ld-strong">{{ a.title }}</p><p class="el-muted ld-xs">{{ a.detail }}</p></div>
-            <UiButton variant="tonal" size="sm" :disabled="busy" @click="runAction(a)">{{ a.kind === 'remind' ? 'Kirim pengingat' : 'Buka pelatihan' }}</UiButton>
+            <UiButton variant="tonal" size="sm" :disabled="busy || done[a.key]" @click="runAction(a)">{{ done[a.key] ? ACTION_LABEL[a.kind].done : ACTION_LABEL[a.kind].cta }}</UiButton>
           </div>
         </UiCard>
       </div>
@@ -150,6 +160,7 @@ async function runAction(a: Dashboard['actions'][number]) {
         </template>
         <template #cell-aksi="{ row }">
           <UiButton v-if="asTraining(row).source === 'manual'" variant="tonal" size="sm" @click="open(asTraining(row).id)">Kelola<span class="el-sr-only"> {{ asTraining(row).title }}</span></UiButton>
+          <UiButton v-else-if="progOpen && ready(asTraining(row))" variant="tonal" size="sm" :to="{ name: 'prog' }">Lihat program<span class="el-sr-only"> {{ asTraining(row).title }}</span></UiButton>
           <UiButton v-else variant="tonal" size="sm" @click="toSaran">Lihat saran<span class="el-sr-only"> {{ asTraining(row).title }}</span></UiButton>
         </template>
       </UiDataTable>

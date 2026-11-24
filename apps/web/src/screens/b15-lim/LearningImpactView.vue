@@ -7,7 +7,7 @@ import { ApiError } from '@/api/client'
 import { useSessionStore } from '@/stores/session'
 import { EMPTY, UiAgentCard, UiButton, UiCard, UiDataTable, UiNote, UiStatus, UiTabs, type UiColumn } from '@/ui'
 import { lim, type CompetencyRow, type Indicator, type Overview, type PlanSummary, type QueueRow } from './api'
-import { COVERAGE, PITFALLS, PRINCIPLE, QUESTIONS, QUEUE_STATUS, STRENGTH, VERDICT, WINDOW, score, tanggal, targetText, withUnit } from './labels'
+import { COVERAGE, PITFALLS, PRINCIPLE, QUESTIONS, QUEUE_STATUS, STRENGTH, VERDICT, WINDOW, score, tanggal, targetText, todayJakarta, withUnit } from './labels'
 import ImportPanel from '@/components/ImportPanel.vue'
 import PlanForm from './PlanForm.vue'
 import ReinterviewResult from './ReinterviewResult.vue'
@@ -85,6 +85,19 @@ async function schedule(userIds: string[], when: string | null) {
     await loadQueue()
   } catch (e) { error.value = msg(e, 'Jadwal tidak bisa disimpan') } finally { busy.value = false }
 }
+
+/** "Mulai sekarang" (mockup limQueue, status Dijadwalkan): buka wawancara ulang hari ini dan kabari karyawan lewat email. */
+async function startNow(row: QueueRow) {
+  error.value = ''; notice.value = ''; busy.value = true
+  try {
+    const { data: r } = await lim.schedule(planId.value, [row.userId], todayJakarta(), true)
+    if (r.scheduled.length) notice.value = r.notified ? `${row.name} dikabari lewat email dan bisa mulai wawancara ulang hari ini dari menu Wawancara ulang.` : `${row.name} bisa mulai wawancara ulang hari ini dari menu Wawancara ulang. Email pemberitahuan gagal terkirim.`
+    else if (r.skipped.length) notice.value = r.skipped[0]!.reason === 'done' ? `${row.name} sudah menyelesaikan wawancara ulang.` : `${row.name} sedang diwawancara; jadwalnya tidak diubah.`
+    else if (r.rejected.length) error.value = r.rejected[0]!.message
+    await loadQueue()
+  } catch (e) { error.value = msg(e, 'Wawancara ulang tidak bisa dibuka') } finally { busy.value = false }
+}
+async function saved(name: string) { viewing.value = null; notice.value = `Hasil wawancara ulang ${name} disimpan.`; await loadQueue() }
 
 const CHAIN_COLS: UiColumn[] = [{ key: 'label', label: 'Tingkat' }, { key: 'source', label: 'Sumber data di ELGOS' }, { key: 'finding', label: 'Temuan saat ini' }, { key: 'coverage', label: 'Cakupan' }]
 const COMP_COLS: UiColumn[] = [
@@ -224,7 +237,7 @@ const chainLabel = (r: Record<string, unknown>) => `${r.level} · ${r.label}`
       <div v-else-if="tab === 'ai'" id="lim-panel-ai" role="tabpanel" aria-labelledby="lim-tab-ai">
         <UiAgentCard v-if="!viewing" title="Pengukuran dampak">AI mewawancarai ulang karyawan beberapa pekan setelah belajar untuk memastikan hasil belajar bertahan, membandingkannya dengan kinerja kerja, lalu menghubungkannya ke hasil bisnis tim.</UiAgentCard>
         <UiNote v-if="!isHr" class="lim-gap">Antrean wawancara ulang dikelola HR. Hasilnya masuk ke tab Ringkasan dan Per kompetensi.</UiNote>
-        <ReinterviewResult v-else-if="viewing" class="lim-gap" :plan-id="planId" :user-id="viewing.userId" :name="viewing.name" @back="viewing = null" />
+        <ReinterviewResult v-else-if="viewing" class="lim-gap" :plan-id="planId" :user-id="viewing.userId" :name="viewing.name" @back="viewing = null" @saved="saved(viewing.name)" />
         <template v-else-if="queue">
           <div class="lim-row lim-gap">
             <label class="el-label">Tanggal wawancara ulang<input v-model="date" class="el-input" type="date"></label>
@@ -246,7 +259,8 @@ const chainLabel = (r: Record<string, unknown>) => `${r.level} · ${r.label}`
             <template #cell-aksi="{ row }">
               <UiButton v-if="Q(row).canView && canReinterview" variant="tonal" size="sm" :aria-label="`Lihat hasil ${Q(row).name}`" @click="viewing = Q(row)">Lihat hasil</UiButton>
               <span v-if="Q(row).status !== 'done'" class="lim-actions">
-                <UiButton variant="tonal" size="sm" :disabled="busy || !Q(row).postCompletedOn" :aria-label="`Jadwalkan ${Q(row).name}`" @click="schedule([Q(row).userId], date)">Jadwalkan</UiButton>
+                <UiButton v-if="Q(row).status === 'scheduled' && canReinterview" variant="tonal" size="sm" :disabled="busy" :aria-label="`Mulai sekarang ${Q(row).name}`" @click="startNow(Q(row))">Mulai sekarang</UiButton>
+                <UiButton v-else variant="tonal" size="sm" :disabled="busy || !Q(row).postCompletedOn" :aria-label="`Jadwalkan ${Q(row).name}`" @click="schedule([Q(row).userId], date)">Jadwalkan</UiButton>
                 <UiButton v-if="Q(row).status === 'scheduled'" variant="text" size="sm" :disabled="busy" :aria-label="`Batalkan jadwal ${Q(row).name}`" @click="schedule([Q(row).userId], null)">Batalkan</UiButton>
               </span>
             </template>

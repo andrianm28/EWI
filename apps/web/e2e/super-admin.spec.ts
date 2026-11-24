@@ -283,3 +283,17 @@ test('P8 R18: kartu model AI memakai label produk dan chip kriteria pilot; ID pe
   await expect(kartu.locator('.el-chip--review')).toHaveText('Kesepakatan AI–HR ≥ 85% (kriteria pilot)')
   await expect(kartu.getByTestId('pf-model-id')).toHaveText('ID penyedia (hanya Super Admin): bedrock · model-uji')
 })
+
+test('Gap C8 (mockup super--tenants): kartu modul tampil untuk tenant pertama tanpa klik, dan berpindah ke tenant yang baru dibuat', async ({ page }) => {
+  await konsol(page)
+  await loginSebagai(page, 'super', { flags: ON })
+  const first = page.getByRole('region', { name: 'Modul PT Elitery' })
+  await expect(first.getByRole('checkbox', { name: 'Aktifkan Training Needs' })).toBeVisible()
+  await page.getByRole('button', { name: 'Buat tenant baru' }).click()
+  await page.getByLabel('Nama perusahaan').fill('PT Contoh Baru')
+  await page.getByLabel('Email admin tenant').fill('admin@baru.test')
+  await page.getByRole('button', { name: 'Periksa' }).click()
+  await expect(page.getByTestId('slug-hasil')).toContainText('Slug tersedia')
+  await page.getByRole('button', { name: 'Buat tenant', exact: true }).click()
+  await expect(page.getByRole('region', { name: 'Modul PT Contoh Baru' }).getByRole('checkbox', { name: 'Aktifkan Training Needs' })).toBeVisible()
+})
