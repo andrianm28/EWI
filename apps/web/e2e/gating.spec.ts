@@ -62,7 +62,9 @@ test('organisasi berupa dropdown bila API menyediakan daftar', async ({ page }) 
   // C10: daftar organisasi hanya diminta bila /auth/methods menyatakan tersedia
   await page.route('**/api/auth/methods', (r) => r.fulfill({ json: { password: true, emailLink: true, tenantPicker: true } }))
   await page.goto('/login')
-  await page.getByLabel('Organisasi').selectOption({ label: 'Demo Organisasi' })
+  // Kolom organisasi awalnya <input>, lalu jadi <select> setelah /auth/methods dan /auth/tenants menjawab.
+  // Peran combobox baru ada setelah <select> tampil, jadi Playwright menunggu (getByLabel bisa menangkap <input>).
+  await page.getByRole('combobox', { name: 'Organisasi' }).selectOption({ label: 'Demo Organisasi' })
   await page.getByLabel('Email').fill('hr@demo.test')
   await page.getByLabel('Kata sandi').fill(`pw-${Date.now()}`)
   await page.getByRole('button', { name: 'Masuk' }).click()
