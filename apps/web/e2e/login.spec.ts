@@ -198,7 +198,10 @@ test('C10: daftar organisasi hanya diminta bila /auth/methods menyatakan tersedi
   const asked: string[] = []
   page.on('request', (r) => { if (r.url().includes('/api/auth/tenants')) asked.push(r.url()) })
   await mockBase(page)
+  // Tunggu /auth/methods selesai supaya pengecekan tidak lolos hanya karena web belum sempat meminta daftar
+  const methods = page.waitForResponse(/\/api\/auth\/methods/)
   await page.goto('/login')
+  await methods
   await expect(page.getByRole('heading', { name: 'Masuk ke ELGOS' })).toBeVisible()
   await expect(page.getByLabel('Organisasi')).toHaveJSProperty('tagName', 'INPUT')
   expect(asked).toEqual([])
