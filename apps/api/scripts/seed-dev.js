@@ -49,12 +49,13 @@ async function seedDev(c, { password, stores, slug = 'demo', env = process.env }
   // Pimpinan kedua (gap B4): belum ditugaskan wawancara visi & nilai oleh HR, supaya Tugaskan / Tugaskan semua aktif.
   // Mockup Pak Eji tidak punya tampilan pimpinan: Kepala Divisi masuk sebagai "Atasan (juga karyawan)" dengan beranda
   // Dashboard tim. Layar Atasan (dashboard, Developmental Needs, Career & Promotion) hanya menerima peran supervisor,
-  // jadi peran utamanya supervisor atas Atasan Demo, dan pimpinan tetap tercatat sebagai peran tambahan.
+  // jadi perannya supervisor atas Atasan Demo. Peran pimpinan tidak ditambahkan: dua peran bertampilan Atasan membuat
+  // web memilih peran pertama (pimpinan) saat kembali dari Karyawan, lalu API menolak layar Atasan. Daftar pimpinan CC
+  // (LEADER_ROLES) sudah memuat supervisor, jadi gap B4 tetap terpenuhi. Seed ulang: trigger users_role_sync membuang peran pimpinan lama.
   const { rows: [head] } = await c.query(
     `INSERT INTO users (tenant_id, email, name, role, password_hash, status, employee_id) VALUES ($1, 'pimpinan@demo.test', 'Kepala Divisi Demo', 'supervisor', $2, 'active', 'D-PIMPINAN')
      ON CONFLICT (tenant_id, email) DO UPDATE SET password_hash = EXCLUDED.password_hash, role = EXCLUDED.role RETURNING id`, [t.id, hash]);
-  await c.query(`INSERT INTO user_roles (tenant_id, user_id, role, granted_by) VALUES ($1, $2, 'pimpinan', NULL)
-                 ON CONFLICT (user_id, role) DO NOTHING`, [t.id, head.id]);
+  // Atasan Demo dibuat seed tanpa atasan; guard IS NULL menjaga atasan yang sudah diatur manual di staging
   await c.query('UPDATE users SET supervisor_id = $3 WHERE tenant_id = $1 AND id = $2 AND supervisor_id IS NULL', [t.id, spv.id, head.id]);
   const { rows: [role] } = await c.query(
     `INSERT INTO lna_job_roles (tenant_id, name, division) VALUES ($1, 'Service Delivery L1', 'Service Delivery')
