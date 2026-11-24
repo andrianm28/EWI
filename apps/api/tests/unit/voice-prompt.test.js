@@ -28,9 +28,10 @@ describe('instruksi sistem suara (B19)', () => {
     expect(p).toMatch(/tanpa menyapa ulang/);
   });
 
-  test('versi persetujuan suara TNA v0.1; submodul lain belum punya', () => {
-    expect(currentVoiceConsentVersion('tna')).toBe('tna-voice-consent-id-v0.1');
-    expect(isAcceptedVoiceConsentVersion('tna', 'tna-voice-consent-id-v0.1')).toBe(true);
+  test('versi persetujuan suara TNA v0.2; submodul lain belum punya', () => {
+    expect(currentVoiceConsentVersion('tna')).toBe('tna-voice-consent-id-v0.2');
+    expect(isAcceptedVoiceConsentVersion('tna', 'tna-voice-consent-id-v0.2')).toBe(true);
+    expect(isAcceptedVoiceConsentVersion('tna', 'tna-voice-consent-id-v0.1')).toBe(false); // teks lama tidak lagi akurat soal wilayah
     expect(isAcceptedVoiceConsentVersion('tna', 'tna-consent-id-v1.0')).toBe(false);
     expect(currentVoiceConsentVersion('dna')).toBeNull();
   });

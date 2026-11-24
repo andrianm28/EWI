@@ -16,7 +16,7 @@ run('B19 store wawancara suara (Postgres)', () => {
   }
   async function voiceSession() {
     const id = await newSession();
-    await iv().start(tenant.id, id, { consentAt: new Date(), consentVersion: 'tna-consent-id-v1.0', mode: 'voice', voiceConsentVersion: 'tna-voice-consent-id-v0.1' });
+    await iv().start(tenant.id, id, { consentAt: new Date(), consentVersion: 'tna-consent-id-v1.0', mode: 'voice', voiceConsentVersion: 'tna-voice-consent-id-v0.2' });
     return id;
   }
 
@@ -42,7 +42,7 @@ run('B19 store wawancara suara (Postgres)', () => {
   it('start dengan mode suara menyimpan persetujuan utama dan suara sekaligus', async () => {
     const id = await voiceSession();
     const s = await iv().get(tenant.id, id);
-    expect(s).toMatchObject({ status: 'in_progress', mode: 'voice', voiceConsentVersion: 'tna-voice-consent-id-v0.1', voiceEpoch: 0, aiDoneAt: null, voiceStartedAt: null });
+    expect(s).toMatchObject({ status: 'in_progress', mode: 'voice', voiceConsentVersion: 'tna-voice-consent-id-v0.2', voiceEpoch: 0, aiDoneAt: null, voiceStartedAt: null });
     expect(s.voiceConsentAt).toBeTruthy();
   });
 

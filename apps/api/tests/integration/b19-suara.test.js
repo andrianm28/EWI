@@ -117,7 +117,7 @@ run('B19 wawancara suara HTTP + WS (Postgres, penyedia fake)', () => {
   it('alur utuh: persetujuan suara, tiket, WS, giliran mode suara, ai_done, ringkasan, kirim ke HR', async () => {
     const sid = await newSession('ani');
     const view0 = (await request(app).get(base(sid)).set(as('ani'))).body.data;
-    expect(view0).toMatchObject({ voiceAvailable: true, hasVoiceConsent: false, aiDone: false, voiceConsentVersionRequired: 'tna-voice-consent-id-v0.1' });
+    expect(view0).toMatchObject({ voiceAvailable: true, hasVoiceConsent: false, aiDone: false, voiceConsentVersionRequired: 'tna-voice-consent-id-v0.2' });
     const c0 = await consentVoice('ani', sid);
     expect(c0.body.data).toEqual({ status: 'in_progress', consentVersion: currentConsentVersion('tna'), mode: 'voice', question: null });
     const { c } = await openStream('ani', sid);

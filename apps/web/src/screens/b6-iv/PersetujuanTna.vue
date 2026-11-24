@@ -1,6 +1,6 @@
 <script setup lang="ts">
 // Persetujuan wawancara TNA (PM-9, teks legal v1.0) dengan perilaku mockup: tombol selalu aktif, tanpa centang muncul ringkasan galat.
-// B19: bila suara tersedia, fieldset "Cara menjawab" (Ketik bawaan / Suara) dengan persetujuan suara terpisah (v0.1, draf).
+// B19: bila suara tersedia, fieldset "Cara menjawab" (Ketik bawaan / Suara) dengan persetujuan suara terpisah (v0.2, draf).
 import { ref } from 'vue'
 import { UiButton, UiErrorSummary } from '@/ui'
 import type { AgreePayload, Mode } from './api'
@@ -78,9 +78,10 @@ async function next() {
         </div>
         <template v-if="mode === 'voice'">
           <p>
-            Dengan suara, AI bertanya dengan suara dan Anda menjawab lewat mikrofon. Suara Anda diproses oleh Google Gemini Live di
-            Google Cloud, dan lokasi pemrosesannya tidak dijamin di Indonesia. <strong>ELGOS tidak menyimpan rekaman suara</strong>,
-            hanya teks percakapannya. Anda bisa pindah ke mengetik kapan saja.
+            Dengan suara, AI bertanya dengan suara dan Anda menjawab lewat mikrofon. Selama wawancara suara, suara dan percakapan
+            Anda diproses oleh Google Gemini Live di Google Cloud wilayah Mumbai, India, bukan oleh Claude di Singapura seperti
+            wawancara ketik. <strong>ELGOS tidak menyimpan rekaman suara</strong>, hanya teks percakapannya, yang disimpan
+            terenkripsi. Anda bisa pindah ke mengetik kapan saja.
           </p>
           <label class="el-check">
             <input id="iv-voice-consent" v-model="voiceAgreed" type="checkbox" data-testid="voice-consent-check">

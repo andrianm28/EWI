@@ -8,7 +8,7 @@ import { sesiWawancara } from './support/wawancara'
 // Spek: docs/designs/b19-wawancara-suara.md bagian 2, 7, 10, 11. Alur sungguhan: apps/api/tests/integration/b19-suara.test.js.
 
 const FLAGS = { 'tna.interview_summary': true, 'voice.realtime': true }
-const VOICE_VERSION = 'tna-voice-consent-id-v0.1'
+const VOICE_VERSION = 'tna-voice-consent-id-v0.2'
 
 /** Mikrofon palsu (osilator) atau izin ditolak, dipasang sebelum halaman dimuat. */
 async function mikrofon(page: Page, izin: 'boleh' | 'tolak') {
@@ -110,6 +110,9 @@ test('Suara: persetujuan suara terkirim, panel menampilkan status, caption, dan 
   // Suara tanpa centang persetujuan suara: ringkasan galat
   await page.getByTestId('consent-check').check()
   await mode.getByRole('radio', { name: 'Suara' }).check()
+  // Teks persetujuan suara menyebut penyedia dan wilayah pemrosesan yang sebenarnya, bukan Singapura
+  await expect(mode).toContainText('Google Gemini Live di Google Cloud wilayah Mumbai, India')
+  await expect(mode).toContainText('bukan oleh Claude di Singapura')
   await expect(mode).toContainText('ELGOS tidak menyimpan rekaman suara')
   await page.getByRole('button', { name: 'Lanjut ke wawancara' }).click()
   await expect(page.getByRole('alert')).toContainText('Centang persetujuan suara')
