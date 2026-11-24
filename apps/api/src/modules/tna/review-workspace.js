@@ -229,10 +229,14 @@ function reviewWorkspaceRouter({ stores, settings, catalog, flags, audit, assign
     }
     // C1: tindakan INA yang lahir dari serah dicatat seperti POST /ina/actions (sumber daya ina.action) plus status temuan
     for (const act of out.actions) {
-      await audit.record(req, 'create', 'ina.action', { objectIds: [act.id], fromFinding: true, findingId: act.findingId, via: 'tna.handoff' });
-      await audit.record(req, 'update', 'tna.finding', { objectIds: [act.findingId], status: { to: 'planned' }, via: 'tna.handoff', ...(act.userId ? { employeeIds: [act.userId] } : {}) });
+      await audit.record(req, 'create', 'ina.action', { objectIds: [act.id], category: act.category, fromFinding: true, findingId: act.findingId, via: 'tna.handoff' });
+      if (act.finding) {
+        await audit.record(req, 'update', 'tna.finding', {
+          objectIds: [act.finding.id], status: { from: act.finding.from, to: act.finding.to }, via: 'tna.handoff', ...(act.userId ? { employeeIds: [act.userId] } : {}),
+        });
+      }
     }
-    res.json({ data: { handedOff: out.handedOff, already: out.already, skipped: out.skipped } });
+    res.json({ data: { handedOff: out.handedOff, already: out.already, skipped: out.skipped, actionsCreated: out.actions.length } });
   }));
 
   return r;

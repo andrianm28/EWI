@@ -1091,8 +1091,11 @@ function createLnaStores(sequelize, { cipher } = {}) {
      */
     async handoffImprovement(tenantId, ids, userId, { categorize = () => 'lainnya' } = {}) {
       // Demo 25 Nov (C1): tandai temuan dan buat tindakan Improvement Needs dalam satu transaksi, jadi temuan tidak
-      // pernah bertanda "diteruskan" tanpa tindakannya. Hanya judul yang dibawa (tanpa rincian, pemilik, atau nama
-      // karyawan): involves_individual = false sesuai kontrak listImprovementHandoffs. Judul dienkripsi ulang per tenant.
+      // pernah bertanda "diteruskan" tanpa tindakannya. Kolom dan pemindahan status temuan mengikuti
+      // ina-stores createAction + moveFinding (jaga keduanya tetap sejalan). Hanya judul yang dibawa (tanpa rincian,
+      // pemilik, atau nama karyawan) dan involves_individual = false supaya tampil di daftar utama INA; HR bisa
+      // menandainya "menyangkut individu" di INA (keputusan terbuka, lihat PR). Judul dienkripsi ulang per tenant,
+      // dipotong 255 karakter (batas judul tindakan di POST /ina/actions).
       const { done, actions } = await sequelize.transaction(async (transaction) => {
         const [rows] = await sequelize.query(`UPDATE lna_findings SET improvement_handoff_at = now(), improvement_handoff_by = :userId
                                                WHERE tenant_id = :tenantId AND id IN (:ids) AND category = 'non_training'
@@ -1100,23 +1103,33 @@ function createLnaStores(sequelize, { cipher } = {}) {
                                                  AND ${notFrozen('lna_findings')}
                                                RETURNING id, user_id AS "userId", title, competency_id AS "competencyId",
                                                          performance_record_id AS "performanceRecordId"`, { replacements: { tenantId, ids, userId }, transaction });
-        const opened = await open(tenantId, rows, ['title']);
+        // Temuan yang sudah bertanda diteruskan sebelum perbaikan C1 (tanpa tindakan) ikut dibuatkan tindakannya
+        const [orphans] = await sequelize.query(`SELECT f.id, f.user_id AS "userId", f.title, f.competency_id AS "competencyId",
+                                                        f.performance_record_id AS "performanceRecordId"
+                                                   FROM lna_findings f
+                                                  WHERE f.tenant_id = :tenantId AND f.id IN (:ids) AND f.category = 'non_training'
+                                                    AND f.review_status IN ${REVIEWED_SQL} AND f.improvement_handoff_at IS NOT NULL
+                                                    AND ${notFrozen('f')} AND f.id NOT IN (:fresh)
+                                                    AND NOT EXISTS (SELECT 1 FROM ina_actions a WHERE a.tenant_id = f.tenant_id AND a.finding_id = f.id)`,
+        { replacements: { tenantId, ids, fresh: rows.length ? rows.map((r) => r.id) : ['00000000-0000-0000-0000-000000000000'] }, transaction });
+        const opened = await open(tenantId, [...rows, ...orphans], ['title']);
         const created = [];
         for (const f of opened) {
+          const category = categorize(f.title);
           const [[act]] = await sequelize.query(
             `INSERT INTO ina_actions (tenant_id, finding_id, title, category, source_ref, competency_id, performance_record_id, involves_individual, created_by)
              VALUES (:tenantId, :findingId, :title, :category,
                      (SELECT name FROM lna_competencies WHERE tenant_id = :tenantId AND id = :competencyId), :competencyId, :performanceRecordId, false, :userId)
              ON CONFLICT (tenant_id, finding_id) WHERE finding_id IS NOT NULL DO NOTHING
              RETURNING id`,
-            { replacements: { tenantId, findingId: f.id, title: await enc(tenantId, f.title || 'Temuan Improvement Needs'), category: categorize(f.title),
+            { replacements: { tenantId, findingId: f.id, title: await enc(tenantId, String(f.title || 'Temuan Improvement Needs').slice(0, 255)), category,
               competencyId: f.competencyId || null, performanceRecordId: f.performanceRecordId || null, userId }, transaction },
           );
-          if (act) created.push({ id: act.id, findingId: f.id, userId: f.userId });
-        }
-        if (created.length) {
-          await sequelize.query(`UPDATE lna_findings SET status = 'planned' WHERE tenant_id = :tenantId AND id IN (:fids) AND status <> 'planned'`,
-            { replacements: { tenantId, fids: created.map((c) => c.findingId) }, transaction });
+          if (!act) continue;
+          const [[moved]] = await sequelize.query(`UPDATE lna_findings x SET status = 'planned' FROM lna_findings old
+                                                    WHERE x.id = old.id AND x.tenant_id = :tenantId AND x.id = :id AND old.status = 'open'
+                                                    RETURNING x.id, old.status AS "from", x.status AS "to"`, { replacements: { tenantId, id: f.id }, transaction });
+          created.push({ id: act.id, findingId: f.id, userId: f.userId, category, finding: moved || null });
         }
         return { done: rows, actions: created };
       });

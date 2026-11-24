@@ -6,19 +6,22 @@ import { onBeforeUnmount, onMounted, ref, type Ref } from 'vue'
 import { lna } from '@/api/lna'
 
 /** `enabled` dibaca setiap kali memuat (peran aktif bisa berganti). `null` = belum/tidak bisa dimuat. */
-export function useReviewPending(enabled: () => boolean): { count: Ref<number | null>; reload: () => Promise<void> } {
+export function useReviewPending(enabled: () => boolean): { count: Ref<number | null> } {
   const count = ref<number | null>(null)
-  let seq = 0
-  async function reload() {
-    if (!enabled()) { count.value = null; return }
-    const mine = ++seq
+  // focus dan visibilitychange biasanya datang bersamaan: satu permintaan saja yang berjalan
+  let inFlight: Promise<void> | null = null
+  async function fetchCount() {
     for (let attempt = 0; attempt < 2; attempt += 1) {
       try {
-        const n = (await lna.tnaDashboard()).data.reviewPending ?? 0
-        if (mine === seq) count.value = n
+        count.value = (await lna.tnaDashboard()).data.reviewPending ?? 0
         return
       } catch { /* coba sekali lagi; hitungan lama dipertahankan bila tetap gagal */ }
     }
+  }
+  function reload() {
+    if (!enabled()) { count.value = null; return Promise.resolve() }
+    inFlight ??= fetchCount().finally(() => { inFlight = null })
+    return inFlight
   }
   const onVisible = () => { if (document.visibilityState === 'visible') void reload() }
   const onFocus = () => { void reload() }
@@ -31,5 +34,5 @@ export function useReviewPending(enabled: () => boolean): { count: Ref<number | 
     document.removeEventListener('visibilitychange', onVisible)
     window.removeEventListener('focus', onFocus)
   })
-  return { count, reload }
+  return { count }
 }

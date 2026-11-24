@@ -117,7 +117,7 @@ export const lna = {
   async downloadGapCsv(gap?: ReviewGapQuery) {
     await downloadFile(`/tna/plan-items/export.csv${gap ? `?${new URLSearchParams(gap)}` : ''}`, `elgos-gap-${new Date().toISOString().slice(0, 10)}.csv`)
   },
-  handoffImprovement: (findingIds: string[]) => post<{ data: { handedOff: string[]; already: string[]; skipped: string[] } }>('/tna/review/improvement-handoff', { findingIds }),
+  handoffImprovement: (findingIds: string[]) => post<{ data: { handedOff: string[]; already: string[]; skipped: string[]; actionsCreated?: number } }>('/tna/review/improvement-handoff', { findingIds }),
   reviewFinding: (id: string, body: ReviewDecision) => post<{ data: ReviewItem }>(`/tna/findings/${id}/review`, body),
   myResults: () => call<{ data: MyResults }>('/my/results'),
   myLearningPlan: () => call<{ data: LearningCard[]; delivery: LearningDelivery }>('/my/learning-plan'),

@@ -277,10 +277,11 @@ test('C3 demo 25 Nov: hitungan banner review dimuat ulang saat galat sesaat dan 
   await expect(note).toContainText('2 temuan AI dari wawancara TNA menunggu review')
   // antrean berubah di tab lain (klasifikasi); kembali ke halaman memuat ulang hitungan
   pending = 1
-  await page.evaluate(() => document.dispatchEvent(new Event('visibilitychange')))
+  // string, bukan fungsi: tsconfig e2e tanpa lib dom (document/window tidak dikenal vue-tsc)
+  await page.evaluate("document.dispatchEvent(new Event('visibilitychange'))")
   await expect(note).toContainText('1 temuan AI dari wawancara TNA menunggu review')
   pending = 0
-  await page.evaluate(() => window.dispatchEvent(new Event('focus')))
+  await page.evaluate("window.dispatchEvent(new Event('focus'))")
   await expect(note).toHaveCount(0)
 })
 

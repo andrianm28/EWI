@@ -456,7 +456,7 @@ run('B7 tinjauan HR (Postgres)', () => {
       expect(res.body.data.already).toEqual([]);
       expect(res.body.data.skipped.sort()).toEqual([f.t1, f.late, f.x].sort());
       const again = await handoff(a, [f.h]);
-      expect(again.body.data).toEqual({ handedOff: [], already: [f.h], skipped: [] });
+      expect(again.body.data).toEqual({ handedOff: [], already: [f.h], skipped: [], actionsCreated: 0 });
       expect((await classify(a, f.h, 'training')).body.error.code).toBe('ALREADY_ACTIONED');
       const sol = await request(a).get('/api/tna/review/solutions').set(as('hr'));
       expect(sol.body.data.inaEnabled).toBe(true);
@@ -476,11 +476,23 @@ run('B7 tinjauan HR (Postgres)', () => {
       const [fs] = await db.query('SELECT status FROM lna_findings WHERE id = :id', { replacements: { id: f.h }, type: 'SELECT' });
       expect(fs.status).toBe('planned');
       const logs = await audits('ina.action');
-      expect(logs.find((l) => l.action === 'create' && l.meta.objectIds.includes(act.id)).meta).toMatchObject({ fromFinding: true, via: 'tna.handoff' });
+      expect(logs.find((l) => l.action === 'create' && l.meta.objectIds.includes(act.id)).meta).toMatchObject({ category: 'lainnya', fromFinding: true, via: 'tna.handoff' });
+      // bentuk sama dengan POST /ina/actions: status temuan { from, to }, hanya bila memang berubah
+      const moved = (await audits('tna.finding')).filter((l) => l.meta.via === 'tna.handoff' && l.meta.objectIds.includes(f.h));
+      expect(moved).toHaveLength(1);
+      expect(moved[0].meta).toMatchObject({ status: { from: 'open', to: 'planned' }, employeeIds: [u.ani] });
       // serah ulang tidak membuat tindakan kedua
       await handoff(a, [f.h]);
       const again = await request(a).get('/api/ina/actions').set(as('hr'));
       expect(again.body.data.filter((x) => x.findingId === f.h)).toHaveLength(1);
+      // temuan yang sudah bertanda diteruskan sebelum perbaikan ini (data demo lama) mendapat tindakannya saat diserahkan ulang
+      const legacy = (await finding('beni', { title: 'Akses aplikasi monitoring terbatas', category: 'non_training', reviewStatus: 'approved' })).id;
+      await db.query('UPDATE lna_findings SET improvement_handoff_at = now(), improvement_handoff_by = :hr WHERE id = :id', { replacements: { id: legacy, hr: u.hr } });
+      expect((await handoff(a, [legacy])).body.data).toEqual({ handedOff: [], already: [legacy], skipped: [], actionsCreated: 1 });
+      const fixed = (await request(a).get('/api/ina/actions').set(as('hr'))).body.data.filter((x) => x.findingId === legacy);
+      expect(fixed).toEqual([expect.objectContaining({ category: 'sistem', title: 'Akses aplikasi monitoring terbatas' })]);
+      await db.query('DELETE FROM ina_actions WHERE finding_id = :id', { replacements: { id: legacy } });
+      await db.query('DELETE FROM lna_findings WHERE id = :id', { replacements: { id: legacy } });
       await setFlag('ina.dashboard', false);
     });
 

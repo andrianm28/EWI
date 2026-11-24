@@ -149,7 +149,7 @@ async function sso() {
       <UiErrorSummary :errors="errors" />
 
       <UiField id="org" v-slot="{ attrs }" label="Organisasi" :error="fieldError('org')">
-        <select v-if="tenants.length" v-bind="attrs" v-model="tenant" name="tenant" class="el-input lg-w">
+        <select v-if="tenants.length" v-bind="attrs" v-model="tenant" name="tenant" class="el-input lg-w" autocomplete="organization">
           <option value="" disabled>Pilih organisasi</option>
           <option v-for="t in tenants" :key="t.slug" :value="t.slug">{{ t.name }}</option>
         </select>
