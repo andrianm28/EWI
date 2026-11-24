@@ -43,8 +43,11 @@ Alur lengkap, pengaman, dan aturan migrasi: [alur-rilis.md](alur-rilis.md).
 `deploy/vps/deploy.sh` di runner etavm2:
 cek `.env` + `db.env` → pull image → backup schema `ewi` dan verifikasi terbaca (`pg_restore --list`) →
 migrasi sebagai pemilik `elgos` → pasang role aplikasi `elgos_app` (`ops/app-role.sql`) → ganti
-container → `/api/ready` lokal + publik. Gagal = rollback ke image sebelumnya; schema direstore hanya
-bila backupnya terverifikasi. Diuji lokal: deploy pertama, deploy ulang, v2 dengan migrasi baru + API
+container → `/api/ready` lokal + publik. Gagal sebelum siap lokal = rollback ke image sebelumnya. Di
+staging schema direstore otomatis bila backupnya terverifikasi; di prod tidak pernah (audit 3-2: tulisan
+pengguna selama migrasi bisa hilang), log menuliskan perintah `ops/restore.sh` untuk restore manual. `ROLLBACK_RESTORE_DB=1` memaksa
+restore otomatis di prod; pakai hanya untuk deploy manual yang diawasi saat tidak ada tulisan pengguna.
+Gagal cek publik sesudah siap lokal tidak memicu rollback, job hanya gagal dengan peringatan Caddy/DNS. Diuji lokal: deploy pertama, deploy ulang, v2 dengan migrasi baru + API
 crash (rollback, data tetap, role dipasang ulang).
 
 ### Pemisahan kredensial DB (PD-8 A)
@@ -60,7 +63,7 @@ kedua role, memindahkan kepemilikan objek `ewi` ke `elgos_owner` (tanpa REASSIGN
 hak dan default privileges, lalu memeriksa tidak ada hak berbahaya. Password `elgos_owner` sengaja di
 `db.env`, bukan `.env`, supaya tidak masuk container API; deploy.sh memberikannya hanya ke container
 migrasi. Diuji lokal: tabel milik `elgos_owner`, `elgos_app` ditolak CREATE dan DELETE `audit_logs`,
-rollback v2 memulihkan schema dan kepemilikannya. Sesuai `docs/ewi/database-role-dan-migrasi.md` (PR #14).
+rollback v2 di staging memulihkan schema dan kepemilikannya (prod tidak merestore otomatis, audit 3-2). Sesuai `docs/ewi/database-role-dan-migrasi.md` (PR #14).
 
 ### Job terjadwal (PD-15 A)
 
@@ -172,6 +175,11 @@ Langkah tangan admin (akun, region, bootstrap, akses model, variabel repo, apply
 `QA_MALAM_BEDROCK_REGION`, `QA_MALAM_BEDROCK_MODEL_ID`, `QA_MALAM_AI_PRICE_INPUT_PER_MTOK`,
 `QA_MALAM_AI_PRICE_OUTPUT_PER_MTOK`, opsional `QA_MALAM_MAX_TOKENS`. Cadangan bila akun terlambat: satu run manual
 oleh Andrian 26 Nov.
+
+Akses operator ke akun ELGOS sejak 24 Nov: IAM Identity Center (grup admin, permission set
+AdministratorAccess). Di etavm2 pakai `aws sso login --sso-session elgos --use-device-code` lalu
+`AWS_PROFILE=elgos-sso` (juga untuk `terraform` manual). Profil lama `elgos-admin`/`elgos-admin-sts` sudah
+dihapus dari etavm2; wizard tahap 3 membuatnya ulang hanya bila dijalankan lagi.
 
 ## Setup sekali
 
