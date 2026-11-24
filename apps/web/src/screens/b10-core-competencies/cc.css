@@ -43,3 +43,5 @@ ul.cc-list { margin: 0 0 16px; list-style: disc; }
 .cc-cardhead { margin-bottom: 4px; }
 .cc-cardhead .el-h3 { margin: 0; }
 .cc-cardsub { margin: 0 0 12px; }
+.cc-row-act { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.cc-row-more > summary { cursor: pointer; color: var(--el-primary); font-size: 13px; }

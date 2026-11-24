@@ -52,6 +52,14 @@ const kpis = computed(() => {
   ]
 })
 const asRow = (r: Record<string, unknown>) => r as unknown as LeaderRow
+// AH-4: "Lihat hasil" membawa HR ke kartu sintesis (hasil wawancara pimpinan tidak ditampilkan per orang)
+function showSynthesis() {
+  const h = document.querySelector<HTMLElement>('[data-testid="cc-sintesis"] h3')
+  if (!h) return
+  h.tabIndex = -1
+  h.scrollIntoView({ block: 'start' })
+  h.focus()
+}
 
 async function run(fn: () => Promise<string>) {
   errors.value = []; notice.value = ''; busy.value = true
@@ -102,8 +110,15 @@ const cancel = (row: LeaderRow) => run(async () => { await cca.cancelAssignment(
           <template #cell-team="{ row }">{{ row.teamDone }} dari {{ row.teamTotal }}</template>
           <template #cell-aksi="{ row }">
             <UiButton v-if="row.status === 'none' || row.status === 'cancelled'" variant="tonal" size="sm" :disabled="busy" @click="openDialog([asRow(row)])">Tugaskan<span class="el-sr-only"> {{ row.name }}</span></UiButton>
-            <UiButton v-else-if="row.status === 'assigned'" variant="text" size="sm" :disabled="busy" @click="cancel(asRow(row))">Batalkan<span class="el-sr-only"> penugasan {{ row.name }}</span></UiButton>
-            <span v-else class="el-muted">{{ row.status === 'completed' ? 'Selesai' : 'Sedang berjalan' }}</span>
+            <!-- Paritas AH-4: tombol tonal mockup; Batalkan pindah ke menu "Lainnya" -->
+            <UiButton v-else-if="row.status === 'completed'" variant="tonal" size="sm" @click="showSynthesis">Lihat hasil<span class="el-sr-only"> {{ row.name }}</span></UiButton>
+            <div v-else-if="row.status === 'assigned' || row.status === 'in_progress'" class="cc-row-act">
+              <UiButton variant="tonal" size="sm" disabled>Menunggu atasan<span class="el-sr-only"> {{ row.name }}</span></UiButton>
+              <details v-if="row.status === 'assigned'" class="cc-row-more">
+                <summary>Lainnya</summary>
+                <UiButton variant="text" size="sm" :disabled="busy" @click="cancel(asRow(row))">Batalkan penugasan<span class="el-sr-only"> {{ row.name }}</span></UiButton>
+              </details>
+            </div>
           </template>
         </UiDataTable>
       </UiCard>
