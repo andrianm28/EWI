@@ -99,7 +99,8 @@ test('atasan: beranda tampilan, label, dan menu sesuai tampilan', async ({ page 
 
 test('Admin ETA: tampilan Super Admin dengan baris konsol platform', async ({ page }) => {
   await loginAs(page, { role: 'eta_admin' })
-  await expect(nav(page).getByRole('link')).toHaveText(['Beranda', 'Developmental Needs', 'Training Needs'])
+  // R39-2: Training Needs tidak di menu Super Admin (aturan 24 Nov, diblokir dari isi karyawan)
+  await expect(nav(page).getByRole('link')).toHaveText(['Beranda', 'Developmental Needs'])
   await expect(page.getByTestId('identitas')).toContainText('Super Admin')
   await expect(page.getByText('Konsol platform ELGOS · semua tenant')).toBeVisible()
 })
