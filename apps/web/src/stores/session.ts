@@ -187,14 +187,13 @@ export const useSessionStore = defineStore('session', () => {
   })
   /**
    * B2 (R39-3): peran yang sedang dipakai sesi. Dari API (peran aktif, `access.role`) bila dikirim; API lama: peran akun
-   * yang tampilan utamanya sama dengan tampilan aktif. Tampilan Karyawan tanpa peran karyawan asli (K2: HR dan atasan
-   * juga karyawan) dibaca sebagai `learner`.
+   * yang tampilan utamanya sama dengan tampilan aktif. Tampilan Karyawan selalu memuat `learner` (K2: HR, atasan, dan
+   * Admin Tenant juga karyawan), di kedua cabang.
    */
   const activeRoles = computed<string[]>(() => {
     if (!user.value) return []
-    if (apiRoles.value && access.value?.role) return [access.value.role]
-    const own = roles.value.filter((r) => viewOfRole(r) === activeView.value)
-    return own.length || activeView.value !== 'karyawan' ? own : ['learner']
+    const base = apiRoles.value && access.value?.role ? [access.value.role] : roles.value.filter((r) => viewOfRole(r) === activeView.value)
+    return activeView.value === 'karyawan' && !base.includes('learner') ? [...base, 'learner'] : base
   })
   /** Peran aktif sesi termasuk salah satu dari daftar ini. Penjaga UI saja; data tetap diotorisasi API. */
   const hasActiveRole = (list: readonly string[]) => activeRoles.value.some((r) => list.includes(r))

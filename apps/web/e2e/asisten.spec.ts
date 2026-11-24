@@ -109,7 +109,7 @@ test('Super Admin: tanpa asisten di tampilan super; tampilan HR akun yang sama d
 
 // R39-1: 403 EMPLOYEE_CONTENT_PRIVATE diperlakukan sama dengan VIEW_FORBIDDEN, juga saat menjawab pertanyaan
 test('R39-1: pertanyaan ditolak 403 EMPLOYEE_CONTENT_PRIVATE: asisten disembunyikan seperti VIEW_FORBIDDEN', async ({ page }) => {
-  await mockAsisten(page, {
+  const diterima = await mockAsisten(page, {
     jawab: () => ({ status: 403, json: { error: { code: 'EMPLOYEE_CONTENT_PRIVATE', message: 'Super Admin tidak dapat melihat isi karyawan' } } }),
   })
   await masuk(page, 'karyawan')
@@ -117,6 +117,9 @@ test('R39-1: pertanyaan ditolak 403 EMPLOYEE_CONTENT_PRIVATE: asisten disembunyi
   const input = panel(page).getByRole('textbox', { name: 'Pertanyaan' })
   await input.fill('Apa rencana belajar saya?')
   await input.press('Enter')
+  // panel hilang karena jawaban 403, bukan karena pertanyaan tidak terkirim
+  await expect.poll(() => diterima.filter((r) => r.method === 'POST' && r.path === '/assistant/ask').length).toBe(1)
+  expect(diterima.find((r) => r.method === 'POST')!.body).toEqual({ question: 'Apa rencana belajar saya?', view: 'karyawan' })
   await expect(panel(page)).toHaveCount(0)
   await expect(fab(page)).toHaveCount(0)
 })
