@@ -15,6 +15,7 @@ const CONSENT = 'lim-consent-id-v1.0';
 run('B15 tahap 3 wawancara ulang AI (Postgres)', () => {
   let db; let app; let stores; let tenant; let role; let role2; let k1; let k2; let plan; const u = {}; const tok = {};
   const fail = { question: false, score: false };
+  const hold = { question: null };
   const as = (who) => ({ Authorization: `Bearer ${tok[who]}` });
   const get = (path, who) => request(app).get(`/api/lim${path}`).set(as(who));
   const send = (method, path, body, who) => request(app)[method](`/api/lim${path}`).set(as(who)).send(body || {});
@@ -40,7 +41,7 @@ run('B15 tahap 3 wawancara ulang AI (Postgres)', () => {
     const stub = createStubProvider();
     const ai = {
       ...stub,
-      async limQuestion(x) { if (fail.question) throw new AiError('AI_UNAVAILABLE', 'uji'); return stub.limQuestion(x); },
+      async limQuestion(x) { if (fail.question) throw new AiError('AI_UNAVAILABLE', 'uji'); if (hold.question) await hold.question; return stub.limQuestion(x); },
       async summarizeLim(x) { if (fail.score) throw new AiError('AI_UNAVAILABLE', 'uji'); return stub.summarizeLim(x); },
     };
     app = createApp({ config, stores, ai });
@@ -120,10 +121,16 @@ run('B15 tahap 3 wawancara ulang AI (Postgres)', () => {
   });
 
   it('jawaban: giliran terenkripsi, jawaban paralel kalah 409, jawaban terakhir menilai dan menutup', async () => {
-    const [one, two] = await Promise.all([
-      send('post', me('a', '/turns'), { text: 'Saya cek matriks eskalasi.' }, 'a'),
-      send('post', me('a', '/turns'), { text: 'Saya cek matriks eskalasi.' }, 'a'),
-    ]);
+    // Pertanyaan AI berikutnya ditahan sampai salah satu jawaban selesai: tanpa ini jawaban kedua bisa datang setelah
+    // jawaban pertama selesai penuh dan sah menjawab pertanyaan berikutnya (balapan bergantung waktu, gagal sesekali di CI).
+    let release;
+    hold.question = new Promise((resolve) => { release = resolve; });
+    const calls = [1, 2].map(() => send('post', me('a', '/turns'), { text: 'Saya cek matriks eskalasi.' }, 'a').then((r) => r));
+    const first = await Promise.race(calls);
+    expect(first.status).toBe(409);
+    hold.question = null;
+    release();
+    const [one, two] = await Promise.all(calls);
     expect([one.status, two.status].sort()).toEqual([200, 409]);
     const raw = await q('SELECT t.text FROM lim_reinterview_turns t JOIN lim_reinterviews r ON r.id = t.reinterview_id WHERE r.user_id = :u', { u: u.a });
     expect(raw.length).toBeGreaterThan(0);
