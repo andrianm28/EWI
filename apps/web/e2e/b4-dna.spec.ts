@@ -200,4 +200,34 @@ test('paritas DN-5/DN-6/DN-9/DN-12: note KPI kamus, copy status kamus, catatan k
   await expect(page.getByTestId('dn-plan')).toContainText('Rencana pengembangan: Budi')
   await expect(page.getByRole('row', { name: /Budi/ })).toHaveClass(/is-selected/)
   await expect(page.getByRole('row', { name: /Ani/ })).not.toHaveClass(/is-selected/)
+  // review egm: status terpilih juga terbaca pembaca layar lewat aria-current pada tombol nama
+  await expect(page.getByRole('button', { name: 'Budi', exact: true })).toHaveAttribute('aria-current', 'true')
+  await expect(page.getByRole('button', { name: 'Ani', exact: true })).not.toHaveAttribute('aria-current', /.*/)
+  // review egm: sorotan bertahan saat baris terpilih di-hover, di tema terang dan gelap
+  const sel = page.getByRole('row', { name: /Budi/ }).getByRole('cell').nth(2)
+  await sel.hover()
+  await expect(sel).toHaveCSS('background-color', 'rgb(236, 239, 245)')
+  await page.evaluate(() => { document.documentElement.dataset.theme = 'dark' })
+  await expect(sel).toHaveCSS('background-color', 'rgb(39, 42, 47)')
+})
+
+test('review egm: rencana yang tiba belakangan tidak menimpa pegawai yang baru dipilih', async ({ page }) => {
+  await mockDna(page)
+  await loginSebagai(page, 'hr', B4)
+  // rencana Ani (dibuka otomatis) sengaja lambat; Budi dipilih sebelum rencana Ani tiba
+  let aniTiba = false
+  await mockApi(page, async (req) => {
+    if (!cocok(req, 'GET /dna/employees/e1/development-plan')) return undefined
+    await new Promise((ok) => setTimeout(ok, 1200))
+    aniTiba = true
+    return { json: { data: PLANS.e1 } }
+  })
+  await page.goto('/dna')
+  await page.getByRole('tab', { name: 'Kebutuhan pengembangan pegawai' }).click()
+  await page.getByRole('button', { name: 'Budi', exact: true }).click()
+  await expect(page.getByTestId('dn-plan')).toContainText('Rencana pengembangan: Budi')
+  await expect.poll(() => aniTiba).toBe(true)
+  await page.waitForTimeout(100)
+  await expect(page.getByTestId('dn-plan')).toContainText('Rencana pengembangan: Budi')
+  await expect(page.getByRole('row', { name: /Budi/ })).toHaveClass(/is-selected/)
 })

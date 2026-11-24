@@ -155,7 +155,10 @@ const sortIcon = (col: Column) => (sort.value?.key === col.key ? (sort.value.dir
 .el-table tbody tr:hover td { background: var(--el-surface-1); }
 .el-table .is-right { text-align: right; }
 .el-table tr.is-link { cursor: pointer; }
-.el-table tr.is-selected td { background: var(--el-surface-2); }
+/* Baris terpilih tetap tersorot saat di-hover; tema gelap memakai surface-3 karena surface-2 sama dengan latar kartu */
+.el-table { --el-table-selected: var(--el-surface-2); }
+:root[data-theme='dark'] .el-table { --el-table-selected: var(--el-surface-3); }
+.el-table tbody tr.is-selected td, .el-table tbody tr.is-selected:hover td { background: var(--el-table-selected); }
 .el-table__link { color: inherit; text-decoration: none; }
 .el-table__link:hover { text-decoration: underline; }
 .el-table__sort {

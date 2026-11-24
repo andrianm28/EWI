@@ -66,9 +66,12 @@ async function pickJob(id: string) {
   await loadOverview(id)
   await loadTab()
 }
+// Review egm 24 Nov: rencana yang tiba belakangan tidak menimpa pegawai yang dipilih sesudahnya
+let planSeq = 0
 async function openPlan(userId: string) {
+  const seq = ++planSeq
   const data = await guard(() => dnaApi.plan(userId))
-  if (data) plan.value = data
+  if (data && seq === planSeq) plan.value = data
 }
 async function approve() {
   if (!jobId.value) return
