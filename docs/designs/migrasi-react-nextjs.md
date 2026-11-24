@@ -1,6 +1,6 @@
 # Rencana migrasi frontend ELGOS: Vue 3 ke React (+ Next.js)
 
-Status: **draf rencana v2, belum ada kode** (v1 direview tiga ikan mas egm, triase di `migrasi-react-nextjs-egm.md`).
+Status: **draf rencana v2, belum ada kode. D2 diputuskan user 24 Nov 23.30 WIB: React + Vite (N3), Next.js tidak wajib** (v1 direview tiga ikan mas egm, triase di `migrasi-react-nextjs-egm.md`).
 Diminta user 24 Nov 2026: "plan refactor frontend vue ke react dan nextjs".
 Cakupan: `apps/web` di repo ini (ELGOS). `elitery/lti-dashboard-vue` (EliteMentor) tidak termasuk.
 Dasar kode yang diukur: `claude/project-thread-scbrmb` head `7df8dc4` (cabang integrasi ELGOS; sudah berisi PR #39 paritas mockup dan PR #47 data demo).
@@ -154,7 +154,7 @@ Patokan (WIB): demo 25 Nov, Go/No-Go 27 Nov, kesiapan modul 30 Nov, live 2 Des, 
 
 ### 8.1 F0 spike: cakupan dan cek lulus
 
-Dijalankan dengan opsi hasil D2 (N3, atau N2 bila Next wajib), memakai salinan sementara `playwright.config.ts` di cabang spike dan server statis lokal (bukan konfigurasi `deploy/`).
+Dijalankan dengan N3 (hasil D2), memakai salinan sementara `playwright.config.ts` di cabang spike dan server statis lokal (bukan konfigurasi `deploy/`).
 
 Cakupan: shell, login + `/masuk#token`, B3 Dashboard, satu layar berparameter (`/iv/:id`), satu redirect (`/m/tna/sessions/:id`).
 
@@ -207,16 +207,17 @@ Tiket perbaikan sesudah potong-alih (F5):
 
 | ID | Pertanyaan | Rekomendasi |
 | --- | --- | --- |
-| D0 | Alasan utama migrasi, dan apakah Next.js wajib | Konfirmasi dulu |
+| D0 | Alasan utama migrasi, dan apakah Next.js wajib | **Diputuskan 24 Nov: Next tidak wajib** (alasan rinci belum disebut) |
 | D1 | Pola migrasi | C: bangun paralel, potong sekali |
-| D2 | Teknologi | N3 React + Vite bila Next tidak wajib; N2 Next export catch-all bila wajib |
+| D2 | Teknologi | **Diputuskan 24 Nov: N3 React + Vite + React Router** |
 | D3 | Waktu | Spike 3–5 Des, F1 8–9 Des, F2–F3 14 Des – 9 Jan, potong-alih minggu kedua Jan |
 | D4 | Perbaikan pilot selama migrasi dikerjakan di kedua aplikasi, dicek CI | Ya |
 | D5 | Port 1:1, perbaikan a11y/kinerja setelah potong-alih | Ya |
 
 ## 12. Checklist (fase berikut, bukan PR ini)
 
-- [ ] D0–D5 diputuskan user
+- [x] D0 (Next tidak wajib) dan D2 (N3) diputuskan user 24 Nov
+- [ ] D1, D3, D4, D5 dikonfirmasi user (default: rekomendasi)
 - [ ] F0 spike sesuai 8.1; isi hasil dan perkiraan baru di dokumen ini
 - [ ] F1: spek `docs/designs/web-core.md`, test unit dulu, skrip `test` web + langkah CI
 - [ ] F2: `apps/web-react`, store sesi 7.2, `WEB_TARGET`, Dockerfile kedua + konfigurasi nginx (thread infra)
