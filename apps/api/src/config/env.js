@@ -55,6 +55,7 @@ function loadConfig(env = process.env) {
   const uploadMaxMb = Number(env.EWI_UPLOAD_MAX_MB || 25);
   if (!Number.isFinite(uploadMaxMb) || uploadMaxMb < 1 || uploadMaxMb > 200) errors.push('EWI_UPLOAD_MAX_MB harus angka 1 sampai 200');
   const ai = loadAiConfig(env, errors);
+  const voice = loadVoiceConfig(env, errors);
   if (errors.length) {
     const err = new Error(`Konfigurasi tidak valid:\n- ${errors.join('\n- ')}`);
     err.code = 'CONFIG_INVALID';
@@ -70,6 +71,8 @@ function loadConfig(env = process.env) {
     // PK-06: penyedia AI teks. stub = tiruan deterministik (test/dev), bedrock = Amazon Bedrock (PD-1 A, PD-2 A)
     aiProvider: ai.provider,
     ai,
+    // B19: suara live (Gemini Live di Vertex AI). Kunci SA hanya dibaca dari berkas, tidak disimpan di config.
+    voice,
     corsOrigin: (env.CORS_ORIGIN || '').split(',').filter(Boolean),
     elitementor: Object.freeze({
       baseUrl: env.ELITEMENTOR_API_URL || '',
@@ -195,4 +198,42 @@ function loadAiConfig(env, errors) {
   return Object.freeze({ provider, region, modelId, extraFields, allowCrossRegion, allowGlobalProfile, allowedRegions, processing, ...nums });
 }
 
-module.exports = { loadConfig, loadAiConfig, JAKARTA, SINGAPORE, STAGING_DEFAULT_MAIL_DOMAINS };
+const VOICE_PROVIDERS = ['gemini-vertex', 'fake', 'none'];
+
+/** B19 bagian 9: penyedia suara. Bawaan fake di luar produksi, none (suara tidak tersedia) di produksi. */
+function loadVoiceConfig(env, errors) {
+  const production = env.NODE_ENV === 'production';
+  const provider = env.VOICE_PROVIDER || (production ? 'none' : 'fake');
+  if (!VOICE_PROVIDERS.includes(provider)) errors.push(`VOICE_PROVIDER harus ${VOICE_PROVIDERS.join(', ')}`);
+  if (production && provider === 'fake') errors.push('VOICE_PROVIDER=fake tidak boleh di produksi (pakai gemini-vertex atau none)');
+  const location = env.VOICE_LOCATION || 'asia-southeast1';
+  if (!/^[a-z0-9-]+$/.test(location)) errors.push('VOICE_LOCATION hanya boleh huruf kecil, angka, dan tanda hubung (mis. asia-southeast1 atau global)');
+  const credentialsFile = env.GOOGLE_APPLICATION_CREDENTIALS || '';
+  let project = env.GOOGLE_CLOUD_PROJECT || '';
+  if (provider === 'gemini-vertex') {
+    if (!credentialsFile) {
+      errors.push('GOOGLE_APPLICATION_CREDENTIALS wajib diisi untuk VOICE_PROVIDER=gemini-vertex (path kunci service account di container)');
+    } else {
+      let key = null;
+      try { key = JSON.parse(require('fs').readFileSync(credentialsFile, 'utf8')); } catch (e) {
+        errors.push(`Berkas GOOGLE_APPLICATION_CREDENTIALS tidak bisa dibaca sebagai JSON (${e.code || 'format salah'})`);
+      }
+      if (key && (key.type !== 'service_account' || !key.client_email || !key.private_key)) {
+        errors.push('Berkas GOOGLE_APPLICATION_CREDENTIALS bukan kunci service account (butuh type, client_email, private_key)');
+      } else if (key && !project) project = key.project_id || '';
+      if (key && !project) errors.push('GOOGLE_CLOUD_PROJECT wajib diisi bila kunci tidak memuat project_id');
+    }
+  }
+  const nums = {
+    silenceMs: numberOr(env.VOICE_SILENCE_MS, 1200, { min: 100 }),
+    priceInputPerMTok: numberOr(env.VOICE_PRICE_INPUT_PER_MTOK, null),
+    priceOutputPerMTok: numberOr(env.VOICE_PRICE_OUTPUT_PER_MTOK, null),
+  };
+  for (const [k, v] of Object.entries(nums)) if (Number.isNaN(v)) errors.push(`Nilai ${k} untuk suara tidak valid`);
+  return Object.freeze({
+    provider, model: env.VOICE_MODEL || 'gemini-3.8-live', location, project, credentialsFile,
+    voiceName: env.VOICE_NAME || '', ...nums,
+  });
+}
+
+module.exports = { loadConfig, loadAiConfig, loadVoiceConfig, JAKARTA, SINGAPORE, STAGING_DEFAULT_MAIL_DOMAINS };
