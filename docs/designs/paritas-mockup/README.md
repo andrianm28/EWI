@@ -30,7 +30,7 @@ Yang sudah sama: 27 token warna `:root`, menu kelima peran (fungsi `N`) kecuali 
 | --- | --- | --- |
 | Panel Asisten ELGOS (FAB + chat di semua layar) | B17 (T5) | Dibangun di PR #39: `screens/b17-asisten/ShellExtra.vue` di balik flag `assistant` ([b17-asisten-web.md](b17-asisten-web.md)) |
 | Tinjauan temuan AI per gap (HR) | B7 (T5) | Dibangun di [b7-tinjauan-web.md](b7-tinjauan-web.md) (rute `review`); akses atasan RV-3 diputuskan R1: tetap HR saja |
-| Alur wawancara ulang LIM (chat → benchmark → hasil bisnis → ringkasan) | B15 tahap 3 (T7) | Antrean saja yang ada |
+| Alur wawancara ulang LIM (chat → benchmark → hasil bisnis → ringkasan) | B15 tahap 3 (T7) | Sudah dibangun (spek B15 12.1–12.9, flag `lim.reinterview`); LIM-8 Ditutup 24 Nov |
 | EliteMentor di dalam shell (belajar online, check-in offline) | perlu keputusan | Aturan arsitektur 1 mengarah ke deep link |
 
 ### Bug tampilan yang pasti (bukan soal selera)
@@ -63,14 +63,16 @@ Semua tahap P1–P7 plus layar B17 (Asisten) dan B7 (Tinjauan per gap) ada di PR
 | --- | --- | --- | --- | --- | --- |
 | gaps-shell.md | 21 | 15 | 2 | 0 | 4 |
 | gaps-lna.md | 83 | 52 | 19 | 6 | 6 (1 bukan gap) |
-| gaps-modul.md | 73 | 45 | 10 | 8 | 10 (7 di antaranya LIM, milik thread B15) |
+| gaps-modul.md | 73 | 50 | 12 | 8 | 3 |
 | gaps-peran.md | 52 | 35 | 3 | 2 | 12 (1 tidak dikerjakan, 2 bukan gap) |
 
 Hitungan dikoreksi 24 Nov oleh P9 ([egm/pr39-full-code-review.md](egm/pr39-full-code-review.md), SP-1 sampai SP-3): AA-4, TN-10, IN-11, dan ADM-1 berpindah dari Ditutup ke Diputuskan (perilaku aplikasi dipertahankan); LI-14 dan LD-10 kembali Terbuka (chip "Contoh (dummy)" dan placeholder tanggal belum sama dengan mockup, alasannya di baris masing-masing). Selisih spek dan kode setelah P9: [egm/p9-drift.md](egm/p9-drift.md). 24 Nov: LI-14 menjadi Diputuskan (keputusan user: hijau bila kamus ada, netral bila belum).
 
 24 Nov (persiapan demo 25 Nov): `apps/web/e2e/demo-alur.spec.ts` menjalankan cerita utama mockup per peran (HR, Atasan, Karyawan, Admin Tenant, Super Admin) dengan API di-mock; setiap layar wajib berisi, tanpa galat, dan tanpa permintaan yang tidak di-mock. Gap web yang tampil di alur demo ditutup: S4, TD-2, TD-3, DN-5, DN-6, DN-9, DN-12, AH-4 (tabel di atas sudah memuatnya). Setiap baris Terbuka kini menyebut alasannya (butuh API, butuh keputusan, atau ditunda setelah demo). Keputusan user 24 Nov: T4, CC-7, CC-8, CV-6, TN-6, TD-4, IN-10, dan LI-13 dicatat sebagai penyimpangan sengaja (Diputuskan, tanpa ubah kode); tenggat dialog penugasan TNA terisi hari ini +14 hari seperti B10 (catatan di TD-5, spek B5).
 
-Yang tersisa menunggu data API baru, paket lain (B6 untuk pilihan jawaban AI wawancara akar masalah), atau milik thread lain (LIM, termasuk dua gap tinggi LIM-6 dan LIM-8). Keputusan user 23 Nov: tampilan 1:1, keputusan spek paket tetap.
+24 Nov (demo, thread B15 diambil alih): tujuh baris LIM yang masih Terbuka diputuskan atau ditutup ([../b15-impact-measurement.md](../b15-impact-measurement.md) 12.9): LIM-4, LIM-5, LIM-7, LIM-8, LIM-10 Ditutup; LIM-2 dan LIM-6 Diputuskan ("Mulai sekarang" HR tidak dibuat, T-1). `demo-alur.spec.ts` kini menjalankan wawancara ulang LIM untuk HR (Lihat hasil, empat langkah), Karyawan (menu Wawancara ulang), dan Atasan (catatan dikelola HR).
+
+Yang tersisa menunggu data API baru atau paket lain (B6 untuk pilihan jawaban AI wawancara akar masalah). Keputusan user 23 Nov: tampilan 1:1, keputusan spek paket tetap.
 
 ### Keputusan R1–R22
 

@@ -533,7 +533,7 @@ chat → benchmark → hasil bisnis → ringkasan". Pemeriksaan awal: alur itu *
 `93d50b2`, `e66ba1a`, `37cdc20`; migrasi `20261123003000-lim-wawancara-ulang.js`; flag `lim.reinterview`), tetapi
 katalog paritas (`paritas-mockup/gaps-modul.md`) masih mencatat tujuh baris LIM Terbuka, termasuk LIM-8 "Tidak ada",
 dan `e2e/demo-alur.spec.ts` belum menyalakan `lim.reinterview`. Jadi bagian ini tidak menambah API, migrasi, atau flag:
-isinya keputusan per baris LIM, perbaikan layar kecil, dan alur demo. Tidak ada kode bersama API yang disentuh.
+isinya keputusan per baris LIM, perbaikan layar kecil, dan alur demo. Tidak ada kode API yang disentuh (hanya test alur B18).
 
 Acuan mockup (`/mnt/project-files/mockup-pak-eji/Main.dc.html`, ditulis `M:<baris>`): kartu agen M:1064, antrean
 M:1065-1068 dan `limQueue` M:1568-1569, catatan M:1069, panel langkah M:1074 dan `limSteps` M:1574, chat M:1077-1085,
@@ -545,13 +545,14 @@ benchmark M:1087-1093 dan `limBench`/`limFind` M:1577-1581, hasil bisnis M:1095-
 | Baris | Mockup | Keputusan | Status katalog |
 | --- | --- | --- | --- |
 | LIM-1 | Rujukan "panduan Scheer IMC" (M:1016) | Sudah netral tenant (R5). Tidak berubah | Ditutup |
+| LIM-2 | Tidak ada pemilih rencana / "Rencana baru" | Fitur tambahan PK-2 dipertahankan, dipindah ke kanan baris tab (`lim-tabbar`) supaya tab tetap di posisi mockup | Diputuskan |
 | LIM-3 | "Insight AI" | Sudah "Insight dari data pengukuran" (R8; insight dihitung aturan) | Ditutup |
 | LIM-4 | Catatan rantai tanpa "Peserta terhitung: n." | Kalimat dihapus dari catatan; jumlah peserta pindah ke baris rencana ("Rencana: Pilot L1 · 6 peserta") | Ditutup |
 | LIM-5 | Kartu "Agen AI · Pengukuran dampak", chip Pilot kuning, teks M:1064 | Pakai `UiAgentCard` (chip `review` = `c-rv`) dengan teks mockup kata per kata | Ditutup |
 | LIM-6 | "Dijadwalkan"; tombol "Jadwalkan" / "Mulai sekarang" / "Lihat hasil"; satu tanggal mono | Label "Dijadwalkan". "Lihat hasil" sudah ada (12.4). "Mulai sekarang" **tidak** dibuat: T-1, HR tidak boleh memulai atau menjawab atas nama karyawan (mockup sendiri menulis "di mockup ini HR memulainya untuk demonstrasi"). Pemilih tanggal, tombol massal, dan rentang jendela 4–6 pekan dipertahankan karena produk menjadwalkan tanggal nyata (PK-2) | Diputuskan |
 | LIM-7 | "… Dalam produk, karyawan mengerjakannya sendiri lewat EliteMentor; di mockup ini HR memulainya untuk demonstrasi." | "Wawancara ulang dijadwalkan 4 sampai 6 pekan setelah belajar. Karyawan mengerjakannya sendiri dari menu Wawancara ulang setelah dijadwalkan." (ELGOS terpisah dari EliteMentor, bagian 12) | Ditutup |
-| LIM-8 | Alur empat langkah | Sudah dibangun (12.1–12.8). Ditambah baris audit mockup M:1111 lewat `UiAuditLine`: "ELGOS-AI (POC) · log audit: n kompetensi dinilai · dibuka HR tercatat". Penyimpangan sengaja: HR melihat skor dan alasan, bukan percakapan (T-6); tanpa "Simpan hasil" (tersimpan otomatis, 12.7 #9); "Rekomendasi" dan "Tingkat keyakinan" tanpa kata AI (T-7) | Ditutup |
-| LIM-9 | Atasan melihat antrean yang sama, dengan aksi | Tetap 6.5: atasan tidak menerima antrean per orang; tab Pengukuran AI atasan berisi kartu agen dan catatan "dikelola HR". R22 menyerahkan keputusan ke thread B15; alasan: jadwal wawancara ulang adalah data individual yang tidak perlu untuk tugas atasan (mengisi skor kinerja) | Diputuskan |
+| LIM-8 | Alur empat langkah | Sudah dibangun (12.1–12.8). Disamakan dengan render mockup (`tools/mockup-render`, state `hr--lim--ai-*`): panel langkah dan isi masing-masing dalam kartu, kartu agen disembunyikan saat alur terbuka (M:1063-1073). Ditambah baris audit mockup M:1111 lewat `UiAuditLine`: "ELGOS-AI (POC) · log audit: n kompetensi dinilai · dibuka HR tercatat". Penyimpangan sengaja: HR melihat skor dan alasan, bukan percakapan (T-6); tanpa "Simpan hasil" (tersimpan otomatis, 12.7 #9); "Rekomendasi" dan "Tingkat keyakinan" tanpa kata AI (T-7) | Ditutup |
+| LIM-9 | Atasan melihat antrean yang sama, dengan aksi | Tetap 6.5: atasan tidak menerima antrean per orang; tab Pengukuran AI atasan berisi kartu agen dan catatan "dikelola HR". R22 menyerahkan keputusan ke thread B15; alasan: jadwal wawancara ulang adalah data individual yang tidak perlu untuk tugas atasan (mengisi skor kinerja) | Diputuskan (sudah sejak R22) |
 | LIM-10 | Tabel tanpa "n=", tanpa "dinilai HR/dihitung aturan", tanpa kartu isi pre dan impor | "n=" dan sumber kekuatan bukti pindah ke tooltip (`title`) dan teks pembaca layar; kartu HR (isi pre dari DNA, impor) dilipat di bawah tabel dalam `<details>` "Isi data pengukuran (HR)" | Ditutup |
 
 [❓ PERLU KEPUTUSAN] **Demo "Mulai sekarang".** Mockup memperlihatkan HR memulai wawancara dari antrean. Pilihan:
