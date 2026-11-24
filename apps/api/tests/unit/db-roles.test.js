@@ -95,6 +95,31 @@ describe('PK-07 / R-3 pengaman turun migrasi enkripsi', () => {
 
   it('migrasi lain tidak diperiksa', async () => {
     expect(await checkUndo(fakeQuery({ keys: 9 }), ['20261117000200-app-role-grants.js'])).toEqual([]);
-    expect(Object.keys(GUARDS)).toEqual(['20261113000008-tenant-keys.js']);
+    expect(Object.keys(GUARDS)).toContain('20261113000008-tenant-keys.js');
+  });
+});
+
+describe('Audit 24 Nov: pengaman turun migrasi yang menghapus data hukum/akses', () => {
+  // Kueri palsu: angka per kata kunci tabel/kolom yang muncul di SQL pemeriksaan.
+  const q = (counts) => async (sql) => {
+    const hit = Object.entries(counts).find(([k]) => sql.includes(k));
+    return [{ n: hit ? hit[1] : 0 }];
+  };
+  const cases = [
+    ['20261119000800-permintaan-data-karyawan.js', { consent_withdrawn_at: 1 }, /penarikan persetujuan/],
+    ['20261119000800-permintaan-data-karyawan.js', { data_subject_requests: 3 }, /permintaan data karyawan/],
+    ['20261117000501-consent-version.js', { consent_version: 4 }, /versi persetujuan/],
+    ['20261119000200-user-roles.js', { "role = 'tenant_admin'": 1 }, /Admin Tenant/],
+    ['20261119000200-user-roles.js', { user_roles: 2 }, /peran tambahan/],
+    ['20261117000400-ai-review.js', { reviewed_at: 5 }, /keputusan review HR/],
+  ];
+  it.each(cases)('%s ditolak bila ada data (%o)', async (migration, counts, reason) => {
+    const [r] = await checkUndo(q(counts), [migration]);
+    expect(r && r.migration).toBe(migration);
+    expect(r.reason).toMatch(reason);
+    expect(r.reason).toMatch(/Pulihkan dari backup/);
+  });
+  it('basis data kosong (CI naik-turun-naik): semua boleh diturunkan', async () => {
+    expect(await checkUndo(q({}), [...new Set(cases.map(([m]) => m))])).toEqual([]);
   });
 });

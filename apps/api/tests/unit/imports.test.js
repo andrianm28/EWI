@@ -1,6 +1,6 @@
 const ExcelJS = require('exceljs');
 const v = require('../../src/modules/imports/values');
-const { parseUpload, parseCsv } = require('../../src/modules/imports/parse');
+const { parseUpload, parseCsv, MAX_ROWS, MAX_COLS } = require('../../src/modules/imports/parse');
 const { suggestMapping, checkMapping, applyMapping } = require('../../src/modules/imports/mapping');
 const { templateXlsx, templateCsv } = require('../../src/modules/imports/template');
 const { KINDS, getKind } = require('../../src/modules/imports/kinds');
@@ -49,6 +49,39 @@ describe('R3-3 parser file', () => {
   it('menolak format lain dan file kosong', async () => {
     await expect(parseUpload(Buffer.from('x'), 'a.pdf')).rejects.toThrow(/xlsx atau .csv/);
     await expect(parseUpload(Buffer.from('A,B\n'), 'a.csv')).rejects.toThrow(/baris data/);
+  });
+});
+
+describe('Audit 24 Nov: XLSX jarang dan lebar tidak menghabiskan memori (8-9)', () => {
+  it('sel di baris 1.048.576 tidak membuat sejuta baris kosong; nomor baris tetap benar', async () => {
+    const wb = new ExcelJS.Workbook();
+    const ws = wb.addWorksheet('Data');
+    ws.getCell('A1').value = 'Email';
+    ws.getCell('A2').value = 'a@b.co';
+    ws.getCell('A1048576').value = 'z@b.co';
+    const started = Date.now();
+    const { rows } = await parseUpload(Buffer.from(await wb.xlsx.writeBuffer()), 'x.xlsx');
+    expect(Date.now() - started).toBeLessThan(3000);
+    expect(rows.map((r) => [r.__row, r.Email])).toEqual([[2, 'a@b.co'], [1048576, 'z@b.co']]);
+  });
+  it('sel di kolom XFD ditolak dengan pesan jelas, bukan diproses 16.384 kolom', async () => {
+    const wb = new ExcelJS.Workbook();
+    const ws = wb.addWorksheet('Data');
+    ws.getCell('A1').value = 'Email';
+    ws.getCell('A2').value = 'a@b.co';
+    ws.getCell('XFD2').value = 'x';
+    await expect(parseUpload(Buffer.from(await wb.xlsx.writeBuffer()), 'x.xlsx')).rejects.toThrow(`Maksimal ${MAX_COLS} kolom`);
+  });
+  it('CSV dengan ribuan kolom juga ditolak', async () => {
+    const csv = `${Array.from({ length: MAX_COLS + 1 }, (_, i) => `K${i}`).join(',')}\n${'x,'.repeat(MAX_COLS)}x\n`;
+    await expect(parseUpload(Buffer.from(csv), 'a.csv')).rejects.toThrow(`Maksimal ${MAX_COLS} kolom`);
+  });
+  it('baris data lebih dari batas ditolak 413 tanpa membaca seluruh lembar', async () => {
+    const wb = new ExcelJS.Workbook();
+    const ws = wb.addWorksheet('Data');
+    ws.addRow(['Email']);
+    for (let i = 0; i <= MAX_ROWS; i += 1) ws.addRow([`u${i}@b.co`]);
+    await expect(parseUpload(Buffer.from(await wb.xlsx.writeBuffer()), 'x.xlsx')).rejects.toMatchObject({ status: 413 });
   });
 });
 

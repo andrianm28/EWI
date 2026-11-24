@@ -10,6 +10,8 @@ const run = process.env.DATABASE_URL ? describe : describe.skip;
 
 run('Login link email R3-2 (Postgres)', () => {
   let db; let app; let stores; let tenant; let slug; let mailer; const u = {}; let hrTok;
+  // Audit 8-11: pekerjaan link berjalan setelah jawaban; tunggu antrean sebelum memeriksa email/audit.
+  const link = async (a, body) => { const r = await request(a).post('/api/auth/email-link').send(body); await a.locals.emailLinks.drain(); return r; };
   const tokenFrom = (msg) => msg.text.match(/\/masuk#token=([A-Za-z0-9_-]+)/)[1];
 
   beforeAll(async () => {
@@ -39,9 +41,9 @@ run('Login link email R3-2 (Postgres)', () => {
   });
 
   it('minta link: jawaban sama untuk email terdaftar dan tidak; link sekali pakai', async () => {
-    const a = await request(app).post('/api/auth/email-link').send({ tenant: slug, email: 'Dimas@link.test' });
-    const b = await request(app).post('/api/auth/email-link').send({ tenant: slug, email: 'nobody@link.test' });
-    const c = await request(app).post('/api/auth/email-link').send({ tenant: slug, email: 'off@link.test' });
+    const a = await link(app, { tenant: slug, email: 'Dimas@link.test' });
+    const b = await link(app, { tenant: slug, email: 'nobody@link.test' });
+    const c = await link(app, { tenant: slug, email: 'off@link.test' });
     expect([a.status, b.status, c.status]).toEqual([202, 202, 202]);
     expect(a.body).toEqual(b.body);
     expect(mailer.sent.map((m) => m.to)).toEqual(['dimas@link.test']);
@@ -72,14 +74,14 @@ run('Login link email R3-2 (Postgres)', () => {
 
   it('link kedaluwarsa ditolak; permintaan dibatasi 3 per 15 menit', async () => {
     mailer.sent.length = 0;
-    await request(app).post('/api/auth/email-link').send({ tenant: slug, email: 'rina@link.test' });
+    await link(app, { tenant: slug, email: 'rina@link.test' });
     const token = tokenFrom(mailer.sent[0]);
     await db.query(`UPDATE login_links SET expires_at = now() - interval '1 minute' WHERE user_id = :id`, { replacements: { id: u.rina } });
     expect((await request(app).post('/api/auth/email-link/verify').send({ token })).status).toBe(401);
-    for (let i = 0; i < 4; i += 1) await request(app).post('/api/auth/email-link').send({ tenant: slug, email: 'rina@link.test' }).expect(202);
+    for (let i = 0; i < 4; i += 1) expect((await link(app, { tenant: slug, email: 'rina@link.test' })).status).toBe(202);
     expect(mailer.sent.length).toBe(3);
     // Review egm: permintaan ke-4 dst. hanya menambah satu baris "ditolak karena batas" per jendela
-    await request(app).post('/api/auth/email-link').send({ tenant: slug, email: 'rina@link.test' }).expect(202);
+    expect((await link(app, { tenant: slug, email: 'rina@link.test' })).status).toBe(202);
     const [[{ n }]] = await db.query(`SELECT count(*)::int AS n FROM audit_logs WHERE tenant_id = :t AND user_id = :u AND meta->>'reason' = 'rate'`, { replacements: { t: tenant.id, u: u.rina } });
     expect(n).toBe(1);
     expect((await request(app).post('/api/auth/email-link/verify').send({ token: 'x' })).status).toBe(401);
@@ -102,7 +104,7 @@ run('Login link email R3-2 (Postgres)', () => {
   it('PK-16: penukaran link membuat sesi di database; HR mencabut; user nonaktif kehilangan sesi', async () => {
     mailer.sent.length = 0;
     await db.query("UPDATE login_links SET created_at = now() - interval '1 hour' WHERE user_id = :id", { replacements: { id: u.dimas } });
-    await request(app).post('/api/auth/email-link').send({ tenant: slug, email: 'dimas@link.test' }).expect(202);
+    expect((await link(app, { tenant: slug, email: 'dimas@link.test' })).status).toBe(202);
     const ok = await request(app).post('/api/auth/email-link/verify').set('User-Agent', 'uji-elgos').send({ token: tokenFrom(mailer.sent[0]) });
     expect(ok.status).toBe(200);
     const auth = { Authorization: `Bearer ${ok.body.token}` };
@@ -130,19 +132,34 @@ run('Login link email R3-2 (Postgres)', () => {
     const rateLimits = { ...defaultRateLimits(), linkIp: createRateLimiter({ windowMs: 60000, max: 2 }), verifyIp: createRateLimiter({ windowMs: 60000, max: 2 }) };
     const limited = createApp({ config: makeConfig(), stores, mailer, rateLimits });
     for (let i = 0; i < 2; i += 1) await request(limited).post('/api/auth/email-link').send({ tenant: slug, email: `x${i}@link.test` }).expect(202);
-    expect((await request(limited).post('/api/auth/email-link').send({ tenant: slug, email: 'x9@link.test' })).status).toBe(429);
+    expect((await link(limited, { tenant: slug, email: 'x9@link.test' })).status).toBe(429);
     for (let i = 0; i < 2; i += 1) await request(limited).post('/api/auth/email-link/verify').send({ token: 'x'.repeat(30) }).expect(401);
     expect((await request(limited).post('/api/auth/email-link/verify').send({ token: 'x'.repeat(30) })).status).toBe(429);
+  });
+
+  it('Audit 24 Nov (8-11): jawaban tidak menunggu pengiriman email, jadi waktu jawab tidak membocorkan akun terdaftar', async () => {
+    let release; const gate = new Promise((r) => { release = r; });
+    const slow = { sent: [], async send(msg) { await gate; this.sent.push(msg); } };
+    const gated = createApp({ config: makeConfig(), stores, mailer: slow });
+    await db.query("UPDATE login_links SET created_at = now() - interval '1 hour' WHERE user_id = :id", { replacements: { id: u.dimas } });
+    const timeout = new Promise((r) => { setTimeout(() => r('timeout'), 3000); });
+    const res = await Promise.race([request(gated).post('/api/auth/email-link').send({ tenant: slug, email: 'dimas@link.test' }), timeout]);
+    expect(res).not.toBe('timeout');
+    expect(res.status).toBe(202);
+    expect(slow.sent).toHaveLength(0);
+    release();
+    await gated.locals.emailLinks.drain();
+    expect(slow.sent.map((m) => m.to)).toEqual(['dimas@link.test']);
   });
 
   it('PK-16: Admin ETA di luar daftar email tidak menerima link', async () => {
     const [[eta]] = await db.query(`INSERT INTO users (tenant_id, email, name, role, status) VALUES (:t, 'eta@link.test', 'eta', 'eta_admin', 'active') RETURNING id`, { replacements: { t: tenant.id } });
     const strict = createApp({ config: makeConfig({ ETA_ADMIN_EMAILS: 'lain@link.test' }), stores, mailer });
     mailer.sent.length = 0;
-    await request(strict).post('/api/auth/email-link').send({ tenant: slug, email: 'eta@link.test' }).expect(202);
+    expect((await link(strict, { tenant: slug, email: 'eta@link.test' })).status).toBe(202);
     expect(mailer.sent).toHaveLength(0);
     const open = createApp({ config: makeConfig({ ETA_ADMIN_EMAILS: 'eta@link.test' }), stores, mailer });
-    await request(open).post('/api/auth/email-link').send({ tenant: slug, email: 'eta@link.test' }).expect(202);
+    expect((await link(open, { tenant: slug, email: 'eta@link.test' })).status).toBe(202);
     expect(mailer.sent.map((m) => m.to)).toEqual(['eta@link.test']);
     // link yang sudah terkirim tidak bisa ditukar bila email dikeluarkan dari daftar
     expect((await request(strict).post('/api/auth/email-link/verify').send({ token: tokenFrom(mailer.sent[0]) })).status).toBe(401);
