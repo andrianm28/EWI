@@ -30,14 +30,14 @@ const withoutGapFields = omit(Object.keys(GAP_MATCH_COLUMNS));
 const GAP_HIDDEN_FIELDS = ['detail', 'originalDetail', 'summaryNote'];
 const withoutDetail = omit(GAP_HIDDEN_FIELDS);
 
-/**
- * Paritas B7 web: filter gap opsional dari query (parameter sama dengan `/tna/gaps/detail`). Tanpa `kind` -> null
- * (perilaku lama). Kompetensi harus milik tenant ini (404). Return { key, label, keep(rows), query } dengan `query`
- * predikat gap untuk `stores.tna.reviewQueue` (audit PR 39 butir 39-3).
- */
 /** Permintaan membawa filter gap (`kind` terisi). Dipakai juga gerbang flag GET /review di index.js. */
 const hasGapFilter = (req) => req.query.kind !== undefined && req.query.kind !== '';
 
+/**
+ * Paritas B7 web: filter gap opsional dari query (parameter sama dengan `/tna/gaps/detail`). Tanpa `kind` -> null
+ * (perilaku lama). Kompetensi harus milik tenant ini (404). Return { key, label, keep(rows), query } dengan `query`
+ * predikat gap untuk store reviewQueue, listReviewedForSolutions, dan listPlanExport (audit PR 39 butir 39-3).
+ */
 async function gapFilterOf(req, stores) {
   if (!hasGapFilter(req)) return null;
   const gap = parseGapQuery(req.query);
@@ -136,7 +136,8 @@ function reviewWorkspaceRouter({ stores, settings, catalog, flags, audit, assign
   r.get('/review/solutions', hr, flag, wrap(async (req, res) => {
     const gap = await gapFilterOf(req, stores);
     const [all, conf, inaEnabled] = await Promise.all([
-      stores.tna.listReviewedForSolutions(req.tenantId, { projectId: projectIdOf(req) }),
+      // predikat gap di SQL (sama dengan reviewQueue), keanggotaan pasti tetap lewat gap.keep (aturan R6)
+      stores.tna.listReviewedForSolutions(req.tenantId, { projectId: projectIdOf(req), gap: gap ? gap.query : undefined }),
       settings.get(req.tenantId),
       flags.isEnabled(req.tenantId, FLAGS.MODULE_INA),
     ]);
@@ -200,7 +201,7 @@ function reviewWorkspaceRouter({ stores, settings, catalog, flags, audit, assign
   // --- Ekspor gap untuk LMS klien (K4). Hanya membaca. Filter gap opsional (layar per gap, P9 IR-5) ---
   r.get('/plan-items/export.csv', hr, flag, wrap(async (req, res) => {
     const gap = await gapFilterOf(req, stores);
-    const all = await stores.tna.listPlanExport(req.tenantId, { projectId: projectIdOf(req) });
+    const all = await stores.tna.listPlanExport(req.tenantId, { projectId: projectIdOf(req), gap: gap ? gap.query : undefined });
     const rows = gap ? gap.keep(all) : all;
     const csv = toCsv(EXPORT_HEADER, rows.map((p) => [
       p.employeeId, p.userName, p.email, p.competencyName, p.catalogItemRef, p.catalogItemTitle, p.programTier, PLAN_STATUS_LABEL[p.status] || p.status,

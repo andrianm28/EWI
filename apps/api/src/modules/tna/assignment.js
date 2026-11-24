@@ -49,7 +49,7 @@ function parseGapQuery(q) {
     return { kind: 'competency', competencyId: q.competencyId };
   }
   if (q.kind === 'okr') {
-    if (!METRIC_TYPES.includes(q.metricType) || typeof q.name !== 'string' || !q.name.trim() || typeof q.period !== 'string' || !q.period || q.period.length > 32) {
+    if (!METRIC_TYPES.includes(q.metricType) || typeof q.name !== 'string' || !q.name.trim() || typeof q.period !== 'string' || !q.period.trim() || q.period.length > 32) {
       throw badRequest('Jenis metrik, nama target, dan periode wajib diisi untuk gap OKR');
     }
     // sama dengan parseGap: maksimal 255 karakter, spasi berlebih dirapikan

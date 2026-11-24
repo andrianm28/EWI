@@ -41,6 +41,23 @@ const GAP_MATCH_COLS = Object.entries(GAP_MATCH_COLUMNS).map(([field, col]) => `
 // `\s` JavaScript juga mencakup NBSP dan spasi Unicode lain; `\s` Postgres tidak, jadi kelasnya ditulis lengkap.
 const JS_SPACE_RUN = '[\\s\\u00a0\\u1680\\u2000-\\u200a\\u2028\\u2029\\u202f\\u205f\\u3000\\ufeff]+';
 const metricKeySql = (col) => `lower(btrim(regexp_replace(${col}, '${JS_SPACE_RUN}', ' ', 'g'), ' '))`;
+/**
+ * Predikat SQL kandidat satu gap (audit PR 39 butir 39-3, review 24 Nov): kompetensi temuan, baris kinerja temuan, atau
+ * fokus sesinya. Butuh alias `f` (temuan), `pr` (baris kinerja), dan `s` (sesi). `gap`: `{ kind: 'competency', competencyId }`
+ * atau `{ kind: 'okr', metricType, metricKey, period }` (metricKey = nama dinormalkan seperti `metricKey`). Keanggotaan
+ * pasti tetap diputus `findingsInGap` (aturan R6). Mengisi `rep` dan mengembalikan potongan ` AND (...)`.
+ */
+function gapSql(gap, rep) {
+  if (gap.kind === 'competency') {
+    rep.gapCompetencyId = gap.competencyId;
+    return ` AND (f.competency_id = :gapCompetencyId OR (s.focus_kind = 'competency' AND s.focus_competency_id = :gapCompetencyId))`;
+  }
+  Object.assign(rep, { gapMetricType: gap.metricType, gapMetricKey: gap.metricKey, gapPeriod: gap.period });
+  // Nama target dinormalkan seperti metricKey agar cocok dengan kunci gap
+  return ` AND ((pr.metric_type = :gapMetricType AND pr.period = :gapPeriod AND ${metricKeySql('pr.name')} = :gapMetricKey)
+            OR (s.focus_kind = 'okr' AND s.focus_metric_type = :gapMetricType AND s.focus_metric_key = :gapMetricKey
+                AND s.focus_period = :gapPeriod))`;
+}
 const REVIEW_COLS = `f.id, f.project_id AS "projectId", f.session_id AS "sessionId", f.user_id AS "userId", u.name AS "userName",
   f.category, f.title, f.detail, f.competency_id AS "competencyId", c.name AS "competencyName",
   f.performance_record_id AS "performanceRecordId", pr.name AS "metricName", pr.target::float AS target, pr.actual::float AS actual,
@@ -56,9 +73,9 @@ const REVIEW_COLS = `f.id, f.project_id AS "projectId", f.session_id AS "session
 const NOT_WITHDRAWN_DRAFT = `NOT (f.review_status = 'draft' AND s.consent_withdrawn_at IS NOT NULL)`;
 const { isFrozen, notFrozen, planFrozen } = require('./frozen-sql');
 const REVIEW_FROM = `FROM lna_findings f
-                   LEFT JOIN users u ON u.id = f.user_id
-                   LEFT JOIN users r ON r.id = f.reviewed_by
-                   LEFT JOIN users hb ON hb.id = f.review_hold_by
+                   LEFT JOIN users u ON u.id = f.user_id AND u.tenant_id = f.tenant_id
+                   LEFT JOIN users r ON r.id = f.reviewed_by AND r.tenant_id = f.tenant_id
+                   LEFT JOIN users hb ON hb.id = f.review_hold_by AND hb.tenant_id = f.tenant_id
                    LEFT JOIN lna_interview_sessions s ON s.id = f.session_id AND s.tenant_id = f.tenant_id
                    LEFT JOIN lna_competencies c ON c.id = f.competency_id AND c.tenant_id = f.tenant_id
                    LEFT JOIN lna_performance_records pr ON pr.id = f.performance_record_id AND pr.tenant_id = f.tenant_id`;
@@ -880,13 +897,10 @@ function createLnaStores(sequelize, { cipher } = {}) {
                            f.review_status AS "reviewStatus"
                     FROM lna_findings f WHERE f.tenant_id = :tenantId AND f.id = :id`, { tenantId, id }), ['title']);
     },
-    /** Antrean review HR (PM-3 ★A): semua kategori, termasuk non-training, dengan keyakinan dan jejak review. */
     /**
-     * `gap` opsional (audit PR 39 butir 39-3, tinjauan per gap): `{ kind: 'competency', competencyId }` atau
-     * `{ kind: 'okr', metricType, metricKey, period }` (metricKey = nama dinormalkan seperti `metricKey`). Predikat SQL
-     * memilih kandidat gap (kompetensi temuan, baris kinerja temuan, atau fokus sesinya), jadi temuan gap lain tidak
-     * dimuat dan didekripsi; keanggotaan pasti tetap diputus `findingsInGap` (aturan R6). Dengan `gap`, semua temuan
-     * dari sesi yang persetujuannya ditarik keluar (sama dengan agregat reviewCounts).
+     * Antrean review HR (PM-3 ★A): semua kategori, termasuk non-training, dengan keyakinan dan jejak review.
+     * `gap` opsional (tinjauan per gap, lihat `gapSql`): temuan gap lain tidak dimuat dan didekripsi. Dengan `gap`, semua
+     * temuan dari sesi yang persetujuannya ditarik keluar (sama dengan agregat reviewCounts).
      */
     async reviewQueue(tenantId, { projectId, statuses = ['draft'], gap } = {}) {
       const rep = { tenantId, statuses };
@@ -894,20 +908,7 @@ function createLnaStores(sequelize, { cipher } = {}) {
                    ${REVIEW_FROM}
                   WHERE f.tenant_id = :tenantId AND f.review_status IN (:statuses) AND ${NOT_WITHDRAWN_DRAFT}`;
       if (projectId) { sql += ' AND f.project_id = :projectId'; rep.projectId = projectId; }
-      if (gap) {
-        sql += ' AND s.consent_withdrawn_at IS NULL';
-        if (gap.kind === 'competency') {
-          sql += ` AND (f.competency_id = :gapCompetencyId OR (s.focus_kind = 'competency' AND s.focus_competency_id = :gapCompetencyId))`;
-          rep.gapCompetencyId = gap.competencyId;
-        } else {
-          // Nama target dinormalkan seperti metricKey agar cocok dengan kunci gap
-          sql += ` AND ((pr.metric_type = :gapMetricType AND pr.period = :gapPeriod
-                         AND ${metricKeySql('pr.name')} = :gapMetricKey)
-                     OR (s.focus_kind = 'okr' AND s.focus_metric_type = :gapMetricType AND s.focus_metric_key = :gapMetricKey
-                         AND s.focus_period = :gapPeriod))`;
-          Object.assign(rep, { gapMetricType: gap.metricType, gapMetricKey: gap.metricKey, gapPeriod: gap.period });
-        }
-      }
+      if (gap) sql += ` AND s.consent_withdrawn_at IS NULL${gapSql(gap, rep)}`;
       return (await open(tenantId, await select(`${sql} ORDER BY f.created_at, f.finding_seq`, rep), REVIEW_ENC)).map(withSummaryState);
     },
     async reviewCounts(tenantId, { projectId } = {}) {
@@ -994,19 +995,20 @@ function createLnaStores(sequelize, { cipher } = {}) {
                                  RETURNING f.id`, { tenantId, id, category, reviewerId });
       return row ? tna.getReviewItem(tenantId, id) : null;
     },
-    /** Temuan yang sudah diputus HR beserta rencana terbarunya yang tidak ditolak, untuk layar solusi. */
-    async listReviewedForSolutions(tenantId, { projectId } = {}) {
+    /** Temuan yang sudah diputus HR beserta rencana terbarunya yang tidak ditolak, untuk layar solusi. `gap` opsional: `gapSql`. */
+    async listReviewedForSolutions(tenantId, { projectId, gap } = {}) {
       const rep = { tenantId, reviewed: REVIEWED };
       let sql = `SELECT f.id AS "findingId", f.user_id AS "userId", u.name AS "userName", f.category, f.title,
                         f.competency_id AS "competencyId", c.name AS "competencyName", f.improvement_handoff_at AS "handedOffAt",
                         f.session_id AS "sessionId", pr.name AS "metricName", ${GAP_MATCH_COLS}
                    FROM lna_findings f
-                   LEFT JOIN users u ON u.id = f.user_id
+                   LEFT JOIN users u ON u.id = f.user_id AND u.tenant_id = f.tenant_id
                    LEFT JOIN lna_competencies c ON c.id = f.competency_id AND c.tenant_id = f.tenant_id
                    LEFT JOIN lna_interview_sessions s ON s.id = f.session_id AND s.tenant_id = f.tenant_id
                    LEFT JOIN lna_performance_records pr ON pr.id = f.performance_record_id AND pr.tenant_id = f.tenant_id
                   WHERE f.tenant_id = :tenantId AND f.review_status IN (:reviewed) AND ${notFrozen('f')}`;
       if (projectId) { sql += ' AND f.project_id = :projectId'; rep.projectId = projectId; }
+      if (gap) sql += gapSql(gap, rep);
       const findings = await open(tenantId, await select(`${sql} ORDER BY f.created_at, f.finding_seq`, rep), ['title']);
       if (!findings.length) return [];
       const plans = await select(`SELECT DISTINCT ON (p.finding_id) p.finding_id AS "findingId", p.id, p.status,
@@ -1061,9 +1063,10 @@ function createLnaStores(sequelize, { cipher } = {}) {
     },
     /**
      * Baris ekspor gap untuk LMS klien (K4): rencana aktif, termasuk yang belum punya course. Kolom temuan
-     * (`competencyId`, `sessionId`, `metricName`, GAP_MATCH_COLS) dipakai filter gap di router (P9 IR-5); tidak masuk CSV.
+     * (`competencyId`, `sessionId`, `metricName`, GAP_MATCH_COLS) dipakai keanggotaan gap pasti di router (P9 IR-5); tidak
+     * masuk CSV. `gap` opsional: predikat kandidat `gapSql`.
      */
-    async listPlanExport(tenantId, { projectId } = {}) {
+    async listPlanExport(tenantId, { projectId, gap } = {}) {
       const rep = { tenantId };
       let sql = `SELECT p.id, p.user_id AS "userId", u.employee_id AS "employeeId", u.name AS "userName", u.email, c.name AS "competencyName",
                         p.catalog_item_ref AS "catalogItemRef", p.catalog_item_title AS "catalogItemTitle", p.program_tier AS "programTier", p.status,
@@ -1076,6 +1079,7 @@ function createLnaStores(sequelize, { cipher } = {}) {
                    LEFT JOIN lna_performance_records pr ON pr.id = f.performance_record_id AND pr.tenant_id = p.tenant_id
                   WHERE p.tenant_id = :tenantId AND p.status IN ('new', 'in_progress') AND ${notFrozen('f')}`;
       if (projectId) { sql += ' AND f.project_id = :projectId'; rep.projectId = projectId; }
+      if (gap) sql += gapSql(gap, rep);
       return select(`${sql} ORDER BY u.name NULLS LAST, u.email, p.created_at`, rep);
     },
     /**

@@ -176,10 +176,6 @@ function findingsByGap({ findings, sessionsById = new Map() }) {
 }
 
 /**
- * Paritas B7 web: temuan satu gap menurut R6, untuk baris yang membawa kolom fokus sesinya sendiri
- * (`focusKind`, `focusCompetencyId`, `focusMetricType`, `focusMetricKey`, `focusPeriod`). Urutan masukan dipertahankan.
- */
-/**
  * Kolom pencocokan temuan ke gap (aturan R6) yang dibawa baris temuan: nama field -> kolom SQL (alias `pr` baris
  * kinerja, `s` sesi). Satu sumber untuk SELECT di lna-stores dan daftar field internal yang dibuang sebelum respons.
  */
@@ -188,6 +184,10 @@ const GAP_MATCH_COLUMNS = Object.freeze({
   focusMetricType: 's.focus_metric_type', focusMetricKey: 's.focus_metric_key', focusPeriod: 's.focus_period',
 });
 
+/**
+ * Paritas B7 web: temuan satu gap menurut R6, untuk baris yang membawa kolom fokus sesinya sendiri
+ * (`focusKind`, `focusCompetencyId`, `focusMetricType`, `focusMetricKey`, `focusPeriod`). Urutan masukan dipertahankan.
+ */
 function findingsInGap(findings, key) {
   const sessionsById = new Map(findings.filter((f) => f.sessionId && f.focusKind).map((f) => [f.sessionId, {
     focusKind: f.focusKind, focusCompetencyId: f.focusCompetencyId, focusMetricType: f.focusMetricType, focusMetricKey: f.focusMetricKey, focusPeriod: f.focusPeriod,
