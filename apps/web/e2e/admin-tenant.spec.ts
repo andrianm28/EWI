@@ -202,7 +202,7 @@ test('flag admin.tenant mati: layar tidak bisa dibuka', async ({ page }) => {
   await expect(page).not.toHaveURL(/\/admin\/pengguna$/)
 })
 
-test('triase P7 ADM-1: HR yang membuka layar admin lewat alamat mendapat tautan antar tiga layar; menu tetap 1:1 mockup', async ({ page }) => {
+test('triase P7 ADM-1: Super Admin yang membuka layar admin lewat alamat mendapat tautan antar tiga layar; HR tidak lagi (interim dicabut 24 Nov)', async ({ page }) => {
   await page.route('**/api/tenant-admin/**', (r) => {
     const path = new URL(r.request().url()).pathname.replace(/^.*\/api\/tenant-admin/, '')
     if (path === '/users') return json(r, { data: USERS, meta: { total: USERS.length, sso: false } })
@@ -210,7 +210,7 @@ test('triase P7 ADM-1: HR yang membuka layar admin lewat alamat mendapat tautan 
     if (path === '/job-roles') return json(r, { data: JOBS })
     return json(r, { error: { code: 'NOT_FOUND', message: 'tidak ada' } }, 404)
   })
-  await login(page, 'hr_admin')
+  await login(page, 'eta_admin')
   await expect(nav(page).getByRole('link', { name: 'Pengguna & peran' })).toHaveCount(0)
   await page.goto('/admin/pengguna')
   const links = page.getByRole('navigation', { name: 'Layar Admin Tenant' })
@@ -220,6 +220,13 @@ test('triase P7 ADM-1: HR yang membuka layar admin lewat alamat mendapat tautan 
   await expect(page).toHaveURL(/\/admin\/jabatan$/)
   await expect(page.getByRole('heading', { level: 1, name: 'Jabatan & kamus kompetensi' })).toBeVisible()
   await expect(links.getByRole('link', { name: 'Jabatan & kamus kompetensi' })).toHaveAttribute('aria-current', 'page')
+})
+
+test('ADM-1 sesudah interim dicabut: HR yang membuka /admin/pengguna lewat alamat dialihkan', async ({ page }) => {
+  await login(page, 'hr_admin')
+  await page.goto('/admin/pengguna')
+  await expect(page).not.toHaveURL(/\/admin\/pengguna$/)
+  await expect(page.getByRole('navigation', { name: 'Layar Admin Tenant' })).toHaveCount(0)
 })
 
 // Paritas P8 (docs/designs/paritas-mockup/p8-keputusan-r1-r22.md)

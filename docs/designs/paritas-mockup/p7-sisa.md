@@ -74,7 +74,7 @@ Acuan domain: [b14-learning-delivery.md](../b14-learning-delivery.md), [b16-care
 | AIV-6 | Saat sesi karyawan terbuka, kartu penugasan diganti kartu sesi mandiri |
 | AIV-7 | `UiAuditLine` "Agen ELGOS (POC) · log audit: {n} jawaban" di sesi chat |
 | AIV-9 | Ringkasan/terkirim: h2 "Ringkasan AI", catatan muted, baris `.mod` (tema kecil abu, jawaban tebal), note success "**Terkirim.** Hasil diringkas ke HR dan atasan hanya melihat status selesai." + tombol "Kembali ke penugasan" (menutup sesi) |
-| ADM-1 | `AdminNav` dihapus dari tiga layar. Triase: HR/Super Admin yang membuka /admin/* lewat alamat mendapat baris tautan ringkas `AdminLinks.vue` (tidak tampil di tampilan admin; menu laci tetap 1:1 mockup) |
+| ADM-1 | `AdminNav` dihapus dari tiga layar. Triase: Super Admin (HR tidak lagi sejak interim dicabut 24 Nov) yang membuka /admin/* lewat alamat mendapat baris tautan ringkas `AdminLinks.vue` (tidak tampil di tampilan admin; menu laci tetap 1:1 mockup) |
 | ADM-2 | Pemberitahuan sukses = `UiNote tone="success"` dalam pembungkus `role="status"` (Users, Jobs, Tenants, Platform) |
 | ADM-3 | "Undang pengguna" ikon `person_add`, rata kanan toolbar |
 | ADM-4 | Email mono 12px |

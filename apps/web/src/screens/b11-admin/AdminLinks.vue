@@ -1,7 +1,7 @@
 <script setup lang="ts">
-// Tautan antar tiga layar Admin Tenant, hanya untuk tampilan selain `admin` (HR dan Super Admin yang membuka
+// Tautan antar tiga layar Admin Tenant, hanya untuk tampilan selain `admin` (Super Admin yang membuka
 // /admin/* lewat alamat). Tampilan `admin` memakai menu laci yang 1:1 dengan mockup, jadi baris ini tidak tampil
-// di sana (P7 ADM-1, triase sesi induk). Hapus bersama 'hr' di routes.ts setelah peran tenant_admin dipakai (B2).
+// di sana (P7 ADM-1, triase sesi induk). HR tidak lagi membuka /admin/* sejak interim dicabut 24 Nov.
 import { computed } from 'vue'
 import { useSessionStore } from '@/stores/session'
 
