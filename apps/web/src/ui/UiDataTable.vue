@@ -3,6 +3,8 @@
 // Pengurutan di sisi klien atas `rows`. Sel khusus lewat slot #cell-<key>="{ row, value }".
 // Baris bisa diklik (`.row.lk` mockup) lewat `rowTo`: sel `rowLinkKey` menjadi tautan, klik di mana pun pada baris
 // mengikuti tautan itu kecuali klik pada elemen interaktif lain.
+// Baris terpilih (mockup: baris berlatar #ECEFF5, paritas DN-12) lewat `selectedKey`: klik baris memancarkan `select`.
+// Sediakan juga kontrol yang bisa difokus di salah satu sel (mis. tombol nama) untuk pengguna papan ketik.
 import { computed } from 'vue'
 import { useRouter, type RouteLocationRaw } from 'vue-router'
 import UiIcon from './UiIcon.vue'
@@ -29,7 +31,12 @@ const props = withDefaults(defineProps<{
   rowTo?: (row: Row) => RouteLocationRaw | null | undefined
   /** Kolom yang isinya menjadi tautan baris (bawaan kolom pertama). */
   rowLinkKey?: string
-}>(), { captionHidden: false, emptyText: 'Belum ada data.', rowTo: undefined, rowLinkKey: undefined })
+  /** Kunci baris terpilih; bila diisi (termasuk null), baris bisa dipilih dengan klik dan memancarkan `select`. */
+  selectedKey?: string | null
+}>(), { captionHidden: false, emptyText: 'Belum ada data.', rowTo: undefined, rowLinkKey: undefined, selectedKey: undefined })
+const emit = defineEmits<{ select: [row: Row] }>()
+const selectable = computed(() => props.selectedKey !== undefined)
+const isSelected = (row: Row) => selectable.value && props.selectedKey === String(row[props.rowKey])
 
 const sort = defineModel<SortState | null>('sort', { default: null })
 
@@ -68,6 +75,11 @@ const targetOf = (row: Row) => props.rowTo?.(row) ?? null
 // `rowLinkKey`: isi sel itu dibungkus RouterLink, jadi kontrol di sana bersarang di dalam tautan.
 const INTERACTIVE = 'a, button, input, select, textarea, label, summary, details, [contenteditable], [role="button"], [role="link"], [role="checkbox"], [role="switch"], [role="menuitem"], [tabindex]:not([tabindex="-1"])'
 function onRowClick(e: MouseEvent, row: Row) {
+  if (selectable.value && !targetOf(row)) {
+    if (e.button !== 0 || e.defaultPrevented || (e.target as Element | null)?.closest(INTERACTIVE)) return
+    emit('select', row)
+    return
+  }
   const to = targetOf(row)
   if (!to || e.defaultPrevented || (e.button !== 0 && e.button !== 1)) return
   if ((e.target as Element | null)?.closest(INTERACTIVE)) return
@@ -107,7 +119,7 @@ const sortIcon = (col: Column) => (sort.value?.key === col.key ? (sort.value.dir
           </tr>
         </thead>
         <tbody>
-          <tr v-for="row in sorted" :key="String(row[rowKey])" :class="{ 'is-link': targetOf(row) }" @click="onRowClick($event, row)" @auxclick="onRowClick($event, row)">
+          <tr v-for="row in sorted" :key="String(row[rowKey])" :class="{ 'is-link': targetOf(row) || selectable, 'is-selected': isSelected(row) }" @click="onRowClick($event, row)" @auxclick="onRowClick($event, row)">
             <td v-for="c in columns" :key="c.key" :class="{ 'is-right': c.align === 'right', 'el-mono': c.mono }">
               <RouterLink v-if="c.key === linkKey && targetOf(row)" :to="targetOf(row)!" class="el-table__link">
                 <slot :name="`cell-${c.key}`" :row="row" :value="row[c.key]">{{ row[c.key] ?? '–' }}</slot>
@@ -143,6 +155,7 @@ const sortIcon = (col: Column) => (sort.value?.key === col.key ? (sort.value.dir
 .el-table tbody tr:hover td { background: var(--el-surface-1); }
 .el-table .is-right { text-align: right; }
 .el-table tr.is-link { cursor: pointer; }
+.el-table tr.is-selected td { background: var(--el-surface-2); }
 .el-table__link { color: inherit; text-decoration: none; }
 .el-table__link:hover { text-decoration: underline; }
 .el-table__sort {

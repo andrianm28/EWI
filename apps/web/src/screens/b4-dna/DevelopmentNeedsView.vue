@@ -92,14 +92,19 @@ const DICT_COLUMNS: UiColumn[] = [
 ]
 const NEED_COLUMNS: UiColumn[] = [
   { key: 'name', label: 'Pegawai', sortable: true }, { key: 'stage', label: 'Tahap saat ini', sortable: true },
-  { key: 'met', label: 'Modul tercapai', mono: true }, { key: 'focus', label: 'Fokus pengembangan' }, { key: 'open', label: 'Rencana' },
+  // DN-12: empat kolom mockup; rencana dibuka lewat klik baris
+  { key: 'met', label: 'Modul tercapai', mono: true }, { key: 'focus', label: 'Fokus pengembangan' },
 ]
+// DN-9: catatan kamus format mockup "{jabatan} · JF{n}: {nama} ({a} dari {b} modul sudah memiliki data asesmen)"
 const kamusNote = computed(() => {
   const d = dictionary.value
   if (!d) return ''
   const jf = d.jobFunctions.find((f) => f.id === jobFunctionId.value)
-  return jf ? `${d.competencies.length} kompetensi untuk JF${jf.order} · ${jf.name}` : `${d.competencies.length} kompetensi`
+  const asesmen = `(${d.dictionary.assessedCompetencyCount} dari ${d.dictionary.competencyCount} modul sudah memiliki data asesmen)`
+  return jf ? `${d.jobRole.name} · JF${jf.order}: ${jf.name} ${asesmen}` : `${d.jobRole.name} ${asesmen}`
 })
+// DN-5: note KPI "{n} lainnya belum dibuat"
+const jobsWithoutDictionary = computed(() => (overview.value ? overview.value.kpi.jobsTotal - overview.value.kpi.jobsWithDictionary : 0))
 // DN-13: warna chip per tahap seperti mockup (Basic kuning, Intermediate biru, Tuntas hijau)
 const STAGE_TONE: Record<Stage, 'review' | 'training' | 'improvement' | 'success' | 'neutral'> = { basic: 'review', intermediate: 'training', advanced: 'improvement', done: 'success', not_assessed: 'neutral' }
 const stageTone = (s: Stage) => STAGE_TONE[s] ?? 'neutral'
@@ -153,7 +158,7 @@ const moduleChip = (m: PlanModule): { tone: 'success' | 'review' | 'neutral'; la
             <UiKpiCard label="Pegawai" :value="overview.kpi.employees" :note="job.name" />
             <UiKpiCard label="Job function" :value="overview.kpi.jobFunctions" note="Hasil DACUM" />
             <UiKpiCard label="Modul kompetensi" :value="overview.kpi.competencies" note="DACUM Tool 2 dan 3" />
-            <UiKpiCard label="Jabatan dengan kamus" :value="`${overview.kpi.jobsWithDictionary} / ${overview.kpi.jobsTotal}`" />
+            <UiKpiCard label="Jabatan dengan kamus" :value="`${overview.kpi.jobsWithDictionary} / ${overview.kpi.jobsTotal}`" :note="jobsWithoutDictionary > 0 ? `${jobsWithoutDictionary} lainnya belum dibuat` : undefined" />
           </div>
           <div class="el-grid el-grid-2" style="margin-top:16px;align-items:start">
             <UiCard>
@@ -172,9 +177,9 @@ const moduleChip = (m: PlanModule): { tone: 'success' | 'review' | 'neutral'; la
                 <UiChip :tone="overview.dictionary.tool2 ? 'success' : 'neutral'">Tool 2 · KSA</UiChip>
                 <UiChip :tone="overview.dictionary.tool3 ? 'success' : 'neutral'">Tool 3 · Learning Roadmap</UiChip>
               </div>
+              <!-- DN-6: copy mockup; hitungan asesmen pindah ke catatan tab Kamus (DN-9) -->
               <p class="el-muted">
-                {{ overview.dictionary.approved ? 'Kamus sudah disahkan HR.' : `Menunggu pengesahan HR: ${overview.dictionary.approvedCount} dari ${overview.dictionary.competencyCount} kompetensi sudah disahkan.` }}
-                {{ overview.dictionary.assessedCompetencyCount }} dari {{ overview.dictionary.competencyCount }} modul sudah memiliki data asesmen.
+                {{ overview.dictionary.approved ? 'Kamus sudah disahkan HR.' : 'Kamus disusun dari lokakarya DACUM dan menunggu pengesahan HR sebelum dipakai sebagai target di Training Needs.' }}
               </p>
               <UiButton variant="tonal" size="sm" @click="tab = 'kamus'">Buka kamus kompetensi</UiButton>
             </UiCard>
@@ -237,13 +242,15 @@ const moduleChip = (m: PlanModule): { tone: 'success' | 'review' | 'neutral'; la
 
         <div v-else id="dn-panel-peg" role="tabpanel" aria-labelledby="dn-tab-peg" data-testid="dn-peg">
           <template v-if="employees">
-            <p class="el-muted" style="margin:0 0 12px">Apa yang perlu dikembangkan pada setiap {{ job.name }}, berdasarkan kamus kompetensi dan tahap BIA.</p>
-            <UiDataTable :columns="NEED_COLUMNS" :rows="employees" row-key="id" caption="Kebutuhan pengembangan per pegawai" caption-hidden empty-text="Belum ada pegawai pada jabatan ini.">
-              <template #cell-name="{ row }"><span style="font-weight:500">{{ row.name ?? '(tanpa nama)' }}</span></template>
+            <p class="el-muted" style="margin:0 0 12px">Apa yang perlu dikembangkan pada setiap {{ job.name }}, berdasarkan kamus kompetensi dan tahap BIA. Klik baris untuk melihat rencana lengkap.</p>
+            <UiDataTable
+              :columns="NEED_COLUMNS" :rows="employees" row-key="id" caption="Kebutuhan pengembangan per pegawai" caption-hidden empty-text="Belum ada pegawai pada jabatan ini."
+              :selected-key="plan?.person.id ?? null" @select="(row) => openPlan(String(row.id))"
+            >
+              <template #cell-name="{ row }"><button type="button" class="dn-pick" :aria-current="row.id === plan?.person.id ? 'true' : undefined" @click="openPlan(String(row.id))">{{ row.name ?? '(tanpa nama)' }}</button></template>
               <template #cell-stage="{ row }"><UiChip :tone="stageTone(row.stage)">{{ STAGE_LABEL[row.stage] }}</UiChip></template>
               <template #cell-met="{ row }">{{ row.met }} / {{ row.assessed }}<span class="el-sr-only"> modul yang dinilai</span><span v-if="row.assessed < row.total" class="el-muted" style="display:block;font-size:12px">dinilai {{ row.assessed }} dari {{ row.total }}</span></template>
               <template #cell-focus="{ row }"><span class="dn-chips" style="margin:0"><UiChip v-for="f in row.focus" :key="f" tone="review">{{ f }}</UiChip></span></template>
-              <template #cell-open="{ row }"><UiButton variant="text" size="sm" :aria-label="`Rencana ${row.name ?? ''}`" @click="openPlan(row.id)">Lihat</UiButton></template>
             </UiDataTable>
             <UiCard v-if="plan" style="margin-top:16px" data-testid="dn-plan">
               <div class="dn-between">
@@ -288,5 +295,8 @@ const moduleChip = (m: PlanModule): { tone: 'success' | 'review' | 'neutral'; la
   border: 1px solid var(--el-outline-variant); background: var(--el-surface-card);
 }
 .dn-mod--btn { width: 100%; cursor: pointer; color: inherit; font: inherit; }
+.dn-pick { border: 0; background: none; padding: 0; font: inherit; font-weight: 500; color: inherit; cursor: pointer; text-align: left; }
+.dn-pick:hover { text-decoration: underline; }
+.dn-pick:focus-visible { outline: 2px solid var(--el-primary); outline-offset: 2px; }
 .dn-mod--on { border-color: var(--el-primary); box-shadow: inset 0 0 0 1px var(--el-primary); }
 </style>
