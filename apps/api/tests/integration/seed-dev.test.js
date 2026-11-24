@@ -108,6 +108,10 @@ run('seed-dev: tenant demo untuk demo langsung (Postgres)', () => {
     expect(JSON.stringify((await get('hr', '/ld/trainings').expect(200)).body.data)).toContain('ITIL Foundation');
     expect(JSON.stringify((await get('hr', '/lim/plans').expect(200)).body.data)).toContain('Pilot L1');
     expect(JSON.stringify((await get('hr', `/lim/plans/${ids.planId}/reinterviews/${ids.memberIds[0]}`).expect(200)).body.data)).toContain('Analisis insiden');
+    // gladi 25 Nov: hasil Dimas harus terjangkau dari tab Pengukuran AI (antrean butuh skor post dari LD)
+    const antrean = (await get('hr', `/lim/plans/${ids.planId}/queue`).expect(200)).body.data;
+    expect(antrean.map((x) => x.userId)).toEqual(expect.arrayContaining(ids.memberIds));
+    expect(antrean.find((x) => x.userId === ids.memberIds[0])).toMatchObject({ status: 'done', canView: true });
     expect(JSON.stringify((await get('hr', '/cca/overview').expect(200)).body)).toContain('Menjadi pemimpin layanan cloud.');
     const dna = (await get('hr', '/dna/development/overview').expect(200)).body.data;
     expect(dna.kpi.jobFunctions).toBe(3);

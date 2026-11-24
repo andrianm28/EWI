@@ -217,6 +217,17 @@ async function seedDemoData(c, { stores, tenantId: t, jobRoleId, levelIds, hrId,
       { progress_pct: [40, 65, 20, 50][i], status: 'in_progress', last_activity_at: new Date(Date.now() - (i + 1) * DAY) });
     await findOrInsert(c, 'ld_participants', { tenant_id: t, training_id: ldRca, user_id: userId }, { progress_pct: 0, status: 'enrolled' });
   }
+  // Angkatan RCA yang sudah selesai di dalam periode rencana LIM (mulai 1 Nov): skor post dari LD membuat tim masuk
+  // antrean tab Pengukuran AI, sehingga hasil wawancara ulang Dimas bisa dibuka dari "Lihat hasil" (gladi demo 25 Nov).
+  const ldRcaDone = await training('Root Cause Analysis (angkatan 1)', { mode: 'offline', source: 'manual', module_id: mod['Root Cause Analysis'],
+    program_tier: 'basic', vendor_name: 'Mahaka Institute', venue: 'Ruang Rapat Lt. 5', starts_on: '2026-11-03', ends_on: '2026-11-04',
+    session_count: 2, sessions_done: 2, status: 'done', materials_ready: true, assessment_mode: 'vendor_manual' });
+  for (const [i, userId] of team.entries()) {
+    await findOrInsert(c, 'ld_participants', { tenant_id: t, training_id: ldRcaDone, user_id: userId }, {
+      progress_pct: 100, status: 'completed', attendance: true, score: [60, 75, 50, 70][i], score_source: 'vendor_manual',
+      completed_at: new Date('2026-11-04T09:00:00Z'),
+    });
+  }
 
   // ---------- Learning Impact Measurement ----------
   const planId = await findOrInsert(c, 'lim_plans', { tenant_id: t, title: 'Pilot L1: percepatan penyelesaian insiden' }, {
