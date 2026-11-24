@@ -215,6 +215,14 @@ run('LTI 1.3 Platform (Postgres)', () => {
     const [[part]] = await db.query(`SELECT lp.status, lp.score::float AS score, lp.progress_pct::float AS pct FROM ld_participants lp JOIN ld_trainings t ON t.id = lp.training_id
       WHERE t.tenant_id = :t AND t.source = 'elitementor' AND t.external_ref = 'SD-B1' AND lp.user_id = :u`, { replacements: { t: tenant.id, u: u.ani } });
     expect(part).toEqual({ status: 'completed', score: 100, pct: 100 });
+    // hasil lama yang datang terlambat tidak menurunkan lulus menjadi gagal
+    const old = new Date(Date.now() - 60 * 1000).toISOString();
+    expect((await score(s.link, s.token, { userId: s.sub, timestamp: old, activityProgress: 'Completed', gradingProgress: 'FullyGraded', scoreGiven: 1, scoreMaximum: 3 })).status).toBe(204);
+    const [comp] = await db.query(`SELECT c.status FROM lna_catalog_completions c JOIN lna_catalog_items ci ON ci.id = c.catalog_item_id
+      WHERE c.tenant_id = :t AND c.user_id = :u AND ci.external_ref = 'SD-B1'`, { replacements: { t: tenant.id, u: u.ani } });
+    if (comp.length) expect(comp[0].status).toBe('passed');
+    [[p]] = await db.query('SELECT status FROM lna_training_plan_items WHERE id = :id', { replacements: { id: planId } });
+    expect(p.status).toBe('completed');
   });
 
   test('skor offline: check-in = hadir, kuis selesai = skor asesmen', async () => {
@@ -228,6 +236,12 @@ run('LTI 1.3 Platform (Postgres)', () => {
     expect((await score(s.offline, s.token, { userId: claims.sub, activityProgress: 'Completed', gradingProgress: 'FullyGraded', scoreGiven: 2, scoreMaximum: 3 })).status).toBe(204);
     [[row]] = await db.query('SELECT attendance, score::float AS score, score_source FROM ld_participants WHERE training_id = :tr AND user_id = :u', { replacements: { tr: trainingId, u: u.ani } });
     expect(row).toEqual({ attendance: true, score: 67, score_source: 'elitementor' });
+    // pelatihan diambil dari link, jadi kode asesmen yang diubah HR tidak membuang skor
+    await db.query("UPDATE ld_trainings SET assessment_ref = 'IAC-BARU' WHERE id = :tr", { replacements: { tr: trainingId } });
+    expect((await score(s.offline, s.token, { userId: claims.sub, activityProgress: 'Completed', gradingProgress: 'FullyGraded', scoreGiven: 3, scoreMaximum: 3 })).status).toBe(204);
+    [[row]] = await db.query('SELECT score::float AS score FROM ld_participants WHERE training_id = :tr AND user_id = :u', { replacements: { tr: trainingId, u: u.ani } });
+    expect(row.score).toBe(100);
+    await db.query("UPDATE ld_trainings SET assessment_ref = 'IAC-1512' WHERE id = :tr", { replacements: { tr: trainingId } });
   });
 
   test('AGS menolak: token sesi ELGOS, userId asing, link tenant lain, scope kurang, skor tidak valid', async () => {

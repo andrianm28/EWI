@@ -5,6 +5,7 @@ const crypto = require('crypto');
 const jwt = require('jsonwebtoken');
 
 const MAX_JWKS_BYTES = 64 * 1024;
+const MIN_REFETCH_MS = 30 * 1000;
 
 function toPem(raw) {
   const s = String(raw || '').trim();
@@ -64,7 +65,8 @@ function createJwksClient({ fetchImpl = fetch, ttlMs = 5 * 60 * 1000, timeoutMs 
       if (!entry || clock() - entry.at > ttlMs) { entry = await load(url); fresh = true; }
       let jwk = entry.keys.find((k) => k.kid === kid);
       // kunci tool baru dirotasi: ambil ulang sekali (bukan bila baru saja diambil)
-      if (!jwk && !fresh) jwk = (await load(url)).keys.find((k) => k.kid === kid);
+      // jeda minimal antar-ambil ulang agar kid acak dari klien anonim tidak memicu fetch setiap permintaan
+      if (!jwk && !fresh && clock() - entry.at > MIN_REFETCH_MS) jwk = (await load(url)).keys.find((k) => k.kid === kid);
       if (!jwk || jwk.kty !== 'RSA') throw new Error(`Kunci tool dengan kid ${kid} tidak ditemukan`);
       return crypto.createPublicKey({ key: jwk, format: 'jwk' });
     },

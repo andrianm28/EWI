@@ -2,6 +2,7 @@
 // EM-LTI: store Postgres untuk ELGOS sebagai LTI 1.3 Platform (spek docs/designs/em-lti-platform.md §4).
 // Setiap query data bisnis memfilter tenant_id. Rute LTI publik mendapat tenant dari tiket/token di server (ADR 0003).
 const { QueryTypes } = require('sequelize');
+const { planFrozen } = require('./frozen-sql');
 
 const TOOL_COLS = `id, tenant_id AS "tenantId", name, client_id AS "clientId", deployment_id AS "deploymentId", login_url AS "loginUrl",
   launch_url AS "launchUrl", redirect_uris AS "redirectUris", jwks_url AS "jwksUrl", status`;
@@ -49,7 +50,13 @@ function createLtiStores(sequelize) {
     },
     /** Apakah karyawan berhak atas link: pemilik rencana (online) atau peserta pelatihan offline yang masih berjalan. */
     async userMayUse(tenantId, link, userId) {
-      if (link.kind === 'plan_item') return link.userId === userId;
+      if (link.kind === 'plan_item') {
+        if (link.userId !== userId) return false;
+        // rencana yang temuannya dibekukan (persetujuan ditarik) atau ditolak tidak diluncurkan dan tidak menerima skor
+        const plan = await one(`SELECT 1 AS ok FROM lna_training_plan_items p WHERE p.tenant_id = :tenantId AND p.id = :id
+                                   AND p.status NOT IN ('rejected', 'requested') AND NOT ${planFrozen('p')}`, { tenantId, id: link.planItemId });
+        return Boolean(plan);
+      }
       const row = await one(`SELECT 1 AS ok FROM ld_participants lp JOIN ld_trainings t ON t.id = lp.training_id AND t.tenant_id = lp.tenant_id
                               WHERE lp.tenant_id = :tenantId AND lp.training_id = :trainingId AND lp.user_id = :userId AND ${OPEN_TRAINING}`,
       { tenantId, trainingId: link.trainingId, userId });
@@ -114,7 +121,10 @@ function createLtiStores(sequelize) {
                    SELECT ci.tenant_id, :userId, ci.id, :status, :at, :score, 'elitementor' FROM lna_catalog_items ci
                     WHERE ci.tenant_id = :tenantId AND ci.source = 'elitementor' AND ci.external_ref = :courseRef
                    ON CONFLICT (tenant_id, user_id, catalog_item_id) DO UPDATE
-                     SET status = EXCLUDED.status, score = EXCLUDED.score, completed_at = EXCLUDED.completed_at, source = EXCLUDED.source, updated_at = now()`,
+                     SET status = EXCLUDED.status, score = EXCLUDED.score, completed_at = EXCLUDED.completed_at, source = EXCLUDED.source, updated_at = now()
+                   -- hanya hasil yang lebih baru, dan lulus tidak pernah diturunkan menjadi gagal
+                   WHERE (lna_catalog_completions.completed_at IS NULL OR lna_catalog_completions.completed_at <= EXCLUDED.completed_at)
+                     AND NOT (lna_catalog_completions.status = 'passed' AND EXCLUDED.status <> 'passed')`,
       { tenantId, userId, courseRef, status, score, at });
     },
     /** Check-in offline lewat EliteMentor: peserta hadir. */

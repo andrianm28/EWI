@@ -45,11 +45,17 @@ describe('createJwksClient', () => {
     await c.getKey('http://tool/keys', 'k1');
     expect(fetchImpl).toHaveBeenCalledTimes(1);
   });
-  test('kid tidak ada: ambil ulang sekali lalu galat', async () => {
+  test('kid tidak ada: ambil ulang sekali lalu galat, dengan jeda minimal 30 detik', async () => {
     const fetchImpl = okFetch({ keys: [jwk] });
-    const c = createJwksClient({ fetchImpl });
+    let now = 0;
+    const c = createJwksClient({ fetchImpl, clock: () => now });
     await c.getKey('http://tool/keys', 'k1');
     await expect(c.getKey('http://tool/keys', 'k9')).rejects.toThrow(/kid/);
+    expect(fetchImpl).toHaveBeenCalledTimes(1); // baru saja diambil: kid acak tidak memicu fetch
+    now = 31 * 1000;
+    await expect(c.getKey('http://tool/keys', 'k9')).rejects.toThrow(/kid/);
+    expect(fetchImpl).toHaveBeenCalledTimes(2);
+    await expect(c.getKey('http://tool/keys', 'k8')).rejects.toThrow(/kid/);
     expect(fetchImpl).toHaveBeenCalledTimes(2);
   });
   test('jawaban bukan JWKS atau terlalu besar ditolak', async () => {

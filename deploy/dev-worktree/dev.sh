@@ -90,6 +90,11 @@ cmd_up() {
   fi
   # EM-LTI: EliteMentor (simulasi) + flag em.lti; idempoten, jadi dijalankan setiap up (juga pada DB lama)
   dc exec -T api docker-entrypoint.sh npm run --silent seed:lti-demo
+  if [ "$public" = 0 ]; then
+    # EM-LTI: tautan EliteMentor diselesaikan terhadap APP_BASE_URL, jadi mode lokal memakai origin loopback
+    local lurl="http://127.0.0.1:$(envval WEB_PORT)"
+    if [ "$(envval APP_BASE_URL)" != "$lurl" ]; then set_url "$lurl"; dc up -d --wait api >/dev/null; fi
+  fi
   if [ "$public" = 1 ]; then
     dc --profile public up -d tunnel
     local url=""
@@ -106,7 +111,7 @@ cmd_up() {
 cmd_url() {
   echo "Lokal : http://127.0.0.1:$(envval WEB_PORT)"
   local url; url="$(public_url || true)"
-  [ -n "$url" ] && echo "Publik: $url"
+  [ -n "$url" ] && echo "Publik: $url (tombol EliteMentor hanya jalan dari URL ini)"
   echo "Login : hr@demo.test / learner@demo.test, tenant demo, password DEV_SEED_PASSWORD di $DEV_ENV_FILE"
 }
 

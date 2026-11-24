@@ -6,6 +6,7 @@
 // - ltiAssignmentAdapter: "Tugaskan di EliteMentor" mode LTI = membuat resource link.
 const crypto = require('crypto');
 const express = require('express');
+const jwt = require('jsonwebtoken');
 const { FLAGS } = require('../../core/flags');
 const { submoduleActive } = require('../../core/entitlement/guard');
 const { HttpError, badRequest, forbidden, notFound } = require('../../core/errors');
@@ -142,14 +143,13 @@ function ltiPublicRouter({ service, stores, flags, entitlements, key, jwksClient
     if (b.client_assertion_type !== ASSERTION_TYPE || typeof b.client_assertion !== 'string') return oauthError(res, 400, 'invalid_request', 'client_assertion wajib');
     const scopes = parseScope(b.scope);
     if (!scopes.length) return oauthError(res, 400, 'invalid_scope', 'scope AGS tidak dikenal');
-    const jwt = require('jsonwebtoken');
     const decoded = jwt.decode(b.client_assertion, { complete: true });
     const cid = decoded && decoded.payload && decoded.payload.iss;
     const tool = typeof cid === 'string' ? await stores.lti.toolByClientId(cid) : null;
     if (!tool || tool.status !== 'active' || !decoded.header.kid) return oauthError(res, 401, 'invalid_client', 'Tool tidak dikenal');
     let claims;
     try {
-      const pub = await jwksClient.getKey(tool.jwksUrl, decoded.header.kid);
+      const pub = await jwksClient.getKey(resolveUrl(tool.jwksUrl, base), decoded.header.kid);
       claims = jwt.verify(b.client_assertion, pub, { algorithms: ['RS256'], issuer: tool.clientId, subject: tool.clientId, audience: tokenAudiences, maxAge: '5m' });
     } catch {
       return oauthError(res, 401, 'invalid_client', 'client_assertion tidak valid');
@@ -190,20 +190,22 @@ function ltiPublicRouter({ service, stores, flags, entitlements, key, jwksClient
     let result = { kind: out.kind };
     if (out.kind === 'progress') {
       if (ldOpen) result.ld = await stores.ld.applySyncEvent(tenantId, out.event);
-      // rencana belajar milik submodul TNA (aturan 3): tanpa TNA aktif, skor hanya ke Learning Delivery
+      // rencana belajar milik submodul TNA (aturan 3): tanpa TNA aktif, skor hanya ke Learning Delivery.
+      // Dengan LD aktif, efek rencana hanya bila B14 menerapkan event (bukan duplikat/usang).
       const tnaOpen = await submoduleActive({ entitlements, flags }, tenantId, 'tna');
-      if (tnaOpen && (!result.ld || !result.ld.duplicate)) {
+      if (tnaOpen && (!result.ld || result.ld.applied)) {
         await stores.lti.advancePlan(tenantId, link.planItemId, out.planStatus);
         if (out.completion) await stores.lti.recordCompletion(tenantId, { userId: user.id, courseRef: link.courseRef, status: out.completion, score: out.event.score, at: out.event.occurredAt });
       }
-    } else if (out.kind === 'assessment') {
+    } else if (out.kind === 'assessment' && ldOpen) {
       await stores.lti.markAttendance(tenantId, link.trainingId, user.id);
-      if (ldOpen) result.ld = await stores.ld.applySyncEvent(tenantId, out.event);
-    } else if (out.kind === 'attendance') {
+      // pelatihan dari link, bukan dicari ulang lewat assessment_ref (kode bisa dipakai ulang atau diubah HR)
+      result.ld = await stores.ld.applySyncEvent(tenantId, { ...out.event, trainingId: link.trainingId });
+    } else if (out.kind === 'attendance' && ldOpen) {
       result.attended = await stores.lti.markAttendance(tenantId, link.trainingId, user.id);
     }
     await audit.record({ tenantId, user: null }, 'update', 'lti.score',
-      { employeeIds: [user.id], objectType: 'lti_resource_link', objectIds: [link.id], kind: out.kind, activityProgress: s.activityProgress, applied: result.ld ? result.ld.applied ?? null : null });
+      { employeeIds: [user.id], objectType: 'lti_resource_link', objectIds: [link.id], kind: out.kind, activityProgress: s.activityProgress, applied: result.ld ? result.ld.applied ?? null : null, reason: result.ld ? result.ld.reason ?? null : null });
     return res.status(204).end();
   }));
 

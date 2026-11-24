@@ -151,3 +151,20 @@ Semua selesai di PR EM-LTI. Smoke lokal ujung ke ujung (API + em-sim + proxy) lu
 | 11 | sub dari EWI_JWT_SECRET, kunci sementara | perbaiki: `lti_user_subs`, kunci dibuat dev.sh |
 | 12 | urutan cek penugasan | perbaiki (§3.4) |
 | lain | celah state cookie EliteMentor asli | dicatat §1 |
+
+## 12. Triase review diff (egm implementation-readiness + mattpocock code-review)
+
+| # | Temuan | Keputusan |
+|---|---|---|
+| D1 | Peluncuran hanya jalan dari origin `APP_BASE_URL`; `dev.sh up --local` gagal | Diperbaiki: mode lokal menulis `http://127.0.0.1:<WEB_PORT>` ke `APP_BASE_URL`; `dev.sh url` menandai URL publik sebagai satu-satunya origin tombol EliteMentor |
+| D2 | Skor lama/duplikat bisa menurunkan hasil lulus | Diperbaiki: efek rencana hanya bila B14 menerapkan event; `recordCompletion` hanya hasil lebih baru dan lulus tidak diturunkan |
+| D3 | Skor offline dicari ulang lewat `assessment_ref` | Diperbaiki: `trainingId` dari link dibawa ke `applySyncEvent` (B14 memakai id bila ada); alasan tidak diterapkan masuk audit |
+| D4 | Kehadiran ditulis walau LD mati | Diperbaiki: semua efek offline di balik gate `ld` |
+| D5 | `kid` acak memicu fetch JWKS tiap permintaan; `jwks_url` relatif | Diperbaiki: jeda minimal 30 detik antar-ambil ulang; `jwks_url` diselesaikan terhadap `APP_BASE_URL`. Rate limit `/api/lti/*` ditunda (pasca demo) |
+| D6 | Kode sesi = kode course yang tampil di kartu | Diterima sebagai batas demo: em-sim tidak membuktikan kehadiran fisik. Kode sesi terpisah dari instruktur = pekerjaan lanjutan bersama EliteMentor |
+| D7 | Klaim AGS mengiklankan GET lineitems | Diperbaiki: klaim hanya scope `score` + URL `lineitem` |
+| D8 | §10, urutan `COURSE_NOT_IN_TARGET`, `training_title` | §10 diperbarui; `training_title` dikirim; urutan cek penugasan dibiarkan (kode galat berbeda hanya untuk tenant tanpa LTI dan tanpa REST) |
+| D9 | Rencana beku/ditolak masih bisa diluncurkan | Diperbaiki: `userMayUse` menolak rencana beku (`planFrozen`), `rejected`, `requested` |
+| S1 | Launch dan efek rencana tanpa gate TNA; exp assertion 10 menit | Diperbaiki: gate `tna` pada launch dan efek rencana; exp ≤ 5 menit |
+| S2 | Rename `userId` → `actorId` di adapter penugasan; `require` di dalam handler | Diperbaiki |
+| S3 | Kunci HMAC context memakai `EWI_JWT_SECRET`; prefix env `ELGOS_`/`LTI_` | Ditunda: perlu keputusan Andrian (rotasi kunci, penamaan env) |
