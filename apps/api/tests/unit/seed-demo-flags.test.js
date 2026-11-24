@@ -20,11 +20,11 @@ describe('seed-dev: flag tenant demo', () => {
     expect(DEMO_FLAGS.filter((f) => !known.has(f))).toEqual([]);
   });
 
-  test('sama dengan sesi demo e2e (SEMUA_MODUL + FLAG_DEMO); lim.reinterview tetap mati', () => {
+  test('sama dengan sesi demo e2e (SEMUA_MODUL + FLAG_DEMO); lim.reinterview menyala (B15 12.9)', () => {
     const web = new Set([...trueKeys('sesi.ts', 'export const SEMUA_MODUL'), ...trueKeys('demo.ts', 'export const FLAG_DEMO')]);
     expect([...web].length).toBeGreaterThan(10);
     expect(new Set(DEMO_FLAGS)).toEqual(web);
-    expect(DEMO_FLAGS).not.toContain(FLAGS.LIM_REINTERVIEW);
+    expect(DEMO_FLAGS).toContain(FLAGS.LIM_REINTERVIEW);
   });
 
   test('seed-dev memakai DEMO_FLAGS dan menolak produksi', () => {

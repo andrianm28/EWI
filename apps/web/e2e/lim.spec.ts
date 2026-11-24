@@ -125,11 +125,41 @@ test('HR: Pengukuran AI menjadwalkan wawancara ulang per karyawan', async ({ pag
   await expect(page.getByTestId('info')).toContainText('1 karyawan dijadwalkan')
 })
 
+test('paritas mockup 12.9: peserta di baris rencana, n= dan sumber di tooltip, kartu agen dan catatan Pengukuran AI', async ({ page }) => {
+  await setup(page)
+  await page.goto('/lim')
+  // LIM-4: jumlah peserta di baris rencana, bukan di catatan rantai
+  await expect(page.getByText('Rencana: Pilot L1 · 6 peserta')).toBeVisible()
+  await expect(page.getByText('Peserta terhitung')).toHaveCount(0)
+  // LIM-2: pemilih rencana dan "Rencana baru" di kanan baris tab, tidak menggeser tab ke bawah
+  const tabbar = page.getByTestId('lim-tabbar')
+  await expect(tabbar.getByRole('tablist')).toBeVisible()
+  await expect(tabbar.getByRole('button', { name: 'Rencana baru' })).toBeVisible()
+  const [tabs, tombol] = await Promise.all([tabbar.getByRole('tablist').boundingBox(), tabbar.getByRole('button', { name: 'Rencana baru' }).boundingBox()])
+  expect(tombol!.x).toBeGreaterThan(tabs!.x + tabs!.width - 1)
+  // LIM-10: n= dan sumber kekuatan bukti pindah ke tooltip; kartu isian HR dilipat
+  await page.getByRole('tab', { name: 'Per kompetensi' }).click()
+  const comp = page.getByRole('table', { name: 'Kompetensi sampai kinerja' })
+  await expect(comp).not.toContainText('n=')
+  await expect(comp.getByTitle('Rata-rata dari 6 orang').first()).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Isi pre dari asesmen DNA' })).toBeHidden()
+  await page.getByRole('tab', { name: 'Dampak bisnis' }).click()
+  const biz = page.getByRole('table', { name: 'Indikator bisnis tim' })
+  await expect(biz).not.toContainText('dinilai HR')
+  await expect(biz.getByTitle('Kekuatan bukti dinilai HR')).toBeVisible()
+  // LIM-5 dan LIM-7: kartu agen dan catatan mockup
+  await page.getByRole('tab', { name: 'Pengukuran AI' }).click()
+  await expect(page.getByRole('heading', { name: 'Agen AI · Pengukuran dampak' })).toBeVisible()
+  await expect(page.getByText('AI mewawancarai ulang karyawan beberapa pekan setelah belajar untuk memastikan hasil belajar bertahan, membandingkannya dengan kinerja kerja, lalu menghubungkannya ke hasil bisnis tim.')).toBeVisible()
+  await expect(page.getByText('Wawancara ulang dijadwalkan 4 sampai 6 pekan setelah belajar. Karyawan mengerjakannya sendiri dari menu Wawancara ulang setelah dijadwalkan.')).toBeVisible()
+})
+
 test('HR: isi pre dari asesmen DNA dan impor skor untuk rencana yang sedang dibuka', async ({ page }) => {
   const calls: { method: string; url: string; body: unknown }[] = []
   await setup(page, {}, calls)
   await page.goto('/lim')
   await page.getByRole('tab', { name: 'Per kompetensi' }).click()
+  await page.getByText('Isi data pengukuran (HR)').click()
   await page.getByRole('button', { name: 'Isi pre dari asesmen DNA' }).click()
   await expect(page.getByTestId('info')).toContainText('2 skor pre diisi dari asesmen DNA (level × 25)')
   expect(calls.some((c) => c.method === 'POST' && c.url === '/plans/p-1/pre-from-dna')).toBe(true)

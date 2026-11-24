@@ -229,7 +229,7 @@ export const penanganLdDemo: Penangan = (req) => {
   return undefined
 }
 
-// ---- B15 Learning Impact Measurement (layar saja; wawancara ulang milik thread B15) ----
+// ---- B15 Learning Impact Measurement dan wawancara ulang tahap 3 (data mockup Pak Eji, Main.dc.html limQueue/limEvid) ----
 const LIM_PLAN = {
   id: 'p-1', title: 'Pilot L1', jobRoleId: 'jr-1', jobRoleName: 'Engineer Service Delivery', periodFrom: '2026-09-01', periodUntil: null,
   businessProblem: 'Penyelesaian insiden P1 lambat', desiredBehavior: 'Engineer menganalisis akar masalah', priorityCapabilities: 'RCA',
@@ -252,11 +252,33 @@ const LIM_OVERVIEW = {
   valueEstimate: null, factors: [],
 }
 
+const KOMP_RCA = { competencyId: 'k1', name: 'RCA & Post-Incident Report' }
+const LIM_QUEUE = [
+  { userId: 'u-a', name: 'Karyawan A', competencies: [KOMP_RCA], postCompletedOn: '2026-10-06', dueFrom: '2026-11-03', dueUntil: '2026-11-17', status: 'done', window: null, scheduledOn: '2026-11-10', score: 92, reinterviewId: 'ri-1', canView: true },
+  { userId: 'u-b', name: 'Karyawan B', competencies: [KOMP_RCA], postCompletedOn: '2026-10-20', dueFrom: '2026-11-17', dueUntil: '2026-12-01', status: 'scheduled', window: 'due', scheduledOn: '2026-11-24', score: null, reinterviewId: null, canView: false },
+  { userId: 'u-c', name: 'Karyawan C', competencies: [KOMP_RCA], postCompletedOn: '2026-10-27', dueFrom: '2026-11-24', dueUntil: '2026-12-08', status: 'none', window: 'due', scheduledOn: null, score: null, reinterviewId: null, canView: false },
+]
+const LIM_RANTAI = [
+  ['activity', 'Aktivitas', 'Menyelesaikan program Basic dan workshop', 'measured'], ['learning', 'Pembelajaran', 'Skor pasca-pelatihan 90', 'measured'],
+  ['capability', 'Kapabilitas', 'Wawancara ulang AI: 92', 'measured'], ['application', 'Penerapan', 'Kualitas laporan RCA menurut atasan: 88', 'measured'],
+  ['performance', 'Kinerja tim', 'MTTR P1 92 → 71 mnt', 'measured'], ['business', 'Hasil bisnis', 'Belum ada data', 'missing'],
+].map(([key, label, finding, coverage], i) => ({ level: i + 1, key, label, source: 's', finding, coverage }))
+const LIM_HASIL = {
+  userId: 'u-a', indicators: LIM_OVERVIEW.indicators, factors: ['Alat monitoring baru dipasang pada Oktober 2026.'],
+  reinterviews: [{
+    id: 'ri-1', completedAt: '2026-11-10T03:00:00Z', generatedBy: 'rules', confidence: 'high', chain: LIM_RANTAI,
+    competencies: [{ ...KOMP_RCA, post: 90, reinterview: 92, performance: 88, reason: 'Langkah analisis akar masalah tepat dan sudah dipakai di laporan insiden.' }],
+    benchmark: [{ ...KOMP_RCA, post: 90, reinterview: 92, performance: 88, retention: 'confirmed', application: 'applied' }],
+    recommendations: ['Lanjutkan ke kompetensi berikutnya dalam jalur belajar.'],
+  }],
+}
+
 /** B15: rencana Pilot L1 dengan ringkasan dan antrean. */
 export const penanganLimDemo: Penangan = (req) => {
   if (cocok(req, 'GET /lim/plans')) return data([{ id: 'p-1', title: 'Pilot L1', jobRoleName: 'Engineer Service Delivery', moduleCount: 1, participantCount: 6 }])
   if (cocok(req, 'GET /lim/plans/p-1/overview')) return data(LIM_OVERVIEW)
-  if (cocok(req, 'GET /lim/plans/p-1/queue')) return data([])
+  if (cocok(req, 'GET /lim/plans/p-1/queue')) return data(LIM_QUEUE)
+  if (cocok(req, 'GET /lim/plans/p-1/reinterviews/u-a')) return data(LIM_HASIL)
   if (cocok(req, 'GET /lim/options')) return data({ modules: [], jobRoles: [] })
   if (cocok(req, 'GET /lim/imports/templates') || cocok(req, 'GET /lim/imports/batches')) return data([])
   return undefined
@@ -384,4 +406,32 @@ export const penanganKaryawanDemo: Penangan = (req) => {
   if (cocok(req, 'GET /cca/assignments')) return data({ role: 'employee', mine: { leader: null, employee: penugasanCc('employee', 'assigned') } })
   if (cocok(req, 'GET /my/learning-plan')) return { json: { data: KARTU_RENCANA, delivery: { target: 'elitementor', label: 'EliteMentor' } } }
   return undefined
+}
+
+/**
+ * B15 tahap 3, layar karyawan: satu rencana terjadwal, persetujuan, tiga pertanyaan dengan tiga pilihan (satu
+ * kompetensi), lalu selesai tanpa skor. Berstatus per test, jadi dibuat ulang tiap test.
+ */
+export function penanganWawancaraUlangDemo(): Penangan {
+  const opsi = ['Kumpulkan log dan linimasa insiden', 'Tanya rekan senior', 'Belum yakin']
+  const tanya = [['scenario', 'RCA & Post-Incident Report', 'Insiden P1 baru selesai ditangani. Apa langkah pertama analisis akar masalah Anda?'],
+    ['verify', 'RCA & Post-Incident Report', 'Bagaimana Anda memastikan akar masalahnya benar?'], ['apply', null, 'Apa yang berubah di pekerjaan Anda sejak pelatihan?']]
+    .map(([kind, competency, text], i) => ({ position: i * 2 + 1, role: 'ai', kind, competency, text, options: opsi }))
+  const sesi = { step: 'consent', consentVersionRequired: 'lim-consent-id-v1.0', competencies: ['RCA & Post-Incident Report'], turns: [] as unknown[], answerCount: 0, questionCount: 3 }
+  let status = 'open'
+  return (req) => {
+    if (cocok(req, 'GET /lim/me/reinterviews')) return data([{ planId: 'p-1', planTitle: 'Pilot L1', scheduledOn: '2026-11-24', status, competencies: ['RCA & Post-Incident Report'] }])
+    if (cocok(req, 'GET /lim/me/reinterviews/p-1/session')) return data(sesi)
+    if (cocok(req, 'POST /lim/me/reinterviews/p-1/consent')) {
+      sesi.step = 'chat'; status = 'in_progress'; sesi.turns.push(tanya[0]); return data({ question: tanya[0] })
+    }
+    if (cocok(req, 'POST /lim/me/reinterviews/p-1/turns')) {
+      const q = tanya[sesi.answerCount]!
+      sesi.answerCount += 1
+      sesi.turns.push({ position: sesi.turns.length + 1, role: 'participant', kind: q.kind, competency: q.competency, text: (req.body as { text: string }).text, options: null })
+      if (sesi.answerCount >= 3) { sesi.step = 'done'; status = 'completed'; return data({ question: null, done: true }) }
+      sesi.turns.push(tanya[sesi.answerCount]); return data({ question: tanya[sesi.answerCount], done: false })
+    }
+    return undefined
+  }
 }

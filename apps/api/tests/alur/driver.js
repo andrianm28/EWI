@@ -335,6 +335,23 @@ function langkah(app, masuk) {
       async jadwalkan(hr, planId, userIds, date) {
         return (await kirim('post', `/api/lim/plans/${planId}/queue/schedule`, hr, { userIds, date }).expect(200)).body.data;
       },
+      /**
+       * B15 tahap 3: karyawan memberi persetujuan lalu menjawab setiap pertanyaan dengan teks yang sama sampai server
+       * menjawab done (maks 9 putaran = 4 kompetensi × 2 + 1). Mengembalikan { pertanyaan } = jumlah pertanyaan sesi.
+       */
+      async wawancaraUlang(karyawan, planId, jawaban) {
+        const base = `/api/lim/me/reinterviews/${planId}`;
+        await kirim('post', `${base}/consent`, karyawan, { consentVersion: currentConsentVersion('lim') }).expect(200);
+        const { questionCount } = (await kirim('get', `${base}/session`, karyawan).expect(200)).body.data;
+        for (let i = 0; i < 9; i += 1) {
+          if ((await kirim('post', `${base}/turns`, karyawan, { text: jawaban }).expect(200)).body.data.done) return { pertanyaan: questionCount };
+        }
+        throw new Error('wawancara ulang tidak selesai setelah 9 jawaban');
+      },
+      /** Hasil wawancara ulang satu karyawan (HR): skor, alasan, benchmark, rantai, rekomendasi. */
+      async hasil(hr, planId, userId) {
+        return (await kirim('get', `/api/lim/plans/${planId}/reinterviews/${userId}`, hr).expect(200)).body.data;
+      },
     },
     /** B9 Improvement Needs. Langkah tulis memastikan sukses; baca mengembalikan respons mentah untuk cek penolakan. */
     ina: {
