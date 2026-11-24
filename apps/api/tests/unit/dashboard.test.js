@@ -160,11 +160,9 @@ describe('GET /api/dashboard', () => {
     ]);
   });
 
-  it('Admin ETA diperlakukan seperti HR', async () => {
+  it('Super Admin ditolak (keputusan user 24 Nov: tidak membaca isi data karyawan)', async () => {
     const res = await setup().get('u-eta', 'eta_admin');
-    expect(res.status).toBe(200);
-    expect(res.body.data.scope).toBe('all');
-    expect(res.body.data.kpis.aiHrAgreement).not.toBeNull();
+    expect([res.status, res.body.error.code]).toEqual([403, 'EMPLOYEE_CONTENT_PRIVATE']);
   });
 
   it('atasan: hanya bawahan langsung, tanpa angka review dan tanpa petunjuk adanya draf', async () => {

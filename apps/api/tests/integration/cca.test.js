@@ -410,9 +410,10 @@ run('B10 Core Competencies (Postgres)', () => {
       expect((await get('/overview?group=constructor')).status).toBe(400);
     });
 
-    it('eta_admin lolos seperti HR', async () => {
-      expect((await get('/overview?group=vm', 'eta')).status).toBe(200);
-      expect((await get('/assignments', 'eta')).body.data.role).toBe('hr');
+    it('eta_admin ditolak (keputusan user 24 Nov: Super Admin tidak membaca isi data karyawan)', async () => {
+      for (const path of ['/overview?group=vm', '/assignments']) {
+        expect((await get(path, 'eta')).body.error.code).toBe('EMPLOYEE_CONTENT_PRIVATE');
+      }
     });
 
     it('perubahan data tercatat audit.record untuk sumber, persyaratan, program, dan penugasan', async () => {

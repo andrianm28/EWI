@@ -116,7 +116,7 @@ run('B15 Learning Impact Measurement (Postgres)', () => {
     expect((await get('/plans')).status).toBe(403);
     await flag('module.lim', true);
     expect((await get('/plans')).status).toBe(200);
-    expect((await get('/plans', 'eta')).status).toBe(200);
+    expect((await get('/plans', 'eta')).body.error.code).toBe('EMPLOYEE_CONTENT_PRIVATE');
     for (const who of ['a', 'sme', 'rl']) expect((await get('/plans', who)).status).toBe(403);
     expect((await send('post', '/plans', planBody(), 'spv')).status).toBe(403);
     // tanpa paket full_suite (spek 5: lim hanya Full Suite) meski flag nyala

@@ -5,6 +5,7 @@
 const express = require('express');
 const { FLAGS, requireFlag } = require('../../core/flags');
 const { ROLES } = require('../../core/rbac/roles');
+const { denyEmployeeContent } = require('../../core/rbac');
 const { badRequest, forbidden, notFound, HttpError } = require('../../core/errors');
 const { RATE } = require('../../core/auth/email-link');
 const { importRouter } = require('../imports');
@@ -303,8 +304,11 @@ module.exports = {
     // submodulnya dan saklar darurat global, bukan flag modul tenant (requireSubmodule tenantFlag:false).
     // gerbang Admin Tenant sudah dipasang untuk seluruh router ini (r.use di atas), jadi tidak diulang di importRouter
     const passThrough = (_req, _res, next) => next();
+    // KPI/OKR per karyawan (tna_performance) adalah data karyawan: Super Admin ditolak seperti di /api/tna (24 Nov).
+    // Model kompetensi per jabatan (dna) tetap konfigurasi.
+    const CONTENT_IMPORTS = new Set(['tna']);
     for (const [sm, only] of Object.entries(IMPORT_KINDS)) {
-      r.use(`/imports/${sm}`, requireSubmodule(sm, { entitlements, flags }, { tenantFlag: false }), importRouter({ submodule: sm, stores, audit, flags, guard: passThrough, only, ownDrafts: true }));
+      r.use(`/imports/${sm}`, CONTENT_IMPORTS.has(sm) ? denyEmployeeContent : passThrough, requireSubmodule(sm, { entitlements, flags }, { tenantFlag: false }), importRouter({ submodule: sm, stores, audit, flags, guard: passThrough, only, ownDrafts: true }));
     }
 
     return r;

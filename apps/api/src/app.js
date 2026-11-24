@@ -46,7 +46,7 @@ const { createPlatformSettings } = require('./core/platform-settings');
 const { createSettingsView } = require('./modules/platform/settings-view');
 const { platformRouter } = require('./modules/platform/routes');
 const { createPlatformLog } = require('./core/platform-log');
-const { requireRole, ROLES } = require('./core/rbac');
+const { requireRole, denyEmployeeContent, ROLES } = require('./core/rbac');
 const SUBMODULE_MODULES = ['cca', 'dna', 'tna', 'ina', 'li', 'ld', 'lim'].map((k) => require(`./modules/${k}`));
 
 /**
@@ -171,21 +171,21 @@ function createApp({ config, stores, ai, catalog, mailer, rateLimits, readiness,
   api.use('/admin', flagAdminRouter({ flags, audit }));
   if (stores.userRoles) api.use('/users', roleRoutes({ userRoles: stores.userRoles, audit, flags }));
   api.use('/sessions', sessionRoutes({ sessions, audit }));
-  if (stores.people && stores.interviews) api.use('/employees', employeeRouter({ stores, flags, audit }));
+  if (stores.people && stores.interviews) api.use('/employees', denyEmployeeContent, employeeRouter({ stores, flags, audit }));
   // B8: beranda karyawan. Bukan submodul; tiap bagian memeriksa modulnya sendiri (flag learner.home).
   if (stores.people && stores.dataRequests) api.use('/my', myRouter({ stores, flags, entitlements, settings, audit }));
   // B17: Asisten ELGOS. Bukan submodul; tiap penyusun fakta memeriksa modulnya sendiri (flag assistant).
-  if (stores.people && stores.assistant) api.use('/assistant', assistantRouter({ ...deps, entitlements }));
+  if (stores.people && stores.assistant) api.use('/assistant', denyEmployeeContent, assistantRouter({ ...deps, entitlements }));
   // B3: dashboard lintas modul. Bukan submodul; di balik flag sendiri dan tiap bagian mengikuti modul sumbernya.
   if (stores.people && stores.interviews && stores.tna && stores.dna) {
-    api.use('/dashboard', requireFlag(flags, FLAGS.DASHBOARD_MAIN, 'Dashboard belum diaktifkan untuk organisasi Anda'),
+    api.use('/dashboard', denyEmployeeContent, requireFlag(flags, FLAGS.DASHBOARD_MAIN, 'Dashboard belum diaktifkan untuk organisasi Anda'),
       dashboardRouter({ stores, flags, entitlements, settings, audit }));
   }
   if (stores.loginLinks) api.use('/invitations', invitationRoutes({ users: stores.users, links, audit }));
   // B11: layar Admin Tenant, di balik flag admin.tenant (bukan submodul berbayar)
   api.use('/tenant-admin', tenantAdmin.router({ ...deps, entitlements, links, elitementor: config.elitementor }));
   for (const m of SUBMODULE_MODULES) {
-    api.use(`/${m.key}`, requireSubmodule(m.key, { entitlements, flags }), m.router(deps));
+    api.use(`/${m.key}`, denyEmployeeContent, requireSubmodule(m.key, { entitlements, flags }), m.router(deps));
   }
   app.use('/api', api);
 

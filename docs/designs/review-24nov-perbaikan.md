@@ -97,3 +97,23 @@ Super Admin (`eta_admin`) masih membaca isi wawancara lewat modul selain `interv
 penarikan persetujuan belum menjangkau CCA/LIM/INA; aksi INA tidak dibekukan setelah penarikan; flag
 `ina.dashboard` vs cakupan 5 modul; retensi data per kelas. Butuh keputusan Andrian/user atau paket tersendiri;
 dicatat di laporan review 24 Nov.
+
+
+## Super Admin tidak membaca isi data karyawan (keputusan user 24 Nov)
+
+**Keputusan:** kartu "Block Super Admin from reading employee content in every module?", pilihan "Yes, one core rule (recommended)", 24 Nov 2026 17.14 WIB. Menggantikan keputusan 19 Nov 20.30 WIB ("Seperti sekarang", `b2-peran.md`) dan baca-saja Admin ETA di spek B9 §15.
+
+**Masalah (temuan P1 review 24 Nov):** `requireRole` meloloskan `eta_admin` dan banyak modul menyamakannya dengan HR, jadi Super Admin di tenant membaca ringkasan CCA, temuan, ekspor karyawan, Pareto dashboard, aksi INA, keputusan promosi, dan fakta asisten. Hanya `modules/interviews` yang menolaknya.
+
+**Aturan:**
+1. `core/rbac` `denyEmployeeContent` menolak peran aktif `eta_admin` dengan 403 `EMPLOYEE_CONTENT_PRIVATE`.
+2. `app.js` memasangnya pada `/api/employees`, `/api/dashboard`, `/api/assistant`, dan setiap router submodul (`cca`, `dna`, `tna`, `ina`, `li`, `ld`, `lim`), sebelum flag dan entitlement, supaya jawabannya sama apa pun modul yang aktif. Router baru yang membaca data karyawan wajib ikut dipasang di sini.
+3. Lapis kedua: `visibleEmployeeScope` untuk `eta_admin` = `{ userIds: [] }`. `ina/access.js` tidak memakai `visibleEmployeeScope` (Super Admin = baca semua), jadi INA hanya dilindungi lapis pertama.
+4. Impor KPI/OKR per karyawan lewat Admin Tenant (`/api/tenant-admin/imports/tna`) juga ditolak, sama dengan `/api/tna/imports`. Impor model kompetensi per jabatan (`/imports/dna`) tetap terbuka.
+5. Tetap terbuka untuk Super Admin: `/api/platform` (ADR 0002), `/api/admin` (flag, kill switch), `/api/me/access`, `/api/users` (peran), `/api/sessions`, `/api/projects`, `/api/tenant-admin` (selain impor KPI), `/api/invitations`, `/api/my` (hanya data dirinya). Data akun dan direktori (nama, email, ID karyawan, atasan, jabatan, login terakhir di daftar pengguna Admin Tenant) dan angka total bukan isi data karyawan menurut aturan ini.
+
+**Menu:** tampilan `super` di API (`core/rbac/menu.js`) hanya Tenant dan Konfigurasi platform, jadi tidak ada layar yang rusak. `apps/web/src/shell/menu.ts` masih mencantumkan butir peralihan DNA/TNA untuk `super`; menu dari API yang dipakai.
+
+**Ditunda (perapian, tidak mengubah perilaku):** cek `[HR_ADMIN, ETA_ADMIN]` dan cabang khusus `eta_admin` di modul (cca, tna, tna/gaps, li, lim, dna, dna/career, dna/career-routes, employees, dashboard, interviews, ina/access, assistant/views, assistant/facts "hr (juga super)", db/lna-stores) kini tak terjangkau untuk `eta_admin`; dirapikan terpisah supaya PR ini kecil.
+
+**Test:** `tests/integration/super-admin-isi-karyawan.test.js` (satu baca per router + tulis + peran lain + jalur konfigurasi), `tests/unit/rbac.test.js`. Test lama yang mengunci akses lama diubah ke kode baru.
