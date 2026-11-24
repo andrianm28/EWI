@@ -10,6 +10,7 @@ const { createStores } = require('../../src/db/stores');
 const { createApp } = require('../../src/app');
 const { createStubProvider } = require('../../src/ai/stub-provider');
 const { FLAGS } = require('../../src/core/flags');
+const { currentConsentVersion } = require('../../src/core/consent');
 const { makeConfig } = require('../helpers');
 const { siapkanTenant, tambahPengguna, pembuatMasuk, hapusTenant, langkah, kodeGalat } = require('../alur/driver');
 const { JABATAN, KOMPETENSI, KARYAWAN_LAIN, TENANT_LAIN, tanggalWib: hari } = require('../alur/data');
@@ -112,7 +113,8 @@ run('Alur pengukuran dampak belajar (HR, atasan)', () => {
   it('tahap 3: karyawan menjalankan wawancara ulang sendiri; HR membuka hasil tanpa transkrip; atasan ditolak', async () => {
     await a.lim.jadwalkan(orang.hr, rencana.id, [orang.karyawan.id], hari(0));
     const selesai = await a.lim.wawancaraUlang(orang.karyawan, rencana.id, 'Saya cek matriks eskalasi lalu konfirmasi ke L2.');
-    expect(selesai.pertanyaan).toBe(5); // 2 kompetensi × 2 + 1 penutup (T-4)
+    const kompetensiRencana = (await a.lim.ringkasan(orang.hr, rencana.id)).competencies.length;
+    expect(selesai.pertanyaan).toBe(2 * kompetensiRencana + 1); // scenario + verify per kompetensi, satu penutup (T-4)
 
     const baris = (await a.lim.antrean(orang.hr, rencana.id)).find((x) => x.userId === orang.karyawan.id);
     expect(baris).toMatchObject({ status: 'done', canView: true });
@@ -120,8 +122,10 @@ run('Alur pengukuran dampak belajar (HR, atasan)', () => {
     expect(hasil.reinterviews[0].competencies.map((c) => c.name).sort()).toEqual([kEskalasi, kProduk].sort());
     expect(JSON.stringify(hasil)).not.toContain('matriks eskalasi');
     expect((await a.mentah('get', `/api/lim/plans/${rencana.id}/reinterviews/${orang.karyawan.id}`, orang.atasan)).status).toBe(403);
+    // karyawan tidak membaca hasil HR, termasuk hasilnya sendiri (T-6: hanya percakapan di layar sesinya)
+    expect((await a.mentah('get', `/api/lim/plans/${rencana.id}/reinterviews/${orang.karyawan.id}`, orang.karyawan)).status).toBe(403);
     // karyawan lain tanpa jadwal tidak bisa memulai
-    expect((await a.mentah('post', `/api/lim/me/reinterviews/${rencana.id}/consent`, orang.lain, { consentVersion: 'lim-consent-id-v1.0' })).status).toBe(404);
+    expect((await a.mentah('post', `/api/lim/me/reinterviews/${rencana.id}/consent`, orang.lain, { consentVersion: currentConsentVersion('lim') })).status).toBe(404);
   });
 
   it('tanpa paket full_suite rute ditolak meski flag menyala; tenant lain tidak melihat rencana', async () => {
