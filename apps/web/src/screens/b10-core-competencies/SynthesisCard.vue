@@ -8,6 +8,13 @@ import { cca, THEME_LABEL, type InterviewQuestion, type Synthesis, type Synthesi
 import { EMPTY, formatPercent, UiButton, UiCard, UiChip, UiDataTable, UiErrorSummary, UiProgressBar, type UiColumn } from '@/ui'
 
 const emit = defineEmits<{ loaded: [themes: number] }>()
+// AH-4: "Lihat hasil" di tabel penugasan memindah fokus ke judul kartu ini (judul selalu dirender, juga saat memuat)
+const heading = ref<HTMLElement | null>(null)
+function focusHeading() {
+  heading.value?.scrollIntoView({ block: 'start' })
+  heading.value?.focus()
+}
+defineExpose({ focusHeading })
 const data = ref<Synthesis | null>(null)
 const errors = ref<{ message: string }[]>([])
 const notice = ref('')
@@ -55,7 +62,7 @@ async function showPreview(tier: 'leader' | 'employee') {
 
 <template>
   <UiCard data-testid="cc-sintesis">
-    <h3 class="el-h3">Sintesis AI: pimpinan dan karyawan</h3>
+    <h3 ref="heading" class="el-h3" tabindex="-1">Sintesis AI: pimpinan dan karyawan</h3>
     <p class="el-muted cc-synth__sub">Tema dari wawancara pimpinan, dan seberapa jauh jawaban karyawan sejalan. Hasil ini menjadi dasar persyaratan kompetensi pada Corporate Vision &amp; Mission dan Corporate Values.</p>
     <UiErrorSummary v-if="errors.length" :errors="errors" />
     <p v-if="notice" role="status" class="el-muted">{{ notice }}</p>

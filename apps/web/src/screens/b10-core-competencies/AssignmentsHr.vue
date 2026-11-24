@@ -53,13 +53,8 @@ const kpis = computed(() => {
 })
 const asRow = (r: Record<string, unknown>) => r as unknown as LeaderRow
 // AH-4: "Lihat hasil" membawa HR ke kartu sintesis (hasil wawancara pimpinan tidak ditampilkan per orang)
-function showSynthesis() {
-  const h = document.querySelector<HTMLElement>('[data-testid="cc-sintesis"] h3')
-  if (!h) return
-  h.tabIndex = -1
-  h.scrollIntoView({ block: 'start' })
-  h.focus()
-}
+const synthesis = ref<InstanceType<typeof SynthesisCard> | null>(null)
+const showSynthesis = () => synthesis.value?.focusHeading()
 
 async function run(fn: () => Promise<string>) {
   errors.value = []; notice.value = ''; busy.value = true
@@ -127,7 +122,7 @@ const cancel = (row: LeaderRow) => run(async () => { await cca.cancelAssignment(
         :who="pending?.length === 1 ? pending[0]!.name : `${pending?.length ?? 0} pimpinan`"
         @close="pending = null" @confirm="assign(pending ?? [], $event)"
       />
-      <SynthesisCard @loaded="themes = $event" />
+      <SynthesisCard ref="synthesis" @loaded="themes = $event" />
     </template>
   </div>
 </template>
