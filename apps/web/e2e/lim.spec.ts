@@ -131,6 +131,12 @@ test('paritas mockup 12.9: peserta di baris rencana, n= dan sumber di tooltip, k
   // LIM-4: jumlah peserta di baris rencana, bukan di catatan rantai
   await expect(page.getByText('Rencana: Pilot L1 · 6 peserta')).toBeVisible()
   await expect(page.getByText('Peserta terhitung')).toHaveCount(0)
+  // LIM-2: pemilih rencana dan "Rencana baru" di kanan baris tab, tidak menggeser tab ke bawah
+  const tabbar = page.getByTestId('lim-tabbar')
+  await expect(tabbar.getByRole('tablist')).toBeVisible()
+  await expect(tabbar.getByRole('button', { name: 'Rencana baru' })).toBeVisible()
+  const [tabs, tombol] = await Promise.all([tabbar.getByRole('tablist').boundingBox(), tabbar.getByRole('button', { name: 'Rencana baru' }).boundingBox()])
+  expect(tombol!.x).toBeGreaterThan(tabs!.x + tabs!.width - 1)
   // LIM-10: n= dan sumber kekuatan bukti pindah ke tooltip; kartu isian HR dilipat
   await page.getByRole('tab', { name: 'Per kompetensi' }).click()
   const comp = page.getByRole('table', { name: 'Kompetensi sampai kinerja' })

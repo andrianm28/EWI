@@ -134,6 +134,8 @@ test('HR: "Lihat hasil" membuka empat langkah mockup tanpa transkrip; rekomendas
   await q.getByRole('button', { name: 'Lihat hasil Karyawan A' }).click()
 
   const flow = page.getByTestId('wu-hasil')
+  // mockup M:1063-1073: saat alur terbuka, kartu agen dan antrean diganti panel langkah dan kartu isi
+  await expect(page.getByRole('heading', { name: 'Agen AI · Pengukuran dampak' })).toHaveCount(0)
   await expect(flow.getByRole('list', { name: 'Langkah hasil wawancara ulang' })).toContainText('Konfirmasi hasil belajar')
   await expect(flow.getByTestId('wu-skor')).toContainText('Langkah eskalasi tepat')
   await expect(flow.getByTestId('wu-skor')).toContainText('70')

@@ -4,7 +4,7 @@
 // aturan di API (generatedBy 'rules'), jadi layar menulis "Rekomendasi" dan "Tingkat keyakinan" tanpa kata AI.
 import { computed, onMounted, ref } from 'vue'
 import { ApiError } from '@/api/client'
-import { UiAuditLine, UiButton, UiNote, UiProgressBar, UiStatus, UiStepper } from '@/ui'
+import { UiAuditLine, UiButton, UiCard, UiNote, UiProgressBar, UiStatus, UiStepper } from '@/ui'
 import { AI_PRODUCT_LABEL } from '@/api/ai'
 import { lim, type ReinterviewResults } from './api'
 import { APPLICATION, CONFIDENCE, COVERAGE, RETENTION, STRENGTH, score, withUnit } from './labels'
@@ -32,8 +32,8 @@ const bars = (b: { post: number | null; reinterview: number | null; performance:
 
 <template>
   <section class="lim-flow" aria-label="Hasil wawancara ulang" data-testid="wu-hasil">
-    <UiStepper :steps="STEPS" :current="step" label="Langkah hasil wawancara ulang" />
-    <div class="lim-stack">
+    <UiCard tonal><UiStepper :steps="STEPS" :current="step" label="Langkah hasil wawancara ulang" /></UiCard>
+    <UiCard class="lim-stack">
       <p class="el-muted lim-small">{{ name }}<template v-if="latest"> · selesai {{ tanggalWaktu(latest.completedAt) }}</template></p>
       <UiNote v-if="error" tone="critical">{{ error }}</UiNote>
       <template v-if="latest">
@@ -90,6 +90,6 @@ const bars = (b: { post: number | null; reinterview: number | null; performance:
       <div><UiButton variant="outlined" @click="emit('back')">Kembali ke antrean</UiButton></div>
       <!-- LIM-8: baris audit mockup (M:1111); API mencatat pembukaan hasil ini lewat audit.readIndividual -->
       <UiAuditLine v-if="latest" :items="[AI_PRODUCT_LABEL, `log audit: ${latest.competencies.length} kompetensi dinilai`, 'dibuka HR tercatat']" />
-    </div>
+    </UiCard>
   </section>
 </template>

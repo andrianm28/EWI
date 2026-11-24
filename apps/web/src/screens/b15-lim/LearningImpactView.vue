@@ -117,13 +117,6 @@ const chainLabel = (r: Record<string, unknown>) => `${r.level} · ${r.label}`
     <UiNote v-if="notice" tone="success" data-testid="info">{{ notice }}</UiNote>
 
     <template v-if="plans">
-      <div v-if="plans.length" class="lim-row lim-gap">
-        <label v-if="plans.length > 1" class="el-label">Rencana
-          <select v-model="planId" class="el-input"><option v-for="p in plans" :key="p.id" :value="p.id">{{ p.title }} · {{ p.participantCount }} peserta</option></select>
-        </label>
-        <p v-else class="el-muted lim-small">Rencana: <b>{{ plans[0]!.title }}</b> · {{ plans[0]!.participantCount }} peserta</p>
-        <UiButton v-if="isHr && !creating" variant="tonal" size="sm" @click="creating = true">Rencana baru</UiButton>
-      </div>
       <UiCard v-if="isHr && (creating || !plans.length)" class="lim-gap" as="section" aria-label="Rencana pengukuran baru">
         <h2 class="el-h3">Rencana pengukuran baru</h2>
         <p class="el-muted lim-small">Mulai dari masalah bisnis. Peserta rencana adalah karyawan jabatan terpilih yang mengikuti pelatihan modul ini dalam periode rencana.</p>
@@ -133,7 +126,17 @@ const chainLabel = (r: Record<string, unknown>) => `${r.level} · ${r.label}`
     </template>
 
     <template v-if="data && !creating">
-      <UiTabs id="lim" v-model="tab" :tabs="TABS" label="Bagian Learning Impact Measurement" />
+      <!-- LIM-2 (PK-2): pemilih rencana dan "Rencana baru" di kanan baris tab supaya tab tetap di posisi mockup -->
+      <div class="lim-tabbar" data-testid="lim-tabbar">
+        <UiTabs id="lim" v-model="tab" :tabs="TABS" label="Bagian Learning Impact Measurement" />
+        <div v-if="plans?.length" class="lim-plan">
+          <label v-if="plans.length > 1" class="el-label lim-small">Rencana
+            <select v-model="planId" class="el-input"><option v-for="p in plans" :key="p.id" :value="p.id">{{ p.title }} · {{ p.participantCount }} peserta</option></select>
+          </label>
+          <p v-else class="el-muted lim-small">Rencana: <b>{{ plans[0]!.title }}</b> · {{ plans[0]!.participantCount }} peserta</p>
+          <UiButton v-if="isHr" variant="tonal" size="sm" @click="creating = true">Rencana baru</UiButton>
+        </div>
+      </div>
 
       <div v-if="tab === 'ringkasan'" id="lim-panel-ringkasan" role="tabpanel" aria-labelledby="lim-tab-ringkasan">
         <UiCard as="section" :aria-label="`Mulai dari masalah bisnis`">
@@ -216,7 +219,7 @@ const chainLabel = (r: Record<string, unknown>) => `${r.level} · ${r.label}`
       </div>
 
       <div v-else-if="tab === 'ai'" id="lim-panel-ai" role="tabpanel" aria-labelledby="lim-tab-ai">
-        <UiAgentCard title="Pengukuran dampak">AI mewawancarai ulang karyawan beberapa pekan setelah belajar untuk memastikan hasil belajar bertahan, membandingkannya dengan kinerja kerja, lalu menghubungkannya ke hasil bisnis tim.</UiAgentCard>
+        <UiAgentCard v-if="!viewing" title="Pengukuran dampak">AI mewawancarai ulang karyawan beberapa pekan setelah belajar untuk memastikan hasil belajar bertahan, membandingkannya dengan kinerja kerja, lalu menghubungkannya ke hasil bisnis tim.</UiAgentCard>
         <UiNote v-if="!isHr" class="lim-gap">Antrean wawancara ulang dikelola HR. Hasilnya masuk ke tab Ringkasan dan Per kompetensi.</UiNote>
         <ReinterviewResult v-else-if="viewing" class="lim-gap" :plan-id="planId" :user-id="viewing.userId" :name="viewing.name" @back="viewing = null" />
         <template v-else-if="queue">
