@@ -555,8 +555,8 @@ benchmark M:1087-1093 dan `limBench`/`limFind` M:1577-1581, hasil bisnis M:1095-
 | LIM-9 | Atasan melihat antrean yang sama, dengan aksi | Tetap 6.5: atasan tidak menerima antrean per orang; tab Pengukuran AI atasan berisi kartu agen dan catatan "dikelola HR". R22 menyerahkan keputusan ke thread B15; alasan: jadwal wawancara ulang adalah data individual yang tidak perlu untuk tugas atasan (mengisi skor kinerja) | Diputuskan (sudah sejak R22) |
 | LIM-10 | Tabel tanpa "n=", tanpa "dinilai HR/dihitung aturan", tanpa kartu isi pre dan impor | "n=" dan sumber kekuatan bukti pindah ke tooltip (`title`) dan teks pembaca layar; kartu HR (isi pre dari DNA, impor) dilipat di bawah tabel dalam `<details>` "Isi data pengukuran (HR)" | Ditutup |
 
-[❓ PERLU KEPUTUSAN] **Demo "Mulai sekarang".** Mockup memperlihatkan HR memulai wawancara dari antrean. Pilihan:
-(a) **rekomendasi:** tetap T-1; pembawa demo memperlihatkan alur dari dua peran (karyawan menjalankan wawancara di
+**Demo "Mulai sekarang": Diputuskan (keputusan user 24 Nov 22.35 WIB, kartu keputusan: opsi a).** Mockup memperlihatkan HR memulai wawancara dari antrean. Pilihan:
+(a) **dipilih:** tetap T-1; pembawa demo memperlihatkan alur dari dua peran (karyawan menjalankan wawancara di
 menu Wawancara ulang, HR membuka "Lihat hasil"); `demo-alur.spec.ts` menjalankan keduanya; (b) tombol "Mulai sekarang"
 untuk HR yang membuka pratinjau percakapan contoh tanpa menyimpan; (c) HR boleh memulai atas nama karyawan
 (mengubah T-1, persetujuan, dan privasi). Yang dikerjakan: (a).
@@ -567,10 +567,13 @@ apa adanya.
 #### Demo dan test
 
 - `e2e/support/demo.ts`: `lim.reinterview` ikut `FLAG_DEMO`. `penanganLimDemo` memuat antrean (satu selesai, satu
-  dijadwalkan), hasil satu karyawan, dan sesi karyawan.
+  dijadwalkan, satu belum) dan hasil satu karyawan untuk HR. Sesi karyawan (`GET /lim/me/reinterviews`, sesi, persetujuan,
+  giliran) ada di penangan berstatus `penanganWawancaraUlangDemo()`, dibuat ulang per test. Atasan: `penanganAtasanDemo`
+  menjawab `GET /lim/me/reinterviews` dengan daftar kosong (wawancara milik atasan sendiri).
 - `e2e/demo-alur.spec.ts`: HR membuka tab Pengukuran AI → "Lihat hasil" → empat langkah sampai Ringkasan dan "Kembali ke
   antrean"; Karyawan membuka menu Wawancara ulang → persetujuan → pertanyaan pertama → jawab sampai selesai. Atasan
-  hanya memastikan catatan "dikelola HR" (LIM-9).
+  memastikan catatan "dikelola HR" (LIM-9) dan bahwa menu Wawancara ulang hanya memuat wawancaranya sendiri (daftar kosong,
+  tanpa sesi karyawan).
 - `e2e/lim.spec.ts` dan `e2e/lim-wawancara-ulang.spec.ts`: LIM-4, LIM-5, LIM-6, LIM-7, LIM-10, baris audit LIM-8 (ditulis
   lebih dulu, merah lalu hijau).
 - Test alur B18 `alur-impact-measurement.test.js`: langkah baru setelah penjadwalan: karyawan memberi persetujuan,
@@ -583,7 +586,20 @@ apa adanya.
 | --- | --- | --- | --- |
 | 1 | design | Menghapus "n=" dari sel membuat HR tidak tahu skor rata-rata dari berapa orang | Tooltip `title` plus teks `el-sr-only`, jadi tetap terbaca pembaca layar; mockup tidak menampilkannya |
 | 2 | design | Melipat kartu isi pre dan impor menyembunyikan aksi HR yang sering dipakai saat menyiapkan rencana | [⏳ DITERIMA: lipatan tertutup sesuai mockup, judulnya jelas ("Isi data pengukuran (HR)"); e2e membuka lipatan] |
-| 3 | design | "Mulai sekarang" di mockup adalah titik cerita demo | ❓ di atas, rekomendasi (a) |
-| 4 | implementation-readiness | `FLAG_DEMO` menyalakan `lim.reinterview` untuk semua peran demo: menu "Wawancara ulang" muncul juga di atasan, dan layar lain tidak boleh mengirim permintaan yang tidak di-mock | `penanganLimDemo` menjawab `GET /lim/me/reinterviews`; atasan tidak membuka menu itu di demo; `permintaanBelumDimock` tetap menjaga |
+| 3 | design | "Mulai sekarang" di mockup adalah titik cerita demo | Diputuskan user 24 Nov: opsi (a), demo dua peran |
+| 4 | implementation-readiness | `FLAG_DEMO` menyalakan `lim.reinterview` untuk semua peran demo: menu "Wawancara ulang" muncul juga di atasan, dan layar lain tidak boleh mengirim permintaan yang tidak di-mock | Karyawan: `penanganWawancaraUlangDemo()`; atasan: `penanganAtasanDemo` menjawab daftar kosong dan demo atasan membuka menu itu; `permintaanBelumDimock` tetap menjaga (dikoreksi review diff P1) |
 | 5 | implementation-readiness | Baris audit menyebut "dibuka HR tercatat": benar hanya bila API mencatat `audit.readIndividual` | Sudah (12.3, `GET /plans/:id/reinterviews/:userId`); test integrasi 12.6 memeriksanya |
-| 6 | implementation-readiness | Test alur B18 memakai AI tiruan; jumlah pertanyaan bergantung kompetensi rencana (2 kompetensi → 5 pertanyaan) | Driver menjawab sampai `done: true`, maks 9 putaran, tanpa angka tetap |
+| 6 | implementation-readiness | Test alur B18 memakai AI tiruan; jumlah pertanyaan bergantung kompetensi rencana (2 kompetensi → 5 pertanyaan) | Driver menjawab sampai `done: true`, maks 9 putaran; test menurunkan jumlah dari kompetensi rencana (2 × n + 1) |
+
+#### Triase review diff egm independen (24 Nov)
+
+| # | Bobot | Temuan | Keputusan |
+| --- | --- | --- | --- |
+| R1 | P1 | Sumber kekuatan bukti hanya di `title`, tidak terbaca pembaca layar | `el-sr-only` ", kekuatan bukti dinilai HR / dihitung aturan" di samping status; e2e |
+| R2 | P1 | Dokumen menyebut `penanganLimDemo` menjawab `GET /lim/me/reinterviews`, padahal kodenya di `penanganWawancaraUlangDemo` | Dokumen dikoreksi (bagian Demo dan test, triase #4); demo atasan membuka menu Wawancara ulang: daftar kosong, tanpa sesi karyawan |
+| R3 | P2 | Tooltip n= tidak bisa dicapai papan ketik | `tabindex="0"` pada sel skor dan status kekuatan bukti; e2e memeriksa atribut |
+| R4 | P2 | Cek posisi tombol "Rencana baru" memakai bounding box, bergantung viewport | Diganti cek urutan DOM di `lim-tabbar` |
+| R5 | P2 | Pemilih rencana dan "Rencana baru" hilang saat ringkasan gagal dimuat | `lim-tabbar` di luar penjaga `data`: pemilih tampil bila `plans?.length`, tab hanya bila ringkasan termuat; e2e ringkasan 503 |
+| R6 | P3 | Test alur memakai versi persetujuan literal | `currentConsentVersion('lim')` |
+| R7 | P3 | `toBe(5)` tetap | Jumlah diturunkan dari kompetensi rencana |
+| R8 | P3 | Belum ada test karyawan membaca `GET /plans/:id/reinterviews/:dirinya` | Ditambah: 403 |

@@ -35,7 +35,7 @@ const QUEUE = [
   { userId: 'u-b', name: 'Karyawan B', competencies: [{ competencyId: 'k1', name: 'RCA & Post-Incident Report' }], postCompletedOn: '2026-09-01', dueFrom: '2026-09-29', dueUntil: '2026-10-13', status: 'done', window: null, scheduledOn: null, score: 92 },
 ]
 
-interface Opts { role?: string; plans?: unknown[]; products?: string[] }
+interface Opts { role?: string; plans?: unknown[]; products?: string[]; overviewFails?: boolean }
 async function setup(page: Page, o: Opts = {}, calls: { method: string; url: string; body: unknown }[] = []) {
   const user = { id: 'u-1', tenantId: 't-1', email: 'hr@demo.test', role: o.role ?? 'hr_admin' }
   await page.route('**/api/auth/tenants', (r) => r.fulfill({ json: { data: [] } }))
@@ -53,7 +53,7 @@ async function setup(page: Page, o: Opts = {}, calls: { method: string; url: str
     if (path === '/plans' && req.method() === 'GET') return r.fulfill({ json: { data: plans } })
     if (path === '/plans' && req.method() === 'POST') { plans = [{ id: 'p-1', title: body.title, jobRoleName: null, moduleCount: 1, participantCount: 0 }]; return r.fulfill({ status: 201, json: { data: PLAN } }) }
     if (path === '/options') return r.fulfill({ json: { data: { modules: [{ id: 'm-1', code: 'ST-A2', name: 'RCA' }], jobRoles: [{ id: 'jr-1', name: 'Engineer Service Delivery' }] } } })
-    if (path === '/plans/p-1/overview') return r.fulfill({ json: { data: OVERVIEW } })
+    if (path === '/plans/p-1/overview') return o.overviewFails ? r.fulfill({ status: 503, json: { error: { code: 'UNAVAILABLE', message: 'Layanan sedang sibuk' } } }) : r.fulfill({ json: { data: OVERVIEW } })
     if (path === '/plans/p-1/queue') return r.fulfill({ json: { data: QUEUE } })
     if (path === '/plans/p-1/pre-from-dna') return r.fulfill({ json: { data: { filled: 2 } } })
     if (path === '/imports/templates') return r.fulfill({ json: { data: [{ key: 'lim_measurements', label: 'Skor dampak belajar (Impact Measurement)', description: 'Skor per karyawan per kompetensi.',
@@ -135,23 +135,38 @@ test('paritas mockup 12.9: peserta di baris rencana, n= dan sumber di tooltip, k
   const tabbar = page.getByTestId('lim-tabbar')
   await expect(tabbar.getByRole('tablist')).toBeVisible()
   await expect(tabbar.getByRole('button', { name: 'Rencana baru' })).toBeVisible()
-  const [tabs, tombol] = await Promise.all([tabbar.getByRole('tablist').boundingBox(), tabbar.getByRole('button', { name: 'Rencana baru' }).boundingBox()])
-  expect(tombol!.x).toBeGreaterThan(tabs!.x + tabs!.width - 1)
+  // urutan DOM (tidak bergantung viewport): tab lebih dulu, lalu pemilih rencana
+  await expect(tabbar.locator(':scope > :nth-child(1)')).toHaveAttribute('role', 'tablist')
+  await expect(tabbar.locator(':scope > :nth-child(2)')).toContainText('Rencana baru')
   // LIM-10: n= dan sumber kekuatan bukti pindah ke tooltip; kartu isian HR dilipat
   await page.getByRole('tab', { name: 'Per kompetensi' }).click()
   const comp = page.getByRole('table', { name: 'Kompetensi sampai kinerja' })
   await expect(comp).not.toContainText('n=')
   await expect(comp.getByTitle('Rata-rata dari 6 orang').first()).toBeVisible()
+  // tooltip bisa dicapai papan ketik (review egm P2)
+  await expect(comp.getByTitle('Rata-rata dari 6 orang').first()).toHaveAttribute('tabindex', '0')
   await expect(page.getByRole('button', { name: 'Isi pre dari asesmen DNA' })).toBeHidden()
   await page.getByRole('tab', { name: 'Dampak bisnis' }).click()
   const biz = page.getByRole('table', { name: 'Indikator bisnis tim' })
-  await expect(biz).not.toContainText('dinilai HR')
+  // sumber hanya di tooltip dan teks pembaca layar, tidak tampil sebagai teks (review egm P1)
   await expect(biz.getByTitle('Kekuatan bukti dinilai HR')).toBeVisible()
+  await expect(biz.getByTitle('Kekuatan bukti dinilai HR')).toHaveAttribute('tabindex', '0')
+  await expect(biz.locator('.el-sr-only', { hasText: 'kekuatan bukti dinilai HR' })).toHaveCount(1)
+  await expect(biz.locator('.el-sr-only', { hasText: 'kekuatan bukti dihitung aturan' })).toHaveCount(1)
   // LIM-5 dan LIM-7: kartu agen dan catatan mockup
   await page.getByRole('tab', { name: 'Pengukuran AI' }).click()
   await expect(page.getByRole('heading', { name: 'Agen AI · Pengukuran dampak' })).toBeVisible()
   await expect(page.getByText('AI mewawancarai ulang karyawan beberapa pekan setelah belajar untuk memastikan hasil belajar bertahan, membandingkannya dengan kinerja kerja, lalu menghubungkannya ke hasil bisnis tim.')).toBeVisible()
   await expect(page.getByText('Wawancara ulang dijadwalkan 4 sampai 6 pekan setelah belajar. Karyawan mengerjakannya sendiri dari menu Wawancara ulang setelah dijadwalkan.')).toBeVisible()
+})
+
+test('ringkasan gagal dimuat: pemilih rencana dan "Rencana baru" tetap ada (review egm P2)', async ({ page }) => {
+  await setup(page, { overviewFails: true })
+  await page.goto('/lim')
+  await expect(page.getByTestId('galat')).toContainText('Layanan sedang sibuk')
+  await expect(page.getByRole('tablist')).toHaveCount(0)
+  await expect(page.getByText('Rencana: Pilot L1 · 6 peserta')).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Rencana baru' })).toBeVisible()
 })
 
 test('HR: isi pre dari asesmen DNA dan impor skor untuk rencana yang sedang dibuka', async ({ page }) => {

@@ -105,6 +105,7 @@ const asRow = (x: object) => x as Record<string, unknown>
 const C = (r: Record<string, unknown>) => r as unknown as CompetencyRow
 const I = (r: Record<string, unknown>) => r as unknown as Indicator
 const Q = (r: Record<string, unknown>) => r as unknown as QueueRow
+const sourceText = (i: Indicator) => (i.strengthSource === 'hr' ? 'dinilai HR' : 'dihitung aturan')
 const nTitle = (n: number) => `Rata-rata dari ${n} orang`
 const chainLabel = (r: Record<string, unknown>) => `${r.level} · ${r.label}`
 </script>
@@ -125,18 +126,20 @@ const chainLabel = (r: Record<string, unknown>) => `${r.level} · ${r.label}`
       <UiNote v-else-if="!plans.length" class="lim-gap">Belum ada rencana pengukuran dampak untuk tim Anda. HR membuat rencana lebih dulu.</UiNote>
     </template>
 
-    <template v-if="data && !creating">
-      <!-- LIM-2 (PK-2): pemilih rencana dan "Rencana baru" di kanan baris tab supaya tab tetap di posisi mockup -->
-      <div class="lim-tabbar" data-testid="lim-tabbar">
-        <UiTabs id="lim" v-model="tab" :tabs="TABS" label="Bagian Learning Impact Measurement" />
-        <div v-if="plans?.length" class="lim-plan">
-          <label v-if="plans.length > 1" class="el-label lim-small">Rencana
-            <select v-model="planId" class="el-input"><option v-for="p in plans" :key="p.id" :value="p.id">{{ p.title }} · {{ p.participantCount }} peserta</option></select>
-          </label>
-          <p v-else class="el-muted lim-small">Rencana: <b>{{ plans[0]!.title }}</b> · {{ plans[0]!.participantCount }} peserta</p>
-          <UiButton v-if="isHr" variant="tonal" size="sm" @click="creating = true">Rencana baru</UiButton>
-        </div>
+    <!-- LIM-2 (PK-2): pemilih rencana dan "Rencana baru" di kanan baris tab supaya tab tetap di posisi mockup.
+         Pemilih tetap tampil walau ringkasan gagal dimuat, supaya HR bisa pindah rencana atau membuat yang baru. -->
+    <div v-if="!creating && (data || plans?.length)" class="lim-tabbar" data-testid="lim-tabbar">
+      <UiTabs v-if="data" id="lim" v-model="tab" :tabs="TABS" label="Bagian Learning Impact Measurement" />
+      <div v-if="plans?.length" class="lim-plan">
+        <label v-if="plans.length > 1" class="el-label lim-small">Rencana
+          <select v-model="planId" class="el-input"><option v-for="p in plans" :key="p.id" :value="p.id">{{ p.title }} · {{ p.participantCount }} peserta</option></select>
+        </label>
+        <p v-else class="el-muted lim-small">Rencana: <b>{{ plans[0]!.title }}</b> · {{ plans[0]!.participantCount }} peserta</p>
+        <UiButton v-if="isHr" variant="tonal" size="sm" @click="creating = true">Rencana baru</UiButton>
       </div>
+    </div>
+
+    <template v-if="data && !creating">
 
       <div v-if="tab === 'ringkasan'" id="lim-panel-ringkasan" role="tabpanel" aria-labelledby="lim-tab-ringkasan">
         <UiCard as="section" :aria-label="`Mulai dari masalah bisnis`">
@@ -167,14 +170,14 @@ const chainLabel = (r: Record<string, unknown>) => `${r.level} · ${r.label}`
         <UiNote>Setiap kompetensi diikuti sampai ke kinerja: skor asesmen sebelum dan sesudah, hasil wawancara ulang AI, skor kinerja kerja, dan kesimpulan.</UiNote>
         <UiDataTable class="lim-gap" :columns="COMP_COLS" :rows="data.competencies.map(asRow)" row-key="competencyId" caption="Kompetensi sampai kinerja" caption-hidden empty-text="Modul rencana belum terhubung ke kompetensi.">
           <template #cell-name="{ row }"><b>{{ C(row).name }}</b></template>
-          <template #cell-pre="{ row }"><span class="el-mono" :title="nTitle(C(row).preN)">{{ score(C(row).pre) }}</span><span class="el-sr-only"> ({{ C(row).preN }} orang)</span></template>
+          <template #cell-pre="{ row }"><span class="el-mono" tabindex="0" :title="nTitle(C(row).preN)">{{ score(C(row).pre) }}</span><span class="el-sr-only"> ({{ C(row).preN }} orang)</span></template>
           <template #cell-post="{ row }">
-            <span class="el-mono" :title="nTitle(C(row).postN)">{{ score(C(row).post) }}</span><span class="el-sr-only"> ({{ C(row).postN }} orang)</span>
+            <span class="el-mono" tabindex="0" :title="nTitle(C(row).postN)">{{ score(C(row).post) }}</span><span class="el-sr-only"> ({{ C(row).postN }} orang)</span>
             <div v-if="C(row).postShared" class="el-muted lim-small">skor modul, bukan per kompetensi</div>
             <div v-if="C(row).postUnauditable" class="el-muted lim-small">{{ C(row).postUnauditable }} dari vendor</div>
           </template>
-          <template #cell-reinterview="{ row }"><span class="el-mono" :title="nTitle(C(row).reinterviewN)">{{ score(C(row).reinterview) }}</span><span class="el-sr-only"> ({{ C(row).reinterviewN }} orang)</span></template>
-          <template #cell-performance="{ row }"><span class="el-mono" :title="nTitle(C(row).performanceN)">{{ score(C(row).performance) }}</span><span class="el-sr-only"> ({{ C(row).performanceN }} orang)</span></template>
+          <template #cell-reinterview="{ row }"><span class="el-mono" tabindex="0" :title="nTitle(C(row).reinterviewN)">{{ score(C(row).reinterview) }}</span><span class="el-sr-only"> ({{ C(row).reinterviewN }} orang)</span></template>
+          <template #cell-performance="{ row }"><span class="el-mono" tabindex="0" :title="nTitle(C(row).performanceN)">{{ score(C(row).performance) }}</span><span class="el-sr-only"> ({{ C(row).performanceN }} orang)</span></template>
           <template #cell-verdict="{ row }"><UiStatus :tone="VERDICT[C(row).verdict].tone">{{ VERDICT[C(row).verdict].text }}</UiStatus></template>
         </UiDataTable>
         <p class="el-muted lim-small lim-gap">"Skor modul" berarti skor post satu modul dipakai untuk beberapa kompetensi. Kesimpulan memakai rata-rata wawancara ulang (ambang 70); yang belum diwawancara ulang ditandai "Belum diukur".</p>
@@ -196,7 +199,7 @@ const chainLabel = (r: Record<string, unknown>) => `${r.level} · ${r.label}`
           <template #cell-current="{ row }"><span class="el-mono">{{ withUnit(I(row).current, I(row).unit) }}</span></template>
           <template #cell-target="{ row }"><span class="el-mono">{{ targetText(I(row)) }}</span></template>
           <template #cell-strength="{ row }">
-            <span :title="`Kekuatan bukti ${I(row).strengthSource === 'hr' ? 'dinilai HR' : 'dihitung aturan'}`"><UiStatus :tone="STRENGTH[I(row).strength].tone">{{ STRENGTH[I(row).strength].text }}</UiStatus></span>
+            <span tabindex="0" :title="`Kekuatan bukti ${sourceText(I(row))}`"><UiStatus :tone="STRENGTH[I(row).strength].tone">{{ STRENGTH[I(row).strength].text }}</UiStatus></span><span class="el-sr-only">, kekuatan bukti {{ sourceText(I(row)) }}</span>
           </template>
         </UiDataTable>
         <div class="el-grid el-grid-2 lim-gap">

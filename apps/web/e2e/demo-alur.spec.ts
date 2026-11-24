@@ -233,6 +233,11 @@ test('demo Atasan: Dashboard tim, Wawancara AI, Training Needs dengan Wawancara 
     await expect(page.getByText('Antrean wawancara ulang dikelola HR')).toBeVisible()
     await bukaMenu(page, 'Career & Promotion', page.getByText('Ani'))
   })
+  await test.step('Wawancara ulang (milik atasan sendiri): daftar kosong, tidak membuka sesi karyawan (spek B15 12.9)', async () => {
+    await bukaMenu(page, 'Wawancara ulang', page.getByText('Belum ada wawancara ulang untuk Anda.'))
+    await expect(page.getByTestId('wu-rencana')).toHaveCount(0)
+    await expect(page.getByTestId('wu-sesi')).toHaveCount(0)
+  })
 })
 
 test('demo Karyawan: Hasil saya, wawancara akar masalah, Wawancara visi & nilai, dan Rencana belajar', async ({ page }) => {

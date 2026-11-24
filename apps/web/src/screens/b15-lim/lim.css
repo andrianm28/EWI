@@ -15,5 +15,5 @@
 .lim-fold > summary { cursor: pointer; padding: 8px 0; }
 .lim-tabbar { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
 .lim-tabbar > .el-tabs { flex: 1 1 auto; min-width: 0; }
-.lim-plan { display: flex; align-items: center; gap: 12px; }
+.lim-plan { display: flex; align-items: center; gap: 12px; margin-left: auto; }
 .lim-plan p { margin: 0; }
