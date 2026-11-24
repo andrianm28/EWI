@@ -470,6 +470,16 @@ test('keputusan user 24 Nov: tenggat terisi hari ini +14 (WIB) seperti dialog B1
   expect(sent.find((s) => s.path === '/assignments')?.body).toMatchObject({ dueDate: tanggalWib(14) })
 })
 
+test('review egm TD-2: GAP tidak merah bila tidak ada gap (gap kompetensi 0, OKR tanpa karyawan meleset)', async ({ page }) => {
+  await setup(page, { flags: BOARD })
+  // didaftarkan setelah papan supaya menang (penangan terakhir didahulukan)
+  await mockApi(page, (req) => (cocok(req, 'GET /tna/gaps/detail') ? responsData({ ...DETAIL, gap: 0, gapPct: 0, actualPct: 75, peopleWithGap: 0 }) : undefined))
+  await page.goto(`/tna/gap?kind=competency&competencyId=${ID_KOMPETENSI}`)
+  const gap = page.locator('.el-kpi').filter({ hasText: 'GAP' }).locator('.el-kpi__value')
+  await expect(gap).toBeVisible()
+  await expect(gap).not.toHaveClass(/el-kpi__value--critical/)
+})
+
 test('paritas TD-2/TD-3: nilai GAP merah; bukti dan hipotesis berupa baris ikon bergaris pemisah, tanpa poin', async ({ page }) => {
   await setup(page, { flags: BOARD })
   await page.goto(`/tna/gap?kind=competency&competencyId=${ID_KOMPETENSI}`)

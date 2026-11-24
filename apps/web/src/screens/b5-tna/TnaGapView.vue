@@ -138,9 +138,9 @@ const kpis = computed(() => {
   const g = d.value
   if (!g) return []
   // P8 R4 (TN-8): skor 0-100 tanpa "%"
-  // TD-2: nilai GAP merah seperti mockup
-  if (g.kind === 'competency') return [{ l: 'TARGET', v: formatScore(g.targetPct) }, { l: 'AKTUAL', v: formatScore(g.actualPct) }, { l: 'GAP', v: gapScore(g.gapPct), critical: true }]
-  return [{ l: 'TARGET', v: num(g.target, g.unit) }, { l: 'AKTUAL', v: num(g.actual, g.unit) }, { l: 'GAP', v: num(g.diff, g.unit), critical: true }]
+  // TD-2: nilai GAP merah seperti mockup, hanya bila memang ada gap (review egm 24 Nov)
+  if (g.kind === 'competency') return [{ l: 'TARGET', v: formatScore(g.targetPct) }, { l: 'AKTUAL', v: formatScore(g.actualPct) }, { l: 'GAP', v: gapScore(g.gapPct), critical: (g.gapPct ?? 0) > 0 }]
+  return [{ l: 'TARGET', v: num(g.target, g.unit) }, { l: 'AKTUAL', v: num(g.actual, g.unit) }, { l: 'GAP', v: num(g.diff, g.unit), critical: g.peopleMissed > 0 }]
 })
 const SESSION_LABEL: Record<string, string> = { scheduled: 'Ditugaskan', in_progress: 'Berjalan', completed: 'Selesai' }
 const sessionText = (e: DetailEmployee) => {
