@@ -171,6 +171,26 @@ run('seed-dev: tenant demo untuk demo langsung (Postgres)', () => {
     expect(await views('admin')).toEqual(['admin', 'hr', 'karyawan']);
   });
 
+  test('pimpinan@ (Kepala Divisi) memakai tampilan Atasan mockup: beranda Dashboard tim dan Developmental Needs berisi', async () => {
+    const access = (await get('pimpinan', '/me/access').expect(200)).body;
+    expect(access).toMatchObject({ view: 'atasan', home: 'dash' });
+    // satu peran bertampilan Atasan saja: bila ada dua, kembali dari Karyawan bisa memilih peran yang ditolak layar Atasan
+    expect(access.roles.map((r) => r.role)).toEqual(['supervisor', 'learner']);
+    // RG-3: timnya bawahan langsung, yaitu Atasan Demo
+    const dash = (await get('pimpinan', '/dashboard').expect(200)).body.data;
+    expect(dash).toMatchObject({ scope: 'team', people: 1 });
+    const dn = (await get('pimpinan', '/dna/development/overview').expect(200)).body.data;
+    expect(dn.selectedJobRoleId).toBeTruthy();
+    // Karyawan (saya) lalu kembali ke Atasan: dashboard tetap terbuka
+    const post = (token, role) => request(app).post('/api/auth/switch-role').set({ Authorization: `Bearer ${token}` }).send({ role }).expect(200);
+    const asLearner = (await post(tok.pimpinan, 'learner')).body.token;
+    const back = (await post(asLearner, 'supervisor')).body.token;
+    await request(app).get('/api/dashboard').set({ Authorization: `Bearer ${back}` }).expect(200);
+    // tetap pimpinan yang belum ditugaskan HR (gap B4)
+    const hr = (await get('hr', '/cca/assignments').expect(200)).body.data;
+    expect(hr.leaders.find((l) => l.name === 'Kepala Divisi Demo')).toMatchObject({ status: 'none' });
+  });
+
   test('B3: keputusan promosi berisi satu menunggu HR (Setujui), satu menunggu atasan (Rekomendasikan), satu belum memenuhi', async () => {
     const hr = (await get('hr', '/dna/career/decisions').expect(200)).body.data;
     const byName = (rows, name) => rows.find((x) => x.employee.name === name);
