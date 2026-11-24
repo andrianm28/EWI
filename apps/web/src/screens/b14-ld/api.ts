@@ -8,6 +8,9 @@ export type Group = 'running' | 'upcoming' | 'done' | 'cancelled'
 export type Health = 'ok' | 'watch' | 'late'
 export type AssessmentMode = 'none' | 'elitementor' | 'vendor_manual'
 export type AssessmentStatus = 'none' | 'awaiting' | 'synced' | 'manual_pending' | 'manual'
+/** Saran tindakan LD: tiga jenis pesan ke peserta (POST /reminders, body kind) dan buka detail pelatihan. */
+export type MessageKind = 'remind' | 'invite' | 'confirm'
+export type ActionKind = MessageKind | 'open_training'
 export type CheckKey = 'schedule' | 'materials' | 'participants' | 'attendance' | 'assessment' | 'documentation'
 export interface Training {
   id: string; title: string; mode: 'online' | 'offline'; source: 'manual' | 'elitementor' | 'lms'
@@ -27,7 +30,7 @@ export interface TrainingDetail extends Training {
 export interface Dashboard {
   kpis: { running: number; online: number; offline: number; upcoming: number; activeLearners: number; avgProgress: number; attention: number }
   insights: { key: string; trainingId: string; title: string; detail: string; source: string }[]
-  actions: { key: string; trainingId: string; kind: 'remind' | 'open_training'; title: string; detail: string }[]
+  actions: { key: string; trainingId: string; kind: ActionKind; title: string; detail: string }[]
   generatedBy: string
 }
 export interface Options { jobRoles: { id: string; name: string; people: number }[]; employees: { id: string; name: string | null; email: string; jobRoleName: string | null }[]; vendorName: string; storageReady: boolean; webhookSync: boolean }
@@ -61,7 +64,7 @@ export const ld = {
   attendance: (id: string, body: { entries?: { userId: string; present: boolean | null }[]; allPresent?: boolean }) => send<D<TrainingDetail>>('PUT', `/trainings/${id}/attendance`, body),
   assessment: (id: string, body: { mode: AssessmentMode; assessmentRef?: string }) => send<D<TrainingDetail>>('PUT', `/trainings/${id}/assessment`, body),
   scores: (id: string, entries: { userId: string; score: number | null }[]) => send<D<TrainingDetail>>('PUT', `/trainings/${id}/scores`, { entries }),
-  remind: (id: string) => send<D<{ recipients: number; sent: number; failed: number }>>('POST', `/trainings/${id}/reminders`),
+  remind: (id: string, kind: MessageKind = 'remind') => send<D<{ recipients: number; sent: number; failed: number }>>('POST', `/trainings/${id}/reminders`, { kind }),
   upload: async (id: string, file: File, kind: Doc['kind']) => (await (await raw(`/trainings/${id}/documents?kind=${kind}&filename=${encodeURIComponent(file.name)}`, {
     method: 'POST', headers: { 'Content-Type': 'application/octet-stream' }, body: file,
   })).json()) as D<Doc>,

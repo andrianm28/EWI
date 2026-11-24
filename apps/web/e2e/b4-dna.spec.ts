@@ -147,7 +147,7 @@ test('karyawan membuka menu Developmental Needs: diarahkan ke halaman POC, bukan
 })
 
 // Paritas P3 (docs/designs/paritas-mockup/p3-komponen-bersama.md)
-test('P3 DN-1/DN-2: breadcrumb 12px dan kartu Agen AI tanpa tombol (belum ada layar tujuan)', async ({ page }) => {
+test('P3 DN-1/DN-2: breadcrumb 12px; kartu Agen AI tanpa tombol bila daftar wawancara AI tertutup', async ({ page }) => {
   await mockDna(page)
   await loginSebagai(page, 'hr', B4)
   await page.goto('/dna')
@@ -159,6 +159,20 @@ test('P3 DN-1/DN-2: breadcrumb 12px dan kartu Agen AI tanpa tombol (belum ada la
   await expect(kartu).toContainText('Pilot')
   await expect(kartu).toContainText('AI mewawancarai atasan pemilik jabatan untuk memvalidasi hasil DACUM, lalu karyawan jabatan itu untuk menilai posisi mereka pada tingkat Basic, Intermediate, Advanced.')
   await expect(kartu.getByRole('link')).toHaveCount(0)
+})
+
+test('Gap C7: "Buka wawancara AI" ke tab Wawancara AI Core Competencies (HR) dan /aiv (atasan)', async ({ page }) => {
+  await mockDna(page)
+  await loginSebagai(page, 'hr', { flags: { 'dna.development': true, 'cca.interview': true } })
+  await page.goto('/dna')
+  await expect(page.getByTestId('dn-agen').getByRole('link', { name: 'Buka wawancara AI' })).toHaveAttribute('href', '/cc?tab=aiv')
+})
+
+test('Gap C7: atasan membuka /aiv dari kartu Agen AI DNA', async ({ page }) => {
+  await mockDna(page)
+  await loginSebagai(page, 'atasan', { flags: { 'dna.development': true, 'cca.interview': true } })
+  await page.goto('/dna')
+  await expect(page.getByTestId('dn-agen').getByRole('link', { name: 'Buka wawancara AI' })).toHaveAttribute('href', '/aiv')
 })
 
 // Paritas P5 (docs/designs/paritas-mockup/p5-lna.md)

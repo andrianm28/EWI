@@ -10,7 +10,7 @@ import { lim, type ReinterviewResults } from './api'
 import { APPLICATION, CONFIDENCE, COVERAGE, RETENTION, STRENGTH, score, withUnit } from './labels'
 
 const props = defineProps<{ planId: string; userId: string; name: string }>()
-const emit = defineEmits<{ back: [] }>()
+const emit = defineEmits<{ back: []; saved: [] }>()
 
 const STEPS = [{ key: 'chat', label: 'Konfirmasi hasil belajar' }, { key: 'bench', label: 'Benchmark kinerja' }, { key: 'biz', label: 'Hasil bisnis' }, { key: 'sum', label: 'Ringkasan' }]
 const step = ref('chat')
@@ -23,6 +23,13 @@ onMounted(async () => {
   try { data.value = (await lim.result(props.planId, props.userId)).data } catch (e) { error.value = e instanceof ApiError ? e.message : 'Hasil wawancara ulang tidak bisa dimuat' }
 })
 const next = (key: string) => { step.value = key }
+// "Simpan hasil" (mockup limFinish): skor sudah tersimpan saat wawancara selesai; HR mencatat tinjauan hasil yang ditampilkan
+const saving = ref(false)
+async function save() {
+  if (!latest.value) return
+  saving.value = true; error.value = ''
+  try { await lim.review(props.planId, props.userId, latest.value.id); emit('saved') } catch (e) { error.value = e instanceof ApiError ? e.message : 'Hasil tidak bisa disimpan' } finally { saving.value = false }
+}
 const bars = (b: { post: number | null; reinterview: number | null; performance: number | null }) => [
   { label: 'Post-test', source: 'Learning Delivery', value: b.post },
   { label: 'Wawancara ulang', source: 'Wawancara ulang AI', value: b.reinterview },
@@ -84,10 +91,12 @@ const bars = (b: { post: number | null; reinterview: number | null; performance:
           </div>
           <h3 class="el-h3">Rekomendasi dari data pengukuran</h3>
           <p v-for="(r, i) in latest.recommendations" :key="i" class="lim-factor" data-testid="wu-rekomendasi">{{ r }}</p>
-          <p class="el-muted lim-small">Hasil tersimpan otomatis saat wawancara selesai.</p>
         </template>
       </template>
-      <div><UiButton variant="outlined" @click="emit('back')">Kembali ke antrean</UiButton></div>
+      <div class="lim-actions">
+        <UiButton v-if="latest && step === 'sum'" :disabled="saving" @click="save">Simpan hasil</UiButton>
+        <UiButton variant="outlined" @click="emit('back')">Kembali ke antrean</UiButton>
+      </div>
       <!-- LIM-8: baris audit mockup (M:1111); API mencatat pembukaan hasil ini lewat audit.readIndividual -->
       <UiAuditLine v-if="latest" :items="[AI_PRODUCT_LABEL, `log audit: ${latest.competencies.length} kompetensi dinilai`, 'dibuka HR tercatat']" />
     </UiCard>

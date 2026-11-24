@@ -185,6 +185,18 @@ function mountHrResult(r, { stores, audit, gate, hr, idParam, loadPlan, planData
     await audit.readIndividual(req, 'lim.reinterview', { employeeIds: [userId], objectType: 'lim_reinterview', objectIds: list.map((x) => x.id) });
     res.json({ data: { userId, indicators, factors: plan.factors || [], reinterviews } });
   }));
+
+  // "Simpan hasil" (mockup limFinish): skor sudah tersimpan saat wawancara selesai; HR mencatat bahwa hasil terbaru sudah ditinjau.
+  r.post('/plans/:id/reinterviews/:userId/review', gate, hr, idParam, wrap(async (req, res) => {
+    const plan = await loadPlan(req);
+    const userId = String(req.params.userId);
+    const list = UUID.test(userId) ? await stores.lim.completedReinterviews(req.tenantId, userId, { planId: plan.id }) : [];
+    const wanted = req.body && req.body.reinterviewId;
+    const ri = wanted ? list.find((x) => x.id === String(wanted)) : list[0];
+    if (!ri) throw notFound('Hasil wawancara ulang tidak ditemukan');
+    await audit.record(req, 'update', 'lim.reinterview', { planId: plan.id, employeeIds: [userId], reinterviewId: ri.id, reviewed: true });
+    res.status(204).end();
+  }));
 }
 
 module.exports = { mountMine, mountHrResult };

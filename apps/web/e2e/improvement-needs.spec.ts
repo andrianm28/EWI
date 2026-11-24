@@ -81,7 +81,9 @@ test('HR: KPI, tabel tindakan, ubah status, tambah tindakan, dan akses atasan', 
   await expect(agen.getByRole('heading', { name: 'Agen AI · Verifikasi tindakan perbaikan' })).toBeVisible()
   await expect(agen).toContainText('Pilot')
   await expect(agen).toContainText('AI menanyai pemilik tindakan perbaikan (atasan atau karyawan pada jabatan terkait) tentang hambatan dan status, lalu merangkum untuk HR.')
-  await expect(agen.getByRole('button')).toHaveCount(0)
+  // Gap C7: HR membuka bagian Verifikasi AI di halaman ini; fokus pindah ke judulnya
+  await agen.getByRole('button', { name: 'Buka wawancara AI' }).click()
+  await expect(page.getByRole('heading', { name: 'Verifikasi AI' })).toBeFocused()
   await expect(page.getByTestId('ina-verifikasi')).toContainText('Belum ada verifikasi')
   await expect(page.getByTestId('ina-tersembunyi')).toHaveText('Lihat 1 tindakan yang menyangkut individu')
 

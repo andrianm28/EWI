@@ -1,5 +1,5 @@
 import type { ChipTone } from '@/ui/tones'
-import type { AssessmentStatus, CheckKey, Doc, Health, Training } from './api'
+import type { ActionKind, AssessmentStatus, CheckKey, Doc, Health, MessageKind, Training } from './api'
 
 // Tone UiChip (P7 X-2: status di LD memakai chip terisi seperti mockup; UiStatus global tidak diubah, K-3)
 export type Tone = ChipTone
@@ -32,3 +32,10 @@ export function groupLabel(t: Training): { text: string; tone: Tone } {
   return { text: 'Berjalan', tone: 'training' }
 }
 export const DOC_KIND_LABEL: Record<Doc['kind'], string> = { material: 'materi', photo: 'foto', video: 'video' }
+/** Teks tombol saran tindakan dan teks setelah terkirim (mockup ACT0: cta / done). */
+export const ACTION_LABEL: Record<ActionKind, { cta: string; done?: string }> = {
+  remind: { cta: 'Kirim pengingat', done: 'Pengingat terkirim' }, invite: { cta: 'Kirim ajakan', done: 'Ajakan terkirim' },
+  confirm: { cta: 'Minta konfirmasi', done: 'Permintaan terkirim' }, open_training: { cta: 'Buka pelatihan' },
+}
+/** Kalimat notifikasi per jenis pesan. */
+export const SENT_NOUN: Record<MessageKind, string> = { remind: 'Pengingat', invite: 'Ajakan', confirm: 'Permintaan konfirmasi kehadiran' }
