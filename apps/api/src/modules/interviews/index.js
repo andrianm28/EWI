@@ -8,15 +8,21 @@ const { buildContext, aiContext, callAi } = require('./ai-calls');
 const { requireRole, denyRoles, ROLES } = require('../../core/rbac');
 const { scopeFor, inScope } = require('../../core/rbac/scope');
 const { badRequest, forbidden, notFound, HttpError } = require('../../core/errors');
-const { currentConsentVersion, isAcceptedConsentVersion } = require('../../core/consent');
+const { currentConsentVersion, isAcceptedConsentVersion, currentVoiceConsentVersion, isAcceptedVoiceConsentVersion } = require('../../core/consent');
 const { inviteExpiry, isExpired, extendedExpiry, parseExtendDays, OPEN_STATUSES, EXTEND_MAX_DAYS } = require('./invitation');
 const { FLAGS, requireFlag } = require('../../core/flags');
+const { createRateLimiter } = require('../../core/auth/rate-limit');
 const { MAX_RESTARTS, NOTE_MIN, NOTE_MAX, questionLimit, publicSummary, sessionView, listView, summaryStateOf, parseConfirmation } = require('./summary');
 
 const wrap = (fn) => (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
 
-function interviewRouter({ submodule, stores, ai, aiConfig = {}, audit, analysis, flags }) {
+function interviewRouter({ submodule, stores, ai, aiConfig = {}, audit, analysis, flags, voice = null }) {
   const r = express.Router();
+  // B19: wawancara suara hanya untuk TNA, di balik flag voice.realtime dan penyedia suara deploy ini
+  const voiceSupported = submodule === 'tna' && Boolean(flags && voice);
+  const voiceEnabled = async (tenantId) => voiceSupported && flags.isEnabled(tenantId, FLAGS.VOICE_REALTIME);
+  const voiceAvailable = async (tenantId) => voiceSupported && voice.available(tenantId);
+  const stopVoice = (sessionId, reason) => (voice ? voice.registry.stop(sessionId, reason) : Promise.resolve(false));
   // B6: langkah ringkasan hanya untuk wawancara TNA (router ini juga dipakai DNA tanpa `flags`)
   const summarySupported = submodule === 'tna' && Boolean(flags);
   const summaryEnabled = async (tenantId) => summarySupported && flags.isEnabled(tenantId, FLAGS.TNA_INTERVIEW_SUMMARY);
@@ -85,7 +91,11 @@ function interviewRouter({ submodule, stores, ai, aiConfig = {}, audit, analysis
     const view = sessionView(s, { interviewee: true, answerCount: turns.filter((t) => t.speaker === 'human').length, aiConfig });
     // R2-2: baca transkrip individu selalu dicatat
     await audit.readIndividual(req, `${submodule}.interview_transcript`, { employeeIds: [s.intervieweeId], objectType: 'interview_session', objectIds: [s.id] });
-    return res.json({ data: { ...view, turns, transcriptVisible: true, consentVersionRequired: currentConsentVersion(submodule) } });
+    const voiceFields = voiceSupported ? {
+      aiDone: Boolean(s.aiDoneAt), hasVoiceConsent: Boolean(s.voiceConsentAt), voiceAvailable: Boolean(await voiceAvailable(req.tenantId)),
+      voiceConsentVersionRequired: currentVoiceConsentVersion(submodule),
+    } : {};
+    return res.json({ data: { ...view, ...voiceFields, turns, transcriptVisible: true, consentVersionRequired: currentConsentVersion(submodule) } });
   }));
 
   r.get('/:id/transcript', wrap(async (req, res) => {
@@ -109,6 +119,23 @@ function interviewRouter({ submodule, stores, ai, aiConfig = {}, audit, analysis
     if (!consentVersion) throw badRequest(`consentVersion wajib diisi (versi berlaku: ${current})`);
     if (!isAcceptedConsentVersion(submodule, consentVersion)) {
       throw new HttpError(409, 'CONSENT_VERSION_OUTDATED', `Teks persetujuan sudah berubah. Baca dan setujui versi ${current}`);
+    }
+    // B19 7.1: mode suara butuh flag dan persetujuan suara berversi; pertanyaan pertama diucapkan gateway, bukan dibuat di sini
+    const body = req.body || {};
+    if (body.mode === 'voice') {
+      if (!(await voiceEnabled(req.tenantId))) throw forbidden('FEATURE_DISABLED', 'Wawancara suara belum diaktifkan untuk organisasi Anda');
+      const voiceConsentVersion = String(body.voiceConsentVersion || '').trim();
+      const currentVoice = currentVoiceConsentVersion(submodule);
+      if (!voiceConsentVersion) throw badRequest(`voiceConsentVersion wajib diisi untuk mode suara (versi berlaku: ${currentVoice})`);
+      if (!isAcceptedVoiceConsentVersion(submodule, voiceConsentVersion)) {
+        throw new HttpError(409, 'CONSENT_VERSION_OUTDATED', `Teks persetujuan suara sudah berubah. Baca dan setujui versi ${currentVoice}`);
+      }
+      const startedVoice = await stores.interviews.start(req.tenantId, s.id, { consentAt: new Date(), consentVersion, mode: 'voice', voiceConsentVersion });
+      if (!startedVoice) throw new HttpError(409, 'INVALID_STATE', 'Sesi sudah dimulai, selesai, atau dihentikan');
+      const meta = { employeeIds: [s.intervieweeId], objectType: 'interview_session', objectIds: [s.id] };
+      await audit.record(req, 'create', `${submodule}.interview_consent`, { ...meta, consentVersion });
+      await audit.record(req, 'create', `${submodule}.interview_voice_consent`, { ...meta, voiceConsentVersion });
+      return res.json({ data: { status: 'in_progress', consentVersion, mode: 'voice', question: null } });
     }
     // Pertanyaan dibuat dulu: bila AI gagal, sesi tetap 'scheduled' dan persetujuan bisa diulang.
     const q = await nextQuestion(req.tenantId, s, []);
@@ -143,6 +170,8 @@ function interviewRouter({ submodule, stores, ai, aiConfig = {}, audit, analysis
     if (s.status !== 'in_progress') throw new HttpError(409, 'INVALID_STATE', 'Sesi belum dimulai atau sudah selesai');
     // B6 (A4): sesudah ringkasan dibuat, percakapan terkunci. Berdasarkan data, bukan flag.
     if (s.summaryAt) throw new HttpError(409, 'SUMMARY_PENDING', 'Ringkasan sudah dibuat. Kirim ke HR atau ulangi wawancara.');
+    // B19: di mode suara giliran ditulis gateway; jalur teks dibuka lagi lewat /voice/switch
+    if (s.mode === 'voice') throw new HttpError(409, 'VOICE_ACTIVE', 'Wawancara sedang di mode suara. Pilih "Ketik saja" untuk menjawab dengan mengetik.');
     const text = String((req.body || {}).text || '').trim();
     if (!text) throw badRequest('Jawaban tidak boleh kosong');
     const answer = text.slice(0, 8000);
@@ -151,7 +180,7 @@ function interviewRouter({ submodule, stores, ai, aiConfig = {}, audit, analysis
     const q = await nextQuestion(req.tenantId, s, [...turns, { speaker: 'human', text: answer }]);
     // B8: giliran hanya tersimpan selama sesi masih berjalan (sesi bisa dihentikan saat AI menyusun pertanyaan).
     // Penjaga di store: bila ringkasan dibuat atau sesi diulang saat AI masih bekerja, giliran ini tidak tersimpan.
-    const opts = { guard: { restartCount: s.restartCount } };
+    const opts = { guard: { restartCount: s.restartCount, mode: 'text' } };
     const saved = await stores.interviews.addTurn(req.tenantId, s.id, 'human', answer, opts);
     if (!saved) throw new HttpError(409, 'INVALID_STATE', 'Sesi sudah berubah. Muat ulang halaman ini.');
     const turn = q ? await stores.interviews.addTurn(req.tenantId, s.id, 'ai', q, opts) : null;
@@ -211,13 +240,18 @@ function interviewRouter({ submodule, stores, ai, aiConfig = {}, audit, analysis
       const ctx = aiContext(await buildContext(stores, req.tenantId, s), s);
       const out = await callAi({ stores, aiConfig, tenantId: req.tenantId, session: s },
         () => ai.analyzeTna({ transcript, triggers: ctx.triggers, competencies: ctx.competencies, pass: 1 }));
-      const saved = await stores.interviews.saveSummary(req.tenantId, s.id, out.findings, { restartCount: s.restartCount, turnCount: transcript.length });
+      const saved = await stores.interviews.saveSummary(req.tenantId, s.id, out.findings, {
+        restartCount: s.restartCount, turnCount: transcript.length, editedAt: s.transcriptEditedAt || null,
+      });
       const stored = await stores.interviews.getSummary(req.tenantId, s.id);
       // Kalah balapan: pakai ringkasan pemenang; bila sesi sudah diulang atau ditutup, hasil ini dibuang.
       if (!stored || stored.status !== 'in_progress' || stored.restartCount !== s.restartCount) {
         throw new HttpError(409, 'INVALID_STATE', 'Sesi sudah berubah. Muat ulang halaman ini.');
       }
-      if (saved) await audit.record(req, 'create', RESOURCE, { employeeIds: [s.intervieweeId], objectType: 'interview_session', objectIds: [s.id], findings: out.findings.length });
+      if (saved) {
+        await stopVoice(s.id, 'session_changed');
+        await audit.record(req, 'create', RESOURCE, { employeeIds: [s.intervieweeId], objectType: 'interview_session', objectIds: [s.id], findings: out.findings.length });
+      }
       await readAudit(req, s);
       return res.status(saved ? 201 : 200).json({ data: present(stored) });
     }));
@@ -264,10 +298,91 @@ function interviewRouter({ submodule, stores, ai, aiConfig = {}, audit, analysis
       }
       const row = await stores.interviews.restart(req.tenantId, s.id);
       if (!row) throw new HttpError(409, 'INVALID_STATE', 'Sesi sudah berubah. Muat ulang halaman ini.');
+      await stopVoice(s.id, 'session_changed');
       await audit.record(req, 'delete', `${submodule}.interview_transcript`, {
         employeeIds: [s.intervieweeId], objectType: 'interview_session', objectIds: [s.id], reason: 'restart', turns: row.deletedTurns, restartCount: row.restartCount,
       });
       res.json({ data: { status: row.status, restartCount: row.restartCount, restartsLeft: Math.max(0, MAX_RESTARTS - row.restartCount) } });
+    }));
+  }
+
+  // --- B19: wawancara suara (tiket WS, pindah mode, koreksi jawaban). Spek docs/designs/b19-wawancara-suara.md bagian 7.1 ---
+  if (voiceSupported) {
+    const voiceFlag = requireFlag(flags, FLAGS.VOICE_REALTIME, 'Wawancara suara belum diaktifkan untuk organisasi Anda');
+    const asHttp = (e) => (e && e.code && e.status ? new HttpError(e.status, e.code, e.message) : e);
+    const ticketRate = createRateLimiter({ windowMs: 60000, max: 10, message: 'Terlalu banyak permintaan sambungan suara. Coba lagi sebentar lagi.' });
+
+    r.post('/:id/voice/ticket', noSuperAdmin, voiceFlag, wrap(async (req, res) => {
+      const s = await loadVisible(req);
+      mustBeInterviewee(req, s);
+      try { ticketRate.consume(`${req.tenantId}:${req.user.id}`); } catch (e) { throw Object.assign(e, { code: 'VOICE_RATE' }); }
+      try { await voice.eligibility.assertVoiceEligible({ claims: req.user, sessionId: s.id, checkLogin: false }); } catch (e) { throw asHttp(e); }
+      const epoch = await stores.interviews.bumpVoiceEpoch(req.tenantId, s.id);
+      const ticket = voice.tickets.issue(req.user, { sessionId: s.id, epoch });
+      res.json({ data: { ticket, path: `/api/voice/sessions/${s.id}/stream`, expiresIn: voice.tickets.ttl } });
+    }));
+
+    r.post('/:id/voice/switch', noSuperAdmin, wrap(async (req, res) => {
+      const s = await loadVisible(req);
+      mustBeInterviewee(req, s);
+      const { to, voiceConsentVersion } = req.body || {};
+      if (!['text', 'voice'].includes(to)) throw badRequest("to harus 'text' atau 'voice'");
+      if (s.status !== 'in_progress' || s.summaryAt || s.aiDoneAt) throw new HttpError(409, 'INVALID_STATE', 'Sesi tidak bisa berpindah mode sekarang');
+      if (to === 'voice') {
+        if (!(await voiceEnabled(req.tenantId))) throw forbidden('FEATURE_DISABLED', 'Wawancara suara belum diaktifkan untuk organisasi Anda');
+        let version = null;
+        if (!s.voiceConsentAt) {
+          version = String(voiceConsentVersion || '').trim();
+          if (!version) throw badRequest(`voiceConsentVersion wajib diisi (versi berlaku: ${currentVoiceConsentVersion(submodule)})`);
+          if (!isAcceptedVoiceConsentVersion(submodule, version)) throw new HttpError(409, 'CONSENT_VERSION_OUTDATED', 'Teks persetujuan suara sudah berubah');
+        }
+        if (s.mode !== 'voice') {
+          const row = await stores.interviews.setMode(req.tenantId, s.id, 'voice', { voiceConsentVersion: version });
+          if (!row) throw new HttpError(409, 'INVALID_STATE', 'Sesi sudah berubah. Muat ulang halaman ini.');
+          const meta = { employeeIds: [s.intervieweeId], objectType: 'interview_session', objectIds: [s.id] };
+          if (version) await audit.record(req, 'create', `${submodule}.interview_voice_consent`, { ...meta, voiceConsentVersion: version });
+          await audit.record(req, 'update', `${submodule}.interview_mode`, { ...meta, to: 'voice' });
+        }
+        return res.json({ data: { mode: 'voice' } });
+      }
+      if (s.mode !== 'text') {
+        const row = await stores.interviews.setMode(req.tenantId, s.id, 'text');
+        if (!row) throw new HttpError(409, 'INVALID_STATE', 'Sesi sudah berubah. Muat ulang halaman ini.');
+        await stopVoice(s.id, 'switched');
+        await audit.record(req, 'update', `${submodule}.interview_mode`, { employeeIds: [s.intervieweeId], objectType: 'interview_session', objectIds: [s.id], to: 'text' });
+      }
+      // Giliran terakhir bukan pertanyaan AI yang utuh: buat pertanyaan teks berikutnya supaya karyawan tidak menunggu
+      const turns = await stores.interviews.turns(req.tenantId, s.id);
+      const last = turns[turns.length - 1];
+      let question = null;
+      if (!last || last.speaker !== 'ai' || last.interrupted) {
+        const transcript = turns.filter((t) => !(t.speaker === 'ai' && t.interrupted));
+        const q = await nextQuestion(req.tenantId, s, transcript);
+        if (q) {
+          question = await stores.interviews.addTurn(req.tenantId, s.id, 'ai', q, { guard: { restartCount: s.restartCount, mode: 'text' } });
+          if (!question) throw new HttpError(409, 'INVALID_STATE', 'Sesi sudah berubah. Muat ulang halaman ini.');
+        }
+      }
+      return res.json({ data: { mode: 'text', question } });
+    }));
+  }
+
+  // B19 (V5): karyawan membetulkan jawaban terakhirnya (salah dengar di mode suara, salah ketik di mode teks)
+  if (submodule === 'tna') {
+    r.patch('/:id/turns/:turnId', noSuperAdmin, wrap(async (req, res) => {
+      const s = await loadVisible(req);
+      mustBeInterviewee(req, s);
+      if (s.status !== 'in_progress' || s.summaryAt) throw new HttpError(409, 'INVALID_STATE', 'Jawaban tidak bisa diubah lagi');
+      const text = String((req.body || {}).text || '').trim();
+      if (!text || text.length > 8000) throw badRequest('Jawaban harus 1-8000 karakter');
+      if (!/^\d+$/.test(String(req.params.turnId))) throw notFound('Jawaban tidak ditemukan');
+      const out = await stores.interviews.correctTurn(req.tenantId, s.id, req.params.turnId, text, { restartCount: s.restartCount });
+      if (!out) throw new HttpError(409, 'INVALID_STATE', 'Sesi sudah berubah. Muat ulang halaman ini.');
+      if (out.error) throw new HttpError(409, out.error, 'Hanya jawaban terakhir Anda yang bisa diubah');
+      const live = voice && voice.registry.get(s.id);
+      if (live) live.correction(text);
+      await audit.record(req, 'update', `${submodule}.interview_transcript`, { employeeIds: [s.intervieweeId], objectType: 'interview_session', objectIds: [s.id], turnId: out.id, reason: 'correction' });
+      res.json({ data: out });
     }));
   }
 

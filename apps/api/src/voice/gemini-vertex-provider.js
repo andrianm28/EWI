@@ -50,7 +50,8 @@ function dispatch(emitter, msg) {
     const u = msg.usageMetadata;
     emitter.emit('usage', {
       inputTokens: u.promptTokenCount || 0,
-      outputTokens: u.responseTokenCount ?? u.candidatesTokenCount ?? 0,
+      // Token berpikir ditagih dengan harga keluaran
+      outputTokens: (u.responseTokenCount ?? u.candidatesTokenCount ?? 0) + (u.thoughtsTokenCount || 0),
       totalTokens: u.totalTokenCount || 0,
     });
   }

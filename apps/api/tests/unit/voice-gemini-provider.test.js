@@ -80,7 +80,8 @@ test('pesan server diterjemahkan menjadi event', async () => {
   ws.server({ sessionResumptionUpdate: { newHandle: 'H2', resumable: true } });
   ws.server({ sessionResumptionUpdate: { resumable: false } });
   ws.server({ goAway: { timeLeft: '10s' } });
-  ws.server({ usageMetadata: { promptTokenCount: 120, responseTokenCount: 80, totalTokenCount: 200 } });
+  // smoke etavm2 25 Nov: usageMetadata per giliran; token berpikir (thoughts) ditagih sebagai keluaran
+  ws.server({ usageMetadata: { promptTokenCount: 120, candidatesTokenCount: 80, thoughtsTokenCount: 20, totalTokenCount: 220 } });
   ws.close(1000);
   expect(got).toEqual([
     ['ready', undefined],
@@ -92,7 +93,7 @@ test('pesan server diterjemahkan menjadi event', async () => {
     ['toolCall', { calls: [{ id: 'c1', name: 'akhiri_wawancara', args: {} }] }],
     ['resumption', { handle: 'H2' }],
     ['goAway', { timeLeft: '10s' }],
-    ['usage', { inputTokens: 120, outputTokens: 80, totalTokens: 200 }],
+    ['usage', { inputTokens: 120, outputTokens: 100, totalTokens: 220 }],
     ['close', { code: 1000, reason: '' }],
   ]);
 });

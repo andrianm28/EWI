@@ -18,9 +18,9 @@ const { privateKey } = crypto.generateKeyPairSync('rsa', { modulusLength: 2048 }
 const saKey = { type: 'service_account', project_id: 'elgos-dev', client_email: 'elgos-voice@elgos-dev.iam.gserviceaccount.com', private_key: privateKey.export({ type: 'pkcs8', format: 'pem' }), private_key_id: 'abc' };
 
 describe('konfigurasi suara (B19)', () => {
-  test('bawaan di luar produksi: penyedia fake, model gemini-3.8-live, lokasi Singapura, jeda 1200 ms', () => {
+  test('bawaan di luar produksi: penyedia fake, model gemini-3.8-live, lokasi Mumbai (hasil smoke 25 Nov), jeda 1200 ms', () => {
     const c = loadConfig({ ...base, NODE_ENV: 'test' });
-    expect(c.voice).toMatchObject({ provider: 'fake', model: 'gemini-3.8-live', location: 'asia-southeast1', silenceMs: 1200 });
+    expect(c.voice).toMatchObject({ provider: 'fake', model: 'gemini-3.8-live', location: 'asia-south1', silenceMs: 1200 });
   });
 
   test('bawaan di produksi: suara mati (none)', () => {

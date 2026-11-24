@@ -19,6 +19,7 @@ const { roleRoutes } = require('./core/rbac/role-routes');
 const { buildMenu } = require('./core/rbac/menu');
 const { VIEWS, describeRoles } = require('./core/rbac/roles');
 const { flagAdminRouter } = require('./core/flags/admin-routes');
+const { createVoiceModule } = require('./modules/voice');
 const { createAuditService, memoryAuditStore } = require('./core/audit');
 const { createEntitlementService } = require('./core/entitlement');
 const { requireSubmodule } = require('./core/entitlement/guard');
@@ -54,7 +55,7 @@ const SUBMODULE_MODULES = ['cca', 'dna', 'tna', 'ina', 'li', 'ld', 'lim'].map((k
  * stores: { users, flags, audit, entitlements, projects, people, settings, dna, interviews, tna, projectsExtra }
  * ai / catalog / assignments / storage bisa diganti di test; default mengikuti config (AI_PROVIDER, PK-06; K-1 masih terbuka).
  */
-function createApp({ config, stores, ai, catalog, mailer, rateLimits, readiness, assignments, storage }) {
+function createApp({ config, stores, ai, catalog, mailer, rateLimits, readiness, assignments, storage, voiceProvider }) {
   const app = express();
   const tokens = createTokenService(config.jwt);
   const flags = createFlagService(stores.flags);
@@ -107,6 +108,9 @@ function createApp({ config, stores, ai, catalog, mailer, rateLimits, readiness,
   // PK-14: analisis wawancara berjalan di latar. app.locals.analysis dipakai server (penyapu) dan test (drain).
   deps.analysis = createAnalysisRunner({ stores, ai: deps.ai, aiConfig: deps.aiConfig });
   app.locals.analysis = deps.analysis;
+  // B19: gateway suara. server.js memasang upgrade WS lewat app.locals.voice.attach(server); test integrasi juga.
+  deps.voice = createVoiceModule({ config, stores, flags, entitlements, sessions, policy, audit, aiConfig: deps.aiConfig, provider: voiceProvider });
+  app.locals.voice = deps.voice;
 
   if (config.trustProxy) app.set('trust proxy', config.trustProxy);
   app.use(helmet());
@@ -171,7 +175,7 @@ function createApp({ config, stores, ai, catalog, mailer, rateLimits, readiness,
   api.use('/admin', flagAdminRouter({ flags, audit }));
   if (stores.userRoles) api.use('/users', roleRoutes({ userRoles: stores.userRoles, audit, flags }));
   api.use('/sessions', sessionRoutes({ sessions, audit }));
-  if (stores.people && stores.interviews) api.use('/employees', denyEmployeeContent, employeeRouter({ stores, flags, audit }));
+  if (stores.people && stores.interviews) api.use('/employees', denyEmployeeContent, employeeRouter({ stores, flags, audit, voice: deps.voice }));
   // B8: beranda karyawan. Bukan submodul; tiap bagian memeriksa modulnya sendiri (flag learner.home).
   if (stores.people && stores.dataRequests) api.use('/my', myRouter({ stores, flags, entitlements, settings, audit }));
   // B17: Asisten ELGOS. Bukan submodul; tiap penyusun fakta memeriksa modulnya sendiri (flag assistant).

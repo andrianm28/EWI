@@ -206,8 +206,9 @@ function loadVoiceConfig(env, errors) {
   const provider = env.VOICE_PROVIDER || (production ? 'none' : 'fake');
   if (!VOICE_PROVIDERS.includes(provider)) errors.push(`VOICE_PROVIDER harus ${VOICE_PROVIDERS.join(', ')}`);
   if (production && provider === 'fake') errors.push('VOICE_PROVIDER=fake tidak boleh di produksi (pakai gemini-vertex atau none)');
-  const location = env.VOICE_LOCATION || 'asia-southeast1';
-  if (!/^[a-z0-9-]+$/.test(location)) errors.push('VOICE_LOCATION hanya boleh huruf kecil, angka, dan tanda hubung (mis. asia-southeast1 atau global)');
+  // Smoke etavm2 25 Nov: gemini-3.8-live tidak ada di asia-southeast1/global; asia-south1 suara pertama ±0,5 dtk
+  const location = env.VOICE_LOCATION || 'asia-south1';
+  if (!/^[a-z0-9-]+$/.test(location)) errors.push('VOICE_LOCATION hanya boleh huruf kecil, angka, dan tanda hubung (mis. asia-south1 atau us-central1)');
   // Spek 4.5: endpoint global bisa memproses audio di region mana pun; harus dipilih sadar saat deploy.
   if (location === 'global' && env.VOICE_ALLOW_GLOBAL !== 'true') errors.push('VOICE_LOCATION=global perlu VOICE_ALLOW_GLOBAL=true (audio bisa diproses di luar Asia)');
   const credentialsFile = env.GOOGLE_APPLICATION_CREDENTIALS || '';

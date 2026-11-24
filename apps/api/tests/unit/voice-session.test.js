@@ -188,7 +188,7 @@ describe('VoiceSession (B19)', () => {
     up.emit('outputText', { text: 'Setengah' });
     up.emit('audio', { data: B64(48000) }); // 1 detik keluar
     up.emit('usage', { inputTokens: 100, outputTokens: 50 });
-    up.emit('usage', { inputTokens: 300, outputTokens: 80 }); // naik: kumulatif
+    up.emit('usage', { inputTokens: 300, outputTokens: 80 }); // per giliran (smoke 25 Nov): dijumlah walau naik
     vs.onClientMessage({ type: 'audio', data: B64(32000) }); // 1 detik masuk
     vs.onClientMessage({ type: 'stop' });
     await flush();
@@ -196,21 +196,9 @@ describe('VoiceSession (B19)', () => {
     expect(out[out.length - 1]).toEqual({ type: 'ended', reason: 'stopped' });
     expect(stores.state.usage).toHaveLength(1);
     expect(stores.state.usage[0]).toMatchObject({
-      operation: 'voice_live', provider: 'tiruan', model: 'm', inputTokens: 300, outputTokens: 80, audioSecondsIn: 1, audioSecondsOut: 1,
-      costUsd: 0.00046, sessionId: 's', submodule: 'tna',
+      operation: 'voice_live', provider: 'tiruan', model: 'm', inputTokens: 400, outputTokens: 130, audioSecondsIn: 1, audioSecondsOut: 1,
+      costUsd: 0.00066, sessionId: 's', submodule: 'tna',
     });
-  });
-
-  test('usage yang turun dianggap per giliran dan dijumlah', async () => {
-    const { vs, stores, provider } = setup();
-    await vs.start();
-    const up = provider.ups[0];
-    up.emit('ready');
-    up.emit('usage', { inputTokens: 100, outputTokens: 50 });
-    up.emit('usage', { inputTokens: 40, outputTokens: 10 });
-    vs.onClientMessage({ type: 'stop' });
-    await flush();
-    expect(stores.state.usage[0]).toMatchObject({ inputTokens: 140, outputTokens: 60 });
   });
 
   test('goAway: sambungan baru dengan handle terakhir, tanpa pemicu ulang; tidak dihitung kegagalan', async () => {

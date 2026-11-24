@@ -101,7 +101,7 @@ Penyedia: `gemini-vertex` (`gemini-vertex-provider.js`), `fake` (`fake-provider.
 
 Fakta protokol dan sumbernya: `docs/research/gemini-live-vertex.md`. URL `wss://{lokasi}-aiplatform.googleapis.com/ws/google.cloud.aiplatform.v1.LlmBidiService/BidiGenerateContent` (`global` memakai host `aiplatform.googleapis.com`). Token akses OAuth dibuat dengan `jsonwebtoken` RS256 dari kunci SA lalu ditukar di `https://oauth2.googleapis.com/token`, disimpan di memori sampai 5 menit sebelum kedaluwarsa. Pesan `setup`: model `projects/{p}/locations/{l}/publishers/google/models/{VOICE_MODEL}`, `generationConfig { responseModalities: ['AUDIO'], speechConfig { languageCode: 'id-ID' } }`, instruksi sistem (bagian 5), alat (6.2), `inputAudioTranscription: {}`, `outputAudioTranscription: {}`, `realtimeInputConfig.automaticActivityDetection.silenceDurationMs = VOICE_SILENCE_MS`, `sessionResumption: {}` atau `{ handle }`, dan `contextWindowCompression: { slidingWindow: {} }` (tanpa ini sesi audio dibatasi 15 menit).
 
-**Lokasi** (PD-2b: latensi terendah ke Indonesia yang memenuhi spek). Dokumen Google menandai `gemini-3.8-live` tersedia di `us-central1`, `asia-south1`, `us`, `eu`, bukan `asia-southeast1` atau `global` [⚠️ BELUM TERVERIFIKASI, smoke dari etavm2 menentukan]. Lokasi dipilih sekali saat deploy dari hasil smoke (bukan failover saat berjalan), dan teks persetujuan tidak menyebut kota. `global` butuh `VOICE_ALLOW_GLOBAL=true`, sama seperti aturan profil global AI teks.
+**Lokasi** (PD-2b: latensi terendah ke Indonesia yang memenuhi spek). Smoke dari etavm2 25 Nov 01.50 WIB: `asia-southeast1` dan `global` menolak model (`1008 ... was not found`), `asia-south1` berhasil dengan suara pertama 501–567 ms (2 uji), `us-central1` 717 ms (1 uji). Bawaan `VOICE_LOCATION` = `asia-south1`. Lokasi dipilih sekali saat deploy dari hasil smoke (bukan failover saat berjalan), dan teks persetujuan tidak menyebut kota. `global` butuh `VOICE_ALLOW_GLOBAL=true`, sama seperti aturan profil global AI teks.
 
 ## 5. Instruksi sistem suara
 
@@ -205,7 +205,7 @@ Migrasi `20261125001900-b19-wawancara-suara.js` (raw SQL, schema `ewi`, dengan `
 - `ai_usage_logs`: `audio_seconds_in numeric(10,2)`, `audio_seconds_out numeric(10,2)`; CHECK `operation` ditulis ulang lengkap: `next_question, assess_competencies, analyze_tna, assistant_reply, summarize_cca, lim_question, summarize_lim, voice_live`.
 - `down`: menghapus baris `voice_live`, lalu kolom dan CHECK lama (7 nilai). Entri `GUARDS` di `undo-guard.js` menolak turun bila ada persetujuan suara atau koreksi tersimpan.
 
-**Biaya**: satu baris `operation='voice_live'` per sambungan Gemini, ditulis saat sambungan itu ditutup (termasuk sambung ulang dan SIGTERM) lewat `recordUsage` yang diperluas dengan `audioSecondsIn/Out`. Detik audio dari byte PCM hasil decode (masuk 32.000 B/s, keluar 48.000 B/s). Token: bila `usageMetadata` naik terus dianggap kumulatif (dipakai nilai terakhir), bila turun dianggap per giliran (dijumlah) [⚠️ BELUM TERVERIFIKASI, dicek di smoke]. Harga `estimateCost(u, config.voice)`; tanpa harga = null. `latencyMs` = waktu sampai audio pertama pada sambungan itu. Proses yang mati mendadak (bukan SIGTERM) kehilangan baris sambungan yang sedang berjalan [⏳ DITERIMA].
+**Biaya**: satu baris `operation='voice_live'` per sambungan Gemini, ditulis saat sambungan itu ditutup (termasuk sambung ulang dan SIGTERM) lewat `recordUsage` yang diperluas dengan `audioSecondsIn/Out`. Detik audio dari byte PCM hasil decode (masuk 32.000 B/s, keluar 48.000 B/s). Token: `usageMetadata` per giliran (smoke 25 Nov: prompt 68 lalu 560 karena prompt giliran kedua memuat riwayat), jadi semua giliran dijumlah; `thoughtsTokenCount` ditambahkan ke token keluaran. Harga `estimateCost(u, config.voice)`; tanpa harga = null. `latencyMs` = waktu sampai audio pertama pada sambungan itu. Proses yang mati mendadak (bukan SIGTERM) kehilangan baris sambungan yang sedang berjalan [⏳ DITERIMA].
 
 **Audit**: `tna.voice_session` `create` saat sesi suara terhubung (lokasi, model) dan `update` saat ditutup (alasan, detik masuk/keluar, jumlah giliran, jumlah topik selesai). Caption, transkrip, dan isi galat Gemini tidak pernah ditulis ke log atau audit.
 
@@ -215,7 +215,7 @@ Migrasi `20261125001900-b19-wawancara-suara.js` (raw SQL, schema `ewi`, dengan `
 | --- | --- |
 | `VOICE_PROVIDER` | `gemini-vertex`, `fake`, `none`. Bawaan `fake` di luar produksi, `none` di produksi; `fake` ditolak di produksi. Flag `voice.realtime` = saklar per tenant, `VOICE_PROVIDER` = saklar per deploy; keduanya sengaja ada |
 | `VOICE_MODEL` | bawaan `gemini-3.8-live` |
-| `VOICE_LOCATION` | bawaan `asia-southeast1`; diganti sesuai hasil smoke |
+| `VOICE_LOCATION` | bawaan `asia-south1` (hasil smoke 25 Nov) |
 | `VOICE_ALLOW_GLOBAL` | `true` wajib bila `VOICE_LOCATION=global` |
 | `GOOGLE_APPLICATION_CREDENTIALS` | path kunci SA di container. Wajib untuk `gemini-vertex`; boot gagal dengan pesan jelas bila tidak terbaca atau bukan kunci SA |
 | `GOOGLE_CLOUD_PROJECT` | opsional; bawaan `project_id` di kunci |

@@ -119,13 +119,9 @@ function createVoiceSession(deps) {
   }
 
   function trackUsage(c, u) {
-    const input = u.inputTokens || 0; const output = u.outputTokens || 0;
-    // Spek 8: nilai yang naik terus dianggap kumulatif (pakai terakhir); bila turun dianggap per giliran (dijumlah).
-    if (c.tokens.mode === 'sum' || (c.tokens.last && (input < c.tokens.last.input || output < c.tokens.last.output))) {
-      if (c.tokens.mode !== 'sum') { c.tokens.mode = 'sum'; c.tokens.sumBase = { ...c.tokens.last }; c.tokens.input = c.tokens.sumBase.input; c.tokens.output = c.tokens.sumBase.output; }
-      c.tokens.input += input; c.tokens.output += output;
-    } else { c.tokens.input = input; c.tokens.output = output; }
-    c.tokens.last = { input, output };
+    // Smoke etavm2 25 Nov: usageMetadata Gemini Live per giliran (prompt giliran berikutnya sudah memuat riwayat), jadi dijumlah.
+    c.tokens.input += u.inputTokens || 0;
+    c.tokens.output += u.outputTokens || 0;
   }
 
   async function openUpstream({ resume }) {
@@ -140,7 +136,7 @@ function createVoiceSession(deps) {
     }
     if (ended) { try { u.close(); } catch { /* */ } return undefined; }
     up = u;
-    const c = { openedAt: Date.now(), firstAudioAt: null, bytesIn: 0, bytesOut: 0, tokens: { input: 0, output: 0, last: null, mode: 'last' }, ready: false };
+    const c = { openedAt: Date.now(), firstAudioAt: null, bytesIn: 0, bytesOut: 0, tokens: { input: 0, output: 0 }, ready: false };
     conn = c;
     const mine = (fn) => (p) => enqueue(() => (up === u && !ended ? fn(p) : undefined));
     const readyTimer = later(() => enqueue(() => (up === u && !c.ready ? onUpstreamFailure({ code: 'VOICE_UNAVAILABLE', setup: true }) : undefined)), limits.readyTimeoutMs);
