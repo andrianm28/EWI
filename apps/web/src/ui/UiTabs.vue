@@ -1,6 +1,8 @@
 <script setup lang="ts">
 // Tab Material 3 dengan pola keyboard WAI-ARIA: panah kiri/kanan, Home, End.
 // Panel dirender pemakai: <div role="tabpanel" :id="`${id}-panel-${key}`" :aria-labelledby="`${id}-tab-${key}`">.
+// Tanpa aria-controls (modern-web-guidance `tabs`): pembaca layar tidak memakainya, dan panel yang tidak terpilih
+// tidak dirender (v-if) sehingga IDREF-nya menggantung.
 import { computed } from 'vue'
 
 const props = defineProps<{ tabs: { key: string; label: string }[]; id: string; label: string }>()
@@ -26,7 +28,7 @@ function move(e: KeyboardEvent, i: number) {
   <div class="el-tabs" role="tablist" :aria-label="label">
     <button
       v-for="(t, i) in tabs" :id="`${id}-tab-${t.key}`" :key="t.key" type="button" role="tab"
-      :class="['el-tab', { 'is-on': t.key === model }]" :aria-selected="t.key === model" :aria-controls="`${id}-panel-${t.key}`"
+      :class="['el-tab', { 'is-on': t.key === model }]" :aria-selected="t.key === model"
       :tabindex="t.key === reachable ? 0 : -1" @click="model = t.key" @keydown="move($event, i)"
     >{{ t.label }}</button>
   </div>

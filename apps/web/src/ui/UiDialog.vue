@@ -55,6 +55,10 @@ onMounted(sync)
   border: 1px solid var(--el-outline-variant); border-radius: 16px; background: var(--el-surface-card); color: var(--el-on-surface);
 }
 .el-dialog::backdrop { background: var(--el-scrim); }
+/* modern-web-guidance `dialog`: gulir di dialog atau di atas backdrop tidak berantai ke halaman di belakangnya.
+   Peningkatan progresif (tanpa fallback); jangan mengunci gulir dengan overflow: hidden di html/body. */
+.el-dialog:modal { overscroll-behavior: contain; }
+.el-dialog::backdrop { overflow: hidden; overscroll-behavior: contain; }
 .el-dialog__head { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 12px; }
 .el-dialog__title { font-size: 20px; line-height: 28px; font-weight: 500; margin: 0; }
 </style>

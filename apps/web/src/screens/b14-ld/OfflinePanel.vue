@@ -263,7 +263,7 @@ const asP = (r: Record<string, unknown>) => r as unknown as Participant
             <p class="el-muted ld-small ld-mt6">{{ ASSESSMENT[d.assessmentStatus].text }}</p>
           </div>
           <div class="ld-chips">
-            <UiButton variant="tonal" size="sm" :disabled="busy || !options?.webhookSync" :aria-expanded="showRef ? 'true' : 'false'" aria-controls="ld-form-em" @click="openEm">Jalankan lewat EliteMentor</UiButton>
+            <UiButton variant="tonal" size="sm" :disabled="busy || !options?.webhookSync" :aria-expanded="showRef ? 'true' : 'false'" :aria-controls="showRef ? 'ld-form-em' : undefined" @click="openEm">Jalankan lewat EliteMentor</UiButton>
             <UiButton variant="tonal" size="sm" :disabled="busy" @click="setMode('vendor_manual')">Input skor dari vendor</UiButton>
             <UiButton v-if="d.assessmentMode !== 'none'" variant="text" size="sm" :disabled="busy" @click="setMode('none')">Tanpa asesmen</UiButton>
           </div>
