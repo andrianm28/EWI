@@ -2,6 +2,7 @@ import { test, expect, type Page } from '@playwright/test'
 import { loginSebagai, type Peran } from './support/sesi'
 import { mockApi, permintaanBelumDimock } from './support/api'
 import { sesiWawancara, type OpsiSesiWawancara } from './support/wawancara'
+import { penanganHasilSaya } from './support/hasil-saya'
 
 // B6 Wawancara akar masalah: daftar sesi dan alur persetujuan → wawancara → ringkasan → selesai.
 // Spek: docs/designs/b6-wawancara-akar-masalah.md bagian 15. API di-mock.
@@ -38,6 +39,8 @@ test('persetujuan tanpa centang menampilkan ringkasan galat', async ({ page }) =
   await setup(page, { flags: SUMMARY_ON })
   await page.goto('/iv/s1')
   await expect(page.getByText('Topik: Analisis insiden')).toBeVisible()
+  // review P3: teks breadcrumb sama dengan mockup
+  await expect(page.getByRole('navigation', { name: 'Lokasi' })).toHaveText(/Training Needs\s*›\s*Wawancara akar masalah/)
   await page.getByRole('button', { name: 'Lanjut ke wawancara' }).click()
   await expect(page.getByRole('alert')).toContainText('Centang persetujuan untuk melanjutkan')
   // Ringkasan galat mengambil fokus supaya dibacakan; tautannya membawa ke kotak centang
@@ -52,20 +55,47 @@ test('alur lengkap: persetujuan, jawaban, ringkasan, kirim ke HR', async ({ page
   await page.getByTestId('consent-check').check()
   await page.getByRole('button', { name: 'Lanjut ke wawancara' }).click()
   await expect(page.getByTestId('turn-ai')).toContainText('analisis insiden terakhir')
-  await expect(page.getByText('Pertanyaan 1, paling banyak 5')).toBeVisible()
+  await expect(page.getByText('Pertanyaan 1 dari 5')).toBeVisible()
   expect(sent.find((x) => x.path === 'consent')?.body).toEqual({ consentVersion: 'tna-consent-id-v1.0' })
   await page.getByLabel('Jawaban').fill('Saya belum pernah dilatih eskalasi.')
   await page.getByRole('button', { name: 'Kirim' }).click()
   await page.getByRole('button', { name: 'Lihat ringkasan temuan' }).click()
   await expect(page.getByRole('heading', { name: 'Ringkasan temuan AI' })).toBeVisible()
   await expect(page.getByText('Belum paham langkah eskalasi insiden')).toBeVisible()
-  await expect(page.getByText('Keyakinan AI sementara: 80%')).toBeVisible()
+  await expect(page.getByText('Keyakinan AI: 80%')).toBeVisible()
   await expect(page.getByText('Perlu ditinjau HR')).toHaveCount(1)
   await expect(page.getByRole('button', { name: 'Kirim dengan catatan' })).toHaveCount(0)
   await page.getByRole('button', { name: 'Sesuai, kirim ke HR' }).click()
   await expect(page.getByText('Ringkasan sudah dikirim ke HR untuk ditinjau.')).toBeVisible()
   expect(sent.find((x) => x.path === 'confirm')?.body).toEqual({})
-  await expect(page.getByText('S1ABCDEF · ELGOS-AI · log audit: persetujuan tercatat · 1 jawaban')).toBeVisible()
+  await expect(page.getByText('S1ABCDEF · model ELGOS-AI (POC) · log audit: persetujuan tercatat · 1 jawaban')).toBeVisible()
+})
+
+test('P7 IV-1/3/4/5/9/10/11: judul persetujuan, audit sebelum setuju di dalam kartu, gelembung mockup, temuan, note sukses', async ({ page }) => {
+  await setup(page, { flags: SUMMARY_ON })
+  await page.goto('/iv/s1')
+  await expect(page.getByRole('heading', { level: 2, name: 'Persetujuan sebelum mulai' })).toBeVisible()
+  const audit = page.locator('.el-card .el-audit')
+  await expect(audit).toContainText('log audit: persetujuan belum · 0 jawaban')
+  await expect(page.getByText('Topik: Analisis insiden')).toHaveCSS('margin-bottom', '20px')
+  await page.getByTestId('consent-check').check()
+  await page.getByRole('button', { name: 'Lanjut ke wawancara' }).click()
+  const ai = page.getByTestId('turn-ai').first()
+  await expect(ai).toContainText('ELGOS-AI')
+  await expect(ai).toHaveCSS('border-top-width', '0px')
+  await expect(ai).toHaveCSS('border-top-left-radius', '16px')
+  await page.getByLabel('Jawaban').fill('Saya belum pernah dilatih eskalasi.')
+  await page.getByRole('button', { name: 'Kirim' }).click()
+  const me = page.getByTestId('turn-human').first()
+  await expect(me).toHaveCSS('background-color', 'rgb(11, 58, 110)')
+  await expect(audit).toContainText('persetujuan tercatat · 1 jawaban')
+  await page.getByRole('button', { name: 'Lihat ringkasan temuan' }).click()
+  const finding = page.locator('.iv-finding').first()
+  const chip = finding.locator('.el-chip').first()
+  const text = finding.locator('.iv-finding__title')
+  expect((await chip.boundingBox())!.x).toBeGreaterThan((await text.boundingBox())!.x + 100)
+  await page.getByRole('button', { name: 'Sesuai, kirim ke HR' }).click()
+  await expect(page.getByRole('note').filter({ hasText: 'Terima kasih. Ringkasan sudah dikirim ke HR untuk ditinjau. Anda akan menerima rencana belajar atau kabar tindak lanjut.' })).toBeVisible()
 })
 
 test('ulangi wawancara kembali ke langkah persetujuan', async ({ page }) => {
@@ -160,4 +190,59 @@ test('sesi selesai yang persetujuannya kemudian ditarik juga menyebut penarikan'
   await page.goto('/iv/s1')
   await expect(page.getByText('Persetujuan Anda untuk wawancara ini sudah ditarik.')).toBeVisible()
   await expect(page.getByText('Ringkasan sudah dikirim ke HR untuk ditinjau.')).toHaveCount(0)
+})
+
+test('triase P7: penghitung pertanyaan tidak melewati batas walau AI mengirim penutup', async ({ page }) => {
+  const turns = Array.from({ length: 11 }, (_, i) => ({ speaker: (i % 2 ? 'human' : 'ai') as 'ai' | 'human', text: i % 2 ? `Jawaban ${i}` : `Tanya ${i}`, at: '' }))
+  await setup(page, { state: { status: 'in_progress', turns } })
+  await page.goto('/iv/s1')
+  await expect(page.getByText('Pertanyaan 5 dari 5')).toBeVisible()
+  await expect(page.getByText('Pertanyaan 6 dari 5')).toHaveCount(0)
+})
+
+// Paritas P8 (docs/designs/paritas-mockup/p8-keputusan-r1-r22.md)
+test('P8 R13/R18: input jawaban satu baris; audit memakai label produk "model ELGOS-AI (POC)"', async ({ page }) => {
+  await setup(page, { flags: SUMMARY_ON })
+  await page.goto('/iv/s1')
+  const audit = page.locator('.el-card .el-audit')
+  await expect(audit).toContainText('S1ABCDEF · model ELGOS-AI (POC) · log audit: persetujuan belum · 0 jawaban')
+  await page.getByTestId('consent-check').check()
+  await page.getByRole('button', { name: 'Lanjut ke wawancara' }).click()
+  const jawaban = page.getByLabel('Jawaban')
+  await expect(jawaban).toHaveJSProperty('tagName', 'INPUT')
+  await expect(jawaban).toHaveAttribute('placeholder', 'Ketik jawaban Anda')
+})
+
+test('P8 R15: daftar wawancara karyawan memakai breadcrumb mockup tanpa tautan', async ({ page }) => {
+  // Hasil saya menyala: karyawan tidak punya menu Training Needs
+  await mockApi(page, penanganHasilSaya('u-karyawan'))
+  await setup(page, { flags: { 'learner.home': true } })
+  await page.goto('/iv')
+  const crumb = page.getByRole('navigation', { name: 'Lokasi' })
+  await expect(crumb).toHaveText(/Training Needs\s*›\s*Wawancara akar masalah/)
+  await expect(crumb.getByRole('link')).toHaveCount(0)
+})
+
+// Triase review independen P8 (docs/designs/paritas-mockup/egm/p8-code-review.md)
+test('P8 triase #1: karyawan dengan menu peralihan Training Needs mendapat tautan breadcrumb', async ({ page }) => {
+  await setup(page)
+  await expect(page.getByRole('navigation', { name: 'Navigasi utama' }).getByRole('link', { name: 'Training Needs' })).toBeVisible()
+  await page.goto('/iv')
+  await expect(page.getByRole('navigation', { name: 'Lokasi' }).getByRole('link', { name: 'Training Needs' })).toHaveAttribute('href', '/tna')
+  await page.goto('/iv/s1')
+  await expect(page.getByRole('navigation', { name: 'Lokasi' }).getByRole('link', { name: 'Training Needs' })).toHaveAttribute('href', '/tna')
+})
+
+test('P8 triase #1: HR mendapat tautan breadcrumb Training Needs', async ({ page }) => {
+  await setup(page, { peran: 'hr' })
+  await page.goto('/iv')
+  await expect(page.getByRole('navigation', { name: 'Lokasi' }).getByRole('link', { name: 'Training Needs' })).toHaveAttribute('href', '/tna')
+})
+
+test('P8 triase #9: label AI dari API (berisi ID penyedia) tidak tampil di baris audit', async ({ page }) => {
+  await setup(page, { flags: SUMMARY_ON })
+  await page.goto('/iv/s1')
+  const audit = page.locator('.el-card .el-audit')
+  await expect(audit).toContainText('model ELGOS-AI (POC)')
+  await expect(page.locator('body')).not.toContainText('penyedia-model-uji')
 })

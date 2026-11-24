@@ -1,13 +1,16 @@
 <script setup lang="ts">
-// Hasil program nilai korporasi (mis. DNA 5C): laporan agregat, lalu kelola program (konfigurasi, impor, isian agregat).
+// Hasil program nilai korporasi (program budaya milik tenant): laporan agregat, lalu kelola program (konfigurasi, impor, isian agregat).
 // Halaman ini tidak pernah menampilkan hasil per orang.
 import { computed, onMounted, ref } from 'vue'
+import type { RouteLocationRaw } from 'vue-router'
 import { cca, fmt, fmtDate, type Program, type ProgramReport } from '@/api/cca'
 import ImportPanel from '@/components/ImportPanel.vue'
-import { UiButton, UiCard, UiChip, UiDataTable, UiErrorSummary, UiField, UiKpiCard, UiNote, UiProgressBar, type UiColumn } from '@/ui'
+import { EMPTY, UiButton, UiCard, UiChip, UiDataTable, UiErrorSummary, UiField, UiKpiCard, UiNote, UiProgressBar, type UiColumn } from '@/ui'
 import ManualReportForm from './ManualReportForm.vue'
 import ProgramForm from './ProgramForm.vue'
 
+// CV-5: tujuan tombol "Wawancarai karyawan yang belum selesai" (null bila flag cca.interview mati)
+defineProps<{ interviewTo?: RouteLocationRaw | null }>()
 const programs = ref<Program[]>([])
 const key = ref('')
 const report = ref<ProgramReport | null>(null)
@@ -45,6 +48,10 @@ const kpis = computed(() => {
     { label: 'Rata-rata skor nilai', value: fmt(r.kpis.avgValueScore), note: 'peserta yang selesai' },
   ]
 })
+// CV-2 / K-P7-4: ambang hijau/merah skor per nilai = band tertinggi program (mis. Strong Culture Alignment), atau nilai lulus
+const valueTarget = computed(() => Math.max(program.value?.config.passScore ?? 0, ...(program.value?.config.bands ?? []).map((b) => b.min)))
+// tanpa skor (belum ada peserta selesai) bar netral, bukan hijau atau merah
+const valueTone = (avg: number | null) => (avg == null ? 'primary' : avg >= valueTarget.value ? 'success' : 'critical')
 const statusTone = (k: string) => (k === 'not_passed' ? 'critical' : k === 'in_progress' ? 'review' : 'success')
 const empty = computed(() => !!report.value && report.value.kpis.registered === 0)
 
@@ -60,7 +67,7 @@ const componentRows = computed(() => {
   if (!r) return []
   return [
     ...r.components.map((c) => ({ name: c.name, weight: fmt(c.weight, '%'), done: `${c.done} (${fmt(c.donePct, '%')})`, avg: fmt(c.avg), contribution: fmt(c.contribution) })),
-    { name: 'Total program', weight: '100%', done: `${r.total.done} (${fmt(r.total.donePct, '%')})`, avg: '-', contribution: fmt(r.total.avgFinal) },
+    { name: 'Total program', weight: '100%', done: `${r.total.done} (${fmt(r.total.donePct, '%')})`, avg: EMPTY, contribution: fmt(r.total.avgFinal) },
   ]
 })
 const DIVISION_COLS: UiColumn[] = [
@@ -119,21 +126,25 @@ const divisionRows = computed(() => (report.value?.divisions ?? []).map((d) => (
             <h3 class="el-h3">Skor per nilai (peserta yang selesai)</h3>
             <div v-for="v in report.values" :key="v.name" class="cc-meter">
               <div class="cc-row"><b>{{ v.name }}</b><span class="el-mono">{{ fmt(v.avgCompleted) }} <span class="el-muted">· semua peserta {{ fmt(v.avgAll) }}</span></span></div>
-              <UiProgressBar :value="v.avgCompleted ?? 0" :label="`Skor ${v.name}`" />
+              <UiProgressBar :value="v.avgCompleted ?? 0" :tone="valueTone(v.avgCompleted)" :label="`Skor ${v.name}`" />
             </div>
             <div class="el-muted cc-small" style="margin-top: 8px">Skor semua peserta lebih rendah karena kegiatan yang belum selesai dihitung 0.</div>
           </UiCard>
         </div>
+        <!-- CV-4: judul h3 di kartu, tabel tanpa bingkai sendiri (tidak dobel border) -->
         <UiCard v-if="report.components.length">
-          <UiDataTable :columns="COMPONENT_COLS" :rows="componentRows" row-key="name" caption="Kinerja per komponen program" />
+          <h3 class="el-h3">Kinerja per komponen program</h3>
+          <UiDataTable class="cc-flat" :columns="COMPONENT_COLS" :rows="componentRows" row-key="name" caption="Kinerja per komponen program" caption-hidden />
           <UiNote v-if="report.insight" style="margin-top: 12px"><b>Temuan:</b> {{ report.insight }}</UiNote>
         </UiCard>
         <UiCard v-if="report.divisions.length">
-          <UiDataTable :columns="DIVISION_COLS" :rows="divisionRows" row-key="name" caption="Hasil per divisi" />
+          <h3 class="el-h3">Hasil per divisi</h3>
+          <UiDataTable class="cc-flat" :columns="DIVISION_COLS" :rows="divisionRows" row-key="name" caption="Hasil per divisi" caption-hidden />
         </UiCard>
         <UiCard v-if="report.recommendations.length">
           <h3 class="el-h3">Rekomendasi dari laporan program</h3>
-          <div v-for="r in report.recommendations" :key="r.title" class="cc-meter"><b>{{ r.title }}</b><div v-if="r.detail" class="el-muted">{{ r.detail }}</div></div>
+          <div v-for="r in report.recommendations" :key="r.title" class="cc-mod"><b>{{ r.title }}</b><div v-if="r.detail" class="el-muted cc-detail">{{ r.detail }}</div></div>
+          <div v-if="interviewTo" class="cc-actions" style="margin-top: 12px"><UiButton variant="tonal" size="sm" :to="interviewTo">Wawancarai karyawan yang belum selesai</UiButton></div>
         </UiCard>
       </template>
 

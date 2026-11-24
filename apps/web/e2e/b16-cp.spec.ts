@@ -60,12 +60,13 @@ test('HR: peta per divisi, bukti, jalur jenjang, dan keputusan menunggu atasan',
   await expect(map).toContainText('Memenuhi syarat Senior')
   await expect(map).toContainText('Belum memenuhi kompetensi jabatan')
   await expect(map).toContainText('Program lulus, OKR belum 80%')
-  await expect(map).toContainText('OKR 79%') // pembulatan tidak menyeberangi ambang
+  await expect(map).toContainText('OKR saat ini 79%') // pembulatan tidak menyeberangi ambang
   await expect(page.getByTestId('cp-evidence')).toContainText('Bukti untuk Ani')
-  await expect(page.getByTestId('cp-evidence')).toContainText('93% (ambang 80%) · terpenuhi')
+  await expect(page.getByTestId('cp-evidence')).toContainText('Pencapaian OKR (syarat ≥ 80%)')
+  await expect(page.getByTestId('cp-evidence')).toContainText('93% · terpenuhi')
   await page.getByRole('group', { name: 'Divisi' }).getByRole('button', { name: 'Sales' }).click()
   await expect(map.getByRole('table')).not.toContainText('Ani')
-  await page.getByRole('button', { name: 'Bukti Cici' }).click()
+  await page.getByRole('button', { name: 'Pilih Cici' }).click()
   await expect(page.getByTestId('cp-evidence')).toContainText('Bukti untuk Cici')
 
   await page.getByRole('tab', { name: 'Jalur jenjang' }).click()
@@ -83,6 +84,9 @@ test('Atasan merekomendasikan dengan catatan; keputusan tercatat dengan nama', a
   await loginSebagai(page, 'atasan', B16)
   await page.goto('/cp')
   await page.getByRole('tab', { name: 'Keputusan promosi' }).click()
+  // triase P7: summary menyebut nama karyawan untuk pembaca layar
+  await expect(page.locator('summary', { hasText: 'Tambah catatan' })).toHaveText('Tambah catatan untuk Ani')
+  await page.getByText('Tambah catatan').click()
   await page.getByLabel('Catatan untuk Ani').fill('Siap')
   await page.getByRole('button', { name: 'Rekomendasikan Ani' }).click()
   await expect(page.getByTestId('cp-dec').getByRole('status')).toHaveText('Rekomendasikan: Ani tercatat.')
@@ -121,4 +125,50 @@ test('HR menyetujui rekomendasi atasan; nama HR tercatat dan tombol keputusan hi
   await expect(page.getByTestId('cp-dec')).toContainText('Disetujui')
   await expect(page.getByTestId('cp-dec')).toContainText('Pengguna Contoh')
   await expect(page.getByRole('button', { name: 'Setujui Ani' })).toHaveCount(0)
+})
+
+test('P3 X-3: breadcrumb "Career & Promotion" 12px di atas judul', async ({ page }) => {
+  await mockCp(page, [])
+  await loginSebagai(page, 'hr', B16)
+  await page.goto('/cp')
+  const crumb = page.getByRole('navigation', { name: 'Lokasi' })
+  await expect(crumb).toHaveText('Career & Promotion')
+  await expect(crumb).toHaveCSS('font-size', '12px')
+})
+
+test('P7 CP-1..9: copy mockup, label Divisi, baris dipilih lewat nama, chip status dan sub per status', async ({ page }) => {
+  const m = { ...MAP, employees: [...MAP.employees, { id: 'e4', name: 'Dedi', division: 'IT', jobRoleId: 'jr1', jobRoleName: 'Engineer', level: { id: 'l1', name: 'Junior' }, programs: progs(1), okr: { achievement: 70, period: null, count: 1 }, status: 'on_track', nextLevel: { id: 'l2', name: 'Senior', requiredProgramTier: 'intermediate' }, decisionState: 'none' }] }
+  await mockCp(page, [decision()])
+  await mockApi(page, (req) => {
+    if (cocok(req, 'GET /dna/career/map')) return { json: { data: m } }
+    if (cocok(req, 'GET /dna/career/employees/e4/evidence')) {
+      return { json: { data: { person: { id: 'e4', name: 'Dedi', division: 'IT', jobRoleName: 'Engineer', level: { id: 'l1', name: 'Junior' } }, status: 'on_track', nextLevel: m.employees[3]!.nextLevel,
+        programsPassed: ['basic'], okr: { achievement: 70, min: 80, met: false, period: null, count: 1 }, reinterview: null, supervisorRecommendation: null } } }
+    }
+    return undefined
+  })
+  await loginSebagai(page, 'hr', B16)
+  await page.goto('/cp')
+  await expect(page.getByText('Seluruh divisi dan departemen.')).toBeVisible()
+  await expect(page.getByText('Memenuhi syarat jenjang berikutnya')).toBeVisible()
+  await expect(page.getByText('program dan OKR ≥ 80%; belum keputusan')).toBeVisible()
+  await expect(page.getByText('Belum memenuhi kompetensi jabatan', { exact: true }).first()).toBeVisible()
+  await expect(page.getByText('perlu lulus program tingkat jabatannya')).toBeVisible()
+  await expect(page.getByTestId('cp-map').getByText('Divisi:', { exact: true })).toBeVisible()
+  const table = page.getByTestId('cp-map').getByRole('table')
+  await expect(table.getByRole('columnheader', { name: 'Bukti' })).toHaveCount(0)
+  const dedi = table.getByRole('row').filter({ hasText: 'Dedi' })
+  await expect(dedi.locator('.el-chip', { hasText: 'Menuju Senior' })).toHaveClass(/el-chip--review/)
+  await expect(dedi).toContainText('Perlu lulus Intermediate')
+  await expect(table.getByRole('row').filter({ hasText: 'Ani' })).toContainText('Program dan OKR terpenuhi; menunggu keputusan')
+  await expect(table.getByRole('row').filter({ hasText: 'Cici' })).toContainText('OKR saat ini 79%')
+  await expect(table.getByRole('row').filter({ hasText: 'Budi' })).toContainText('Perlu lulus Basic')
+  await expect(table.locator('.el-chip .el-icon')).toHaveCount(0)
+  await page.getByRole('button', { name: 'Pilih Dedi' }).click()
+  await expect(page.getByRole('button', { name: 'Pilih Dedi' })).toHaveAttribute('aria-current', 'true')
+  await expect(page.getByTestId('cp-evidence')).toContainText('Bukti untuk Dedi')
+  await expect(page.getByTestId('cp-evidence')).toContainText('AI hanya menyusun ringkasan dan tidak merekomendasikan keputusan.')
+  await page.getByRole('tab', { name: 'Keputusan promosi' }).click()
+  await expect(page.getByTestId('cp-dec')).toContainText('HR memutuskan setelah ada rekomendasi atasan. Memenuhi dua syarat (program dan OKR) tidak otomatis disetujui.')
+  await expect(page.getByTestId('cp-dec')).toContainText('Program dan OKR terpenuhi')
 })

@@ -14,7 +14,7 @@ export interface SessionView {
   id: string; status: string; step?: Step; summaryState?: SummaryState; focusLabel?: string | null; inviteExpiresAt?: string | null
   transcriptVisible?: boolean; turns?: Turn[]; consentVersionRequired?: string | null
   answerCount?: number; questionLimit?: number; restartCount?: number; restartsLeft?: number
-  summaryAt?: string | null; summaryConfirmedAt?: string | null; aiLabel?: string; sessionCode?: string
+  summaryAt?: string | null; summaryConfirmedAt?: string | null; sessionCode?: string
   /** B8: persetujuan ditarik (sesi berhenti, data tetap sampai HR menghapus). */
   consentWithdrawnAt?: string | null
 }

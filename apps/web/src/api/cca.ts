@@ -1,6 +1,7 @@
 // Klien API Core Competencies (B10). Bentuk respons: docs/designs/b10-core-competencies.md bagian 5.
 import { api } from '@/api/client'
 import { useSessionStore } from '@/stores/session'
+import { formatNumber, EMPTY } from '@/ui/format'
 
 export type GroupKey = 'vm' | 'values'
 export type SourceKind = 'vision' | 'mission' | 'value'
@@ -161,9 +162,10 @@ export const STATUS_LABEL: Record<AssignmentStatus, string> = {
   completed: 'Selesai',
   cancelled: 'Dibatalkan',
 }
-export const fmt = (n: number | null | undefined, suffix = '') => (n === null || n === undefined ? '-' : `${String(n).replace('.', ',')}${suffix}`)
-export const fmtDate = (iso: string | null | undefined) => {
-  if (!iso) return '-'
+/** Angka laporan CCA lewat formatter bersama (paritas P8, R4): koma desimal id-ID. */
+export const fmt = (n: number | null | undefined, suffix = '') => (n === null || n === undefined ? EMPTY : `${formatNumber(n)}${suffix}`)
+export const fmtDate = (iso: string | null | undefined, month: 'long' | 'short' = 'long') => {
+  if (!iso) return EMPTY
   const d = new Date(`${iso.slice(0, 10)}T00:00:00`)
-  return Number.isNaN(d.getTime()) ? iso : d.toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' })
+  return Number.isNaN(d.getTime()) ? iso : d.toLocaleDateString('id-ID', { day: 'numeric', month, year: 'numeric' })
 }

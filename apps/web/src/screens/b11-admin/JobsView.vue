@@ -2,10 +2,10 @@
 // B11 · Jabatan & kamus kompetensi. Tiap jabatan punya kamus kompetensinya sendiri; kamus diisi lewat layar impor.
 import { computed, onMounted, reactive, ref } from 'vue'
 import AppShell from '@/components/AppShell.vue'
+import AdminLinks from './AdminLinks.vue'
 import { ApiError } from '@/api/client'
 import { tenantAdmin, SOURCE_LABEL, type Competency, type JobRole } from '@/api/tenantAdmin'
-import { UiButton, UiCard, UiChip, UiDataTable, UiErrorSummary, UiField, UiNote, type UiColumn, type UiSortState } from '@/ui'
-import AdminNav from './AdminNav.vue'
+import { EMPTY, UiButton, UiCard, UiChip, UiDataTable, UiErrorSummary, UiField, UiNote, type UiColumn, type UiSortState } from '@/ui'
 
 const jobs = ref<JobRole[]>([])
 const loading = ref(true)
@@ -25,15 +25,16 @@ onMounted(load)
 const COLUMNS: UiColumn[] = [
   { key: 'name', label: 'Jabatan', sortable: true },
   { key: 'dictionary', label: 'Kamus', sortable: true },
-  { key: 'competencyCount', label: 'Kompetensi', sortable: true, align: 'right', mono: true },
-  { key: 'employeeCount', label: 'Pegawai', sortable: true, align: 'right', mono: true },
+  // JOB-2: angka rata kiri seperti mockup; "—" bila kamus belum tersedia
+  { key: 'competencyCount', label: 'Kompetensi', sortable: true, mono: true },
+  { key: 'employeeCount', label: 'Pegawai', sortable: true, mono: true },
   { key: 'sources', label: 'Sumber' },
   { key: 'aksi', label: 'Aksi' },
 ]
 const rows = computed(() => jobs.value as unknown as Record<string, unknown>[])
 const asJob = (row: Record<string, unknown>) => row as unknown as JobRole
 const sourceText = (j: JobRole) => {
-  if (!j.sources.length) return 'Belum ada kamus'
+  if (!j.sources.length) return 'Belum ada lokakarya DACUM'
   const labels = j.sources.map((s) => SOURCE_LABEL[s] ?? s).join(', ')
   return j.lastImport ? `${labels} · ${j.lastImport.filename}` : labels
 }
@@ -82,14 +83,15 @@ async function openDictionary(j: JobRole) {
 
 <template>
   <AppShell>
-    <AdminNav current="jobs" />
+    <AdminLinks current="jobs" />
     <h1 class="el-h1">Jabatan &amp; kamus kompetensi</h1>
     <p class="el-muted adm__lead">Setiap jabatan memiliki kamus kompetensi dan kurikulum Basic · Intermediate · Advanced sendiri.</p>
 
     <UiNote v-if="loadError" tone="critical">{{ loadError }}</UiNote>
     <p v-else-if="loading" class="el-muted">Memuat jabatan…</p>
     <template v-else>
-      <p v-if="notice" class="adm__notice" role="status" data-testid="adm-info">{{ notice }}</p>
+      <!-- ADM-2: note sukses hijau; role=status di pembungkus agar tetap dibacakan -->
+      <div v-if="notice" role="status" class="adm__notice"><UiNote tone="success" data-testid="adm-info">{{ notice }}</UiNote></div>
       <UiErrorSummary v-if="!formOpen" :errors="errors" />
 
       <UiCard v-if="formOpen" class="adm__section" data-testid="job-form">
@@ -120,6 +122,7 @@ async function openDictionary(j: JobRole) {
         <template #cell-dictionary="{ row }">
           <UiChip :tone="asJob(row).dictionary === 'tersedia' ? 'success' : 'neutral'">{{ asJob(row).dictionary === 'tersedia' ? 'Tersedia' : 'Belum tersedia' }}</UiChip>
         </template>
+        <template #cell-competencyCount="{ row }">{{ asJob(row).dictionary === 'tersedia' ? asJob(row).competencyCount : EMPTY }}</template>
         <template #cell-sources="{ row }"><span class="el-muted">{{ sourceText(asJob(row)) }}</span></template>
         <template #cell-aksi="{ row }">
           <div class="adm__row">
@@ -146,7 +149,7 @@ async function openDictionary(j: JobRole) {
 .adm__lead { margin: 0 0 16px; }
 .adm__section { margin-top: 16px; }
 .adm__row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; justify-content: space-between; }
-.adm__notice { margin: 0 0 12px; color: var(--el-success); font-weight: 500; }
+.adm__notice { margin: 0 0 12px; }
 .adm__list { list-style: none; margin: 8px 0 0; padding: 0; }
 .adm__list li { display: flex; justify-content: space-between; gap: 12px; padding: 8px 0; border-top: 1px solid var(--el-outline-variant); }
 </style>

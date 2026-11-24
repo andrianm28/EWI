@@ -65,9 +65,9 @@ Konfigurasi tenant (`tenants.settings`, lewat `core/settings`), tanpa migrasi. N
 
 Semua di router `tna`, jadi lewat `requireSubmodule('tna')`. Semua hanya HR (`requireRole(HR_ADMIN)`, dipasang sebelum pemeriksaan flag supaya peran lain mendapat `403 ROLE_FORBIDDEN`, bukan status flag). Karena hanya HR (cakupan seluruh tenant), `visibleEmployeeScope()` tidak dipanggil. Admin ETA ikut lolos seperti di seluruh `requireRole`; setiap aksesnya tercatat di audit dengan perannya, dan itu dianggap memenuhi "akses tercatat" PM-3 `[⏳ DITERIMA]` (pembatasan Super Admin adalah urusan B2). `tenant_id` dari `req.tenantId`; objek tenant lain selalu `404`.
 
-### Tanpa flag (hanya menambah field baca pada pengaman review PR #16)
+### Tanpa flag (antrean tanpa filter gap; menambah field baca pada pengaman review PR #16)
 
-1. `GET /api/tna/review` (ada, `projectId` opsional). Tambahan per item: `held`, `heldAt`, `heldByName`, `holdNote`, `suggestedClassification`, `reviewDueAt`, `overdue`. Tambahan di respons: `counts.held`, `counts.overdue` (dihitung dari seluruh draf dalam cakupan `projectId` yang sama, bukan hanya baris yang difilter `status`), `targetDays`.
+1. `GET /api/tna/review` (ada, `projectId` opsional). Antrean tanpa filter gap tidak di balik flag. Filter gap opsional `kind` + `competencyId` | `metricType`, `name`, `period` (sejak paritas B7 web, lihat `paritas-mockup/b7-tinjauan-web.md` keputusan 3) adalah bagian fitur tinjauan baru, jadi **di balik flag `tna.review_workspace`** (audit PR 39 butir 39-2): flag mati + `kind` terisi → `403 FEATURE_DISABLED`, dicek sebelum parameter gap divalidasi. Dengan filter gap: data dan `counts` hanya temuan gap itu (aturan R6), tanpa `detail`, `originalDetail`, `summaryNote`, plus `gap: { key, label }`; `period`/`name` berisi spasi saja → `400`; kompetensi tenant lain → `404`. Tambahan per item: `held`, `heldAt`, `heldByName`, `holdNote`, `suggestedClassification`, `reviewDueAt`, `overdue`. Tambahan di respons: `counts.held`, `counts.overdue` (dihitung dari seluruh draf dalam cakupan `projectId` yang sama, bukan hanya baris yang difilter `status`), `targetDays`.
    - Awal hitungan = waktu sesi wawancara selesai (`lna_interview_sessions.ended_at`, sesuai PM-3 "setelah wawancara selesai"); temuan tanpa sesi memakai `createdAt` temuan.
    - `reviewDueAt` = jam yang sama pada hari kerja ke-`targetDays` setelah tanggal awal (tanggal dan hari menurut WIB; hari kerja = Senin–Jumat). Contoh dengan 2 hari: Senin 10.00 → Rabu 10.00; Kamis 10.00 → Senin 10.00; Jumat 23.30 → Selasa 23.30; Sabtu 10.00 → Selasa 10.00; Minggu 10.00 → Selasa 10.00. `[⏳ DITERIMA]` tanpa kalender libur nasional; test unit mencakup kelima contoh.
    - `overdue` = masih `draft` dan `now > reviewDueAt`. Temuan yang ditahan tetap dihitung terlambat.
@@ -76,14 +76,14 @@ Semua di router `tna`, jadi lewat `requireSubmodule('tna')`. Semua hanya HR (`re
 
 Aturan CLAUDE.md nomor 3: klasifikasi, tahan, solusi, penugasan, ekspor, dan serah ke Improvement Needs adalah perilaku baru, jadi semuanya di balik satu flag. Flag mati → `403 FEATURE_DISABLED`.
 
-2. `POST /api/tna/findings/:id/classify` body `{ classification: 'training' | 'improvement' | 'needs_review', note? }`.
+2. `POST /api/tna/findings/:id/classify` body `{ classification: 'training' | 'improvement' | 'needs_review', note? }`. Respons butir antrean tanpa `detail`, `originalDetail`, dan `summaryNote` di semua cabang: endpoint ini hanya dipakai layar tinjauan per gap (PO-6 A, paritas P9 CD-3).
    - Temuan dari sesi yang persetujuannya ditarik (B8), draf maupun sudah diputus → `409 CONSENT_WITHDRAWN` (dibekukan, keputusan user 19 Nov; B8 "Aturan baca").
    - Temuan `draft`: `training`/`improvement` memakai `stores.tna.reviewFinding` (bersyarat `review_status = 'draft'`, dua HR bersamaan tidak saling timpa; yang kalah `409 ALREADY_REVIEWED`); `needs_review` memakai `stores.tna.holdFinding` (bersyarat `draft`).
    - Temuan `approved`/`edited`: hanya `training`/`improvement`, lewat `stores.tna.reclassifyFinding` (satu `UPDATE` bersyarat: `status = 'open'`, belum ada baris rencana untuk temuan itu, dan `improvement_handoff_at IS NULL`; `original_category` diisi bila belum terisi; `review_status` menjadi `edited`). Tidak memenuhi syarat → `409 ALREADY_ACTIONED`. Kategori sama → `200` tanpa perubahan. `needs_review` → `409 ALREADY_REVIEWED`.
    - Temuan `rejected` → `409 ALREADY_REVIEWED`. `classification` lain → `400`. `note` maks 2000 karakter.
    - Audit `update` `tna.finding_review` `{ employeeIds, objectIds, decision: 'approved' | 'edited' | 'hold' | 'reclassified', classification, from, confidence }`. Audit ditulis setelah perubahan tersimpan (pola PR #16) `[⏳ DITERIMA]`.
    - Respons: item review terbaru (bentuk butir 1).
-3. `GET /api/tna/review/solutions` (`projectId` opsional). Respons:
+3. `GET /api/tna/review/solutions` (`projectId` opsional; filter gap opsional dengan parameter sama dengan butir 1: hanya temuan gap itu, validasi `400`/`404` sama). Predikat kandidat gap dijalankan di SQL (`gapSql`, sama dengan antrean per gap), keanggotaan pasti lewat `findingsInGap` (R6). Nama target dinormalkan di SQL seperti `metricKey` (kelas spasi JavaScript lengkap, `lower()` dengan collation ICU `"und-x-icu"` supaya tidak bergantung locale database); syaratnya Postgres dibangun dengan ICU, yang dipenuhi image `pgvector/pgvector:pg16` di CI dan deploy; `GET /plan-items/export.csv` memakai filter yang sama. Respons:
    ```json
    { "data": {
        "training": [{ "findingId", "userId", "userName", "title", "competencyName",
@@ -116,7 +116,7 @@ Aturan CLAUDE.md nomor 3: klasifikasi, tahan, solusi, penugasan, ekspor, dan ser
    - Panggilan keluar memakai batas waktu 10 detik (termasuk pengambilan token) dan `planItemId` sebagai kunci idempotensi (field `idempotencyKey` di body dan header `Idempotency-Key`). `[⚠️ BELUM TERVERIFIKASI]` dukungan kunci ini di EliteMentor.
    - Penutupan klaim (`finishPlanAssignment`) hanya berlaku untuk pemilik klaim (`assignment_claimed_at` sama). Sukses: `assignment_status = 'sent'`, `assignment_ref`, `assigned_at/by`; status rencana tidak berubah (progres datang dari sinkron B14). Gagal: `failed`, respons `502 EM_ASSIGN_FAILED`; boleh dicoba lagi. Bila klaimnya sudah diambil alih permintaan lain (macet > 5 menit), hasilnya tidak disimpan, baik EliteMentor sukses maupun gagal: respons `409 ASSIGN_IN_PROGRESS` dan audit `result: 'superseded'` (pada sukses, audit juga memuat `ref` yang tidak tersimpan). `assignment_ref` diambil dari `id` respons, atau `ref` bila `id` tidak ada.
    - Data pribadi yang keluar ke EliteMentor: `employeeId` dan email karyawan, serta kode dan judul course. Payload: `{ idempotencyKey, employeeId, email, courseRef, courseTitle }`; `assignment_ref` diambil dari `id` respons. Tercatat di audit `update` `tna.plan_assignment` `{ employeeIds, objectIds, target, result: 'sent' | 'failed' | 'superseded' }`.
-5. `GET /api/tna/plan-items/export.csv` (`projectId` opsional). Ekspor gap untuk LMS klien (K4); tersedia apa pun nilai `lms.delivery`. Hanya membaca, tidak menandai apa pun (yang sudah diekspor ikut lagi di ekspor berikutnya; LMS klien yang menyaring) `[⏳ DITERIMA]`.
+5. `GET /api/tna/plan-items/export.csv` (`projectId` opsional; filter gap opsional dengan parameter yang sama dengan `GET /review`, paritas P9 IR-5: hanya rencana dari temuan gap itu menurut aturan R6, rujukan tidak valid `400`, kompetensi tenant lain `404`). Ekspor gap untuk LMS klien (K4); tersedia apa pun nilai `lms.delivery`. Hanya membaca, tidak menandai apa pun (yang sudah diekspor ikut lagi di ekspor berikutnya; LMS klien yang menyaring) `[⏳ DITERIMA]`.
    - Baris: rencana berstatus `new`/`in_progress`, semua origin, termasuk yang belum punya course (kolom course kosong). Filter `projectId` lewat proyek temuan, jadi rencana tanpa temuan (permintaan karyawan) tidak ikut bila `projectId` diisi.
    - Kolom: `ID Karyawan, Nama, Email, Kompetensi, Kode Course, Judul Course, Program, Status Rencana`. Sel yang diawali `= + - @` (atau tab/CR) diberi awalan `'`.
    - Audit `export` `tna.plan_items` `{ employeeIds, count }` ditulis sebelum respons dikirim (audit gagal = ekspor gagal).
@@ -124,7 +124,7 @@ Aturan CLAUDE.md nomor 3: klasifikasi, tahan, solusi, penugasan, ekspor, dan ser
    - Flag `module.ina` mati → `409 INA_DISABLED`.
    - Satu `UPDATE ... WHERE tenant_id = :tenantId AND id IN (:ids) AND category = 'non_training' AND review_status IN ('approved','edited') AND improvement_handoff_at IS NULL RETURNING id` → `handedOff`. Id yang memenuhi syarat tetapi sudah ditandai → `already`. Sisanya (draf, training, ditolak, tenant lain, tidak ada) → `skipped`.
    - Respons `{ handedOff, already, skipped }`. Audit `update` `tna.improvement_handoff` `{ employeeIds, objectIds, count }`, hanya bila ada yang diteruskan.
-   - Teks di web: "N temuan diteruskan ke Improvement Needs" (bukan "tindakan dibuat"), karena tindakan dibuat oleh modul B9.
+   - Teks di web persis mockup (`makeIna`, review 24 Nov): "N tindakan perbaikan dibuat dan muncul di Improvement Needs." dengan N = `handedOff` + `already`. Di data, tindakan tetap diwujudkan modul B9 dari temuan yang diteruskan.
 
 ### Perubahan pada endpoint yang ada
 
@@ -212,6 +212,6 @@ B7 tidak membuat tabel tindakan perbaikan. B9 membaca temuan yang diteruskan lew
 - [x] `apps/api/src/config/env.js` (`ELITEMENTOR_ASSIGNMENTS_ENABLED`)
 - [x] `apps/api/tests/unit/review-sla.test.js`, `apps/api/tests/unit/elitementor.test.js`, `apps/api/tests/integration/tinjauan-hr.test.js`
 - [x] `apps/web/src/api/lna.ts` (tipe dan pemanggil baru)
-- [ ] `apps/web/src/screens/b7-tinjauan/` (rute `review`), hapus `screens/legacy-review`, e2e
+- [x] `apps/web/src/screens/b7-tinjauan/` (rute `review` per gap + antrean `tna-review`), hapus `screens/legacy-review`, e2e. Spek tahap: `docs/designs/paritas-mockup/b7-tinjauan-web.md` (termasuk filter gap opsional pada `GET /review` dan `GET /review/solutions`)
 
 Catatan triase awal dipindahkan ke `docs/designs/egm/b7/triase-awal.md`; hasil egm-resolve di `docs/designs/egm/b7/goldfish_review_report.md`.

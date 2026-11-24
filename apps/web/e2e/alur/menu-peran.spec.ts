@@ -1,11 +1,11 @@
 import { test, expect, type Page } from '@playwright/test'
-import { loginSebagai, navigasi, semuaModulDengan, SEMUA_MODUL, type Peran } from '../support/sesi'
+import { grupAkordion, loginSebagai, navigasi, semuaModulDengan, SEMUA_MODUL, type Peran } from '../support/sesi'
 
 // B18 4.3 (docs/designs/b18-e2e-qa-malam.md): matriks menu per peran dari fungsi `N` di mockup Pak Eji.
 // Seam: menu "Navigasi utama" setelah masuk lewat loginSebagai. Layar di belakang tiap butir tidak diuji di sini;
 // permintaan API layar beranda yang tidak di-mock dijawab 404 BELUM_DIMOCK dan tidak memengaruhi menu.
 
-const grup = (page: Page) => navigasi(page).getByRole('button')
+const grup = grupAkordion
 
 /** Sub-butir hanya terlihat saat grup accordion terbuka, jadi grup yang tertutup dibuka dulu. */
 async function butirMenu(page: Page) {

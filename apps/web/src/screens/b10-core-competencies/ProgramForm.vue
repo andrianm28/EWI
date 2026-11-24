@@ -61,7 +61,7 @@ async function save() {
     <h3 class="el-h3 cc-form__wide">{{ program ? 'Ubah program' : 'Program baru' }}</h3>
     <UiErrorSummary v-if="errors.length" :errors="errors" class="cc-form__wide" />
     <UiNote v-if="program" class="cc-form__wide">Setelah program punya hasil, jumlah nilai, jumlah komponen, dan key status tidak bisa diubah.</UiNote>
-    <UiField id="prog-key" v-slot="{ attrs }" label="Key" hint="Huruf kecil, angka, tanda hubung. Mis. dna-5c"><input v-bind="attrs" v-model="form.key" class="el-input el-mono" :readonly="!!program" required /></UiField>
+    <UiField id="prog-key" v-slot="{ attrs }" label="Key" hint="Huruf kecil, angka, tanda hubung. Mis. program-nilai"><input v-bind="attrs" v-model="form.key" class="el-input el-mono" :readonly="!!program" required /></UiField>
     <UiField id="prog-nama" v-slot="{ attrs }" label="Nama program"><input v-bind="attrs" v-model="form.name" class="el-input" required maxlength="255" /></UiField>
     <UiField id="prog-penyelenggara" v-slot="{ attrs }" label="Penyelenggara (opsional)"><input v-bind="attrs" v-model="form.provider" class="el-input" maxlength="255" /></UiField>
     <UiField id="prog-cutoff" v-slot="{ attrs }" label="Tanggal cut off (opsional)"><input v-bind="attrs" v-model="form.cutoffDate" class="el-input" type="date" /></UiField>

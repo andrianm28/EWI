@@ -144,6 +144,38 @@ test('Pareto: baris prioritas ditandai teks, bukan warna saja; kosong punya pesa
   await expect(rows.nth(0).getByRole('progressbar')).toHaveAttribute('aria-valuenow', '50')
 })
 
+test('P7 D2/D3: angka Pareto mono di kanan baris label; tombol Buka bervarian teks', async ({ page }) => {
+  await loginAs(page)
+  const row = page.getByTestId('pareto').getByTestId('pareto-baris').nth(0)
+  const label = row.getByText('Root Cause Analysis')
+  const num = row.getByText('9 orang · kum. 50%')
+  const lb = (await label.boundingBox())!
+  const nb = (await num.boundingBox())!
+  expect(Math.abs(nb.y - lb.y)).toBeLessThan(12)
+  expect(nb.x).toBeGreaterThan(lb.x + lb.width)
+  await expect(page.getByTestId('modul').nth(0).getByRole('link', { name: 'Buka Learning Needs Analysis' })).toHaveClass(/el-btn--text/)
+})
+
+test('P3 D1: baris Pareto kompetensi menaut ke Detail gap bila papan gap terbuka', async ({ page }) => {
+  await loginAs(page, { flags: { 'tna.gap_board': true } })
+  const rows = page.getByTestId('pareto').getByTestId('pareto-baris')
+  await expect(rows).toHaveCount(3)
+  await expect(rows.nth(0)).toHaveAttribute('href', '/tna/gap?kind=competency&competencyId=c1')
+  // review 24 Nov: tanpa aria-label yang menimpa teks tautan; nama aksesibel dari isi yang terlihat (label di depan)
+  await expect(rows.nth(0)).not.toHaveAttribute('aria-label', /.*/)
+  // nama penuh dan berjangkar: label, chip, angka mono, lalu nilai progres (50); teks tambahan membuat test gagal
+  await expect(rows.nth(0)).toHaveAccessibleName(/^Root Cause Analysis Prioritas 9 orang · kum\. 50% 50$/)
+  // temuan tanpa kompetensi tidak punya detail gap
+  await expect(rows.nth(2)).not.toHaveAttribute('href', /.*/)
+  await rows.nth(1).focus()
+  await expect(rows.nth(1)).toBeFocused()
+})
+
+test('P3 D1: tanpa flag papan gap baris Pareto bukan tautan', async ({ page }) => {
+  await loginAs(page)
+  await expect(page.getByTestId('pareto').getByRole('link')).toHaveCount(0)
+})
+
 test('Pareto kosong dan TNA tertutup', async ({ page }) => {
   await loginAs(page, { dashboard: { ...HR_DATA, pareto: { rows: [], total: 0, hotCount: 0 } } })
   await expect(page.getByTestId('pareto')).toContainText('Belum ada temuan pelatihan yang disetujui HR.')
@@ -204,7 +236,9 @@ test('snapshot visual: Dashboard utama terang dan gelap', async ({ page }) => {
   await loginAs(page)
   await expect(page.getByTestId('tindakan-baris')).toHaveCount(4)
   await page.evaluate('document.fonts.ready.then(() => true)')
-  await expect(page).toHaveScreenshot('dashboard-hr-terang.png', { fullPage: true })
+  // Baseline dibuat di sandbox lokal; antialiasing Chromium CI berbeda ±3% pada halaman padat teks ini
+  // (angka mono Pareto, P7 D2). Ambang 4% sampai baseline dibuat ulang di CI.
+  await expect(page).toHaveScreenshot('dashboard-hr-terang.png', { fullPage: true, maxDiffPixelRatio: 0.04 })
   await page.getByRole('button', { name: 'Mode gelap' }).click()
-  await expect(page).toHaveScreenshot('dashboard-hr-gelap.png', { fullPage: true })
+  await expect(page).toHaveScreenshot('dashboard-hr-gelap.png', { fullPage: true, maxDiffPixelRatio: 0.04 })
 })

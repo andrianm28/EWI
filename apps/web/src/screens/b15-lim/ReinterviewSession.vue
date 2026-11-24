@@ -8,6 +8,7 @@ import { LIM_CONSENT_VERSION } from '@/content/consent'
 import { UiButton, UiChip, UiErrorSummary, UiNote } from '@/ui'
 import { lim, type ReinterviewSession } from './api'
 import '../b6-iv/iv.css'
+import { AI_NAME } from '@/api/ai'
 
 const props = defineProps<{ planId: string }>()
 const emit = defineEmits<{ finished: [] }>()
@@ -94,7 +95,7 @@ const retry = () => act(async () => { const r = await lim.turn(props.planId); if
       </div>
       <div class="iv-chat" role="log" aria-live="polite" aria-label="Percakapan wawancara ulang">
         <div v-for="t in s.turns" :key="t.position" :class="['iv-msg', t.role === 'ai' ? 'iv-msg--ai' : 'iv-msg--me']" :data-testid="`wu-turn-${t.role}`">
-          <small>{{ t.role === 'ai' ? `ELGOS-AI · ${KIND[t.kind]}${t.competency ? ` · ${t.competency}` : ''}` : 'Anda' }}</small>{{ t.text }}
+          <small>{{ t.role === 'ai' ? `${AI_NAME} · ${KIND[t.kind]}${t.competency ? ` · ${t.competency}` : ''}` : 'Anda' }}</small>{{ t.text }}
         </div>
       </div>
       <template v-if="pending">

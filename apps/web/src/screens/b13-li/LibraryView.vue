@@ -3,10 +3,11 @@
 import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import AppShell from '@/components/AppShell.vue'
+import './li.css'
 import { ApiError } from '@/api/client'
-import { UiButton, UiCard, UiChip, UiKpiCard, UiNote, UiStatus } from '@/ui'
+import { UiBreadcrumb, UiButton, UiCard, UiChip, UiKpiCard, UiNote, UiSegmented } from '@/ui'
 import { li, type CatalogItem, type Library, type ModuleDetail, type ModuleRow } from './api'
-import { KIND_LABEL, LEVEL_LABEL, jobLabel, pct, priorityLabel, statusLabel } from './labels'
+import { KIND_LABEL, LEVEL_LABEL, jobChip, pct, priorityLabel, shortVendor, statusLabel } from './labels'
 
 const route = useRoute()
 const router = useRouter()
@@ -19,19 +20,31 @@ const filter = reactive({ jobRoleId: '', priority: '', type: '', level: '', stre
 const catalog = ref<CatalogItem[]>([])
 const courseId = ref('')
 
+// Penjaga urutan: filter bisa diganti sebelum respons sebelumnya tiba; hanya respons permintaan terakhir yang dipakai.
+let listSeq = 0
+let detailSeq = 0
 async function load() {
+  const seq = ++listSeq
   try {
-    lib.value = await li.library(filter)
+    const res = await li.library({ ...filter })
+    if (seq !== listSeq) return
+    lib.value = res
     error.value = ''
-    const keep = detail.value && lib.value.data.find((m) => m.id === detail.value!.id)
-    const first = keep ?? lib.value.data.find((m) => m.id === route.query.modul) ?? lib.value.data[0]
+    const keep = detail.value && res.data.find((m) => m.id === detail.value!.id)
+    const first = keep ?? res.data.find((m) => m.id === route.query.modul) ?? res.data[0]
     if (first) await pick(first)
-    else detail.value = null
-  } catch (e) { error.value = e instanceof ApiError ? e.message : 'Library tidak bisa dimuat' }
+    else { detailSeq++; detail.value = null }
+  } catch (e) { if (seq === listSeq) error.value = e instanceof ApiError ? e.message : 'Library tidak bisa dimuat' }
 }
 async function pick(m: ModuleRow) {
-  try { detail.value = (await li.module(m.id, filter.jobRoleId || undefined)).data } catch (e) { error.value = e instanceof ApiError ? e.message : 'Modul tidak bisa dimuat' }
+  const seq = ++detailSeq
+  try {
+    const res = (await li.module(m.id, filter.jobRoleId || undefined)).data
+    if (seq === detailSeq) detail.value = res
+  } catch (e) { if (seq === detailSeq) error.value = e instanceof ApiError ? e.message : 'Modul tidak bisa dimuat' }
 }
+const filtered = computed(() => Object.values(filter).some(Boolean))
+function clearFilters() { Object.assign(filter, { jobRoleId: '', priority: '', type: '', level: '', stream: '' }) }
 onMounted(async () => {
   await load()
   try { catalog.value = (await li.catalog()).data } catch { /* tanpa katalog, tautan course disembunyikan */ }
@@ -40,12 +53,35 @@ watch(filter, load)
 
 const vendor = computed(() => lib.value?.vendorName ?? 'vendor')
 const groups = computed(() => (['K', 'S', 'A'] as const).map((k) => ({ kind: k, label: KIND_LABEL[k], items: (detail.value?.items ?? []).filter((i) => i.kind === k) })).filter((g) => g.items.length))
+
+// Filter = baris label + chip (LI-5). Kunci '' berarti "Semua", sama dengan kontrak li.library(filter).
+type FilterKey = keyof typeof filter
+const filterRows = computed<{ key: FilterKey; label: string; options: { key: string; label: string }[] }[]>(() => {
+  const f = lib.value?.filters
+  if (!f) return []
+  const all = (label = 'Semua') => ({ key: '', label })
+  return [
+    { key: 'jobRoleId', label: 'Jabatan', options: [all('Semua jabatan'), ...f.jobRoles.map((j) => ({ key: j.id, label: j.name }))] },
+    { key: 'priority', label: 'Prioritas', options: [all('Semua modul'), { key: 'pareto', label: 'Prioritas Pareto saja' }] },
+    { key: 'type', label: 'Tipe', options: [all(), ...Object.entries(KIND_LABEL).map(([key, label]) => ({ key, label }))] },
+    { key: 'level', label: 'Level', options: [all(), ...Object.entries(LEVEL_LABEL).map(([key, label]) => ({ key, label }))] },
+    { key: 'stream', label: 'Rumpun', options: [all(), ...f.streams.map((s) => ({ key: s, label: s }))] },
+  ]
+})
+const jobName = computed(() => lib.value?.filters.jobRoles.find((j) => j.id === filter.jobRoleId)?.name ?? '')
+const onlyJob = computed(() => (lib.value?.filters.jobRoles.length === 1 ? lib.value.filters.jobRoles[0]!.name : ''))
+// N2: tenant dengan satu jabatan menyebut jabatan itu walau filter "Semua jabatan" (mockup)
+const gapOf = computed(() => (jobName.value || onlyJob.value ? `total gap jabatan ${jobName.value || onlyJob.value}` : 'total gap'))
 const paretoNote = computed(() => {
   const p = lib.value?.pareto
   if (!p) return ''
   if (!p.available) return 'Training Needs belum aktif untuk tenant ini, jadi prioritas belum bisa dihitung.'
   if (!p.count) return 'Belum ada gap training yang terhubung ke modul. Prioritas muncul setelah hasil Training Needs tersedia.'
-  return `${p.count} modul menutup ${pct(p.cumulativeShare)} gap training${filter.jobRoleId ? ' jabatan ini' : ''}. ${p.withoutGapData} modul belum punya data gap.`
+  const head = `${p.count} modul prioritas Pareto (${p.codes.join(', ')}) menyumbang sekitar ${pct(p.cumulativeShare)} ${gapOf.value}. ${p.withoutGapData} modul lain belum punya data gap.`
+  // jumlah modul prioritas yang spesifik perusahaan hanya benar bila daftar tidak dipersempit filter lain
+  const narrowed = filter.priority || filter.type || filter.level || filter.stream
+  const dev = narrowed ? 0 : (lib.value?.data ?? []).filter((m) => m.priority && m.recommendation === 'dev').length
+  return dev ? `${head} ${dev} modul prioritas bersifat spesifik perusahaan dan perlu dikembangkan bersama ELGOS.` : head
 })
 
 async function act(fn: () => Promise<string>) {
@@ -67,91 +103,94 @@ async function develop(m: ModuleDetail) {
 
 <template>
   <AppShell>
-    <p class="el-muted">Learning Intervention › Library</p>
+    <UiBreadcrumb :items="[{ label: 'Learning Intervention' }, { label: 'Library' }]" />
     <h1 class="el-h1">Library</h1>
-    <p class="el-muted">Semua modul Knowledge, Skill, dan Attitude (KSA) dari DACUM Tool 2. Setiap modul dapat diminta dari {{ vendor }} atau dikembangkan bersama ELGOS.</p>
+    <p class="el-muted"><template v-if="onlyJob">Saat ini seluruh modul berlaku untuk jabatan {{ onlyJob }}. </template>Semua modul Knowledge, Skill, dan Attitude (KSA) yang teridentifikasi dari DACUM Tool 2. Setiap modul dapat diminta dari {{ vendor }} atau dikembangkan bersama ELGOS.</p>
 
     <UiNote v-if="error" tone="critical" data-testid="galat">{{ error }}</UiNote>
     <UiNote v-if="notice" tone="success" data-testid="info">{{ notice }}</UiNote>
 
     <template v-if="lib">
       <div class="el-grid el-grid-4 li-gap">
-        <UiKpiCard label="Modul" :value="lib.kpis.modules" :note="`${lib.kpis.streams} rumpun`" />
-        <UiKpiCard label="Knowledge" :value="lib.kpis.knowledge" note="butir" />
-        <UiKpiCard label="Skill" :value="lib.kpis.skill" note="butir" />
-        <UiKpiCard label="Attitude" :value="lib.kpis.attitude" note="butir" />
+        <UiKpiCard label="Modul" :value="lib.kpis.modules" :note="`DACUM Tool 2 dan 3, ${lib.kpis.streams} rumpun`" />
+        <UiKpiCard label="Butir Knowledge" :value="lib.kpis.knowledge" note="pengetahuan" />
+        <UiKpiCard label="Butir Skill" :value="lib.kpis.skill" note="keterampilan" />
+        <UiKpiCard label="Butir Attitude" :value="lib.kpis.attitude" note="sikap kerja" />
       </div>
 
-      <UiCard tonal class="li-row li-gap">
+      <UiNote class="li-row li-gap">
         <span><b>Prioritas Pareto 20/80:</b> {{ paretoNote }}</span>
-        <UiButton v-if="lib.pareto.count" variant="tonal" size="sm" :disabled="busy" @click="requestPriority">Minta modul prioritas yang generik ke {{ vendor }}</UiButton>
-      </UiCard>
-      <p class="el-muted li-small">Tombol "Minta" hanya mencatat permintaan di ELGOS. ELGOS tidak mengirim apa pun ke {{ vendor }}.</p>
+        <UiButton v-if="lib.pareto.count" size="sm" :disabled="busy" @click="requestPriority">Minta modul prioritas yang generik ke {{ shortVendor(vendor) }}</UiButton>
+      </UiNote>
 
-      <div class="li-filters li-gap">
-        <label class="el-label">Jabatan
-          <select v-model="filter.jobRoleId" class="el-input"><option value="">Semua</option><option v-for="j in lib.filters.jobRoles" :key="j.id" :value="j.id">{{ j.name }}</option></select>
-        </label>
-        <label class="el-label">Prioritas
-          <select v-model="filter.priority" class="el-input"><option value="">Semua</option><option value="pareto">Prioritas Pareto</option></select>
-        </label>
-        <label class="el-label">Tipe
-          <select v-model="filter.type" class="el-input"><option value="">Semua</option><option v-for="(l, k) in KIND_LABEL" :key="k" :value="k">{{ l }}</option></select>
-        </label>
-        <label class="el-label">Level
-          <select v-model="filter.level" class="el-input"><option value="">Semua</option><option v-for="(l, k) in LEVEL_LABEL" :key="k" :value="k">{{ l }}</option></select>
-        </label>
-        <label class="el-label">Rumpun
-          <select v-model="filter.stream" class="el-input"><option value="">Semua</option><option v-for="s in lib.filters.streams" :key="s" :value="s">{{ s }}</option></select>
-        </label>
-      </div>
+      <UiCard tonal class="li-filter li-gap" data-testid="filter-modul">
+        <div v-for="r in filterRows" :key="r.key" class="li-filter__row">
+          <span class="li-filter__label" aria-hidden="true">{{ r.label }}</span>
+          <UiSegmented v-model="filter[r.key]" variant="chips" :label="r.label" :options="r.options" />
+        </div>
+      </UiCard>
 
       <div class="li-split li-gap">
-        <UiCard>
-          <h2 class="el-h3" data-testid="jumlah-modul">{{ lib.data.length }} modul</h2>
+        <div>
+          <p class="el-muted li-count" data-testid="jumlah-modul">{{ lib.data.length }} dari {{ lib.kpis.modules }} modul</p>
           <p v-if="!lib.kpis.modules" class="el-muted">Belum ada modul. Impor library modul (templat nomor 9) lewat menu impor data.</p>
-          <ul class="li-list" aria-label="Daftar modul">
+          <UiCard v-else-if="!lib.data.length" class="li-row">
+            <span class="el-muted">Tidak ada modul yang cocok dengan filter.</span>
+            <UiButton v-if="filtered" variant="text" size="sm" @click="clearFilters">Hapus semua filter</UiButton>
+          </UiCard>
+          <ul v-else class="li-list" aria-label="Daftar modul">
             <li v-for="m in lib.data" :key="m.id">
               <button type="button" class="li-item" :aria-current="detail?.id === m.id ? 'true' : undefined" @click="pick(m)">
-                <span class="el-mono">{{ m.code }}</span>
+                <span class="el-mono li-code">{{ m.code }}</span>
                 <span class="li-item__body">
-                  <b>{{ m.name }}</b>
-                  <span class="el-muted li-small">{{ LEVEL_LABEL[m.level] }} · {{ m.stream ?? 'Tanpa rumpun' }} · K {{ m.counts.K }} · S {{ m.counts.S }} · A {{ m.counts.A }} · {{ jobLabel(m) }}</span>
-                  <span class="li-chips">
-                    <UiStatus :tone="statusLabel(m.status.key, vendor).tone">{{ statusLabel(m.status.key, vendor).text }}</UiStatus>
-                    <UiChip v-if="m.priority" tone="review" icon="flag">{{ priorityLabel(m) }}</UiChip>
+                  <span class="li-item__name">{{ m.name }}</span>
+                  <span class="el-muted li-meta">{{ m.stream ?? 'Tanpa rumpun' }} · {{ LEVEL_LABEL[m.level] }}</span>
+                  <span class="li-chips li-chips--tight">
+                    <UiChip>K {{ m.counts.K }}</UiChip><UiChip>S {{ m.counts.S }}</UiChip><UiChip>A {{ m.counts.A }}</UiChip>
+                    <UiChip tone="training">{{ jobChip(m) }}</UiChip>
+                    <UiChip v-if="m.priority" tone="critical">{{ priorityLabel(m) }}</UiChip>
                   </span>
                 </span>
+                <UiChip :tone="statusLabel(m.status.key, vendor).tone">{{ statusLabel(m.status.key, vendor).text }}</UiChip>
               </button>
             </li>
           </ul>
-        </UiCard>
+        </div>
 
-        <UiCard v-if="detail" as="section" aria-label="Detail modul" data-testid="detail-modul">
-          <p class="el-muted"><span class="el-mono">{{ detail.code }}</span> · {{ LEVEL_LABEL[detail.level] }} · {{ detail.stream ?? 'Tanpa rumpun' }}</p>
+        <UiCard v-if="detail" as="section" aria-label="Detail modul" data-testid="detail-modul" class="li-detail">
+          <p class="li-chips li-chips--tight"><UiChip class="el-mono">{{ detail.code }}</UiChip><UiChip tone="training">{{ LEVEL_LABEL[detail.level] }}</UiChip><UiChip>{{ detail.stream ?? 'Tanpa rumpun' }}</UiChip></p>
           <h2 class="el-h2">{{ detail.name }}</h2>
           <p class="li-chips">
-            <UiStatus :tone="statusLabel(detail.status.key, vendor).tone">{{ statusLabel(detail.status.key, vendor).text }}</UiStatus>
-            <UiChip v-if="detail.priority" tone="review" icon="flag">{{ priorityLabel(detail) }}</UiChip>
+            <UiChip :tone="statusLabel(detail.status.key, vendor).tone">{{ statusLabel(detail.status.key, vendor).text }}</UiChip>
+            <UiChip v-if="detail.priority" tone="critical">{{ priorityLabel(detail) }}</UiChip>
           </p>
-          <p v-if="detail.priority" class="el-muted li-small">Termasuk modul yang menutup {{ pct(detail.priority.cumulativeShare) }} gap training.</p>
+          <p v-if="detail.priority" class="el-muted li-small">Termasuk modul yang bersama-sama menyumbang sekitar {{ pct(detail.priority.cumulativeShare) }} {{ gapOf }} (kumulatif sampai urutan ini). Sediakan lebih dulu.</p>
+          <p v-else-if="lib.pareto.count" class="el-muted li-small">Tidak termasuk modul prioritas Pareto.</p>
           <h3 class="el-h3">Berlaku untuk jabatan</h3>
-          <p>{{ jobLabel(detail) }}</p>
+          <p class="li-chips li-chips--tight">
+            <UiChip v-for="j in detail.jobRoles" :key="j.id" tone="training">{{ j.name }}</UiChip>
+            <span v-if="!detail.jobRoles.length" class="el-muted">Belum ada jabatan</span>
+          </p>
           <p class="el-muted li-small">Satu modul dapat dipakai untuk beberapa jabatan. Jabatan lain ditambahkan setelah kamus kompetensinya tersedia.</p>
           <h3 class="el-h3">Tujuan pembelajaran (DACUM)</h3>
-          <p>{{ detail.objective || 'Belum diisi.' }}</p>
+          <p class="el-muted">{{ detail.objective || 'Belum diisi.' }}</p>
           <div v-for="g in groups" :key="g.kind">
             <h4 class="li-h4">{{ g.label }} ({{ g.items.length }})</h4>
-            <ul><li v-for="(it, i) in g.items" :key="i">{{ it.text }}</li></ul>
+            <ul class="li-ksa"><li v-for="(it, i) in g.items" :key="i">{{ it.text }}</li></ul>
           </div>
-          <UiNote class="li-gap">
-            <b>Sumber yang disarankan: {{ detail.recommendation === 'dev' ? 'dikembangkan bersama ELGOS' : vendor }}.</b>
-            {{ detail.recommendation === 'dev' ? 'Modul ini spesifik proses perusahaan.' : 'Modul ini bersifat generik.' }}
+          <UiNote class="li-gap li-small">
+            <b>Sumber yang disarankan: {{ detail.recommendation === 'dev' ? 'Dikembangkan bersama ELGOS' : vendor }}.</b>
+            {{ detail.recommendation === 'dev' ? 'Topik spesifik proses perusahaan, sehingga kecil kemungkinan ada di katalog umum.' : 'Topik generik yang dapat disediakan mitra pelatihan.' }}
+            Usulan awal, dapat diubah.
           </UiNote>
-          <div v-if="detail.status.key === 'none'" class="li-actions">
-            <UiButton icon="inventory_2" :disabled="busy" @click="requestOne(detail)">Minta ke {{ vendor }}</UiButton>
-            <UiButton variant="tonal" icon="smart_toy" :disabled="busy" @click="develop(detail)">Kembangkan dengan ELGOS</UiButton>
-          </div>
+          <template v-if="detail.status.key === 'none'">
+            <div class="li-actions li-actions--row">
+              <UiButton icon="inventory_2" :disabled="busy" aria-describedby="li-minta-hint" @click="requestOne(detail)">Minta ke {{ vendor }}</UiButton>
+              <UiButton variant="tonal" icon="auto_awesome" :disabled="busy" @click="develop(detail)">Kembangkan dengan ELGOS</UiButton>
+            </div>
+            <!-- P8 R20 (PK-1, LI-4): kalimat vendor jadi petunjuk kecil di bawah tombol -->
+            <p id="li-minta-hint" class="el-muted li-hint">Tombol Minta hanya mencatat permintaan di ELGOS; ELGOS tidak mengirim apa pun ke {{ vendor }}.</p>
+          </template>
           <div v-else-if="detail.draft" class="li-actions">
             <UiButton variant="tonal" :to="{ name: 'req-draf', params: { id: detail.draft.id } }">Buka rancangan modul</UiButton>
           </div>
@@ -175,24 +214,3 @@ async function develop(m: ModuleDetail) {
     </template>
   </AppShell>
 </template>
-
-<style>
-.li-gap { margin-top: 16px; }
-.li-small { font-size: 13px; }
-.li-row { display: flex; gap: 12px; align-items: center; justify-content: space-between; flex-wrap: wrap; }
-.li-filters { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 12px; }
-.li-split { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 16px; align-items: start; }
-@media (max-width: 1100px) { .li-split { grid-template-columns: minmax(0, 1fr); } }
-.li-list { list-style: none; margin: 0; padding: 0; max-height: 640px; overflow: auto; }
-.li-item {
-  display: flex; gap: 12px; width: 100%; text-align: left; padding: 12px; border: 0; border-bottom: 1px solid var(--el-outline-variant);
-  background: none; color: inherit; font: inherit; cursor: pointer; border-radius: 8px;
-}
-.li-item:hover { background: var(--el-surface-1); }
-.li-item[aria-current='true'] { background: var(--el-secondary-container); color: var(--el-on-secondary-container); }
-.li-item:focus-visible { outline: 2px solid var(--el-primary); outline-offset: -2px; }
-.li-item__body { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
-.li-chips { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
-.li-actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 16px; }
-.li-h4 { font-size: 14px; font-weight: 500; margin: 12px 0 4px; }
-</style>

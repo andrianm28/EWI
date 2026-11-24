@@ -4,10 +4,10 @@
 import { computed, onMounted, ref, watch } from 'vue'
 import AppShell from '@/components/AppShell.vue'
 import { useSessionStore } from '@/stores/session'
-import { UiAuditLine, UiButton, UiCard, UiChip, UiDataTable, UiErrorSummary, UiKpiCard, UiNote, UiSegmented, UiTabs, type UiColumn } from '@/ui'
+import { UiAuditLine, UiBreadcrumb, UiButton, UiCard, UiChip, UiDataTable, UiErrorSummary, UiKpiCard, UiNote, UiSegmented, UiTabs, type ChipTone, type UiColumn } from '@/ui'
 import { cpApi, TIER_LABEL, type Action, type CareerMap, type CareerStatus, type DecisionRow, type Evidence, type MapRow, type Paths } from './api'
 
-type Tone = 'training' | 'improvement' | 'review' | 'success' | 'critical' | 'neutral'
+type Tone = ChipTone
 const session = useSessionStore()
 const role = computed(() => session.user?.role ?? '')
 
@@ -31,7 +31,8 @@ async function guard<T>(fn: () => Promise<T>): Promise<T | null> {
 }
 
 const okrMin = computed(() => map.value?.okrMin ?? paths.value?.okrMin ?? 80)
-const scopeText = computed(() => (role.value === 'supervisor' ? 'Anda melihat bawahan langsung Anda.' : 'HR melihat seluruh karyawan.'))
+// CP-1: copy mockup untuk HR; atasan tetap bawahan langsung (PK-8, RG-3)
+const scopeText = computed(() => (role.value === 'supervisor' ? 'Anda melihat bawahan langsung Anda.' : 'Seluruh divisi dan departemen.'))
 const NO_DIVISION = '__none__'
 const divisionOptions = computed(() => [
   { key: 'all', label: 'Semua' }, ...(map.value?.divisions ?? []).map((d) => ({ key: d, label: d })),
@@ -51,7 +52,20 @@ function statusText(s: CareerStatus, next: { name: string } | null): string {
     default: return next ? `Menuju ${next.name}` : 'Menuju jenjang berikutnya'
   }
 }
-const statusTone = (s: CareerStatus): Tone => (s === 'eligible' ? 'success' : s === 'below_current' ? 'critical' : s.startsWith('program_passed') ? 'review' : 'neutral')
+const statusTone = (s: CareerStatus): Tone => (s === 'eligible' ? 'success' : s === 'below_current' ? 'critical' : s.startsWith('program_passed') || s === 'on_track' ? 'review' : 'neutral')
+/** Sub status jenjang (CP-6, mockup `stOf`): apa yang kurang atau apa yang terjadi berikutnya. */
+function statusSub(r: Pick<MapRow, 'status' | 'programs' | 'okr' | 'level' | 'nextLevel'>): string {
+  const firstMissing = r.programs.find((p) => !p.passed)
+  switch (r.status) {
+    case 'below_current': return firstMissing ? `Perlu lulus ${TIER_LABEL[firstMissing.tier]}` : ''
+    case 'eligible': return 'Program dan OKR terpenuhi; menunggu keputusan'
+    case 'program_passed_okr_low': return r.okr ? `OKR saat ini ${fmtPct(r.okr.achievement)}` : ''
+    case 'program_passed_no_okr': return 'OKR belum ada'
+    case 'top_level': return r.level?.name ?? ''
+    case 'on_track': return r.nextLevel?.requiredProgramTier ? `Perlu lulus ${TIER_LABEL[r.nextLevel.requiredProgramTier]}` : ''
+    default: return ''
+  }
+}
 const decisionText: Record<string, string> = { recommend: 'Direkomendasi', hold: 'Ditunda', approved: 'Disetujui' }
 const SUPERVISOR_TEXT: Record<string, string> = { recommend: 'Merekomendasikan', hold: 'Menunda' }
 const decisionTone = (d?: string): Tone => (d === 'approved' || d === 'recommend' ? 'success' : d === 'hold' ? 'review' : 'neutral')
@@ -99,8 +113,14 @@ watch(selected, loadEvidence)
 const MAP_COLUMNS: UiColumn[] = [
   { key: 'name', label: 'Karyawan', sortable: true }, { key: 'division', label: 'Divisi', sortable: true },
   { key: 'level', label: 'Jabatan', sortValue: (r) => (r as unknown as MapRow).level?.name }, { key: 'programs', label: 'Program kompetensi' },
-  { key: 'status', label: 'Status jenjang', sortable: true }, { key: 'open', label: 'Bukti' },
+  { key: 'status', label: 'Status jenjang', sortable: true },
 ]
+/** CP-9: syarat seperti mockup. */
+function reqText(r: DecisionRow): string {
+  const okr = r.requirement.okr
+  if (!okr) return 'Program lulus · OKR belum ada'
+  return okr.met ? 'Program dan OKR terpenuhi' : `OKR ${fmtPct(okr.achievement)} < ${okr.min}%`
+}
 const DEC_COLUMNS: UiColumn[] = [
   { key: 'employee', label: 'Karyawan' }, { key: 'move', label: 'Usulan jenjang' }, { key: 'req', label: 'Syarat (program + OKR)' },
   { key: 'supervisor', label: 'Atasan' }, { key: 'hr', label: 'HR' }, { key: 'actions', label: 'Tindakan' },
@@ -110,8 +130,8 @@ const fmtTime = (iso: string) => new Date(iso).toLocaleString('id-ID', { dateSty
 // C2: pembulatan tampilan tidak boleh menyeberangi ambang (79,5 tampil 79%, bukan 80%)
 const fmtPct = (n: number) => { const r = Math.round(n); return `${r >= okrMin.value && n < okrMin.value ? Math.floor(n) : r}%` }
 const decNote = computed(() => (role.value === 'supervisor'
-  ? 'Anda memberi rekomendasi untuk bawahan langsung yang memenuhi syarat. HR mengambil keputusan akhir.'
-  : 'HR memutuskan setelah atasan langsung memberi rekomendasi. Menyetujui tidak mengubah jenjang secara otomatis; ubah jenjang setelah surat keputusan terbit.'))
+  ? 'Anda memberi rekomendasi. Keputusan akhir ada di HR.'
+  : 'HR memutuskan setelah ada rekomendasi atasan. Memenuhi dua syarat (program dan OKR) tidak otomatis disetujui.'))
 const FLOW = computed(() => [
   { who: 'Sistem', tone: 'training' as Tone, t: `Menandai karyawan yang memenuhi dua syarat: lulus program tingkat berikutnya dan OKR ≥ ${okrMin.value}%.` },
   { who: 'Atasan', tone: 'review' as Tone, t: 'Menilai kesiapan di pekerjaan dan memberi rekomendasi: setuju atau tunda.' },
@@ -130,6 +150,7 @@ function ruleFor(i: number): string {
 
 <template>
   <AppShell>
+    <UiBreadcrumb :items="[{ label: 'Career & Promotion' }]" />
     <h1 class="el-h1">Career &amp; Promotion</h1>
     <p class="el-muted" style="margin:0 0 4px">Posisi karyawan pada jenjang jabatan berdasarkan program kompetensi yang sudah lulus dan pencapaian OKR. {{ scopeText }}</p>
     <UiNote tone="warning" style="margin:12px 0">
@@ -146,26 +167,27 @@ function ruleFor(i: number): string {
         <template v-if="map">
           <div class="el-grid el-grid-4">
             <UiKpiCard label="Karyawan" :value="map.kpi.employees" :note="`${map.kpi.divisions} divisi`" />
-            <UiKpiCard label="Memenuhi syarat" :value="map.kpi.eligible" :note="`program lulus dan OKR ≥ ${map.okrMin}%`" />
+            <UiKpiCard label="Memenuhi syarat jenjang berikutnya" :value="map.kpi.eligible" :note="`program dan OKR ≥ ${map.okrMin}%; belum keputusan`" />
             <UiKpiCard label="Menunggu keputusan" :value="map.kpi.awaitingDecision" note="atasan atau HR" />
-            <UiKpiCard label="Belum memenuhi jabatan" :value="map.kpi.belowCurrent" note="program jenjangnya sendiri" />
+            <UiKpiCard label="Belum memenuhi kompetensi jabatan" :value="map.kpi.belowCurrent" note="perlu lulus program tingkat jabatannya" />
           </div>
-          <div class="cp-row" style="margin:16px 0 12px">
+          <div class="cp-row" style="margin:16px 0 12px;gap:8px">
+            <span class="el-muted" style="font-weight:500" aria-hidden="true">Divisi:</span>
             <UiSegmented v-model="division" :options="divisionOptions" label="Divisi" />
           </div>
           <UiDataTable :columns="MAP_COLUMNS" :rows="people" row-key="id" caption="Karyawan dan status jenjang" caption-hidden empty-text="Belum ada karyawan.">
-            <template #cell-name="{ row }"><span style="font-weight:500">{{ row.name ?? '(tanpa nama)' }}</span><div class="el-muted" style="font-size:12px">{{ row.jobRoleName ?? 'Tanpa jabatan' }}</div></template>
+            <!-- CP-4 / K-P7-3: baris dipilih lewat tombol nama (keyboard), baris terpilih disorot -->
+            <template #cell-name="{ row }"><button type="button" class="cp-pick" :aria-current="row.id === selected ? 'true' : undefined" :aria-label="`Pilih ${row.name ?? ''}`" @click="selected = String(row.id)">{{ row.name ?? '(tanpa nama)' }}</button><div class="el-muted" style="font-size:12px">{{ row.jobRoleName ?? 'Tanpa jabatan' }}</div></template>
             <template #cell-division="{ value }">{{ value ?? 'Tanpa divisi' }}</template>
             <template #cell-level="{ row }"><UiChip v-if="row.level" tone="training">{{ row.level.name }}</UiChip><span v-else class="el-muted">–</span></template>
             <template #cell-programs="{ row }">
               <UiChip v-if="!row.programs.length">Belum ada kamus</UiChip>
-              <span v-else class="cp-row"><UiChip v-for="p in row.programs" :key="p.tier" :tone="p.passed ? 'success' : 'neutral'" :icon="p.passed ? 'check_circle' : undefined">{{ TIER_LABEL[p.tier] }}<span class="el-sr-only">{{ p.passed ? ' lulus' : ' belum lulus' }}</span></UiChip></span>
+              <span v-else class="cp-row"><UiChip v-for="p in row.programs" :key="p.tier" :tone="p.passed ? 'success' : 'neutral'">{{ TIER_LABEL[p.tier] }}<span class="el-sr-only">{{ p.passed ? ' lulus' : ' belum lulus' }}</span></UiChip></span>
             </template>
             <template #cell-status="{ row }">
               <UiChip :tone="statusTone(row.status)">{{ statusText(row.status, row.nextLevel) }}</UiChip>
-              <div class="el-muted" style="font-size:12px;margin-top:2px">{{ row.okr ? `OKR ${fmtPct(row.okr.achievement)}` : 'OKR belum ada' }}</div>
+              <div v-if="statusSub(row as unknown as MapRow)" class="el-muted" style="font-size:12px;margin-top:2px">{{ statusSub(row as unknown as MapRow) }}</div>
             </template>
-            <template #cell-open="{ row }"><UiButton variant="text" size="sm" :aria-label="`Bukti ${row.name ?? ''}`" :aria-pressed="row.id === selected" @click="selected = row.id">Lihat</UiButton></template>
           </UiDataTable>
 
           <UiCard v-if="evidence" style="margin-top:16px" data-testid="cp-evidence">
@@ -178,11 +200,11 @@ function ruleFor(i: number): string {
             </div>
             <div class="el-grid el-grid-4" style="margin-top:12px">
               <div class="cp-mod"><span class="el-muted" style="font-size:12px">Program lulus</span><b>{{ evidence.programsPassed.length ? evidence.programsPassed.map((t) => TIER_LABEL[t]).join(', ') : 'Belum ada' }}</b></div>
-              <div class="cp-mod"><span class="el-muted" style="font-size:12px">Pencapaian OKR</span><b>{{ evidence.okr ? `${fmtPct(evidence.okr.achievement)} (ambang ${evidence.okr.min}%) · ${evidence.okr.met ? 'terpenuhi' : 'belum terpenuhi'}` : 'Belum ada data' }}</b><span v-if="evidence.okr?.period" class="el-muted" style="font-size:12px">Periode {{ evidence.okr.period }}</span></div>
+              <div class="cp-mod"><span class="el-muted" style="font-size:12px">Pencapaian OKR (syarat ≥ {{ evidence.okr?.min ?? okrMin }}%)</span><b>{{ evidence.okr ? `${fmtPct(evidence.okr.achievement)} · ${evidence.okr.met ? 'terpenuhi' : 'belum'}` : 'Belum ada data' }}</b><span v-if="evidence.okr?.period" class="el-muted" style="font-size:12px">Periode {{ evidence.okr.period }}</span></div>
               <div class="cp-mod"><span class="el-muted" style="font-size:12px">Wawancara ulang AI</span><b>Belum tersedia</b></div>
               <div class="cp-mod"><span class="el-muted" style="font-size:12px">Review atasan</span><b>{{ evidence.supervisorRecommendation ? `${decisionText[evidence.supervisorRecommendation.decision]} oleh ${evidence.supervisorRecommendation.byName ?? 'atasan'}` : 'Belum ada' }}</b></div>
             </div>
-            <p class="el-muted" style="font-size:12px;margin-top:8px">Bukti hanya bahan pertimbangan. Kenaikan jabatan diputuskan atasan dan HR.</p>
+            <p class="el-muted" style="font-size:12px;margin-top:8px">Promosi memerlukan dua syarat: lulus program jenjang berikutnya dan OKR ≥ {{ okrMin }}%. AI hanya menyusun ringkasan dan tidak merekomendasikan keputusan.</p>
           </UiCard>
         </template>
       </div>
@@ -220,7 +242,7 @@ function ruleFor(i: number): string {
             <template #cell-employee="{ row }"><span style="font-weight:500">{{ row.employee.name ?? '(tanpa nama)' }}</span><div class="el-muted" style="font-size:12px">{{ row.employee.division ?? 'Tanpa divisi' }}</div></template>
             <template #cell-move="{ row }">{{ row.fromLevel?.name }} → {{ row.toLevel?.name }}</template>
             <template #cell-req="{ row }">
-              <UiChip :tone="row.eligible ? 'success' : 'review'">{{ row.requirement.okr ? `Program lulus · OKR ${fmtPct(row.requirement.okr.achievement)}` : 'Program lulus · OKR belum ada' }}</UiChip>
+              <UiChip :tone="row.eligible ? 'success' : 'review'">{{ reqText(row as unknown as DecisionRow) }}</UiChip>
             </template>
             <template #cell-supervisor="{ row }">
               <UiChip :tone="decisionTone(row.supervisor?.decision)">{{ row.supervisor ? SUPERVISOR_TEXT[row.supervisor.decision] : 'Belum' }}</UiChip>
@@ -234,12 +256,16 @@ function ruleFor(i: number): string {
             </template>
             <template #cell-actions="{ row }">
               <div v-if="row.actions.length" class="cp-actions">
-                <label class="el-sr-only" :for="`note-${row.id}`">Catatan untuk {{ row.employee.name }}</label>
-                <input :id="`note-${row.id}`" v-model="notes[row.id]" class="el-input" maxlength="2000" placeholder="Catatan (opsional)" />
                 <span class="cp-row">
                   <UiButton v-for="a in row.actions" :key="a" :variant="a === 'hold' ? 'outlined' : 'tonal'" size="sm" :disabled="busy !== null"
                     :aria-label="`${ACTION_LABEL[a]} ${row.employee.name ?? ''}`" @click="act(row, a)">{{ ACTION_LABEL[a] }}</UiButton>
                 </span>
+                <!-- CP-10: catatan audit dipertahankan di pola sekunder -->
+                <details class="cp-note">
+                  <summary>Tambah catatan<span class="el-sr-only"> untuk {{ row.employee.name }}</span></summary>
+                  <label class="el-sr-only" :for="`note-${row.id}`">Catatan untuk {{ row.employee.name }}</label>
+                  <input :id="`note-${row.id}`" v-model="notes[row.id]" class="el-input" maxlength="2000" placeholder="Catatan (opsional)" />
+                </details>
               </div>
               <span v-else class="el-muted" style="font-size:13px">{{ BLOCKED[row.blockedReason ?? ''] ?? '–' }}</span>
             </template>
@@ -257,4 +283,10 @@ function ruleFor(i: number): string {
 .cp-mod { display: flex; flex-direction: column; gap: 4px; padding: 10px 12px; border-radius: 12px; border: 1px solid var(--el-outline-variant); background: var(--el-surface-card); }
 .cp-flow { display: flex; align-items: center; gap: 12px; padding: 8px 0; border-bottom: 1px solid var(--el-outline-variant); }
 .cp-actions { display: flex; flex-direction: column; gap: 6px; min-width: 200px; }
+.cp-pick { border: 0; background: none; padding: 0; font: inherit; font-weight: 500; color: inherit; cursor: pointer; text-align: left; }
+.cp-pick:hover { text-decoration: underline; }
+/* baris terpilih latar abu (mockup #ECEFF5) */
+[data-testid='cp-map'] tr:has(.cp-pick[aria-current='true']) td { background: var(--el-surface-2); }
+.cp-note > summary { cursor: pointer; color: var(--el-primary); font-size: 13px; }
+.cp-note .el-input { margin-top: 6px; }
 </style>

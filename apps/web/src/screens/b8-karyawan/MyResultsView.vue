@@ -7,7 +7,7 @@ import AppShell from '@/components/AppShell.vue'
 import { ApiError } from '@/api/client'
 import { formatWib, lna, type MyResults } from '@/api/lna'
 import DataSaya from './DataSaya.vue'
-import { UiButton, UiCard, UiDataTable, UiErrorSummary, UiNote, UiStatus, type UiColumn } from '@/ui'
+import { EMPTY, UiButton, UiCard, UiDataTable, UiErrorSummary, UiNote, type UiColumn } from '@/ui'
 import { competencyStatus, inviteAction, planSummary, scoreText } from './view'
 import { routeOpen } from '@/router'
 import { leaveIfDisabled } from './gate'
@@ -53,7 +53,7 @@ const columns: UiColumn[] = [
   { key: 'status', label: 'Status' },
 ]
 const rows = computed(() => (res.value?.competencies?.items ?? []).map((c) => ({
-  id: c.competencyId, code: c.code ?? '—', name: c.name, score: scoreText(c.score, c.required), status: c.status,
+  id: c.competencyId, code: c.code ?? EMPTY, name: c.name, score: scoreText(c.score, c.required), status: c.status,
 })))
 </script>
 
@@ -69,7 +69,8 @@ const rows = computed(() => (res.value?.competencies?.items ?? []).map((c) => ({
       <p class="el-muted b8-sub">{{ position }}</p>
       <section v-if="res.invitations?.length" data-testid="my-invitations" aria-label="Undangan wawancara" class="b8-list b8-sub">
         <UiNote v-for="inv in res.invitations" :key="inv.sessionId" :tone="inviteAction(inv) ? 'info' : 'warning'">
-          <b>Undangan wawancara:</b> wawancara singkat tentang hambatan kerja dan kompetensi Anda. Hasilnya dipakai untuk menyusun rencana belajar, bukan untuk penilaian kinerja.
+          <!-- P8 R17 (K-7, MY-2): kalimat mockup dengan fokus wawancara aplikasi (KPI belum tercapai); satu catatan per undangan -->
+          <b>Undangan wawancara:</b> ada 1 wawancara singkat tentang target kerja (KPI) Anda yang belum tercapai. Hasilnya dipakai untuk menyusun rencana belajar, bukan untuk penilaian kinerja.
           <template v-if="inv.inviteExpiresAt"> Tenggat {{ formatWib(inv.inviteExpiresAt) }} WIB.</template>
           <div class="b8-gap-s">
             <UiButton v-if="inviteAction(inv)" size="sm" :to="{ name: 'iv-session', params: { id: inv.sessionId } }">{{ inviteAction(inv) }}</UiButton>
@@ -80,7 +81,8 @@ const rows = computed(() => (res.value?.competencies?.items ?? []).map((c) => ({
       <UiDataTable v-if="res.competencies" :columns="columns" :rows="rows" row-key="id" caption="Kompetensi Anda" caption-hidden
         empty-text="Kompetensi untuk jabatan Anda belum diatur.">
         <template #cell-status="{ row }">
-          <UiStatus :tone="competencyStatus(String(row.status)).tone">{{ competencyStatus(String(row.status)).label }}</UiStatus>
+          <!-- P8 R3 (K-3, MY-3): titik berwarna + teks seperti mockup `.state`/`.dot`; status tetap terbaca dari teks -->
+          <span class="b8-state"><i :class="['b8-dot', `b8-dot--${competencyStatus(String(row.status)).tone}`]" aria-hidden="true" />{{ competencyStatus(String(row.status)).label }}</span>
         </template>
       </UiDataTable>
       <UiCard v-if="res.plan" data-testid="my-plan" class="b8-gap">

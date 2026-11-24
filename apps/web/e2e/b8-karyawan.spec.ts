@@ -23,9 +23,9 @@ test('karyawan mendarat di Hasil saya dengan skor vs target dan status kompetens
   await expect(page.getByText('Posisi: Engineer Service Delivery · L1.')).toBeVisible()
   const tabel = page.getByRole('table')
   await expect(tabel.getByRole('row', { name: /ST-B4.*Manajemen tiket.*3 \/ 3.*Menguasai/ })).toBeVisible()
-  await expect(tabel.getByRole('row', { name: /—.*Analisis insiden.*3 \/ 4.*Sebagian/ })).toBeVisible()
+  await expect(tabel.getByRole('row', { name: /–.*Analisis insiden.*3 \/ 4.*Sebagian/ })).toBeVisible()
   await expect(tabel.getByRole('row', { name: /TC-I1.*Otomasi infrastruktur.*1 \/ 4.*Belum/ })).toBeVisible()
-  await expect(tabel.getByRole('row', { name: /ST-A2.*Komunikasi pelanggan.*— \/ 2.*Belum dinilai/ })).toBeVisible()
+  await expect(tabel.getByRole('row', { name: /ST-A2.*Komunikasi pelanggan.*– \/ 2.*Belum dinilai/ })).toBeVisible()
 })
 
 test('menu karyawan sesuai mockup, tanpa butir peralihan; undangan membuka sesi', async ({ page }) => {
@@ -35,6 +35,8 @@ test('menu karyawan sesuai mockup, tanpa butir peralihan; undangan membuka sesi'
   const undangan = page.getByTestId('my-invitations')
   await expect(undangan).toContainText('bukan untuk penilaian kinerja')
   await expect(undangan).toContainText('Tenggat')
+  // paritas: catatan undangan berjarak 20px dari bagian berikutnya (.b8-list tidak menimpa .b8-sub)
+  await expect(undangan).toHaveCSS('margin-bottom', '20px')
   await undangan.getByRole('link', { name: 'Mulai wawancara' }).click()
   await expect(page).toHaveURL(/\/iv\/s1$/)
 })
@@ -233,6 +235,17 @@ test('Rencana belajar: kosong, dan pengantar memakai nama LMS tenant', async ({ 
   await expect(page.getByText('Belum ada rencana belajar. Modul akan muncul di sini setelah HR menyetujui hasil wawancara Anda.')).toBeVisible()
 })
 
+test('P7 LI-1..LI-4: chip mode berwarna, offline "Ujian di EliteMentor", ikon di tombol, catatan EliteMentor', async ({ page }) => {
+  await rencana(page, [{ ...KARTU[3], id: 'on', mode: 'Online' }, { ...KARTU[3], id: 'off', mode: 'Offline' }])
+  const on = page.getByTestId('li-card-on')
+  const off = page.getByTestId('li-card-off')
+  await expect(on.locator('.el-chip', { hasText: 'Online' })).toHaveClass(/el-chip--training/)
+  await expect(off.locator('.el-chip', { hasText: 'Offline' })).toHaveClass(/el-chip--improvement/)
+  await expect(off.getByRole('link', { name: /Ujian di EliteMentor/ })).toBeVisible()
+  await expect(on.getByRole('link', { name: /Belajar dengan EliteMentor/ }).locator('.el-icon')).toHaveCount(1)
+  await expect(page.getByRole('note').filter({ hasText: 'Pelatihan online dipelajari bersama EliteMentor. Untuk pelatihan offline, ujian dikerjakan di EliteMentor saat Anda berada di lokasi; skor langsung masuk ke ELGOS.' })).toBeVisible()
+})
+
 test('HR dengan peran dari API (B2) berganti ke Karyawan (saya) lewat switch-role', async ({ page }) => {
   const ganti: unknown[] = []
   await mockApi(page, (req) => {
@@ -253,4 +266,23 @@ test('HR dengan peran dari API (B2) berganti ke Karyawan (saya) lewat switch-rol
   await page.getByRole('group', { name: 'Tampilan' }).getByRole('button', { name: 'Karyawan (saya)' }).click()
   await expect(page).toHaveURL(/\/my$/)
   expect(ganti).toEqual([{ role: 'learner' }])
+})
+
+// Paritas P8 (docs/designs/paritas-mockup/p8-keputusan-r1-r22.md)
+test('P8 R3/R16/R17: status titik + teks, undangan tentang KPI belum tercapai, tanpa "Lihat contoh rekomendasi"', async ({ page }) => {
+  await masuk(page)
+  const tabel = page.getByRole('table')
+  const menguasai = tabel.getByRole('row', { name: /ST-B4/ }).getByRole('cell').last()
+  await expect(menguasai.locator('.b8-dot')).toHaveCount(1)
+  await expect(menguasai).toHaveText('Menguasai')
+  await expect(tabel.locator('.el-status')).toHaveCount(0)
+  const undangan = page.getByTestId('my-invitations')
+  await expect(undangan).toContainText('ada 1 wawancara singkat tentang target kerja (KPI) Anda yang belum tercapai.')
+  await expect(undangan).not.toContainText('hambatan kerja')
+  // triase #11: kartu rencana kosong (fixture bawaan) benar-benar tampil sebelum memeriksa tombolnya tidak ada
+  const rencana = page.getByTestId('my-plan')
+  await expect(rencana).toBeVisible()
+  await expect(rencana).toContainText('akan muncul di sini setelah HR menyetujui hasil wawancara')
+  await expect(rencana.getByRole('button', { name: 'Lihat contoh rekomendasi' })).toHaveCount(0)
+  await expect(rencana.getByRole('link', { name: 'Lihat contoh rekomendasi' })).toHaveCount(0)
 })

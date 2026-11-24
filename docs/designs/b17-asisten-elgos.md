@@ -1,6 +1,6 @@
 # B17 · Asisten ELGOS
 
-Status: backend terbangun dan direview egm tahap 5–9 (19 Nov 2026), PR #24. Paket T5 di brief bangun penuh. Dasar kode: PR #15 (penyedia AI Bedrock + tiruan), B7 dan B8 (branch yang sama). Layar web ditaruh di `screens/asisten/ShellExtra.vue` di atas PR B3 (#26); spek ini mencakup backend dan kontrak untuk layar.
+Status: backend terbangun dan direview egm tahap 5–9 (19 Nov 2026), PR #24. Paket T5 di brief bangun penuh. Dasar kode: PR #15 (penyedia AI Bedrock + tiruan), B7 dan B8 (branch yang sama). Layar web: `apps/web/src/screens/b17-asisten/ShellExtra.vue` (paritas mockup, spek tahap [`paritas-mockup/b17-asisten-web.md`](paritas-mockup/b17-asisten-web.md)); spek ini mencakup backend dan kontrak untuk layar. Tampilan Admin Tenant tidak mendapat panel (bukan tujuan, lihat di bawah).
 
 Penanda: `[⚠️ BELUM TERVERIFIKASI]` = asumsi yang belum dikonfirmasi pemiliknya; `[⏳ DITERIMA]` = kekurangan yang sengaja diterima untuk POC 2 Des, dicatat di PR. Laporan review: `docs/designs/egm/b17/`.
 
@@ -221,6 +221,6 @@ assistantReply({ view, roleLabel, facts, pages: [{ key, label }], question })
 - [x] `apps/api/src/app.js` (pasang `/api/assistant`)
 - [x] `apps/api/tests/unit/assistant.test.js`, `apps/api/tests/integration/asisten.test.js`
 - [x] `apps/web/src/api/assistant.ts` (pemanggil dan tipe)
-- [ ] `apps/web/src/screens/asisten/ShellExtra.vue` dan e2e panel (di atas PR B3 #26)
+- [x] `apps/web/src/screens/b17-asisten/ShellExtra.vue`, `store.ts`, dan `apps/web/e2e/asisten.spec.ts` (paritas mockup, `paritas-mockup/b17-asisten-web.md`)
 
 Catatan triase awal (review spek dan code review pertama) dipindahkan ke `docs/designs/egm/b17/triase-awal.md`; hasil egm-resolve di `docs/designs/egm/b17/goldfish_review_report.md`.

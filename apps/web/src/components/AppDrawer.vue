@@ -2,9 +2,9 @@
 // Navigation drawer accordion (Material 3). Isi menu dari src/shell/menu.ts sesuai tampilan aktif.
 import { computed, nextTick, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
-import { routeOpen } from '@/router'
 import { useSessionStore } from '@/stores/session'
-import { buildMenu, openGroups } from '@/shell/menu'
+import { buildMenu, menuContext, openGroups } from '@/shell/menu'
+import { theme, toggleTheme } from '@/shell/theme'
 import { UiIcon } from '@/ui'
 
 const props = defineProps<{ open: boolean }>()
@@ -13,13 +13,7 @@ const emit = defineEmits<{ close: [] }>()
 const session = useSessionStore()
 const route = useRoute()
 
-const menu = computed(() => buildMenu({
-  view: session.activeView,
-  routeOpen: (name) => routeOpen(name, session.activeView, session),
-  homeReady: session.homeReady(session.activeView),
-  flags: session.access?.flags ?? {},
-  canOpen: session.canOpen,
-}))
+const menu = computed(() => buildMenu(menuContext(session)))
 
 // Rute sesi wawancara lama (/m/:key/sessions/:id) menyalakan butir submodulnya
 const activeKey = computed(() => route.meta.menuKey ?? (route.name === 'interview' ? String(route.params.key) : String(route.name ?? '')))
@@ -63,6 +57,12 @@ watch(() => props.open, async (isOpen) => {
         </li>
       </template>
     </ul>
+    <div class="el-drawer__foot">
+      <!-- Mode gelap bukan bagian mockup (spek B0 bagian 3); diletakkan di kaki drawer agar top bar tetap seperti mockup -->
+      <button type="button" class="el-nav" :aria-pressed="theme === 'dark'" @click="toggleTheme">
+        <UiIcon :name="theme === 'dark' ? 'light_mode' : 'dark_mode'" /><span>Mode gelap</span>
+      </button>
+    </div>
   </nav>
 </template>
 
@@ -87,6 +87,7 @@ watch(() => props.open, async (isOpen) => {
 .el-nav > span { flex: 1; }
 .el-nav:hover { background: var(--el-surface-3); }
 .el-nav.is-active { background: var(--el-secondary-container); color: var(--el-on-secondary-container); font-weight: 500; }
+.el-drawer__foot { margin-top: auto; padding-top: 12px; }
 .el-nav--l1 { margin-left: 12px; width: calc(100% - 12px); min-height: 44px; }
 .el-nav:focus-visible { outline-offset: -2px; }
 

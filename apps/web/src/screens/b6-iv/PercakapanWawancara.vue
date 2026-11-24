@@ -4,6 +4,7 @@ import { ref } from 'vue'
 import { UiButton, UiChip } from '@/ui'
 import type { Turn } from './api'
 import './iv.css'
+import { AI_NAME } from '@/api/ai'
 
 defineProps<{ turns: Turn[]; questionLimit?: number; canAnswer: boolean; busy?: boolean }>()
 const emit = defineEmits<{ send: [text: string, restore: (t: string) => void] }>()
@@ -21,16 +22,17 @@ function submit() {
 <template>
   <div class="iv-chat-head">
     <h2 class="iv-h2">Percakapan</h2>
-    <UiChip v-if="questionLimit">Pertanyaan {{ turns.filter((t) => t.speaker === 'ai').length }}, paling banyak {{ questionLimit }}</UiChip>
+    <UiChip v-if="questionLimit">Pertanyaan {{ Math.min(turns.filter((t) => t.speaker === 'ai').length, questionLimit) }} dari {{ questionLimit }}</UiChip>
   </div>
   <div class="iv-chat" role="log" aria-live="polite" aria-label="Percakapan wawancara">
     <div v-for="(t, i) in turns" :key="i" :class="['iv-msg', t.speaker === 'ai' ? 'iv-msg--ai' : 'iv-msg--me']" :data-testid="`turn-${t.speaker}`">
-      <small>{{ t.speaker === 'ai' ? 'ELGOS-AI' : 'Anda' }}</small>{{ t.text }}
+      <small>{{ t.speaker === 'ai' ? AI_NAME : 'Anda' }}</small>{{ t.text }}
     </div>
   </div>
   <form v-if="canAnswer" class="iv-answer" @submit.prevent="submit">
     <label class="el-sr-only" for="iv-answer">Jawaban</label>
-    <textarea id="iv-answer" v-model="text" rows="2" class="el-input iv-grow" placeholder="Tulis jawaban Anda" />
+    <!-- P8 R13 (K-2, IV-7): input satu baris `.inp` mockup; pilihan jawaban AI menunggu paket B6 -->
+    <input id="iv-answer" v-model="text" type="text" autocomplete="off" class="el-input iv-grow" placeholder="Ketik jawaban Anda" />
     <slot name="masukan-suara" />
     <UiButton type="submit" :disabled="busy">Kirim</UiButton>
   </form>

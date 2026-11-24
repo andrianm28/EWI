@@ -62,6 +62,11 @@ test('Admin Tenant mendarat di Pengguna & peran; undang, kirim ulang, dan nonakt
   await expect(nav(page).getByRole('link')).toHaveText(['Pengguna & peran', 'Jabatan & kamus kompetensi', 'Impor data & integrasi'])
   await expect(page.getByRole('heading', { level: 1, name: 'Pengguna & peran' })).toBeVisible()
   await expect(page.getByTestId('usr-jumlah')).toHaveText('3 pengguna')
+  // P7 ADM-1/3/4/5: tanpa baris pil AdminNav; tombol undang berikon; email mono 12px; nama satu baris
+  await expect(page.getByRole('navigation', { name: 'Layar Admin Tenant' })).toHaveCount(0)
+  await expect(page.getByTestId('usr-undang').locator('.el-icon')).toHaveCount(1)
+  await expect(page.getByRole('cell', { name: 'a@demo.test', exact: true }).locator('.el-mono')).toHaveCSS('font-size', '12px')
+  await expect(page.getByRole('row').filter({ hasText: 'Admin Satu' }).locator('b.adm__nowrap')).toHaveCSS('white-space', 'nowrap')
   await expect(page.getByText('SSO aktif')).toBeVisible()
 
   const row = (name: string) => page.getByRole('row').filter({ hasText: name })
@@ -79,6 +84,9 @@ test('Admin Tenant mendarat di Pengguna & peran; undang, kirim ulang, dan nonakt
   await page.getByLabel('Jabatan').selectOption('j-1')
   await page.getByRole('button', { name: 'Kirim undangan' }).click()
   await expect(page.getByTestId('adm-info')).toContainText('Undangan dikirim ke atasan.baru@demo.test')
+  // P7 ADM-2: note sukses hijau di dalam wilayah status
+  await expect(page.getByTestId('adm-info')).toHaveClass(/el-note--success/)
+  await expect(page.getByRole('status').getByTestId('adm-info')).toBeVisible()
   expect(sent[0]).toEqual({ method: 'POST', path: '/users', body: { name: 'Atasan Baru', email: 'atasan.baru@demo.test', role: 'supervisor', jobRoleId: 'j-1', employeeId: null } })
 
   await row('Karyawan A').getByRole('button', { name: 'Kirim ulang undangan' }).click()
@@ -104,6 +112,10 @@ test('Jabatan & kamus: daftar, nama kembar ditolak, lihat kamus', async ({ page 
   await expect(row('Engineer Service Delivery')).toContainText('DACUM · DACUM_SD_v2.1.xlsx')
   await expect(row('Sales')).toContainText('Belum tersedia')
   await expect(row('Sales').getByRole('button', { name: 'Lihat kamus' })).toHaveCount(0)
+  // P7 JOB-2/JOB-3: jumlah "—" tanpa kamus, sumber kosong copy mockup
+  await expect(row('Sales')).toContainText('Belum ada lokakarya DACUM')
+  await expect(row('Sales').getByRole('cell', { name: '–' }).first()).toBeVisible()
+  await expect(page.getByRole('navigation', { name: 'Layar Admin Tenant' })).toHaveCount(0)
 
   await page.getByTestId('job-tambah').click()
   await page.getByLabel('Nama jabatan').fill('sales')
@@ -188,4 +200,47 @@ test('flag admin.tenant mati: layar tidak bisa dibuka', async ({ page }) => {
   await expect(page).not.toHaveURL(/\/admin\/pengguna$/)
   await page.goto('/admin/pengguna')
   await expect(page).not.toHaveURL(/\/admin\/pengguna$/)
+})
+
+test('triase P7 ADM-1: Super Admin yang membuka layar admin lewat alamat mendapat tautan antar tiga layar; HR tidak lagi (interim dicabut 24 Nov)', async ({ page }) => {
+  await page.route('**/api/tenant-admin/**', (r) => {
+    const path = new URL(r.request().url()).pathname.replace(/^.*\/api\/tenant-admin/, '')
+    if (path === '/users') return json(r, { data: USERS, meta: { total: USERS.length, sso: false } })
+    if (path === '/roles') return json(r, { data: [] })
+    if (path === '/job-roles') return json(r, { data: JOBS })
+    return json(r, { error: { code: 'NOT_FOUND', message: 'tidak ada' } }, 404)
+  })
+  await login(page, 'eta_admin')
+  await expect(nav(page).getByRole('link', { name: 'Pengguna & peran' })).toHaveCount(0)
+  await page.goto('/admin/pengguna')
+  const links = page.getByRole('navigation', { name: 'Layar Admin Tenant' })
+  await expect(links.getByRole('link')).toHaveText(['Pengguna & peran', 'Jabatan & kamus kompetensi', 'Impor data & integrasi'])
+  await expect(links.getByRole('link', { name: 'Pengguna & peran' })).toHaveAttribute('aria-current', 'page')
+  await links.getByRole('link', { name: 'Jabatan & kamus kompetensi' }).click()
+  await expect(page).toHaveURL(/\/admin\/jabatan$/)
+  await expect(page.getByRole('heading', { level: 1, name: 'Jabatan & kamus kompetensi' })).toBeVisible()
+  await expect(links.getByRole('link', { name: 'Jabatan & kamus kompetensi' })).toHaveAttribute('aria-current', 'page')
+})
+
+test('ADM-1 sesudah interim dicabut: HR yang membuka /admin/pengguna lewat alamat dialihkan', async ({ page }) => {
+  await login(page, 'hr_admin')
+  await page.goto('/admin/pengguna')
+  await expect(page).not.toHaveURL(/\/admin\/pengguna$/)
+  await expect(page.getByRole('navigation', { name: 'Layar Admin Tenant' })).toHaveCount(0)
+})
+
+// Paritas P8 (docs/designs/paritas-mockup/p8-keputusan-r1-r22.md)
+test('P8 R3: status pengguna berupa chip terisi seperti mockup', async ({ page }) => {
+  await page.route('**/api/tenant-admin/**', (r) => {
+    const path = new URL(r.request().url()).pathname.replace(/^.*\/api\/tenant-admin/, '')
+    if (path === '/users') return json(r, { data: USERS, meta: { total: USERS.length, sso: true } })
+    if (path === '/roles') return json(r, { data: [{ key: 'learner', label: 'Karyawan' }] })
+    if (path === '/job-roles') return json(r, { data: JOBS })
+    return json(r, { error: { code: 'NOT_FOUND', message: 'tidak ada' } }, 404)
+  })
+  await login(page)
+  await expect(page.getByRole('row', { name: /Karyawan A/ }).locator('.el-chip--training')).toHaveText('Diundang')
+  const baris = page.getByRole('row', { name: /Admin Satu/ })
+  await expect(baris.locator('.el-chip--success')).toHaveText('Aktif')
+  await expect(baris.locator('.el-status')).toHaveCount(0)
 })

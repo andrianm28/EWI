@@ -329,7 +329,7 @@ Ditulis sebelum PR layar. Dasar: B0 bagian 4 dan 5.3, mockup layar `iv`. Folder 
 - **Flag dimatikan saat sesi di langkah ringkasan** (A1): `GET /summary` dan `/confirm` ditolak 403, jadi layar menampilkan catatan "Langkah ringkasan sedang dinonaktifkan. Kirim wawancara ke HR tanpa ringkasan." dan tombol "Selesai dan kirim" (`/complete`).
 - **Selesai** (`step = done`): `summaryState` `confirmed`/`disputed` → "Ringkasan sudah dikirim ke HR untuk ditinjau."; selain itu "Wawancara ini sudah selesai." (`unchecked` juga mencakup alur lama, jadi tidak ditulis "ditutup HR"). `step = closed` → "Sesi ini dibatalkan."
 - **Undangan berakhir** (`step = expired`, stepper di Undangan): "Undangan sudah berakhir. Minta HR memperpanjang undangan Anda."
-- Footer `UiAuditLine`: `sessionCode` · `aiLabel` · "log audit: persetujuan tercatat · n jawaban" (`answerCount`).
+- Footer `UiAuditLine`: `sessionCode` · "model ELGOS-AI (POC)" · "log audit: persetujuan tercatat · n jawaban" (`answerCount`). Label produk AI ditetapkan di klien (`src/api/ai.ts`, paritas P8 R18); web tidak membaca `aiLabel` dari API (triase P8 #9). API tetap mengirim `aiLabel` untuk klien lain.
 
 **Klien API** `screens/b6-iv/api.ts`: `session`, `consent`, `answer`, `complete`, `summary` (POST), `getSummary`, `confirm`, `restart`.
 

@@ -7,20 +7,29 @@ import { ApiError } from '@/api/client'
 import { platform, TENANT_STATUS, type PlatformTenant, type TenantList, type TenantModule } from '@/api/platform'
 import { UiButton, UiCard, UiChip, UiDataTable, UiErrorSummary, UiField, UiKpiCard, UiNote, UiStatus, type UiColumn, type UiSortState } from '@/ui'
 
+// P8 R3: nada TENANT_STATUS (UiStatus) dipetakan ke nada chip
+const CHIP_TONE = { success: 'success', info: 'training', neutral: 'neutral', warning: 'review' } as const
 const list = ref<TenantList | null>(null)
 const encryption = ref<'local' | 'kms'>('local')
 const loading = ref(true)
 const loadError = ref('')
 const notice = ref('')
+const noticeTone = ref<'success' | 'warning'>('success')
 const errors = ref<{ message: string; fieldId?: string }[]>([])
 const sort = ref<UiSortState | null>(null)
 const fail = (e: unknown) => (e instanceof ApiError ? e.message : 'Terjadi kesalahan. Coba lagi.')
+// Jawaban yang bentuknya tidak dikenal diberi pesan, bukan layar kosong (cek data asli 24 Nov).
+const BAD_TENANTS = 'Data tenant tidak bisa dibaca. Muat ulang halaman; bila masih gagal, hubungi tim ELGOS.'
+const BAD_MODULES = 'Data modul tidak bisa dibaca. Tutup panel lalu coba lagi.'
+const isObj = (x: unknown): x is Record<string, unknown> => !!x && typeof x === 'object' && !Array.isArray(x)
+const isTenantList = (x: unknown): x is TenantList => isObj(x) && isObj(x.kpis) && Array.isArray(x.tenants)
 
 async function load() {
   loadError.value = ''
   try {
     const [t, s] = await Promise.all([platform.tenants(), platform.settings()])
-    list.value = t.data
+    if (isTenantList(t.data)) list.value = t.data
+    else { list.value = null; loadError.value = BAD_TENANTS }
     encryption.value = s.data.encryptionProvider
   } catch (e) {
     loadError.value = fail(e)
@@ -43,7 +52,7 @@ const asTenant = (row: Record<string, unknown>) => row as unknown as PlatformTen
 
 async function act(fn: () => Promise<string>) {
   errors.value = []
-  notice.value = ''
+  notice.value = ''; noticeTone.value = 'success'
   try { notice.value = await fn(); await load() } catch (e) { errors.value = [{ message: fail(e) }] }
 }
 const reinvite = (t: PlatformTenant) => act(async () => { await platform.reinvite(t.id); return `Undangan dikirim ulang ke admin ${t.name}.` })
@@ -91,6 +100,7 @@ async function create() {
   try {
     const res = await platform.createTenant(input())
     formOpen.value = false
+    noticeTone.value = res.data.invitation === 'sent' ? 'success' : 'warning'
     notice.value = res.data.invitation === 'sent'
       ? `Tenant ${res.data.tenant.name} dibuat. Undangan dikirim ke ${form.adminEmail.trim()} (berlaku 7 hari).`
       : `Tenant ${res.data.tenant.name} dibuat, tetapi email undangan gagal terkirim. Kirim ulang dari tabel.`
@@ -104,10 +114,17 @@ async function create() {
 const selected = ref<PlatformTenant | null>(null)
 const modules = ref<TenantModule[]>([])
 const moduleError = ref('')
+const modulesLoading = ref(false)
 async function openModules(t: PlatformTenant) {
   selected.value = t
   moduleError.value = ''
-  try { modules.value = (await platform.modules(t.id)).data } catch (e) { moduleError.value = fail(e) }
+  modules.value = []
+  modulesLoading.value = true
+  try {
+    const data: unknown = (await platform.modules(t.id)).data
+    if (Array.isArray(data)) modules.value = data as TenantModule[]
+    else moduleError.value = BAD_MODULES
+  } catch (e) { moduleError.value = fail(e) } finally { modulesLoading.value = false }
 }
 async function toggle(m: TenantModule, enabled: boolean) {
   if (!selected.value) return
@@ -130,18 +147,18 @@ const accessLabel = (m: TenantModule) => (m.entitled === null ? 'Tidak perlu lan
 <template>
   <AppShell>
     <h1 class="el-h1">Tenant</h1>
-    <p class="el-muted sa__lead">Semua organisasi pengguna ELGOS. Super Admin melihat metadata dan angka; transkrip wawancara tidak pernah tampil di konsol ini.</p>
+    <p class="el-muted sa__lead">Super admin mengonfigurasi multi-tenant: satu tenant adalah satu perusahaan dengan datanya sendiri. Transkrip wawancara tidak pernah tampil di konsol ini.</p>
 
     <UiNote v-if="loadError" tone="critical">{{ loadError }}</UiNote>
     <p v-else-if="loading" class="el-muted">Memuat tenant…</p>
     <template v-else-if="list">
       <div class="el-grid el-grid-3">
-        <UiKpiCard data-testid="kpi-tenant" label="Tenant aktif" :value="list.kpis.activeTenants" :note="`dari ${list.kpis.tenants} tenant`" />
-        <UiKpiCard label="Total pengguna" :value="list.kpis.users" />
-        <UiKpiCard label="Modul tersedia" :value="list.kpis.modulesAvailable" note="dari 8 modul" />
+        <UiKpiCard data-testid="kpi-tenant" label="Tenant aktif" :value="list.kpis.activeTenants" :note="`dari ${list.kpis.tenants} tenant terdaftar`" />
+        <UiKpiCard label="Total pengguna" :value="list.kpis.users" note="seluruh tenant" />
+        <UiKpiCard label="Modul tersedia" :value="list.kpis.modulesAvailable" note="dapat diaktifkan per tenant" />
       </div>
 
-      <p v-if="notice" class="sa__notice sa__section" role="status">{{ notice }}</p>
+      <div v-if="notice" class="sa__notice sa__section" role="status"><UiNote :tone="noticeTone">{{ notice }}</UiNote></div>
       <UiErrorSummary v-if="!formOpen" :errors="errors" />
 
       <UiCard v-if="formOpen" class="sa__section" data-testid="tn-form">
@@ -150,10 +167,10 @@ const accessLabel = (m: TenantModule) => (m.entitled === null ? 'Tidak perlu lan
           <UiErrorSummary :errors="errors" />
           <div class="el-grid el-grid-2">
             <UiField id="tn-nama" v-slot="{ attrs }" label="Nama perusahaan" hint="Slug dibuat dari nama ini dan tidak bisa diganti setelah tenant dibuat.">
-              <input v-bind="attrs" v-model="form.name" class="el-input" type="text" maxlength="255" autocomplete="off" />
+              <input v-bind="attrs" v-model="form.name" class="el-input" type="text" maxlength="255" autocomplete="off" placeholder="PT Contoh Sejahtera" />
             </UiField>
             <UiField id="tn-email" v-slot="{ attrs }" label="Email admin tenant" hint="Link undangan dikirim ke alamat ini dan berlaku 7 hari.">
-              <input v-bind="attrs" v-model="form.adminEmail" class="el-input" type="email" maxlength="320" autocomplete="off" />
+              <input v-bind="attrs" v-model="form.adminEmail" class="el-input" type="email" maxlength="320" autocomplete="off" placeholder="admin@contoh.co.id" />
             </UiField>
             <UiField id="tn-admin" v-slot="{ attrs }" label="Nama admin tenant" hint="Opsional.">
               <input v-bind="attrs" v-model="form.adminName" class="el-input" type="text" maxlength="255" autocomplete="off" />
@@ -162,6 +179,7 @@ const accessLabel = (m: TenantModule) => (m.entitled === null ? 'Tidak perlu lan
               <input v-bind="attrs" v-model="form.id" class="el-input sa__mono" type="text" maxlength="36" autocomplete="off" />
             </UiField>
           </div>
+          <p class="el-muted sa__section">Admin tenant menerima undangan dan menyiapkan pengguna, jabatan, dan data sendiri.</p>
           <p v-if="checked && checked.for === formKey()" class="sa__slug" data-testid="slug-hasil">
             Slug: <code>{{ checked.slug }}</code>
             <UiStatus v-if="checked.exists" tone="warning">Slug ini sudah dipakai tenant lain. Ganti nama perusahaan.</UiStatus>
@@ -181,7 +199,10 @@ const accessLabel = (m: TenantModule) => (m.entitled === null ? 'Tidak perlu lan
           <UiButton v-if="!formOpen" size="sm" @click="openForm">Buat tenant baru</UiButton>
         </template>
         <template #cell-name="{ row }"><b>{{ asTenant(row).name }}</b><br /><span class="el-muted sa__mono">{{ asTenant(row).slug }}</span></template>
-        <template #cell-status="{ row }"><UiStatus :tone="TENANT_STATUS[asTenant(row).status].tone">{{ TENANT_STATUS[asTenant(row).status].label }}</UiStatus></template>
+        <!-- P8 R3 (K-3): status tenant berupa chip terisi seperti mockup -->
+        <template #cell-status="{ row }"><UiChip :tone="CHIP_TONE[TENANT_STATUS[asTenant(row).status].tone]">{{ TENANT_STATUS[asTenant(row).status].label }}</UiChip></template>
+        <!-- TEN-5: "{aktif} / {tersedia}" -->
+        <template #cell-activeModules="{ row }"><span class="el-mono">{{ asTenant(row).activeModules }} / {{ list.kpis.modulesAvailable }}</span></template>
         <template #cell-adminEmail="{ row }">{{ asTenant(row).adminEmail ?? 'Belum ada' }}</template>
         <template #cell-aksi="{ row }">
           <div class="sa__row">
@@ -202,6 +223,7 @@ const accessLabel = (m: TenantModule) => (m.entitled === null ? 'Tidak perlu lan
             <caption class="el-sr-only">Modul {{ selected.name }}</caption>
             <thead><tr><th scope="col">Modul</th><th scope="col">Akses</th><th scope="col">Status</th><th scope="col">Nyalakan</th></tr></thead>
             <tbody>
+              <tr v-if="!modulesLoading && !moduleError && modules.length === 0"><td colspan="4" class="el-muted">Belum ada modul untuk tenant ini.</td></tr>
               <tr v-for="m in modules" :key="m.key">
                 <th scope="row">{{ m.name }} <UiChip v-if="m.earlyAccess" tone="review">Akses awal</UiChip></th>
                 <td>{{ accessLabel(m) }}</td>
@@ -225,7 +247,7 @@ const accessLabel = (m: TenantModule) => (m.entitled === null ? 'Tidak perlu lan
 .sa__section { margin-top: 16px; }
 .sa__row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
 .sa__between { justify-content: space-between; }
-.sa__notice { margin: 0 0 12px; color: var(--el-success); font-weight: 500; }
+.sa__notice { margin: 0 0 12px; }
 .sa__mono { font-family: var(--el-font-mono, monospace); font-size: 0.875rem; }
 .sa__slug { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin: 12px 0 0; }
 .sa__table { width: 100%; border-collapse: collapse; margin-top: 8px; }

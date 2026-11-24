@@ -4,7 +4,7 @@ import { api } from './client'
 export interface Agreement { percent: number | null; approved: number; reviewed: number; targetPercent: number }
 export interface AnalysisDays { median: number; sessions: number; targetDays: number }
 export interface DashboardModule { no: number; key: 'lna' | 'li' | 'ld' | 'lim' | 'cp'; active: boolean; parts?: { key: string; active: boolean }[] }
-export interface ParetoRow { key: string; label: string; people: number; score: number; share: number; cumulativeShare: number; hot: boolean }
+export interface ParetoRow { key: string; label: string; competencyId: string | null; people: number; score: number; share: number; cumulativeShare: number; hot: boolean }
 export type ActionKey = 'review_pending' | 'interviews_open' | 'plan_needs_module' | 'non_training_findings' | 'competencies_unapproved'
 
 export interface DashboardSummary {

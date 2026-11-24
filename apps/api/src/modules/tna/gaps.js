@@ -72,7 +72,7 @@ function competencyGaps({ members, assessments }) {
     const actual = round2(avg(scores));
     const targetPct = toPct(target); const actualPct = toPct(actual);
     rows.push({
-      key: `c:${comp.id}`, kind: 'competency', competencyId: comp.id, name: comp.name,
+      key: `c:${comp.id}`, kind: 'competency', competencyId: comp.id, code: comp.code || null, name: comp.name,
       target, actual, gap: round2(Math.max(0, target - actual)),
       targetPct, actualPct, gapPct: Math.max(0, targetPct - actualPct),
       assessed: scores.length, peopleWithGap, peopleTotal,
@@ -175,6 +175,26 @@ function findingsByGap({ findings, sessionsById = new Map() }) {
   return out;
 }
 
+/**
+ * Kolom pencocokan temuan ke gap (aturan R6) yang dibawa baris temuan: nama field -> kolom SQL (alias `pr` baris
+ * kinerja, `s` sesi). Satu sumber untuk SELECT di lna-stores dan daftar field internal yang dibuang sebelum respons.
+ */
+const GAP_MATCH_COLUMNS = Object.freeze({
+  metricType: 'pr.metric_type', metricPeriod: 'pr.period', focusKind: 's.focus_kind', focusCompetencyId: 's.focus_competency_id',
+  focusMetricType: 's.focus_metric_type', focusMetricKey: 's.focus_metric_key', focusPeriod: 's.focus_period',
+});
+
+/**
+ * Paritas B7 web: temuan satu gap menurut R6, untuk baris yang membawa kolom fokus sesinya sendiri
+ * (`focusKind`, `focusCompetencyId`, `focusMetricType`, `focusMetricKey`, `focusPeriod`). Urutan masukan dipertahankan.
+ */
+function findingsInGap(findings, key) {
+  const sessionsById = new Map(findings.filter((f) => f.sessionId && f.focusKind).map((f) => [f.sessionId, {
+    focusKind: f.focusKind, focusCompetencyId: f.focusCompetencyId, focusMetricType: f.focusMetricType, focusMetricKey: f.focusMetricKey, focusPeriod: f.focusPeriod,
+  }]));
+  return findingsByGap({ findings, sessionsById }).get(key) || [];
+}
+
 /** R7: apa yang boleh dilihat pemanggil. nonTrainingUserIds null = semua karyawan. */
 function visibility({ role, userId, hasGrant = false, flagNonTraining = false, directReportIds = [] }) {
   if (HR_ROLES.includes(role)) return { draft: true, nonTraining: flagNonTraining, nonTrainingUserIds: null };
@@ -249,7 +269,7 @@ function evidenceFor(row, employees = []) {
   return out;
 }
 
-module.exports = {
-  SCORE_MAX, HYPOTHESES, toPct, latestScores, withPareto, competencyGaps, okrGaps, gapKeyOf, linkSessions, findingsByGap,
+module.exports = { GAP_MATCH_COLUMNS,
+  SCORE_MAX, HYPOTHESES, toPct, latestScores, withPareto, competencyGaps, okrGaps, gapKeyOf, linkSessions, findingsByGap, findingsInGap,
   visibility, classify, decorate, summarize, evidenceFor, isOpen,
 };

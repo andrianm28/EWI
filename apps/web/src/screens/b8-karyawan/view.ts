@@ -1,8 +1,11 @@
 // Fungsi murni layar B8 (label dan pilihan tombol), dipakai "Hasil saya" dan "Rencana belajar".
 // Spek: docs/designs/b8-karyawan.md "Layar web".
+// Angka memakai formatter bersama (koma desimal id-ID, paritas P8 R4).
+import { EMPTY, formatNumber } from '@/ui/format'
+import type { StatusTone } from '@/ui/tones'
 import type { DataRequestType, LearningCard, MyCompetencyStatus, MyResults } from '@/api/lna'
 
-type Tone = 'success' | 'warning' | 'critical' | 'neutral'
+type Tone = Exclude<StatusTone, 'info'>
 
 /** Status kompetensi mengikuti mockup (Menguasai / Sebagian / Belum), plus "Belum dinilai". */
 export const COMPETENCY_STATUS: Record<MyCompetencyStatus, { label: string; tone: Tone }> = {
@@ -12,16 +15,12 @@ export const COMPETENCY_STATUS: Record<MyCompetencyStatus, { label: string; tone
   not_assessed: { label: 'Belum dinilai', tone: 'neutral' },
 }
 
-const num = new Intl.NumberFormat('id-ID', { maximumFractionDigits: 2 })
-/** Angka dengan koma desimal (id-ID). */
-export const formatNumber = (n: number) => num.format(n)
-
 export function competencyStatus(status: string): { label: string; tone: Tone } {
   return COMPETENCY_STATUS[status as MyCompetencyStatus] ?? COMPETENCY_STATUS.not_assessed
 }
 
 export function scoreText(score: number | null, required: number): string {
-  return `${score === null ? '—' : formatNumber(score)} / ${formatNumber(required)}`
+  return `${score === null ? EMPTY : formatNumber(score)} / ${formatNumber(required)}`
 }
 
 // Label tampilan karyawan mengikuti mockup ("Belum dimulai"), sengaja berbeda dari PLAN_STATUS_LABEL HR di api/lna.ts.
@@ -45,8 +44,17 @@ export function planSummary(byStatus: Record<string, number>): string {
 }
 
 /** Teks tombol tautan keluar ke tempat belajar. */
-export function launchLabel(card: Pick<LearningCard, 'status' | 'where'>): string {
-  return card.status === 'completed' ? `Buka ${card.where.label}` : `Belajar dengan ${card.where.label}`
+export function launchLabel(card: Pick<LearningCard, 'status' | 'where'> & { mode?: string | null }): string {
+  if (card.status === 'completed') return `Buka ${card.where.label}`
+  // LI-2: pelatihan offline diujikan di tempat lewat EliteMentor/LMS
+  return isOffline(card.mode) ? `Ujian di ${card.where.label}` : `Belajar dengan ${card.where.label}`
+}
+
+const isOffline = (mode?: string | null) => (mode ?? '').toLowerCase() === 'offline'
+/** LI-1 / K-P7-1: chip mode online = training, offline = tersier (padanan `c-no` mockup). */
+export function modeTone(mode: string): 'training' | 'improvement' | 'neutral' {
+  if (isOffline(mode)) return 'improvement'
+  return mode.toLowerCase() === 'online' ? 'training' : 'neutral'
 }
 
 type Invitation = NonNullable<MyResults['invitations']>[number]

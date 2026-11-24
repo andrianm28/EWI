@@ -1,12 +1,17 @@
 <script setup lang="ts">
 // Referensi komponen ELGOS untuk tim desain dan pengembang. Bukan fitur aplikasi (hanya build VITE_UI_KIT=1).
 // Semua nilai di halaman ini adalah contoh, bukan data klien.
-import { ref } from 'vue'
+import { computed, ref } from 'vue'
+import { useRoute } from 'vue-router'
 import { theme, toggleTheme } from '@/shell/theme'
 import {
-  UiAuditLine, UiButton, UiCard, UiChip, UiDataTable, UiErrorSummary, UiField, UiKpiCard, UiNote, UiProgressBar,
+  UiAgentCard, UiAuditLine, UiBreadcrumb, UiButton, UiCard, UiChip, UiDataTable, UiErrorSummary, UiField, UiKpiCard, UiNote, UiProgressBar,
   UiSegmented, UiSkipLink, UiStatus, UiStepper, UiTabs, type UiColumn, type UiSortState,
 } from '@/ui'
+
+const route = useRoute()
+const picked = computed(() => (typeof route.query.kode === 'string' ? route.query.kode : ''))
+const rowTo = (row: Record<string, unknown>) => ({ name: 'ui-kit', query: { kode: String(row.code) } })
 
 const SWATCHES = [
   ['Primary', '--el-primary'], ['Primary container', '--el-primary-container'], ['Secondary container', '--el-secondary-container'],
@@ -126,6 +131,7 @@ function submit() {
       <UiDataTable
         v-model:sort="sort" :columns="COLUMNS" :rows="empty ? [] : ROWS.filter((r) => r.name.toLowerCase().includes(filter.toLowerCase()))"
         row-key="code" caption="Contoh daftar kompetensi" empty-text="Tidak ada kompetensi yang cocok."
+        :row-to="rowTo" row-link-key="name"
       >
         <template #toolbar>
           <label class="el-sr-only" for="kit-cari">Cari kompetensi</label>
@@ -134,6 +140,22 @@ function submit() {
         </template>
         <template #cell-status="{ row }"><UiStatus :tone="STATUS_TONE[String(row.status)]">{{ row.status }}</UiStatus></template>
       </UiDataTable>
+      <p class="el-muted" style="margin: 8px 0 0" data-testid="kit-terpilih">{{ picked ? `Baris dipilih: ${picked}` : 'Klik baris untuk membukanya (prop rowTo).' }}</p>
+    </section>
+
+    <section aria-labelledby="k-agen">
+      <h2 id="k-agen" class="el-h2">Kartu Agen AI dan breadcrumb</h2>
+      <UiBreadcrumb :items="[{ label: 'Training Needs', to: { path: '/' } }, { label: 'Detail gap' }]" />
+      <div data-testid="kit-agen">
+        <UiAgentCard title="Wawancara akar masalah" action="Contoh wawancara" :to="{ name: 'ui-kit', hash: '#k-agen' }">
+          Setiap gap kompetensi diwawancarai AI untuk mencari akar masalah, lalu diklasifikasikan ke Training Needs atau Improvement Needs.
+        </UiAgentCard>
+      </div>
+      <div data-testid="kit-agen-tanpa">
+        <UiAgentCard title="Validasi kamus kompetensi" action="Buka wawancara AI" :to="null">
+          Tanpa tujuan yang bisa dibuka, kartu tampil tanpa tombol.
+        </UiAgentCard>
+      </div>
     </section>
 
     <section aria-labelledby="k-alur">

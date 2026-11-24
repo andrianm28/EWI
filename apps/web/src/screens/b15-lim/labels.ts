@@ -1,7 +1,9 @@
 // Label tampilan B15. Teks statis mockup (jebakan, prinsip pelaporan) ada di sini, bukan di API (spek bagian 3).
+import { EMPTY, formatNumber, formatScore } from '@/ui/format'
+import type { StatusTone } from '@/ui/tones'
 import type { Application, Confidence, Coverage, Indicator, QueueRow, Retention, Strength, Verdict } from './api'
 
-type Tone = 'success' | 'warning' | 'critical' | 'info' | 'neutral'
+type Tone = StatusTone
 export const COVERAGE: Record<Coverage, { text: string; tone: Tone }> = {
   measured: { text: 'Terukur', tone: 'success' }, partial: { text: 'Sebagian', tone: 'warning' }, missing: { text: 'Belum ada data', tone: 'neutral' },
 }
@@ -13,7 +15,7 @@ export const STRENGTH: Record<Strength, { text: string; tone: Tone }> = {
   weak: { text: 'Indikasi lemah', tone: 'warning' }, no_data: { text: 'Belum ada data', tone: 'neutral' },
 }
 export const QUEUE_STATUS: Record<QueueRow['status'], { text: string; tone: Tone }> = {
-  none: { text: 'Belum dijadwalkan', tone: 'warning' }, scheduled: { text: 'Terjadwal', tone: 'info' }, done: { text: 'Selesai', tone: 'success' },
+  none: { text: 'Belum dijadwalkan', tone: 'warning' }, scheduled: { text: 'Dijadwalkan', tone: 'info' }, done: { text: 'Selesai', tone: 'success' },
 }
 // Tahap 3: temuan benchmark (mockup Pak Eji, fungsi limFind) dan tingkat keyakinan
 export const RETENTION: Record<Retention, { title: string; text: string; tone: Tone }> = {
@@ -39,13 +41,13 @@ export const PITFALLS = 'Jangan hanya mengukur yang mudah dikumpulkan seperti pe
 export const PRINCIPLE = 'Hubungan belajar dan hasil bukan bukti sebab-akibat otomatis; harga, musim, atau perubahan produk juga memengaruhi. ELGOS menampilkan garis bukti dan faktor lain yang perlu dicek.'
 
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des']
-export const tanggal = (d: string | null) => (d ? `${Number(d.slice(8, 10))} ${MONTHS[Number(d.slice(5, 7)) - 1]} ${d.slice(0, 4)}` : '—')
-export const score = (v: number | null) => (v === null ? '—' : String(v))
+export const tanggal = (d: string | null) => (d ? `${Number(d.slice(8, 10))} ${MONTHS[Number(d.slice(5, 7)) - 1]} ${d.slice(0, 4)}` : EMPTY)
+export const score = (v: number | null) => formatScore(v)
 /** Nilai indikator dengan satuan: "92 mnt", "11%". */
 export function withUnit(v: number | null, unit: string | null) {
-  if (v === null) return '—'
-  const n = String(v).replace('.', ',')
+  if (v === null) return EMPTY
+  const n = formatNumber(v)
   if (!unit) return n
   return unit === '%' ? `${n}%` : `${n} ${unit}`
 }
-export const targetText = (i: Indicator) => (i.target === null ? '—' : `${i.direction === 'lower_better' ? '≤' : '≥'} ${withUnit(i.target, i.unit)}`)
+export const targetText = (i: Indicator) => (i.target === null ? EMPTY : `${i.direction === 'lower_better' ? '≤' : '≥'} ${withUnit(i.target, i.unit)}`)

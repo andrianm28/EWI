@@ -24,7 +24,9 @@ const { importRouter } = require('../imports');
 const { getKind } = require('../imports/kinds');
 const { validateRows, commitRows } = require('../imports/engine');
 const { PLAN_STATUSES, PLAN_STATUS_LABEL, initialStatus, canTransition } = require('./plan-status');
-const { reviewWorkspaceRouter, toReviewItem, assertNotWithdrawn, frozenError } = require('./review-workspace');
+const {
+  reviewWorkspaceRouter, toReviewItem, withoutDetail, hasGapFilter, gapFilterOf, projectIdOf, assertNotWithdrawn, frozenError,
+} = require('./review-workspace');
 const { gapRouter } = require('./gap-routes');
 
 const REVIEW_DECISIONS = { approve: 'approved', edit: 'edited', reject: 'rejected' };
@@ -161,9 +163,19 @@ module.exports = {
       const status = req.query.status || 'draft';
       const statuses = status === 'all' ? ['draft', ...Object.values(REVIEW_DECISIONS)] : status === 'reviewed' ? Object.values(REVIEW_DECISIONS) : [status];
       if (!statuses.every((x) => ['draft', ...Object.values(REVIEW_DECISIONS)].includes(x))) throw badRequest('status harus draft, approved, edited, rejected, reviewed, atau all');
+      const projectId = projectIdOf(req);
+      // Paritas B7 web: tinjauan per gap. Data dan counts dari temuan gap itu saja (aturan R6 papan gap).
+      // Audit PR 39 butir 39-2 (aturan CLAUDE.md 3): filter gap bagian dari fitur tinjauan baru, jadi di balik flag
+      // tna.review_workspace. Flag mati + parameter gap -> 403 FEATURE_DISABLED, sama dengan requireFlag di rute B7
+      // lain; antrean tanpa filter tetap jalan (pengaman wajib PK-14, tidak di balik flag).
+      if (hasGapFilter(req) && !(await flags.isEnabled(req.tenantId, FLAGS.TNA_REVIEW_WORKSPACE))) {
+        throw forbidden('FEATURE_DISABLED', 'Tinjauan HR versi baru belum diaktifkan untuk organisasi Anda');
+      }
+      const gap = await gapFilterOf(req, stores);
+      if (gap) return reviewForGap(req, res, gap, statuses, projectId);
       const [rows, counts, conf] = await Promise.all([
-        stores.tna.reviewQueue(req.tenantId, { projectId: req.query.projectId, statuses }),
-        stores.tna.reviewCounts(req.tenantId, { projectId: req.query.projectId }),
+        stores.tna.reviewQueue(req.tenantId, { projectId, statuses }),
+        stores.tna.reviewCounts(req.tenantId, { projectId }),
         settings.get(req.tenantId),
       ]);
       // B7 (PM-3 A): target tinjauan dalam hari kerja. held/overdue dihitung dari seluruh draf dalam cakupan
@@ -173,7 +185,7 @@ module.exports = {
       const data = rows.map((f) => toReviewItem(f, targetDays, now));
       const drafts = statuses.includes('draft')
         ? data.filter((f) => f.reviewStatus === 'draft')
-        : (await stores.tna.reviewQueue(req.tenantId, { projectId: req.query.projectId, statuses: ['draft'] })).map((f) => toReviewItem(f, targetDays, now));
+        : (await stores.tna.reviewQueue(req.tenantId, { projectId, statuses: ['draft'] })).map((f) => toReviewItem(f, targetDays, now));
       await audit.readIndividual(req, 'tna.review_queue', { employeeIds: rows.map((f) => f.userId), objectType: 'tna_finding', objectIds: rows.map((f) => f.id) });
       res.json({
         data,
@@ -181,6 +193,26 @@ module.exports = {
         targetDays,
       });
     }));
+
+    async function reviewForGap(req, res, gap, statuses, projectId) {
+      const [all, conf] = await Promise.all([
+        stores.tna.reviewQueue(req.tenantId, { projectId, statuses: ['draft', ...Object.values(REVIEW_DECISIONS)], gap: gap.query }),
+        settings.get(req.tenantId),
+      ]);
+      const now = new Date();
+      // Agregat yang sama dengan reviewCounts: temuan dari sesi yang persetujuannya ditarik tidak dihitung
+      const inGap = gap.keep(all).filter((f) => !f.consentWithdrawnAt).map((f) => toReviewItem(f, conf.tna.reviewTargetDays, now));
+      const data = inGap.filter((f) => statuses.includes(f.reviewStatus)).map(withoutDetail);
+      const counts = Object.fromEntries(['draft', ...Object.values(REVIEW_DECISIONS)].map((st) => [st, inGap.filter((f) => f.reviewStatus === st).length]));
+      const drafts = inGap.filter((f) => f.reviewStatus === 'draft');
+      await audit.readIndividual(req, 'tna.review_queue', { employeeIds: data.map((f) => f.userId), objectType: 'tna_finding', objectIds: data.map((f) => f.id) });
+      res.json({
+        data,
+        counts: { ...counts, held: drafts.filter((f) => f.held).length, overdue: drafts.filter((f) => f.overdue).length },
+        targetDays: conf.tna.reviewTargetDays,
+        gap: { key: gap.key, label: gap.label },
+      });
+    }
 
     r.post('/findings/:id/review', hr, wrap(async (req, res) => {
       const { decision, title, detail, category, note } = req.body || {};

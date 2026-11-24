@@ -216,6 +216,13 @@ run('B5 Training Needs: gap dan penugasan (Postgres)', () => {
     expect((await request(app).get('/api/tna/gaps/detail?kind=lain').set(as('hr'))).status).toBe(400);
     // drift report 19 Nov: periode > 32 karakter di detail gap OKR juga 400, sama dengan endpoint papan
     expect((await request(app).get(`/api/tna/gaps/detail?kind=okr&metricType=sla&name=Kepuasan&period=${'x'.repeat(33)}`).set(as('hr'))).status).toBe(400);
+    // P9 IR-4: parseGapQuery merapikan spasi nama target (sama dengan parseGap) dan menolak lebih dari 255 karakter
+    const messy = await request(app).get(`/api/tna/gaps/detail?${new URLSearchParams({ kind: 'okr', metricType: 'sla', name: '  Waktu \t  respons ', period: '2026-11' })}`).set(as('hr'));
+    expect(messy.status).toBe(200);
+    expect(messy.body.data.employees.map((e) => e.id).sort()).toEqual(okr.employees.map((e) => e.id).sort());
+    const long = await request(app).get(`/api/tna/gaps/detail?${new URLSearchParams({ kind: 'okr', metricType: 'sla', name: 'x'.repeat(256), period: '2026-11' })}`).set(as('hr'));
+    expect(long.status).toBe(400);
+    expect(long.body.error.message).toBe('Nama target maksimal 255 karakter');
     expect((await request(app).get('/api/tna/gaps/summary?jobRoleId=x').set(as('hr'))).status).toBe(400);
   });
 

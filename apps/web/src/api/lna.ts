@@ -59,6 +59,8 @@ export interface ReviewSolutions {
   training: TrainingSolution[]; improvement: ImprovementSolution[]
   delivery: { target: 'elitementor' | 'lms'; label: string; assignAvailable: boolean }; inaEnabled: boolean
 }
+/** Paritas B7 web: rujukan gap untuk tinjauan per gap (bentuk sama dengan `GapRef` B5 dan query /tna/gaps/detail). */
+export type ReviewGapQuery = { kind: 'competency'; competencyId: string } | { kind: 'okr'; metricType: string; name: string; period: string }
 export interface ReviewDecision { decision: 'approve' | 'edit' | 'reject'; title?: string; detail?: string; category?: 'training' | 'non_training'; note?: string }
 // B8 (flag learner.home): beranda karyawan dan permintaan data
 export type MyCompetencyStatus = 'met' | 'partial' | 'gap' | 'not_assessed'
@@ -105,13 +107,15 @@ export const lna = {
     post<{ data: { question: Turn | null; consentVersion: string } }>(`/${key}/sessions/${id}/consent`, { consentVersion }),
   answer: (key: 'dna' | 'tna', id: string, text: string) => post<{ data: { question: Turn | null; done: boolean } }>(`/${key}/sessions/${id}/turns`, { text }),
   complete: (key: 'dna' | 'tna', id: string) => post<{ data: { status: string; analysis?: { status: string } } }>(`/${key}/sessions/${id}/complete`, {}),
-  reviewQueue: (status: 'draft' | 'reviewed' = 'draft') => call<{ data: ReviewItem[]; counts: ReviewCounts; targetDays: number }>(`/tna/review?status=${status}`),
+  /** `gap`: rujukan gap (parameter sama dengan /tna/gaps/detail) untuk tinjauan per gap; respons lalu memuat `gap`. */
+  reviewQueue: (status: 'draft' | 'reviewed' | 'all' = 'draft', gap?: ReviewGapQuery) =>
+    call<{ data: ReviewItem[]; counts: ReviewCounts; targetDays: number; gap?: { key: string; label: string } }>(`/tna/review?${new URLSearchParams({ status, ...gap })}`),
   classifyFinding: (id: string, classification: ReviewClassification, note?: string) => post<{ data: ReviewItem }>(`/tna/findings/${id}/classify`, { classification, note }),
-  reviewSolutions: () => call<{ data: ReviewSolutions }>('/tna/review/solutions'),
+  reviewSolutions: (gap?: ReviewGapQuery) => call<{ data: ReviewSolutions }>(`/tna/review/solutions${gap ? `?${new URLSearchParams(gap)}` : ''}`),
   assignPlanItem: (id: string) => post<{ data: PlanItem }>(`/tna/plan-items/${id}/assign`, {}),
-  /** B7: ekspor daftar gap (CSV) untuk LMS klien; diunduh lewat fetch karena butuh token. */
-  async downloadGapCsv(projectId?: string) {
-    await downloadFile(`/tna/plan-items/export.csv${projectId ? `?projectId=${encodeURIComponent(projectId)}` : ''}`, `elgos-gap-${new Date().toISOString().slice(0, 10)}.csv`)
+  /** B7: ekspor daftar gap (CSV) untuk LMS klien; diunduh lewat fetch karena butuh token. `gap`: hanya rencana gap itu (P9 IR-5). */
+  async downloadGapCsv(gap?: ReviewGapQuery) {
+    await downloadFile(`/tna/plan-items/export.csv${gap ? `?${new URLSearchParams(gap)}` : ''}`, `elgos-gap-${new Date().toISOString().slice(0, 10)}.csv`)
   },
   handoffImprovement: (findingIds: string[]) => post<{ data: { handedOff: string[]; already: string[]; skipped: string[] } }>('/tna/review/improvement-handoff', { findingIds }),
   reviewFinding: (id: string, body: ReviewDecision) => post<{ data: ReviewItem }>(`/tna/findings/${id}/review`, body),

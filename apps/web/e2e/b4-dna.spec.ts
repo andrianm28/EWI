@@ -84,14 +84,13 @@ test('HR: ringkasan, kamus dengan filter dan pengesahan, kurikulum, dan rencana 
   const dash = page.getByTestId('dn-dash')
   await expect(dash).toContainText('1 / 2')
   await expect(dash).toContainText('Tuntas')
-  await expect(page.getByTestId('dn-status')).toContainText('Menunggu pengesahan HR: 1 dari 3')
-  await expect(page.getByTestId('dn-status')).toContainText('2 dari 3 modul sudah memiliki data asesmen')
+  await expect(page.getByTestId('dn-status')).toContainText('menunggu pengesahan HR')
 
   await page.getByRole('tab', { name: 'Kamus kompetensi' }).click()
   const kamus = page.getByTestId('dn-kamus')
   await expect(kamus.getByRole('row')).toHaveCount(3)
   await kamus.getByRole('button', { name: /JF1/ }).click()
-  await expect(page.getByTestId('dn-kamus-note')).toContainText('1 kompetensi untuk JF1 · Penanganan insiden')
+  await expect(page.getByTestId('dn-kamus-note')).toContainText('JF1: Penanganan insiden')
   await expect(kamus.getByRole('row')).toHaveCount(2)
   await kamus.getByRole('button', { name: /JF1/ }).click()
   await page.getByRole('group', { name: 'Level program' }).getByRole('button', { name: 'Intermediate' }).click()
@@ -102,18 +101,18 @@ test('HR: ringkasan, kamus dengan filter dan pengesahan, kurikulum, dan rencana 
   await expect(kamus.getByRole('status')).toHaveText('2 kompetensi disahkan.')
   await expect(kamus.getByRole('button', { name: 'Sahkan kamus' })).toHaveCount(0)
 
-  await page.getByRole('tab', { name: 'Kurikulum BIA' }).click()
+  await page.getByRole('tab', { name: 'Kurikulum Basic · Intermediate · Advanced' }).click()
   await expect(page.getByTestId('dn-kur')).toContainText('1 kompetensi belum punya level program')
   await expect(page.getByTestId('dn-kur')).toContainText('Automation')
 
-  await page.getByRole('tab', { name: 'Kebutuhan pegawai' }).click()
+  await page.getByRole('tab', { name: 'Kebutuhan pengembangan pegawai' }).click()
   // A4: cakupan tampil di tabel bila belum semua modul dinilai
   await expect(page.getByRole('row', { name: /Ani/ })).toContainText('dinilai 1 dari 2')
   await expect(page.getByRole('row', { name: /Budi/ })).not.toContainText('dinilai 2 dari')
   await expect(page.getByTestId('dn-plan')).toContainText('Rencana pengembangan: Ani')
   await expect(page.getByTestId('dn-plan')).toContainText('Perlu dikembangkan')
   await expect(page.getByTestId('dn-plan')).toContainText('Baru 1 dari 2 modul yang dinilai')
-  await page.getByRole('button', { name: 'Rencana Budi' }).click()
+  await page.getByRole('button', { name: 'Budi', exact: true }).click()
   await expect(page.getByTestId('dn-plan')).toContainText('Tahap Tuntas')
 })
 
@@ -145,4 +144,90 @@ test('karyawan membuka menu Developmental Needs: diarahkan ke halaman POC, bukan
   await loginSebagai(page, 'karyawan', B4)
   await page.goto('/dna')
   await expect(page).toHaveURL(/\/m\/dna$/)
+})
+
+// Paritas P3 (docs/designs/paritas-mockup/p3-komponen-bersama.md)
+test('P3 DN-1/DN-2: breadcrumb 12px dan kartu Agen AI tanpa tombol (belum ada layar tujuan)', async ({ page }) => {
+  await mockDna(page)
+  await loginSebagai(page, 'hr', B4)
+  await page.goto('/dna')
+  const crumb = page.getByRole('navigation', { name: 'Lokasi' })
+  await expect(crumb).toHaveText(/Learning Needs Analysis\s*›\s*Developmental Needs/)
+  await expect(crumb).toHaveCSS('font-size', '12px')
+  const kartu = page.getByTestId('dn-agen')
+  await expect(kartu.getByRole('heading', { name: 'Agen AI · Validasi kamus kompetensi' })).toBeVisible()
+  await expect(kartu).toContainText('Pilot')
+  await expect(kartu).toContainText('AI mewawancarai atasan pemilik jabatan untuk memvalidasi hasil DACUM, lalu karyawan jabatan itu untuk menilai posisi mereka pada tingkat Basic, Intermediate, Advanced.')
+  await expect(kartu.getByRole('link')).toHaveCount(0)
+})
+
+// Paritas P5 (docs/designs/paritas-mockup/p5-lna.md)
+test('P5 DN-3/DN-4/DN-11/DN-13/DN-14: label tab dan copy mockup, judul kurikulum satu baris, chip tahap per tingkat', async ({ page }) => {
+  await mockDna(page)
+  await loginSebagai(page, 'hr', B4)
+  await page.goto('/dna')
+  await expect(page.getByRole('tab')).toHaveText(['Ringkasan', 'Kamus kompetensi', 'Kurikulum Basic · Intermediate · Advanced', 'Kebutuhan pengembangan pegawai'])
+  await expect(page.getByText('Jabatan lain akan muncul di pilihan di atas setelah kamusnya dibuat lewat DACUM.')).toBeVisible()
+  await page.getByRole('tab', { name: 'Kurikulum Basic · Intermediate · Advanced' }).click()
+  await expect(page.getByTestId('dn-kur').getByRole('heading', { level: 2 }).first()).toHaveText(/^Basic · \d+ modul$/)
+  await page.getByRole('tab', { name: 'Kebutuhan pengembangan pegawai' }).click()
+  const ani = page.getByRole('row', { name: /Ani/ })
+  await expect(ani.locator('.el-chip').first()).toHaveClass(/el-chip--review/)
+  await expect(page.getByRole('row', { name: /Budi/ }).locator('.el-chip').first()).toHaveClass(/el-chip--success/)
+  await expect(ani.getByRole('cell').nth(2)).not.toHaveCSS('text-align', 'right')
+})
+
+test('paritas DN-5/DN-6/DN-9/DN-12: note KPI kamus, copy status kamus, catatan kamus mockup, baris pegawai bisa diklik dan tersorot', async ({ page }) => {
+  await mockDna(page)
+  await loginSebagai(page, 'hr', B4)
+  await page.goto('/dna')
+  const kpi = page.locator('.el-kpi').filter({ hasText: 'Jabatan dengan kamus' })
+  await expect(kpi.locator('.el-kpi__note')).toHaveText('1 lainnya belum dibuat')
+  await expect(page.getByTestId('dn-status')).toContainText('Kamus disusun dari lokakarya DACUM dan menunggu pengesahan HR sebelum dipakai sebagai target di Training Needs.')
+  await expect(page.getByTestId('dn-status')).not.toContainText('1 dari 3')
+
+  await page.getByRole('tab', { name: 'Kamus kompetensi' }).click()
+  await expect(page.getByTestId('dn-kamus-note')).toHaveText('Engineer Service Delivery (2 dari 3 modul sudah memiliki data asesmen)')
+  await page.getByTestId('dn-kamus').getByRole('button', { name: /JF1/ }).click()
+  await expect(page.getByTestId('dn-kamus-note')).toHaveText('Engineer Service Delivery · JF1: Penanganan insiden (2 dari 3 modul sudah memiliki data asesmen)')
+
+  await page.getByRole('tab', { name: 'Kebutuhan pengembangan pegawai' }).click()
+  const peg = page.getByTestId('dn-peg')
+  await expect(peg).toContainText('Klik baris untuk melihat rencana lengkap.')
+  await expect(peg.getByRole('columnheader')).toHaveText(['Pegawai', 'Tahap saat ini', 'Modul tercapai', 'Fokus pengembangan'])
+  await expect(page.getByRole('row', { name: /Ani/ })).toHaveClass(/is-selected/)
+  await page.getByRole('row', { name: /Budi/ }).getByRole('cell').nth(1).click()
+  await expect(page.getByTestId('dn-plan')).toContainText('Rencana pengembangan: Budi')
+  await expect(page.getByRole('row', { name: /Budi/ })).toHaveClass(/is-selected/)
+  await expect(page.getByRole('row', { name: /Ani/ })).not.toHaveClass(/is-selected/)
+  // review egm: status terpilih juga terbaca pembaca layar lewat aria-current pada tombol nama
+  await expect(page.getByRole('button', { name: 'Budi', exact: true })).toHaveAttribute('aria-current', 'true')
+  await expect(page.getByRole('button', { name: 'Ani', exact: true })).not.toHaveAttribute('aria-current', /.*/)
+  // review egm: sorotan bertahan saat baris terpilih di-hover, di tema terang dan gelap
+  const sel = page.getByRole('row', { name: /Budi/ }).getByRole('cell').nth(2)
+  await sel.hover()
+  await expect(sel).toHaveCSS('background-color', 'rgb(236, 239, 245)')
+  await page.evaluate("document.documentElement.dataset.theme = 'dark'")
+  await expect(sel).toHaveCSS('background-color', 'rgb(39, 42, 47)')
+})
+
+test('review egm: rencana yang tiba belakangan tidak menimpa pegawai yang baru dipilih', async ({ page }) => {
+  await mockDna(page)
+  await loginSebagai(page, 'hr', B4)
+  // rencana Ani (dibuka otomatis) sengaja lambat; Budi dipilih sebelum rencana Ani tiba
+  let aniTiba = false
+  await mockApi(page, async (req) => {
+    if (!cocok(req, 'GET /dna/employees/e1/development-plan')) return undefined
+    await new Promise((ok) => setTimeout(ok, 1200))
+    aniTiba = true
+    return { json: { data: PLANS.e1 } }
+  })
+  await page.goto('/dna')
+  await page.getByRole('tab', { name: 'Kebutuhan pengembangan pegawai' }).click()
+  await page.getByRole('button', { name: 'Budi', exact: true }).click()
+  await expect(page.getByTestId('dn-plan')).toContainText('Rencana pengembangan: Budi')
+  await expect.poll(() => aniTiba).toBe(true)
+  await page.waitForTimeout(100)
+  await expect(page.getByTestId('dn-plan')).toContainText('Rencana pengembangan: Budi')
+  await expect(page.getByRole('row', { name: /Budi/ })).toHaveClass(/is-selected/)
 })

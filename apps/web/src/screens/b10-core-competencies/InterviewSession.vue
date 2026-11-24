@@ -6,11 +6,12 @@ import { computed, onMounted, ref } from 'vue'
 import { ApiError } from '@/api/client'
 import { cca, THEME_LABEL, type InterviewSession } from '@/api/cca'
 import { CCA_CONSENT_VERSION } from '@/content/consent'
-import { UiButton, UiChip, UiErrorSummary, UiNote } from '@/ui'
+import { UiAuditLine, UiButton, UiChip, UiErrorSummary, UiNote } from '@/ui'
 import '../b6-iv/iv.css'
+import { AI_NAME, AI_PRODUCT_LABEL } from '@/api/ai'
 
 const props = defineProps<{ assignmentId: string }>()
-const emit = defineEmits<{ finished: [] }>()
+const emit = defineEmits<{ finished: []; close: [] }>()
 
 const s = ref<InterviewSession | null>(null)
 const busy = ref(false)
@@ -99,16 +100,17 @@ const confirm = () => act(async () => { await cca.confirm(props.assignmentId); e
       </div>
       <div class="iv-chat" role="log" aria-live="polite" aria-label="Percakapan wawancara">
         <div v-for="(t, i) in s.turns" :key="i" :class="['iv-msg', t.role === 'ai' ? 'iv-msg--ai' : 'iv-msg--me']" :data-testid="`cc-turn-${t.role}`">
-          <small>{{ t.role === 'ai' ? `ELGOS-AI · ${THEME_LABEL[t.theme]}` : 'Anda' }}</small>{{ t.text }}
+          <small>{{ t.role === 'ai' ? `${AI_NAME} · ${THEME_LABEL[t.theme]}` : 'Anda' }}</small>{{ t.text }}
         </div>
       </div>
       <template v-if="pending">
-        <div v-if="pending.options?.length" class="cc-actions" role="group" aria-label="Pilihan jawaban">
-          <UiButton v-for="o in pending.options" :key="o" variant="outlined" size="sm" :disabled="busy" @click="answer(o)">{{ o }}</UiButton>
+        <!-- P8 R13 (AIV-8): pilihan jawaban bergaya `.ac` mockup; isian bebas input satu baris `.inp` -->
+        <div v-if="pending.options?.length" class="iv-acs" role="group" aria-label="Pilihan jawaban">
+          <button v-for="o in pending.options" :key="o" type="button" class="iv-ac" :disabled="busy" @click="answer(o)">{{ o }}</button>
         </div>
         <form class="iv-answer" @submit.prevent="answer(text)">
           <label class="el-sr-only" for="cc-answer">Jawaban</label>
-          <textarea id="cc-answer" v-model="text" rows="2" maxlength="2000" class="el-input iv-grow" placeholder="Tulis jawaban Anda" />
+          <input id="cc-answer" v-model="text" type="text" autocomplete="off" maxlength="2000" class="el-input iv-grow" :placeholder="pending.options?.length ? 'Atau ketik jawaban Anda sendiri' : 'Ketik jawaban Anda'" />
           <UiButton type="submit" :disabled="busy">Kirim</UiButton>
         </form>
       </template>
@@ -119,18 +121,25 @@ const confirm = () => act(async () => { await cca.confirm(props.assignmentId); e
       <div v-else-if="allAnswered" class="iv-actions">
         <UiButton :disabled="busy" @click="act(() => cca.summarize(assignmentId))">Buat ringkasan</UiButton>
       </div>
+      <!-- AIV-7: baris audit agen di kartu sesi -->
+      <UiAuditLine :items="[AI_PRODUCT_LABEL, `log audit: ${s.answerCount} jawaban`]" />
     </template>
 
+    <!-- AIV-9: susunan mockup "Ringkasan AI": baris .mod (tema kecil abu, jawaban tebal) -->
     <template v-else-if="s.summary">
-      <h2 class="iv-h2">{{ s.step === 'done' ? 'Terkirim' : 'Ringkasan jawaban Anda' }}</h2>
+      <h2 class="iv-h2">Ringkasan AI</h2>
       <UiNote v-if="s.step === 'summary'">Periksa ringkasan ini sebelum dianggap final.</UiNote>
-      <p v-else class="el-muted">Terima kasih. Ringkasan berikut sudah dikirim.</p>
-      <dl class="cc-summary" data-testid="cc-ringkasan">
-        <template v-for="(t, i) in s.summary.themes" :key="i">
-          <dt>{{ t.theme ? THEME_LABEL[t.theme] : 'Ringkasan' }}</dt>
-          <dd>{{ t.answer ?? 'Tidak ada ringkasan untuk tema ini.' }}</dd>
-        </template>
-      </dl>
+      <p v-else class="el-muted cc-synth__sub">Ringkasan jawaban Anda per tema.</p>
+      <div data-testid="cc-ringkasan">
+        <div v-for="(t, i) in s.summary.themes" :key="i" class="cc-mod">
+          <div class="cc-mod__q">{{ t.theme ? THEME_LABEL[t.theme] : 'Ringkasan' }}</div>
+          <div class="cc-mod__a">{{ t.answer ?? 'Tidak ada ringkasan untuk tema ini.' }}</div>
+        </div>
+      </div>
+      <template v-if="s.step === 'done'">
+        <UiNote tone="success"><b>Terkirim.</b> {{ isLeader ? 'Hasil dikirim ke HR. Sekarang Anda bisa menugaskan wawancara ke anggota tim.' : 'Hasil diringkas ke HR dan atasan hanya melihat status selesai.' }}</UiNote>
+        <div class="iv-actions"><UiButton @click="emit('close')">Kembali ke penugasan</UiButton></div>
+      </template>
       <div v-if="s.step === 'summary'" class="iv-actions">
         <UiButton :disabled="busy" @click="confirm">Sesuai, kirim</UiButton>
         <UiButton v-if="s.assignment.restartsLeft > 0" variant="outlined" :disabled="busy" @click="restart">Ulangi wawancara</UiButton>
@@ -141,6 +150,7 @@ const confirm = () => act(async () => { await cca.confirm(props.assignmentId); e
     <template v-else-if="s.step === 'done'">
       <h2 class="iv-h2">Terkirim</h2>
       <p class="el-muted">Wawancara ini sudah selesai.</p>
+      <div class="iv-actions"><UiButton @click="emit('close')">Kembali ke penugasan</UiButton></div>
     </template>
 
     <UiNote v-else tone="warning">Penugasan ini sudah dibatalkan.</UiNote>

@@ -3,10 +3,11 @@
 import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import AppShell from '@/components/AppShell.vue'
+import './li.css'
 import { ApiError } from '@/api/client'
-import { UiButton, UiCard, UiChip, UiKpiCard, UiNote, UiStatus, UiTabs } from '@/ui'
+import { UiBreadcrumb, UiButton, UiCard, UiChip, UiKpiCard, UiNote, UiTabs } from '@/ui'
 import { li, type Level, type ModuleRow, type Programs } from './api'
-import { LEVEL_LABEL, jobLabel, priorityLabel, statusLabel } from './labels'
+import { LEVEL_LABEL, jobChip, priorityLabel, shortVendor, statusLabel } from './labels'
 
 const router = useRouter()
 const res = ref<Programs | null>(null)
@@ -28,9 +29,17 @@ onMounted(load)
 const p = computed(() => res.value?.data ?? null)
 const vendor = computed(() => res.value?.vendorName ?? 'vendor')
 const job = computed(() => p.value?.jobRoles.find((j) => j.id === p.value?.jobRoleId) ?? null)
-const tabs = computed(() => (p.value?.levels ?? []).map((l) => ({ key: l.level, label: `${LEVEL_LABEL[l.level]} (${l.count})` })))
+const tabs = computed(() => (p.value?.levels ?? []).map((l) => ({ key: l.level, label: `${LEVEL_LABEL[l.level]} · ${l.count} course` })))
 const tab = computed({ get: () => level.value as string, set: (v) => { level.value = v as Level; void load() } })
 function pickJob(id: string) { jobRoleId.value = id; void load() }
+// LI-18: kode course prioritas di program yang sedang dilihat
+const prioCodes = computed(() => (p.value?.groups ?? []).flatMap((g) => g.modules).filter((m) => m.priority).map((m) => m.code))
+const paretoNote = computed(() => {
+  if (!p.value?.pareto.available) return 'Training Needs belum aktif, jadi prioritas belum bisa dihitung.'
+  return prioCodes.value.length
+    ? `${prioCodes.value.length} dari ${p.value.kpis.courses} course di program ini adalah prioritas Pareto: ${prioCodes.value.join(', ')}.`
+    : 'Tidak ada course prioritas Pareto di program ini.'
+})
 
 async function act(fn: () => Promise<string>) {
   busy.value = true; notice.value = ''; error.value = ''
@@ -44,63 +53,62 @@ function primary(m: ModuleRow) {
   if (m.status.key !== 'none') return null
   return m.recommendation === 'dev'
     ? { label: 'Kembangkan', run: async () => { const { data } = await li.startDraft(m.id); await router.push({ name: 'req-draf', params: { id: data.id } }); return '' } }
-    : { label: `Minta ke ${vendor.value}`, run: async () => { await li.requestModule(m.id); return `Permintaan ${m.code} dicatat.` } }
+    : { label: `Minta ke ${shortVendor(vendor.value)}`, run: async () => { await li.requestModule(m.id); return `Permintaan ${m.code} dicatat.` } }
 }
 </script>
 
 <template>
   <AppShell>
-    <p class="el-muted">Learning Intervention › Program &amp; Course</p>
+    <UiBreadcrumb :items="[{ label: 'Learning Intervention' }, { label: 'Program & Course' }]" />
     <h1 class="el-h1">Program &amp; Course</h1>
-    <p class="el-muted">Program Basic, Intermediate, dan Advanced per jabatan, tersusun dari modul-modul di Library (DACUM Tool 3).</p>
+    <p class="el-muted">Program Basic, Intermediate, dan Advanced {{ job ? `untuk ${job.name}` : 'per jabatan' }}, tersusun dari modul-modul di Library (DACUM Tool 3).</p>
     <UiNote v-if="error" tone="critical" data-testid="galat">{{ error }}</UiNote>
     <UiNote v-if="notice" tone="success" data-testid="info">{{ notice }}</UiNote>
 
     <template v-if="p">
       <div class="li-chips li-gap" role="group" aria-label="Jabatan">
-        <span class="el-muted">Jabatan:</span>
-        <UiButton
-          v-for="j in p.jobRoles" :key="j.id" size="sm" :variant="j.id === p.jobRoleId ? 'filled' : 'outlined'"
-          :aria-pressed="j.id === p.jobRoleId" @click="pickJob(j.id)"
-        >{{ j.name }}{{ j.hasDictionary ? '' : ' · kamus belum tersedia' }}</UiButton>
+        <span class="el-muted li-pick__label">Jabatan:</span>
+        <button
+          v-for="j in p.jobRoles" :key="j.id" type="button" class="li-pick" :aria-pressed="j.id === p.jobRoleId" @click="pickJob(j.id)"
+        >{{ j.name }} <UiChip :tone="j.hasDictionary ? 'success' : 'neutral'">{{ j.hasDictionary ? 'Kamus tersedia' : 'Belum tersedia' }}</UiChip></button>
       </div>
       <p v-if="!p.jobRoles.length" class="el-muted">Belum ada jabatan. Tambahkan jabatan dan impor library modul lebih dulu.</p>
 
       <template v-if="job">
         <UiNote v-if="!job.hasDictionary" tone="warning" class="li-gap">Kamus kompetensi dan library modul untuk {{ job.name }} belum tersedia, jadi programnya belum bisa disusun.</UiNote>
         <template v-else>
+          <UiNote class="li-gap"><b>Program ini untuk jabatan {{ job.name }}.</b> Susunan Basic, Intermediate, dan Advanced mengikuti kamus kompetensinya. Course yang sama dapat dipakai ulang di program jabatan lain.</UiNote>
           <UiTabs id="prog" v-model="tab" :tabs="tabs" label="Level program" class="li-gap" />
           <div :id="`prog-panel-${level}`" role="tabpanel" :aria-labelledby="`prog-tab-${level}`">
             <div class="el-grid el-grid-4 li-gap">
-              <UiKpiCard label="Course" :value="p.kpis.courses" />
-              <UiKpiCard label="Tersedia" :value="p.kpis.available" />
-              <UiKpiCard label="Sedang diproses" :value="p.kpis.inProgress" />
-              <UiKpiCard label="Belum ada sumber" :value="p.kpis.noSource" />
+              <UiKpiCard label="Course" :value="p.kpis.courses" :note="`program ${LEVEL_LABEL[level]} · ${job.name}`" />
+              <UiKpiCard label="Tersedia" :value="p.kpis.available" :note="`dari ${shortVendor(vendor)}`" />
+              <UiKpiCard label="Diminta / draf" :value="p.kpis.inProgress" note="sedang diproses" />
+              <UiKpiCard label="Belum ada sumber" :value="p.kpis.noSource" note="perlu diminta atau dikembangkan" />
             </div>
-            <p class="li-gap"><b>Prioritas Pareto:</b>
-              {{ !p.pareto.available ? 'Training Needs belum aktif.' : p.pareto.codes.length ? `${p.pareto.codes.length} course di program ini termasuk prioritas.` : 'Belum ada course prioritas di program ini.' }}
-              Course prioritas tampil paling atas di tiap rumpun.</p>
-            <UiCard tonal class="li-row">
+            <UiNote tone="warning" class="li-gap"><b>Prioritas Pareto:</b> {{ paretoNote }}<template v-if="prioCodes.length"> Course prioritas tampil paling atas di tiap rumpun.</template></UiNote>
+            <UiNote class="li-row li-gap">
               <span><b>{{ vendor }}</b> menyediakan modul yang bersifat generik. Modul spesifik proses perusahaan perlu dikembangkan bersama ELGOS.</span>
-              <UiButton variant="tonal" size="sm" :disabled="busy || !p.kpis.noSource" @click="requestAll">Minta semua modul generik di program ini</UiButton>
-            </UiCard>
-            <section v-for="g in p.groups" :key="g.stream" class="li-gap" :aria-label="g.stream">
-              <h2 class="el-h3">{{ g.stream }} <span class="el-muted">· {{ g.modules.length }} course</span></h2>
-              <UiCard v-for="m in g.modules" :key="m.id" class="li-row li-course" :data-testid="`course-${m.code}`">
-                <div>
-                  <span class="el-mono">{{ m.code }}</span> <b>{{ m.name }}</b>
-                  <div class="li-chips li-small">
-                    <span class="el-muted">K {{ m.counts.K }} · S {{ m.counts.S }} · A {{ m.counts.A }} · {{ jobLabel(m) }}</span>
-                    <UiStatus :tone="statusLabel(m.status.key, vendor).tone">{{ statusLabel(m.status.key, vendor).text }}</UiStatus>
-                    <UiChip v-if="m.priority" tone="review" icon="flag">{{ priorityLabel(m) }}</UiChip>
+              <UiButton size="sm" :disabled="busy || !p.kpis.noSource" @click="requestAll">Minta semua modul generik di program ini</UiButton>
+            </UiNote>
+            <UiCard v-for="g in p.groups" :key="g.stream" as="section" class="li-gap" :aria-label="g.stream">
+              <h2 class="el-h3">{{ g.stream }} <span class="el-muted li-normal">· {{ g.modules.length }} course</span></h2>
+              <div v-for="m in g.modules" :key="m.id" class="li-line li-row" :data-testid="`course-${m.code}`">
+                <div class="li-course__body">
+                  <span class="el-mono el-muted li-code">{{ m.code }}</span> <b>{{ m.name }}</b>
+                  <div class="li-chips li-chips--tight li-course__chips">
+                    <UiChip>K {{ m.counts.K }}</UiChip><UiChip>S {{ m.counts.S }}</UiChip><UiChip>A {{ m.counts.A }}</UiChip>
+                    <UiChip tone="training">{{ jobChip(m) }}</UiChip>
+                    <UiChip :tone="statusLabel(m.status.key, vendor).tone">{{ statusLabel(m.status.key, vendor).text }}</UiChip>
+                    <UiChip v-if="m.priority" tone="critical">{{ priorityLabel(m) }}</UiChip>
                   </div>
                 </div>
                 <div class="li-chips">
                   <UiButton variant="text" size="sm" :to="{ name: 'lib', query: { modul: m.id } }">Detail</UiButton>
                   <UiButton v-if="primary(m)" variant="tonal" size="sm" :disabled="busy" @click="act(primary(m)!.run)">{{ primary(m)!.label }}</UiButton>
                 </div>
-              </UiCard>
-            </section>
+              </div>
+            </UiCard>
             <p v-if="!p.groups.length" class="el-muted li-gap">Belum ada course pada level ini.</p>
           </div>
         </template>
@@ -110,5 +118,14 @@ function primary(m: ModuleRow) {
 </template>
 
 <style>
-.li-course { margin-top: 8px; padding: 12px 16px; }
+.li-pick__label { font-weight: 500; }
+.li-pick {
+  display: inline-flex; align-items: center; gap: 8px; min-height: 36px; padding: 8px 14px; border-radius: 8px;
+  border: 1px solid var(--el-outline-variant); background: var(--el-surface-card); color: var(--el-on-surface); font: inherit; cursor: pointer; text-align: left;
+}
+.li-pick[aria-pressed='true'] { border-color: var(--el-primary); }
+.li-pick:focus-visible { outline: 2px solid var(--el-primary); outline-offset: 2px; }
+.li-normal { font-weight: 400; }
+.li-course__body { flex: 1 1 320px; min-width: 0; }
+.li-course__chips { margin-top: 6px; }
 </style>

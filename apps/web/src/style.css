@@ -23,6 +23,8 @@
   --el-on-surface-variant: #43474e;
   --el-outline: #73777f;
   --el-outline-variant: #c3c6cf;
+  /* Latar di belakang laci melayang dan dialog modal; sama di dua tema */
+  --el-scrim: rgb(0 0 0 / 0.4);
   --el-success: #1b6e3f;
   --el-success-container: #c6f0d3;
   --el-on-success-container: #00210f;

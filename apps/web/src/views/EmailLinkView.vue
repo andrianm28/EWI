@@ -1,15 +1,19 @@
 <script setup lang="ts">
 // R3-2: halaman tujuan link masuk dari email. Token di fragmen URL (#token=...) dan baru ditukar setelah tombol
 // ditekan, supaya pemindai link di email tidak menghabiskan link sekali pakai.
-import { onMounted, ref } from 'vue'
+// P4 L1: tata letak dua panel yang sama dengan /login (LoginLayout); galat token di UiErrorSummary.
+import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { useSessionStore } from '@/stores/session'
+import LoginLayout from '@/components/LoginLayout.vue'
+import { UiButton, UiErrorSummary } from '@/ui'
 
 const session = useSessionStore()
 const router = useRouter()
 const token = ref('')
 const error = ref('')
 const loading = ref(false)
+const errors = computed(() => (error.value ? [{ message: error.value }] : []))
 
 onMounted(() => {
   token.value = new URLSearchParams(window.location.hash.slice(1)).get('token') ?? ''
@@ -19,6 +23,7 @@ onMounted(() => {
 })
 
 async function enter() {
+  if (loading.value) return
   error.value = ''
   loading.value = true
   try {
@@ -34,15 +39,13 @@ async function enter() {
 </script>
 
 <template>
-  <main class="min-h-screen grid place-items-center bg-slate-50 px-4">
-    <div class="w-full max-w-sm space-y-4 rounded-xl bg-white p-6 text-center shadow">
-      <h1 class="text-xl font-semibold text-slate-900">Masuk ke ELGOS</h1>
-      <p v-if="token && !error" class="text-sm text-slate-600">Tekan tombol di bawah untuk melanjutkan.</p>
-      <p v-if="error" role="alert" class="text-sm text-red-600">{{ error }}</p>
-      <button v-if="token" type="button" :disabled="loading" class="w-full rounded bg-slate-900 py-2 text-white disabled:opacity-60" @click="enter">
-        {{ loading ? 'Memproses…' : 'Lanjutkan masuk' }}
-      </button>
-      <RouterLink to="/login" class="block text-sm text-blue-700">Ke halaman login</RouterLink>
+  <LoginLayout>
+    <h1 class="lg-h1">Masuk ke ELGOS</h1>
+    <p v-if="token && !error" class="lg-sub">Tekan tombol di bawah untuk melanjutkan.</p>
+    <UiErrorSummary :errors="errors" />
+    <div class="lg-row">
+      <UiButton v-if="token && !error" :disabled="loading" @click="enter">{{ loading ? 'Memproses…' : 'Lanjutkan masuk' }}</UiButton>
+      <UiButton variant="text" to="/login">Ke halaman login</UiButton>
     </div>
-  </main>
+  </LoginLayout>
 </template>

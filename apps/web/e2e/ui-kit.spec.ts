@@ -17,7 +17,8 @@ test('token: warna utama navy, latar surface, font Roboto termuat dari aplikasi 
   await expect(page.locator('body')).toHaveCSS('background-color', 'rgb(248, 249, 252)')
   expect(await page.evaluate(`document.fonts.check('500 14px Roboto') && document.fonts.check('400 11px "Roboto Mono"')`)).toBe(true)
   // Tidak ada panggilan ke pihak ketiga (font dan ikon di-host sendiri)
-  expect(requests.filter((u) => !u.startsWith('http://localhost:4174'))).toEqual([])
+  const asal = new URL(page.url()).origin
+  expect(requests.filter((u) => !u.startsWith(asal))).toEqual([])
 })
 
 test('tabel data: header mengurutkan naik, turun, lalu kembali; angka diurutkan sebagai angka', async ({ page }) => {
@@ -97,6 +98,44 @@ test('status: setiap label punya ikon dan teks', async ({ page }) => {
 
 test('progres: nilai tersedia untuk pembaca layar', async ({ page }) => {
   await expect(page.getByRole('progressbar', { name: 'Kesiapan modul' })).toHaveAttribute('aria-valuenow', '70')
+})
+
+// Paritas P3 (docs/designs/paritas-mockup/p3-komponen-bersama.md)
+test('kartu Agen AI: judul, chip Pilot, teks, dan tombol tonal hanya bila ada tujuan', async ({ page }) => {
+  const dengan = page.getByTestId('kit-agen')
+  await expect(dengan.getByRole('heading', { name: 'Agen AI · Wawancara akar masalah' })).toBeVisible()
+  await expect(dengan.locator('.el-chip--review')).toHaveText('Pilot')
+  const tombol = dengan.getByRole('link', { name: 'Contoh wawancara' })
+  await expect(tombol).toHaveClass(/el-btn--tonal/)
+  await expect(tombol).toHaveClass(/el-btn--sm/)
+  await expect(dengan.locator('.el-card')).toHaveCSS('background-color', 'rgb(242, 244, 249)')
+  const tanpa = page.getByTestId('kit-agen-tanpa')
+  await expect(tanpa).toContainText('Agen AI · Validasi kamus kompetensi')
+  await expect(tanpa.getByRole('link')).toHaveCount(0)
+  await expect(tanpa.getByRole('button')).toHaveCount(0)
+})
+
+test('breadcrumb: nav Lokasi 12px, induk tautan bergaris bawah, butir terakhir halaman ini', async ({ page }) => {
+  const crumb = page.getByRole('navigation', { name: 'Lokasi' })
+  await expect(crumb).toHaveText(/Training Needs\s*›\s*Detail gap/)
+  await expect(crumb).toHaveCSS('font-size', '12px')
+  const induk = crumb.getByRole('link', { name: 'Training Needs' })
+  await expect(induk).toHaveCSS('text-decoration-line', 'underline')
+  await expect(induk).toHaveCSS('color', 'rgb(11, 58, 110)')
+  await expect(crumb.locator('[aria-current="page"]')).toHaveText('Detail gap')
+})
+
+test('tabel data: baris bisa diklik dan dibuka dengan keyboard; pengurutan tetap', async ({ page }) => {
+  const table = page.getByRole('table', { name: 'Contoh daftar kompetensi' })
+  await table.getByRole('row', { name: /Ticket Life Cycle/ }).getByRole('cell').last().click()
+  await expect(page).toHaveURL(/kode=ST-B4/)
+  await expect(page.getByTestId('kit-terpilih')).toHaveText('Baris dipilih: ST-B4')
+  await table.getByRole('columnheader', { name: 'Skor' }).getByRole('button').click()
+  await expect(table.locator('tbody tr td:first-child')).toHaveText(['ST-B4', 'TC-I1', 'ST-A2', 'ST-B1'])
+  await expect(page).toHaveURL(/kode=ST-B4/) // klik header tidak membuka baris
+  await table.getByRole('link', { name: 'Fondasi Layanan' }).focus()
+  await page.keyboard.press('Enter')
+  await expect(page.getByTestId('kit-terpilih')).toHaveText('Baris dipilih: ST-B1')
 })
 
 test('referensi komponen: snapshot visual terang dan gelap', async ({ page }) => {

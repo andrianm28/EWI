@@ -5,7 +5,7 @@ import { computed, onMounted, ref, watch } from 'vue'
 import AppShell from '@/components/AppShell.vue'
 import { ApiError } from '@/api/client'
 import { useSessionStore } from '@/stores/session'
-import { UiButton, UiCard, UiDataTable, UiNote, UiStatus, UiTabs, type UiColumn } from '@/ui'
+import { EMPTY, UiAgentCard, UiButton, UiCard, UiDataTable, UiNote, UiStatus, UiTabs, type UiColumn } from '@/ui'
 import { lim, type CompetencyRow, type Indicator, type Overview, type PlanSummary, type QueueRow } from './api'
 import { COVERAGE, PITFALLS, PRINCIPLE, QUESTIONS, QUEUE_STATUS, STRENGTH, VERDICT, WINDOW, score, tanggal, targetText, withUnit } from './labels'
 import ImportPanel from '@/components/ImportPanel.vue'
@@ -29,6 +29,8 @@ const date = ref('')
 // tahap 3: hasil wawancara ulang satu karyawan (alur empat langkah mockup), menggantikan antrean saat dibuka
 const viewing = ref<QueueRow | null>(null)
 const canReinterview = computed(() => session.hasFlag('lim.reinterview'))
+// LIM-10: kartu isian HR dilipat (mockup tanpa kartu); status lipatan bertahan saat ringkasan dimuat ulang
+const foldOpen = ref(false)
 
 const msg = (e: unknown, fallback: string) => (e instanceof ApiError ? e.message : fallback)
 
@@ -103,6 +105,7 @@ const asRow = (x: object) => x as Record<string, unknown>
 const C = (r: Record<string, unknown>) => r as unknown as CompetencyRow
 const I = (r: Record<string, unknown>) => r as unknown as Indicator
 const Q = (r: Record<string, unknown>) => r as unknown as QueueRow
+const nTitle = (n: number) => `Rata-rata dari ${n} orang`
 const chainLabel = (r: Record<string, unknown>) => `${r.level} · ${r.label}`
 </script>
 
@@ -114,13 +117,6 @@ const chainLabel = (r: Record<string, unknown>) => `${r.level} · ${r.label}`
     <UiNote v-if="notice" tone="success" data-testid="info">{{ notice }}</UiNote>
 
     <template v-if="plans">
-      <div v-if="plans.length" class="lim-row lim-gap">
-        <label v-if="plans.length > 1" class="el-label">Rencana
-          <select v-model="planId" class="el-input"><option v-for="p in plans" :key="p.id" :value="p.id">{{ p.title }}</option></select>
-        </label>
-        <p v-else class="el-muted lim-small">Rencana: <b>{{ plans[0]!.title }}</b></p>
-        <UiButton v-if="isHr && !creating" variant="tonal" size="sm" @click="creating = true">Rencana baru</UiButton>
-      </div>
       <UiCard v-if="isHr && (creating || !plans.length)" class="lim-gap" as="section" aria-label="Rencana pengukuran baru">
         <h2 class="el-h3">Rencana pengukuran baru</h2>
         <p class="el-muted lim-small">Mulai dari masalah bisnis. Peserta rencana adalah karyawan jabatan terpilih yang mengikuti pelatihan modul ini dalam periode rencana.</p>
@@ -130,7 +126,17 @@ const chainLabel = (r: Record<string, unknown>) => `${r.level} · ${r.label}`
     </template>
 
     <template v-if="data && !creating">
-      <UiTabs id="lim" v-model="tab" :tabs="TABS" label="Bagian Learning Impact Measurement" />
+      <!-- LIM-2 (PK-2): pemilih rencana dan "Rencana baru" di kanan baris tab supaya tab tetap di posisi mockup -->
+      <div class="lim-tabbar" data-testid="lim-tabbar">
+        <UiTabs id="lim" v-model="tab" :tabs="TABS" label="Bagian Learning Impact Measurement" />
+        <div v-if="plans?.length" class="lim-plan">
+          <label v-if="plans.length > 1" class="el-label lim-small">Rencana
+            <select v-model="planId" class="el-input"><option v-for="p in plans" :key="p.id" :value="p.id">{{ p.title }} · {{ p.participantCount }} peserta</option></select>
+          </label>
+          <p v-else class="el-muted lim-small">Rencana: <b>{{ plans[0]!.title }}</b> · {{ plans[0]!.participantCount }} peserta</p>
+          <UiButton v-if="isHr" variant="tonal" size="sm" @click="creating = true">Rencana baru</UiButton>
+        </div>
+      </div>
 
       <div v-if="tab === 'ringkasan'" id="lim-panel-ringkasan" role="tabpanel" aria-labelledby="lim-tab-ringkasan">
         <UiCard as="section" :aria-label="`Mulai dari masalah bisnis`">
@@ -138,13 +144,13 @@ const chainLabel = (r: Record<string, unknown>) => `${r.level} · ${r.label}`
           <div class="lim-q5">
             <div v-for="q in QUESTIONS" :key="q.key" class="lim-q">
               <div class="el-muted lim-small">{{ q.label }}</div>
-              <div class="lim-strong">{{ data.plan[q.key] || '—' }}</div>
+              <div class="lim-strong">{{ data.plan[q.key] || EMPTY }}</div>
             </div>
           </div>
         </UiCard>
         <UiCard class="lim-gap" as="section" aria-label="Rantai dampak">
           <h2 class="el-h3">Rantai dampak: enam tingkat bukti</h2>
-          <p class="el-muted lim-small">Makin dekat ke hasil bisnis, makin kuat buktinya. Tingkat yang kosong menunjukkan tempat rantai putus. Peserta terhitung: {{ data.participants }}.</p>
+          <p class="el-muted lim-small">Makin dekat ke hasil bisnis, makin kuat buktinya. Tingkat yang kosong menunjukkan tempat rantai putus.</p>
           <UiDataTable :columns="CHAIN_COLS" :rows="data.chain.map(asRow)" row-key="key" caption="Rantai dampak enam tingkat" caption-hidden>
             <template #cell-label="{ row }"><b>{{ chainLabel(row) }}</b></template>
             <template #cell-coverage="{ row }"><UiStatus :tone="COVERAGE[data.chain[Number(row.level) - 1]!.coverage].tone">{{ COVERAGE[data.chain[Number(row.level) - 1]!.coverage].text }}</UiStatus></template>
@@ -161,25 +167,26 @@ const chainLabel = (r: Record<string, unknown>) => `${r.level} · ${r.label}`
         <UiNote>Setiap kompetensi diikuti sampai ke kinerja: skor asesmen sebelum dan sesudah, hasil wawancara ulang AI, skor kinerja kerja, dan kesimpulan.</UiNote>
         <UiDataTable class="lim-gap" :columns="COMP_COLS" :rows="data.competencies.map(asRow)" row-key="competencyId" caption="Kompetensi sampai kinerja" caption-hidden empty-text="Modul rencana belum terhubung ke kompetensi.">
           <template #cell-name="{ row }"><b>{{ C(row).name }}</b></template>
-          <template #cell-pre="{ row }"><span class="el-mono">{{ score(C(row).pre) }}</span><div class="el-muted lim-small">n={{ C(row).preN }}</div></template>
+          <template #cell-pre="{ row }"><span class="el-mono" :title="nTitle(C(row).preN)">{{ score(C(row).pre) }}</span><span class="el-sr-only"> ({{ C(row).preN }} orang)</span></template>
           <template #cell-post="{ row }">
-            <span class="el-mono">{{ score(C(row).post) }}</span><div class="el-muted lim-small">n={{ C(row).postN }}</div>
+            <span class="el-mono" :title="nTitle(C(row).postN)">{{ score(C(row).post) }}</span><span class="el-sr-only"> ({{ C(row).postN }} orang)</span>
             <div v-if="C(row).postShared" class="el-muted lim-small">skor modul, bukan per kompetensi</div>
             <div v-if="C(row).postUnauditable" class="el-muted lim-small">{{ C(row).postUnauditable }} dari vendor</div>
           </template>
-          <template #cell-reinterview="{ row }"><span class="el-mono">{{ score(C(row).reinterview) }}</span><div class="el-muted lim-small">n={{ C(row).reinterviewN }}</div></template>
-          <template #cell-performance="{ row }"><span class="el-mono">{{ score(C(row).performance) }}</span><div class="el-muted lim-small">n={{ C(row).performanceN }}</div></template>
+          <template #cell-reinterview="{ row }"><span class="el-mono" :title="nTitle(C(row).reinterviewN)">{{ score(C(row).reinterview) }}</span><span class="el-sr-only"> ({{ C(row).reinterviewN }} orang)</span></template>
+          <template #cell-performance="{ row }"><span class="el-mono" :title="nTitle(C(row).performanceN)">{{ score(C(row).performance) }}</span><span class="el-sr-only"> ({{ C(row).performanceN }} orang)</span></template>
           <template #cell-verdict="{ row }"><UiStatus :tone="VERDICT[C(row).verdict].tone">{{ VERDICT[C(row).verdict].text }}</UiStatus></template>
         </UiDataTable>
         <p class="el-muted lim-small lim-gap">"Skor modul" berarti skor post satu modul dipakai untuk beberapa kompetensi. Kesimpulan memakai rata-rata wawancara ulang (ambang 70); yang belum diwawancara ulang ditandai "Belum diukur".</p>
-        <template v-if="isHr">
+        <details v-if="isHr" class="lim-gap lim-fold" :open="foldOpen" @toggle="foldOpen = ($event.target as HTMLDetailsElement).open">
+          <summary class="lim-strong">Isi data pengukuran (HR)</summary>
           <UiCard tonal class="lim-gap" as="section" aria-label="Isi skor pre">
             <h2 class="el-h3">Skor pre dari asesmen DNA</h2>
             <p class="el-muted lim-small">Mengisi skor pre yang masih kosong dari asesmen DNA terakhir sebelum karyawan mulai belajar (level × 25). Skor yang sudah diisi tidak ditimpa.</p>
             <UiButton variant="tonal" size="sm" :disabled="busy" @click="preFromDna">Isi pre dari asesmen DNA</UiButton>
           </UiCard>
           <ImportPanel submodule="lim" :plans="currentPlan" class="lim-gap" @imported="loadOverview" />
-        </template>
+        </details>
       </div>
 
       <div v-else-if="tab === 'bisnis'" id="lim-panel-bisnis" role="tabpanel" aria-labelledby="lim-tab-bisnis">
@@ -189,8 +196,7 @@ const chainLabel = (r: Record<string, unknown>) => `${r.level} · ${r.label}`
           <template #cell-current="{ row }"><span class="el-mono">{{ withUnit(I(row).current, I(row).unit) }}</span></template>
           <template #cell-target="{ row }"><span class="el-mono">{{ targetText(I(row)) }}</span></template>
           <template #cell-strength="{ row }">
-            <UiStatus :tone="STRENGTH[I(row).strength].tone">{{ STRENGTH[I(row).strength].text }}</UiStatus>
-            <div class="el-muted lim-small">{{ I(row).strengthSource === 'hr' ? 'dinilai HR' : 'dihitung aturan' }}</div>
+            <span :title="`Kekuatan bukti ${I(row).strengthSource === 'hr' ? 'dinilai HR' : 'dihitung aturan'}`"><UiStatus :tone="STRENGTH[I(row).strength].tone">{{ STRENGTH[I(row).strength].text }}</UiStatus></span>
           </template>
         </UiDataTable>
         <div class="el-grid el-grid-2 lim-gap">
@@ -213,10 +219,7 @@ const chainLabel = (r: Record<string, unknown>) => `${r.level} · ${r.label}`
       </div>
 
       <div v-else-if="tab === 'ai'" id="lim-panel-ai" role="tabpanel" aria-labelledby="lim-tab-ai">
-        <UiCard tonal as="section" aria-label="Agen AI pengukuran dampak">
-          <p><b>Agen AI · Pengukuran dampak</b> <UiStatus tone="info">Pilot</UiStatus></p>
-          <p class="el-muted lim-small">AI mewawancarai ulang karyawan 4 sampai 6 pekan setelah belajar untuk memastikan hasil belajar bertahan, membandingkannya dengan kinerja kerja, lalu menghubungkannya ke hasil bisnis tim. Satu wawancara mencakup sampai 4 kompetensi rencana.</p>
-        </UiCard>
+        <UiAgentCard v-if="!viewing" title="Pengukuran dampak">AI mewawancarai ulang karyawan beberapa pekan setelah belajar untuk memastikan hasil belajar bertahan, membandingkannya dengan kinerja kerja, lalu menghubungkannya ke hasil bisnis tim.</UiAgentCard>
         <UiNote v-if="!isHr" class="lim-gap">Antrean wawancara ulang dikelola HR. Hasilnya masuk ke tab Ringkasan dan Per kompetensi.</UiNote>
         <ReinterviewResult v-else-if="viewing" class="lim-gap" :plan-id="planId" :user-id="viewing.userId" :name="viewing.name" @back="viewing = null" />
         <template v-else-if="queue">
@@ -245,7 +248,7 @@ const chainLabel = (r: Record<string, unknown>) => `${r.level} · ${r.label}`
               </span>
             </template>
           </UiDataTable>
-          <UiNote class="lim-gap">Karyawan mengerjakan wawancara ulang sendiri dari menu Wawancara ulang setelah dijadwalkan. Wawancara yang sudah selesai tidak bisa dijadwalkan ulang.</UiNote>
+          <UiNote class="lim-gap">Wawancara ulang dijadwalkan 4 sampai 6 pekan setelah belajar. Karyawan mengerjakannya sendiri dari menu Wawancara ulang setelah dijadwalkan.</UiNote>
         </template>
       </div>
     </template>

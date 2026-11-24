@@ -7,7 +7,8 @@ import { ApiError } from '@/api/client'
 import {
   ATTEMPT_LABEL, platform, type AiCostRow, type AiQualityRow, type AttemptRow, type PlatformLogRow, type PlatformSettings,
 } from '@/api/platform'
-import { UiButton, UiCard, UiErrorSummary, UiField, UiNote, UiStatus } from '@/ui'
+import { AI_PRODUCT_LABEL } from '@/api/ai'
+import { EMPTY, formatNumber, formatPercent, UiButton, UiCard, UiChip, UiErrorSummary, UiField, UiNote, UiStatus } from '@/ui'
 
 const settings = ref<PlatformSettings | null>(null)
 const quality = ref<AiQualityRow[]>([])
@@ -78,8 +79,9 @@ async function save(confirmed = false) {
 
 const openDaily = ref<string | null>(null)
 const bar = (n: number | null) => `${Math.max(0, Math.min(100, n ?? 0))}%`
-const fmtPct = (n: number | null) => (n === null ? '–' : `${n.toLocaleString('id-ID')}%`)
-const fmtNum = (n: number) => n.toLocaleString('id-ID')
+const fmtPct = (n: number | null) => formatPercent(n)
+const fmtNum = (n: number) => formatNumber(n)
+// Biaya: empat angka desimal (sen dolar per panggilan), di luar formatNumber yang membulatkan dua angka
 const fmtUsd = (n: number) => `US$${n.toLocaleString('id-ID', { minimumFractionDigits: 2, maximumFractionDigits: 4 })}`
 const fmtTime = (iso: string) => new Date(iso).toLocaleString('id-ID', { dateStyle: 'medium', timeStyle: 'short', timeZone: 'Asia/Jakarta' })
 const RESOURCE: Record<string, string> = { tenant: 'Tenant', 'tenant.invitation': 'Undangan', 'tenant.module': 'Modul tenant', 'platform.setting': 'Konfigurasi platform' }
@@ -100,12 +102,12 @@ async function downloadCsv() {
 <template>
   <AppShell>
     <h1 class="el-h1">Konfigurasi platform</h1>
-    <p class="el-muted pf__lead">Pengaturan di halaman ini berlaku untuk semua tenant ELGOS.</p>
+    <p class="el-muted pf__lead">Pengaturan yang berlaku untuk seluruh tenant. Perubahan dicatat di log audit platform.</p>
 
     <UiNote v-if="loadError" tone="critical">{{ loadError }}</UiNote>
     <p v-else-if="loading" class="el-muted">Memuat konfigurasi…</p>
     <template v-else-if="settings">
-      <p v-if="notice" class="pf__notice" role="status">{{ notice }}</p>
+      <div v-if="notice" class="pf__notice" role="status"><UiNote tone="success">{{ notice }}</UiNote></div>
       <UiErrorSummary :errors="errors" />
 
       <div class="el-grid el-grid-2">
@@ -116,12 +118,15 @@ async function downloadCsv() {
             <dt>Enkripsi data</dt><dd>{{ settings.display.encryption === 'kms' ? 'Kunci per tenant di AWS KMS' : 'Kunci induk lokal (non-produksi)' }}</dd>
           </dl>
         </UiCard>
-        <UiCard>
+        <!-- P8 R18 (K-8, PLT-2): label produk seperti mockup; ID penyedia hanya di sini (layar Super Admin) -->
+        <UiCard data-testid="pf-model">
           <h2 class="el-h3">Model AI wawancara</h2>
-          <dl class="pf__dl">
-            <dt>Model</dt><dd>{{ settings.display.aiModel.provider }}<template v-if="settings.display.aiModel.model"> · {{ settings.display.aiModel.model }}</template></dd>
-            <dt>Kesepakatan AI–HR</dt><dd>Target {{ settings.editable.aiHrAgreementTarget }}%</dd>
-          </dl>
+          <p class="el-muted pf__desc">Versi model dan skrip wawancara yang tersedia untuk tenant.</p>
+          <div class="pf__chips">
+            <UiChip>{{ AI_PRODUCT_LABEL }}</UiChip>
+            <UiChip tone="review">Kesepakatan AI–HR ≥ {{ settings.editable.aiHrAgreementTarget }}% (kriteria pilot)</UiChip>
+          </div>
+          <p class="el-mono pf__id" data-testid="pf-model-id">ID penyedia (hanya Super Admin): {{ settings.display.aiModel.provider }}<template v-if="settings.display.aiModel.model"> · {{ settings.display.aiModel.model }}</template></p>
         </UiCard>
         <UiCard>
           <h2 class="el-h3">Kebijakan bawaan</h2>
@@ -246,7 +251,7 @@ async function downloadCsv() {
                 <td>{{ fmtTime(r.at) }}</td>
                 <td>{{ r.actorEmail ?? 'Akun dihapus' }}</td>
                 <td>{{ RESOURCE[r.resource] ?? r.resource }}: {{ logDetail(r) }}</td>
-                <td>{{ r.targetTenantName ?? '–' }}</td>
+                <td>{{ r.targetTenantName ?? EMPTY }}</td>
               </tr>
               <tr v-if="!log.length"><td colspan="4" class="el-muted">Belum ada tindakan platform.</td></tr>
             </tbody>
@@ -278,10 +283,13 @@ async function downloadCsv() {
 .pf__section { margin-top: 16px; }
 .pf__row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
 .pf__between { justify-content: space-between; }
-.pf__notice { margin: 0 0 12px; color: var(--el-success); font-weight: 500; }
+.pf__notice { margin: 0 0 12px; }
 .pf__dl { display: grid; grid-template-columns: minmax(140px, 40%) 1fr; gap: 8px 16px; margin: 8px 0 0; }
 .pf__dl dt { font-weight: 500; }
 .pf__dl dd { margin: 0; }
+.pf__desc { margin: 0; }
+.pf__chips { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+.pf__id { font-size: 12px; color: var(--el-on-surface-variant); margin: 8px 0 0; }
 .pf__table { width: 100%; border-collapse: collapse; margin-top: 8px; }
 .pf__table th, .pf__table td { text-align: left; padding: 8px; border-bottom: 1px solid var(--el-outline-variant, #ddd); font-weight: normal; }
 .pf__table thead th { font-weight: 600; }

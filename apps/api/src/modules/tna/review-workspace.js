@@ -11,6 +11,9 @@ const { badRequest, notFound, HttpError } = require('../../core/errors');
 const { reviewDue, suggestedClassification, CLASSIFICATIONS, categoryFor } = require('./review-sla');
 const { PLAN_STATUS_LABEL } = require('./plan-status');
 const { toCsv } = require('./csv');
+const { gapKeyOf, findingsInGap, GAP_MATCH_COLUMNS } = require('./gaps');
+const { metricKey } = require('./performance');
+const { parseGapQuery } = require('./assignment');
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const ACTIVE_PLAN = ['new', 'in_progress'];
@@ -19,9 +22,49 @@ const MAX_HANDOFF = 200;
 const BOM = String.fromCharCode(0xfeff);
 const EXPORT_HEADER = ['ID Karyawan', 'Nama', 'Email', 'Kompetensi', 'Kode Course', 'Judul Course', 'Program', 'Status Rencana'];
 
+/** Salinan baris tanpa field tertentu. */
+const omit = (fields) => (row) => Object.fromEntries(Object.entries(row).filter(([k]) => !fields.includes(k)));
+// Kolom internal pencocokan gap (gaps.js GAP_MATCH_COLUMNS, dipilih lna-stores); tidak dikirim ke klien
+const withoutGapFields = omit(Object.keys(GAP_MATCH_COLUMNS));
+// Layar tinjauan per gap tanpa rincian temuan maupun catatan ringkasan karyawan (PO-6 A); rincian di antrean lama
+const GAP_HIDDEN_FIELDS = ['detail', 'originalDetail', 'summaryNote'];
+const withoutDetail = omit(GAP_HIDDEN_FIELDS);
+
+/** Permintaan membawa filter gap (`kind` terisi). Dipakai juga gerbang flag GET /review di index.js. */
+const hasGapFilter = (req) => req.query.kind !== undefined && req.query.kind !== '';
+
+/**
+ * Paritas B7 web: filter gap opsional dari query (parameter sama dengan `/tna/gaps/detail`). Tanpa `kind` -> null
+ * (perilaku lama). Kompetensi harus milik tenant ini (404). Return { key, label, keep(rows), query } dengan `query`
+ * predikat gap untuk store reviewQueue, listReviewedForSolutions, dan listPlanExport (audit PR 39 butir 39-3).
+ */
+async function gapFilterOf(req, stores) {
+  if (!hasGapFilter(req)) return null;
+  const gap = parseGapQuery(req.query);
+  let label = gap.name;
+  if (gap.kind === 'competency') {
+    const competency = await stores.dna.getCompetency(req.tenantId, gap.competencyId);
+    if (!competency) throw notFound('Gap tidak ditemukan');
+    label = competency.name;
+  }
+  const key = gapKeyOf(gap);
+  const query = gap.kind === 'competency'
+    ? { kind: 'competency', competencyId: gap.competencyId }
+    : { kind: 'okr', metricType: gap.metricType, metricKey: metricKey(gap.name), period: gap.period };
+  return { key, label, keep: (rows) => findingsInGap(rows, key), query };
+}
+
+/** projectId opsional di query: harus satu UUID, selain itu 400 (bukan galat cast di database). */
+function projectIdOf(req) {
+  const v = req.query.projectId;
+  if (v === undefined || v === '') return undefined;
+  if (typeof v !== 'string' || !UUID.test(v)) throw badRequest('projectId tidak valid');
+  return v;
+}
+
 /** Bentuk satu butir antrean tinjauan: field tahan, saran klasifikasi, dan batas tinjauan. */
 function toReviewItem(row, targetDays, now = new Date()) {
-  const { sessionEndedAt, ...item } = row;
+  const { sessionEndedAt, ...item } = withoutGapFields(row);
   return {
     ...item,
     held: Boolean(item.heldAt) && item.reviewStatus === 'draft',
@@ -36,14 +79,6 @@ function reviewWorkspaceRouter({ stores, settings, catalog, flags, audit, assign
   const flag = requireFlag(flags, FLAGS.TNA_REVIEW_WORKSPACE, 'Tinjauan HR versi baru belum diaktifkan untuk organisasi Anda');
   const conflict = (code, message) => new HttpError(409, code, message);
 
-  /** projectId opsional di query: harus satu UUID, selain itu 400 (bukan galat cast di database). */
-  const projectIdOf = (req) => {
-    const v = req.query.projectId;
-    if (v === undefined || v === '') return undefined;
-    if (typeof v !== 'string' || !UUID.test(v)) throw badRequest('projectId tidak valid');
-    return v;
-  };
-
   /** Bisakah tenant ini menugaskan langsung ke EliteMentor? Baris 5 dan 6 tabel keputusan di spek. */
   async function assignGate(tenantId, conf) {
     if (conf.lms.delivery === 'lms_export') return conflict('ASSIGN_VIA_EXPORT', `Organisasi Anda belajar di ${conf.lms.lmsName}. Ekspor daftar gap untuk diunggah ke sana.`);
@@ -54,6 +89,8 @@ function reviewWorkspaceRouter({ stores, settings, catalog, flags, audit, assign
   }
 
   // --- Klasifikasi tiga tombol ---
+  // Hanya dipakai layar tinjauan per gap, jadi respons tanpa rincian dan catatan ringkasan (PO-6 A, P9 CD-3)
+  const classifiedItem = (row, conf) => withoutDetail(toReviewItem(row, conf.tna.reviewTargetDays));
   r.post('/findings/:id/classify', hr, flag, wrap(async (req, res) => {
     const { classification, note } = req.body || {};
     if (!CLASSIFICATIONS.includes(classification)) throw badRequest(`classification harus ${CLASSIFICATIONS.join(', ')}`);
@@ -84,7 +121,7 @@ function reviewWorkspaceRouter({ stores, settings, catalog, flags, audit, assign
       throw reviewed;
     } else {
       const category = categoryFor(classification);
-      if (category === current.category) return res.json({ data: toReviewItem(current, conf.tna.reviewTargetDays) });
+      if (category === current.category) return res.json({ data: classifiedItem(current, conf) });
       out = await stores.tna.reclassifyFinding(req.tenantId, current.id, { category, reviewerId: base.reviewerId });
       if (!out) throw conflict('ALREADY_ACTIONED', 'Temuan ini sudah ditindaklanjuti, klasifikasinya tidak bisa diubah lagi');
       decision = 'reclassified';
@@ -92,16 +129,19 @@ function reviewWorkspaceRouter({ stores, settings, catalog, flags, audit, assign
     await audit.record(req, 'update', 'tna.finding_review', {
       employeeIds: [current.userId], objectType: 'tna_finding', objectIds: [current.id], decision, classification, from: current.category, confidence: current.confidence,
     });
-    return res.json({ data: toReviewItem(out, conf.tna.reviewTargetDays) });
+    return res.json({ data: classifiedItem(out, conf) });
   }));
 
   // --- Solusi: rekomendasi course untuk temuan pelatihan, daftar temuan perbaikan ---
   r.get('/review/solutions', hr, flag, wrap(async (req, res) => {
-    const [rows, conf, inaEnabled] = await Promise.all([
-      stores.tna.listReviewedForSolutions(req.tenantId, { projectId: projectIdOf(req) }),
+    const gap = await gapFilterOf(req, stores);
+    const [all, conf, inaEnabled] = await Promise.all([
+      // predikat gap di SQL (sama dengan reviewQueue), keanggotaan pasti tetap lewat gap.keep (aturan R6)
+      stores.tna.listReviewedForSolutions(req.tenantId, { projectId: projectIdOf(req), gap: gap ? gap.query : undefined }),
       settings.get(req.tenantId),
       flags.isEnabled(req.tenantId, FLAGS.MODULE_INA),
     ]);
+    const rows = gap ? gap.keep(all) : all;
     const training = [];
     for (const f of rows.filter((x) => x.category === 'training')) {
       let recommendation = null;
@@ -158,9 +198,11 @@ function reviewWorkspaceRouter({ stores, settings, catalog, flags, audit, assign
     return res.json({ data: saved });
   }));
 
-  // --- Ekspor gap untuk LMS klien (K4). Hanya membaca ---
+  // --- Ekspor gap untuk LMS klien (K4). Hanya membaca. Filter gap opsional (layar per gap, P9 IR-5) ---
   r.get('/plan-items/export.csv', hr, flag, wrap(async (req, res) => {
-    const rows = await stores.tna.listPlanExport(req.tenantId, { projectId: projectIdOf(req) });
+    const gap = await gapFilterOf(req, stores);
+    const all = await stores.tna.listPlanExport(req.tenantId, { projectId: projectIdOf(req), gap: gap ? gap.query : undefined });
+    const rows = gap ? gap.keep(all) : all;
     const csv = toCsv(EXPORT_HEADER, rows.map((p) => [
       p.employeeId, p.userName, p.email, p.competencyName, p.catalogItemRef, p.catalogItemTitle, p.programTier, PLAN_STATUS_LABEL[p.status] || p.status,
     ]));
@@ -198,4 +240,4 @@ function assertNotWithdrawn(item) {
   if (item && item.consentWithdrawnAt) throw frozenError();
 }
 
-module.exports = { reviewWorkspaceRouter, toReviewItem, assertNotWithdrawn, frozenError };
+module.exports = { reviewWorkspaceRouter, toReviewItem, withoutDetail, hasGapFilter, gapFilterOf, projectIdOf, assertNotWithdrawn, frozenError };

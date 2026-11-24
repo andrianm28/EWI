@@ -29,7 +29,8 @@ watch(() => route.name, refresh)
 
 <style scoped>
 .ina-extra {
-  position: fixed; right: 24px; bottom: 24px; z-index: 20; display: flex; gap: 12px; align-items: center; max-width: 360px;
+  /* posisi diatur kolom tambahan shell di AppShell (P9 CD-2) */
+  display: flex; gap: 12px; align-items: center; max-width: 360px;
   padding: 12px 16px; border-radius: 16px; background: var(--el-surface); color: var(--el-on-surface);
   border: 1px solid var(--el-outline-variant); box-shadow: 0 4px 16px rgb(0 0 0 / 0.18);
 }

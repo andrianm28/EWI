@@ -2,9 +2,10 @@
 // Chip klasifikasi. Tiga jalur mockup: Training Needs, Improvement Needs, Perlu ditinjau HR; plus sukses, kritis, netral.
 import UiIcon from './UiIcon.vue'
 import type { IconName } from './icons'
+import type { ChipTone } from './tones'
 
 withDefaults(defineProps<{
-  tone?: 'training' | 'improvement' | 'review' | 'success' | 'critical' | 'neutral'
+  tone?: ChipTone
   icon?: IconName
 }>(), { tone: 'neutral' })
 </script>

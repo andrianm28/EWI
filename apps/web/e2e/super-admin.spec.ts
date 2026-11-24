@@ -91,12 +91,54 @@ test('1. Super Admin mendarat di Tenant; KPI dan status tenant tampil sebagai te
   await expect(rows.filter({ hasText: 'PT Tunggu' })).toContainText('Menunggu admin')
   await expect(rows.filter({ hasText: 'PT Beku' })).toContainText('Ditangguhkan')
   await expect(nav(page).getByRole('link')).toContainText(['Tenant', 'Konfigurasi platform'])
+  // P7 TEN-1/2/5
+  await expect(page.getByText('Super admin mengonfigurasi multi-tenant: satu tenant adalah satu perusahaan dengan datanya sendiri.')).toBeVisible()
+  await expect(page.getByText('dari 3 tenant terdaftar')).toBeVisible()
+  await expect(page.getByText('seluruh tenant')).toBeVisible()
+  await expect(page.getByText('dapat diaktifkan per tenant')).toBeVisible()
+  await expect(rows.filter({ hasText: 'PT Elitery' })).toContainText(/\d+ \/ \d+/)
+})
+
+test('1b. Jawaban tenant berbentuk salah: layar memberi pesan galat, bukan halaman kosong', async ({ page }) => {
+  // Bentuk asli (API lokal 24 Nov): { data: { kpis, tenants } }. Di sini data berupa array mentah.
+  await mockApi(page, (req) => {
+    if (req.method === 'GET' && req.path === '/platform/tenants') return { json: { data: TENANTS } }
+    if (req.method === 'GET' && req.path === '/platform/settings') return { json: { data: SETTINGS } }
+    return undefined
+  })
+  await loginSebagai(page, 'super', { flags: ON })
+  await expect(page.getByRole('heading', { level: 1, name: 'Tenant' })).toBeVisible()
+  await expect(page.getByText('Data tenant tidak bisa dibaca. Muat ulang halaman; bila masih gagal, hubungi tim ELGOS.')).toBeVisible()
+})
+
+test('1c. Panel Modul: jawaban modul berbentuk salah atau kosong diberi pesan', async ({ page }) => {
+  let modules: unknown = { modules: MODULES }
+  await mockApi(page, (req) => {
+    if (req.method === 'GET' && req.path === '/platform/tenants') {
+      return { json: { data: { kpis: { tenants: 1, activeTenants: 1, users: 42, modulesAvailable: 8 }, tenants: TENANTS.slice(0, 1) } } }
+    }
+    if (req.method === 'GET' && req.path === '/platform/settings') return { json: { data: SETTINGS } }
+    if (cocok(req, 'GET /platform/tenants/:id/modules')) return { json: { data: modules } }
+    return undefined
+  })
+  await loginSebagai(page, 'super', { flags: ON })
+  await page.getByRole('button', { name: 'Modul', exact: true }).click()
+  const panel = page.getByRole('region', { name: 'Modul PT Elitery' })
+  await expect(panel).toContainText('Data modul tidak bisa dibaca. Tutup panel lalu coba lagi.')
+  await panel.getByRole('button', { name: 'Tutup' }).click()
+  modules = []
+  await page.getByRole('button', { name: 'Modul', exact: true }).click()
+  await expect(panel).toContainText('Belum ada modul untuk tenant ini.')
 })
 
 test('2. Buat tenant: Periksa memberi slug, slug ganda diperingatkan, simpan, undangan gagal bisa dikirim ulang', async ({ page }) => {
   const { sent } = await konsol(page)
   await loginSebagai(page, 'super', { flags: ON })
   await page.getByRole('button', { name: 'Buat tenant baru' }).click()
+  // P7 TEN-6
+  await expect(page.getByLabel('Nama perusahaan')).toHaveAttribute('placeholder', 'PT Contoh Sejahtera')
+  await expect(page.getByLabel('Email admin tenant')).toHaveAttribute('placeholder', 'admin@contoh.co.id')
+  await expect(page.getByText('Admin tenant menerima undangan dan menyiapkan pengguna, jabatan, dan data sendiri.')).toBeVisible()
   await page.getByLabel('Nama perusahaan').fill('PT Elitery')
   await page.getByLabel('Email admin tenant').fill('admin@baru.test')
   await page.getByRole('button', { name: 'Periksa' }).click()
@@ -107,6 +149,7 @@ test('2. Buat tenant: Periksa memberi slug, slug ganda diperingatkan, simpan, un
   await expect(page.getByTestId('slug-hasil')).toContainText('pt-contoh-baru')
   await page.getByRole('button', { name: 'Buat tenant', exact: true }).click()
   await expect(page.getByRole('status')).toContainText('email undangan gagal terkirim')
+  await expect(page.getByRole('status').locator('.el-note--warning')).toBeVisible()
   const row = page.getByRole('table', { name: 'Daftar tenant' }).getByRole('row').filter({ hasText: 'PT Contoh Baru' })
   await expect(row).toContainText('Menunggu admin')
   await row.getByRole('button', { name: 'Kirim ulang undangan' }).click()
@@ -177,4 +220,26 @@ test('6. Flag mati: menu Tenant dan Konfigurasi tidak tampil, /tenants tidak bis
   await expect(nav(page).getByRole('link', { name: 'Konfigurasi platform' })).toHaveCount(0)
   await page.goto('/tenants')
   await expect(page).not.toHaveURL(/\/tenants$/)
+})
+
+// Paritas P8 (docs/designs/paritas-mockup/p8-keputusan-r1-r22.md)
+test('P8 R3: status tenant berupa chip terisi', async ({ page }) => {
+  await konsol(page)
+  await loginSebagai(page, 'super', { flags: ON })
+  const rows = page.getByRole('table', { name: 'Daftar tenant' }).getByRole('row')
+  await expect(rows.filter({ hasText: 'PT Elitery' }).locator('.el-chip--success')).toHaveText('Aktif')
+  await expect(rows.filter({ hasText: 'PT Beku' }).locator('.el-chip--review')).toHaveText('Ditangguhkan')
+  await expect(page.getByRole('table', { name: 'Daftar tenant' }).locator('.el-status')).toHaveCount(0)
+})
+
+test('P8 R18: kartu model AI memakai label produk dan chip kriteria pilot; ID penyedia hanya baris Super Admin', async ({ page }) => {
+  await konsol(page)
+  await loginSebagai(page, 'super', { flags: ON })
+  await nav(page).getByRole('link', { name: 'Konfigurasi platform' }).click()
+  const kartu = page.getByTestId('pf-model')
+  await expect(kartu.getByRole('heading', { name: 'Model AI wawancara' })).toBeVisible()
+  await expect(kartu).toContainText('Versi model dan skrip wawancara yang tersedia untuk tenant.')
+  await expect(kartu.locator('.el-chip').first()).toHaveText('ELGOS-AI (POC)')
+  await expect(kartu.locator('.el-chip--review')).toHaveText('Kesepakatan AI–HR ≥ 85% (kriteria pilot)')
+  await expect(kartu.getByTestId('pf-model-id')).toHaveText('ID penyedia (hanya Super Admin): bedrock · model-uji')
 })

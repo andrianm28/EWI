@@ -13,5 +13,7 @@ export default [
     path: '/tna/gap', name: 'tna-gap', component: () => import('./TnaGapView.vue'),
     meta: { views: ['hr', 'atasan', 'admin', 'super'], submodule: 'tna', flag: 'tna.gap_board', roles: ['hr_admin', 'eta_admin', 'supervisor'], menuKey: 'tna', title: 'Detail gap' },
   },
+  // Paritas P5 (TN-2): pengelolaan TNA lama saat papan gap menyala. Gerbang sama dengan `tna` (B0 5.3 aturan 2).
+  { path: '/tna/kelola', name: 'tna-kelola', component: () => import('./TnaKelolaView.vue'), meta: { views: ALL_VIEWS, submodule: 'tna', menuKey: 'tna', title: 'Kelola TNA' } },
   { path: '/m/tna', name: 'tna-lama', redirect: { name: 'tna' } },
 ] satisfies RouteRecordRaw[]

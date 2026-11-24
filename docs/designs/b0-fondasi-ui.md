@@ -53,9 +53,10 @@ Didefinisikan di `apps/web/src/style.css` sebagai variabel CSS pada `:root`, lal
 | `--el-success` / container | #1B6E3F / #C6F0D3 | #8BD8A5 / #0B5229 |
 | `--el-warning` / container | #7A4F00 / #FFE2A8 | #F3BF5B / #5C3B00 |
 | `--el-critical` / container | #B3261E / #F9DEDC | #FFB4AB / #8C1D18 |
+| `--el-scrim` | hitam 40% | hitam 40% |
 
 - Mode gelap tidak ada di mockup. Nilainya diturunkan dengan pola peran warna Material 3. `[⚠️ BELUM TERVERIFIKASI]` belum dilihat Pak Eji atau Desty; bila ditolak, cukup ubah nilai di satu blok CSS.
-- Pemilihan tema: atribut `data-theme="light|dark"` di `<html>`. Tanpa pilihan pengguna, mengikuti `prefers-color-scheme`. Pilihan pengguna (tombol di top bar) disimpan di `localStorage` kunci `elgos.theme`; akses storage dibungkus try/catch.
+- Pemilihan tema: atribut `data-theme="light|dark"` di `<html>`. Tanpa pilihan pengguna, mengikuti `prefers-color-scheme`. Pilihan pengguna (butir "Mode gelap" di kaki drawer; dipindah dari top bar oleh paritas P2 agar top bar sama dengan mockup) disimpan di `localStorage` kunci `elgos.theme`; akses storage dibungkus try/catch.
 - Tipografi: Roboto 400/500/700 dan Roboto Mono 400/500, **di-host sendiri** lewat paket `@fontsource/*` (subset latin). Mockup memuat dari Google Fonts; B0 tidak, supaya aplikasi tidak memanggil pihak ketiga saat dibuka pengguna klien.
 - Ikon: Material Symbols Outlined sebagai path SVG inline di `src/ui/icons.ts` (54 ikon yang dipakai mockup dan komponen). Tanpa font ikon.
 - Ukuran dasar mengikuti mockup: teks 14px/20px, h1 28/36 weight 400, h2 20/28 weight 500, h3 16/24 weight 500, radius kartu 16px, tombol 20px, chip 8px.
@@ -72,19 +73,24 @@ Semua komponen: Vue 3 `<script setup lang="ts">`, tanpa pustaka komponen pihak k
 | `UiChip` | M3 chip | `tone` = `training`\|`improvement`\|`review`\|`success`\|`critical`\|`neutral`, `icon?` | teks selalu ada |
 | `UiStatus` | Carbon label status | `tone` = `success`\|`warning`\|`critical`\|`info`\|`neutral`, slot teks | ikon + teks, bukan warna saja; ikon default per tone |
 | `UiTabs` | M3 tab | `tabs: {key,label}[]`, `v-model` | `role="tablist"`, panah kiri/kanan, Home/End; panel milik pemakai dengan `role="tabpanel"` |
-| `UiSegmented` | M3 segmented | `options: {key,label}[]`, `v-model`, `label` | `role="group"` + `aria-pressed` |
-| `UiDataTable` | Carbon data table | `columns: {key,label,sortable?,align?,mono?}[]`, `rows`, `rowKey`, `caption`, `emptyText`, `v-model:sort`; slot `toolbar`, slot sel `#cell-<key>` | `<table>` asli dengan `<caption>`; header sortable berupa tombol dengan `aria-sort`; pembungkus bisa digulir horizontal |
+| `UiSegmented` | M3 segmented | `options: {key,label,disabled?,pending?}[]`, `v-model` (`''` = belum ada pilihan), `label`, `variant` = `joined` (bawaan)\|`chips` (tombol terpisah `.rad` mockup, paritas B7; juga filter Library P6) | `role="group"` + `aria-pressed`; opsi `disabled` memakai atribut `disabled` asli; opsi `pending` (mis. sedang menyimpan, B7) tidak bisa dipilih tetapi memakai `aria-disabled="true"` dan klik diabaikan, bukan `disabled`, supaya tombol yang baru diklik tidak kehilangan fokus |
+| `UiDataTable` | Carbon data table + `.row.lk` | `columns: {key,label,sortable?,align?,mono?}[]`, `rows`, `rowKey`, `caption`, `emptyText`, `v-model:sort`, `rowTo?: (row) => RouteLocationRaw \| null`, `rowLinkKey?` (bawaan kolom pertama); slot `toolbar`, slot sel `#cell-<key>` | `<table>` asli dengan `<caption>`; header sortable berupa tombol dengan `aria-sort`; pembungkus bisa digulir horizontal. Dengan `rowTo`, isi sel `rowLinkKey` menjadi tautan (satu titik fokus per baris) dan klik di mana pun pada baris mengikutinya, kecuali klik pada elemen interaktif lain atau saat teks diseleksi |
 | `UiStepper` | Stepper mockup | `steps: {key,label}[]`, `current` | `<ol>`, langkah aktif `aria-current="step"`, langkah selesai diberi teks tersembunyi "selesai" |
 | `UiErrorSummary` | GOV.UK error summary | `title` (default "Ada masalah"), `errors: {message, fieldId?}[]` | `role="alert"`, `tabindex="-1"`, menerima fokus saat muncul; tiap galat menjadi tautan ke `#fieldId` |
 | `UiSkipLink` | GOV.UK skip link | `target` (default `#isi`) | tersembunyi sampai difokus |
 | `UiAuditLine` | Carbon metadata | slot atau `items: string[]` digabung " · " | monospasi 11px |
 | `UiKpiCard` | `.kpi` | `label`, `value`, `note?` | label huruf besar kecil, nilai 32px |
 | `UiCard` | `.card` | `tonal?`, `as?` | |
+| `UiAgentCard` | `.card.t` "Agen AI · …" | `title` (tanpa awalan), `action?`, `to?: RouteLocationRaw \| null`; slot = teks | judul berupa `h2` 14px/500, chip "Pilot" (`UiChip tone="review"`); tombol tonal kecil hanya dirender bila `action` dan `to` ada, pemanggil memeriksa `routeOpen()`/flag |
+| `UiBreadcrumb` | `.bc` | `items: {label, to?}[]` | `<nav aria-label="Lokasi">` + `<ol>`; pemisah "›" `aria-hidden`; butir terakhir `aria-current="page"`; induk dengan `to` menjadi tautan bergaris bawah warna primary. Teks butir mengikuti `.bc` mockup |
 | `UiNote` | `.note` | `tone` = `info`\|`warning`\|`critical`\|`success` | `role="note"`; untuk galat pakai `UiErrorSummary` |
 | `UiProgressBar` | `.bar` | `value` 0–100, `tone?`, `label` | `role="progressbar"` + `aria-valuenow` |
 | `UiField` | `.lbl` + `.inp` | `id`, `label`, `hint?`, `error?`; slot menerima `{ attrs }` untuk di-`v-bind` ke input | label tertaut `for`; petunjuk dan galat tertaut `aria-describedby`; `aria-invalid` saat galat |
+| `UiDialog` | - (paritas P8, formulir sekunder) | `open`, `title`; emit `close`; slot isi (dirender hanya saat terbuka) | `<dialog>` bawaan dengan `showModal()`: latar inert, Esc menutup (emit `close`), judul `<h2>` tertaut `aria-labelledby`, tombol ikon "Tutup". Fokus awal di field pertama (tanpa field: perilaku bawaan), Tab berputar di dalam dialog, fokus kembali ke tombol pembuka saat ditutup. Latar `--el-scrim`. Ringkasan galat formulir diletakkan di dalam dialog |
 
-Formulir: input, select, dan textarea memakai kelas `el-input`; kotak centang memakai `el-check`; label mandiri memakai `el-label`. Kelas bantu lain: `el-h1`–`el-h3`, `el-muted`, `el-mono`, `el-grid` + `el-grid-2/3/4`, `el-pill`, `el-sr-only`. Saklar (`.sw2` mockup) dan dialog belum disediakan; paket pertama yang membutuhkannya menambahkannya ke `src/ui/` (ditunda, lihat bagian 11).
+Formulir: input, select, dan textarea memakai kelas `el-input`; kotak centang memakai `el-check`; label mandiri memakai `el-label`. Kelas bantu lain: `el-h1`–`el-h3`, `el-muted`, `el-mono`, `el-grid` + `el-grid-2/3/4`, `el-pill`, `el-sr-only`. Saklar (`.sw2` mockup) belum disediakan; paket pertama yang membutuhkannya menambahkannya ke `src/ui/` (ditunda, lihat bagian 11). Dialog: `UiDialog` (paritas P8).
+
+Format angka (`src/ui/format.ts`, paritas P8 R4): `formatNumber(n)` memakai locale id-ID (titik pemisah ribuan, koma desimal, dibulatkan ke paling banyak dua angka di belakang koma), tanda minus `−` (U+2212), `-0` menjadi `0`, NaN/Infinity menjadi "–". `formatScore(n, empty = '–')` untuk skor 0–100 tanpa satuan; nilai kosong menjadi `empty`. Layar tidak membuat format angka sendiri.
 
 `v-model:sort` bertipe `{ key, dir: 'asc' | 'desc' } | null`; klik header berputar naik → turun → tanpa urutan. Nilai kosong selalu di bawah. Pengurutan `UiDataTable` dilakukan di sisi klien atas `rows` yang diberikan (angka dibanding sebagai angka, lainnya dengan `localeCompare(…, 'id', { numeric: true, sensitivity: 'base' })`: deret angka di dalam teks dibanding sebagai angka, huruf besar-kecil diabaikan; kunci urut yang tidak cocok dengan kolom mana pun berarti tanpa urutan). Data berhalaman dari server bukan cakupan B0; pemakai yang butuh itu mematikan `sortable` dan mengurutkan sendiri.
 
@@ -109,7 +115,7 @@ Mockup punya lima tampilan. Kuncinya dipakai di seluruh web app:
 - **Ganti tampilan sebelum B2 dan B8 selesai.** Tampilan tambahan hanya ditawarkan bila rute berandanya sudah terdaftar (untuk `karyawan`: rute `my`, Hasil saya, B8). Alasannya: halaman lama menentukan isi dari `user.role` dan API memberi data sesuai peran asli, jadi "tampilan karyawan" di atas halaman lama akan tetap memperlihatkan data HR. Begitu B8 memasang `my`, tombol ganti tampilan muncul sendiri.
 - Tampilan aktif disimpan di store sesi (`activeView`) dan `sessionStorage` kunci `elgos.view`. Saat nilainya tidak termasuk tampilan yang tersedia, dipakai tampilan pertama (pilihan tersimpan tidak ditimpa).
 - Bila profil belum termuat (`/auth/me` gagal setelah muat ulang), tampilan jatuh ke `karyawan` (menu paling sempit) dan pil identitas tidak tampil. Ini sama dengan perilaku halaman lama yang memperlakukan peran kosong sebagai bukan HR.
-- **Layar yang dipakai beberapa tampilan** (mis. `dash` untuk hr dan atasan, `aiv` untuk atasan dan karyawan) membaca `session.activeView` secara reaktif untuk varian dan judul, dan `session.roles` untuk izin. Jangan membaca `session.role` (satu peran) untuk keduanya. Ganti tampilan ke rute yang sama (hr → atasan saat di `dash`) tidak memicu navigasi, jadi layar harus bereaksi pada perubahan `activeView` sendiri. Data yang ditampilkan mengikuti apa yang dikirim API (mis. B3 memakai `scope` dari respons), bukan tampilan aktif.
+- **Layar yang dipakai beberapa tampilan** (mis. `dash` untuk hr dan atasan, `aiv` untuk atasan dan karyawan) membaca `session.activeView` secara reaktif untuk varian dan judul, dan `session.roles` untuk izin (pembantu `session.hasAnyRole(list)`, paritas P9 CD-4). Jangan membaca `session.role` (satu peran) untuk keduanya. Ganti tampilan ke rute yang sama (hr → atasan saat di `dash`) tidak memicu navigasi, jadi layar harus bereaksi pada perubahan `activeView` sendiri. Data yang ditampilkan mengikuti apa yang dikirim API (mis. B3 memakai `scope` dari respons), bukan tampilan aktif.
 - **Data tampilan tambahan akun multi-peran** diselesaikan B2 (PR #20): pengalih tampilan memanggil `POST /auth/switch-role` bila `/me/access` mengirim `roles`, sehingga API menghitung data dengan peran tampilan itu. Sampai itu masuk, API memakai peran utama dan layar wajib mengikuti cakupan dari respons (butir di atas).
 - `[⏳ DITERIMA]` Rute lama tanpa `meta.views` (`legacy-dna`, `legacy-tna`, `legacy-review`, `legacy-interview`) tidak memindahkan tampilan. Setelah B8 memasang `my`, akun HR di tampilan "Karyawan (saya)" yang membuka tautan `/m/tna` melihat halaman HR dengan label Karyawan. Hanya UI (API tetap mengotorisasi); hilang saat B4/B5/B6/B7 mengganti rute itu dengan `views` yang benar. Tombol Back ke rute khusus HR juga memindahkan tampilan kembali ke HR; itu konsekuensi "tautan langsung tetap bekerja".
 - `eta_admin` dipetakan ke `super`. Di halaman lama ia setara HR, jadi sampai layar Tenant (B12) terpasang ia tetap mendapat butir peralihan Developmental Needs dan Training Needs.
@@ -182,7 +188,7 @@ Supaya thread-thread paralel tidak mengedit berkas router yang sama:
 - Nama atau path rute ganda membuat aplikasi gagal dimuat (`assertUnique` di `router/index.ts`), sehingga e2e PR yang membawanya langsung merah. Rute paket **datar**: `children` dan `alias` ditolak, karena tidak ikut diperiksa. Pemeriksaan path hanya perbandingan teks (`/m/dna` dan `/m/:key(dna)` dianggap berbeda).
 - Rute bersifat statis. Jangan memakai `router.addRoute` saat runtime: menu dan daftar tampilan tidak akan ikut berubah.
 - Di build uji (`VITE_UI_KIT=1`), rute uji dari `localStorage` **menggantikan** rute asli bernama atau ber-path sama. Jadi test shell yang mendaftarkan `dash` atau `my` tiruan tetap berjalan setelah layar aslinya ada.
-- Elemen yang melayang di atas semua layar (Asisten ELGOS, B17): taruh `src/screens/<nama-paket>/ShellExtra.vue`; `AppShell` memasangnya setelah `<main>` tanpa perlu diedit. Karena tiap halaman memasang `AppShell` sendiri, `ShellExtra` dilepas dan dipasang ulang setiap pindah halaman: simpan state (percakapan terbuka, permintaan berjalan) di store Pinia atau state modul. `AppShell` tidak memeriksa tampilan, flag, atau entitlement untuknya: gerbang itu dipasang di dalam komponen sendiri. Komponen ini di luar `.el-app__main`, jadi tetap bisa difokus saat drawer terbuka; beri `inert` sendiri bila perlu.
+- Elemen yang melayang di atas semua layar (Asisten ELGOS, B17): taruh `src/screens/<nama-paket>/ShellExtra.vue`; `AppShell` memasangnya setelah `<main>` tanpa perlu diedit. Karena tiap halaman memasang `AppShell` sendiri, `ShellExtra` dilepas dan dipasang ulang setiap pindah halaman: simpan state (percakapan terbuka, permintaan berjalan) di store Pinia atau state modul. `AppShell` tidak memeriksa tampilan, flag, atau entitlement untuknya: gerbang itu dipasang di dalam komponen sendiri. Komponen ini di luar `.el-app__main`, jadi tetap bisa difokus saat drawer terbuka; beri `inert` sendiri bila perlu. Semua `ShellExtra` dipasang dalam satu kolom `.el-app__extras` (fixed kanan bawah, bertumpuk dengan jarak 12px, urutan nama folder), jadi komponennya tidak memakai `position: fixed` sendiri supaya tidak saling menutupi (paritas P9 CD-2).
 - Beranda tampilan (`homeFor(view)`): `dash` (hr, atasan), `my` (karyawan), `users` (admin), `tenants` (super) bila rutenya terdaftar dan gerbangnya (`views`, `flag`, `submodule`/`submoduleParam`, `roles`, `entitlement`) lolos; selain itu `home`. Rute `home` mengalihkan ke beranda tampilan, jadi kode yang melakukan `router.push({ name: 'home' })` (login, link email) tidak perlu diubah.
 - `src/modules.ts` (`SubmoduleKey`) tidak perlu diedit untuk modul 2–5: pakai `meta.flag`.
 
@@ -226,7 +232,7 @@ Pemeriksaan sisi API untuk modul 2–5 milik paket modulnya (B13–B16), dengan 
 | --- | --- | --- |
 | `screens/legacy-dna/` | `dna`, `/m/dna` | B4, yang mendaftarkan `dna` baru |
 | `screens/legacy-tna/` | `tna`, `/m/tna` | B5, yang mendaftarkan `tna` baru |
-| `screens/legacy-review/` | `tna-review`, `/m/tna/review` (PK-14, `meta.roles` HR dan Admin ETA) | B7, yang mendaftarkan `review` |
+| ~~`screens/legacy-review/`~~ | `tna-review`, `/m/tna/review` (PK-14, `meta.roles` HR dan Admin ETA) | Dihapus paritas B7 web (23 Nov): rute `tna-review` pindah ke `screens/b7-tinjauan/` sebagai antrean lintas karyawan (`AntreanView.vue`), di samping `review` per gap |
 | `screens/legacy-interview/` | `interview`, `/m/:key(dna\|tna)/sessions/:id` | B6 |
 | `screens/legacy-cca/` | `legacy-cca`, `/m/:key(cca)` | B10, yang mendaftarkan `cc` |
 | `screens/legacy-ina/` | `legacy-ina`, `/m/:key(ina)` | B9, yang mendaftarkan `ina` |
@@ -245,7 +251,7 @@ Alamat rute lama tidak berubah. Rute inti tetap di `router/index.ts`: `login` (`
 | `ina` | B9 | `users`, `jobs`, `cfg` | B11 |
 | `review` (anak `tna`) | B7 | `tenants`, `platform` | B12 |
 
-Perhatian: `li` adalah **rute** Rencana belajar milik B8, sedangkan `module.li` adalah **flag** Learning Intervention milik B13 dan `li` juga kunci grup accordion. Ketiganya tidak saling memakai nama rute. Nama yang sudah terpakai dan tidak boleh dipakai ulang: `home`, `login`, `email-link`, `interview`, `tna-review` (sampai B7 menghapus `legacy-review`), `legacy-cca`, `legacy-ina`, `ui-kit`. Layar B7 bernama `review` (pengecualian dari konvensi `<kunci>-<anak>`), sehingga tidak bertabrakan dengan `tna-review` lama selama keduanya masih ada.
+Perhatian: `li` adalah **rute** Rencana belajar milik B8, sedangkan `module.li` adalah **flag** Learning Intervention milik B13 dan `li` juga kunci grup accordion. Ketiganya tidak saling memakai nama rute. Nama yang sudah terpakai dan tidak boleh dipakai ulang: `home`, `login`, `email-link`, `interview`, `tna-review` (antrean B7, `screens/b7-tinjauan/`), `legacy-cca`, `legacy-ina`, `ui-kit`. Layar B7 bernama `review` (pengecualian dari konvensi `<kunci>-<anak>`, path `/tna/tinjauan`, per gap), sehingga tidak bertabrakan dengan antrean `tna-review` yang tetap ada.
 
 **Kewajiban paket beranda.** Begitu `dash` milik B3 (atau `my` B8, `users` B11, `tenants` B12) terdaftar **dan flag-nya menyala**, pengguna tampilan itu tidak lagi mendarat di Beranda setelah login. Helper login di e2e lama (`loginAs` di `poc-dna-tna.spec.ts`, `gating.spec.ts`) menunggu `card-dna` dan URL `/`; paket itu wajib memperbaruinya di PR yang sama.
 
@@ -255,14 +261,14 @@ Perhatian: `li` adalah **rute** Rencana belajar milik B8, sedangkan `module.li` 
 
 - `UiSkipLink` ke `#isi`;
 - `AppDrawer`: merek "EG · ELGOS · Elite Learning & Growth OS", lalu menu. Lebar 280px. Di bawah 900px drawer tersembunyi dan dibuka lewat tombol menu di top bar (`aria-expanded`, tutup dengan Esc atau saat pindah rute);
-- `AppTopBar`: judul layar + baris tenant; pil "Log audit aktif"; `UiSegmented` "Tampilan" bila tampilan tersedia lebih dari satu; pil "label tampilan · email"; tombol tema; tombol "Keluar";
+- `AppTopBar`: judul layar + baris tenant; pil "Log audit aktif"; `UiSegmented` "Tampilan" bila tampilan tersedia lebih dari satu; pil "label tampilan · email"; tombol "Keluar" (tombol tema ada di kaki `AppDrawer`, paritas P2);
 - `<main id="isi" tabindex="-1">` dengan lebar maksimum 1280px;
 - komponen `ShellExtra.vue` milik paket (bila ada).
 
 Rincian:
 
 - Judul layar di top bar berupa `<div>`, bukan heading, supaya `<h1>` tetap milik halaman. Shell tidak memakai `role="status"`, `role="alert"`, atau live region; e2e lama mencari peran itu tanpa cakupan.
-- Judul tab peramban: "<judul layar> · ELGOS".
+- Judul tab peramban: "<judul layar> · ELGOS". Dipasang `src/shell/title.ts` dari `main.ts` (bukan dari router), supaya `router/index.ts` tidak mengimpor `shell/menu.ts` yang sudah mengimpor `routeOpen` dari router (paritas P9 IR-3).
 - Drawer layar sempit: saat dibuka fokus pindah ke butir pertama; Esc atau klik latar menutup dan mengembalikan fokus ke tombol menu.
 - Baris tenant: untuk tampilan `super` "Konsol platform ELGOS · semua tenant" (mockup); selain itu `user.tenantName` bila API mengirimnya, selain itu kosong. Mockup menulis "Elitery · Periode Q4 2026"; periode belum punya sumber data. `[⚠️ BELUM TERVERIFIKASI]` field `tenantName` belum ada di `/auth/me`; diminta ke B2.
 - Pil "Log audit aktif" boleh tampil tanpa syarat karena audit baca data individu wajib dan gagal-tertutup (R2-2, `src/core/audit`).
@@ -337,7 +343,7 @@ Gerbang: `npm run lint`, `npm test` (API tidak berubah), `npm run build`, `npm r
 - [x] `apps/web/src/shell/views.ts` (tampilan dan pemetaan peran), `menu.ts` (daftar menu + aturan tampil), `theme.ts`
 - [x] `apps/web/src/components/AppShell.vue` (ditulis ulang), `AppDrawer.vue`, `AppTopBar.vue`
 - [x] `apps/web/src/stores/session.ts`: `roles`, `views`, `activeView`, `setView`, `homeReady`, `bindRoutes`; `SessionUser.roles?`, `tenantName?`
-- [x] `apps/web/src/router/index.ts`: glob `screens/*/routes.ts`, penjaga `views`/`flag`/`submodule`, `homeFor`, `assertUnique`, judul tab
+- [x] `apps/web/src/router/index.ts`: glob `screens/*/routes.ts`, penjaga `views`/`flag`/`submodule`, `homeFor`, `assertUnique` (judul tab pindah ke `shell/title.ts`, P9)
 - [x] `apps/web/src/screens/legacy-{dna,tna,review,interview,cca,ina}/routes.ts` (rute lama dipecah)
 - [x] `apps/web/src/screens/ui-kit/routes.ts`, `UiKitView.vue`, `test-routes.ts`, `TestScreen.vue` (hanya `VITE_UI_KIT=1`)
 - [x] `apps/web/env.d.ts`: `VITE_UI_KIT`

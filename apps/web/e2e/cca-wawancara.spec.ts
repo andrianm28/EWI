@@ -70,16 +70,47 @@ test('karyawan: persetujuan, empat pertanyaan dengan pilihan atau isian bebas, r
   await sesi.getByRole('button', { name: 'Buat ringkasan' }).click()
 
   await expect(sesi.getByText('Periksa ringkasan ini sebelum dianggap final.')).toBeVisible()
-  await expect(sesi.getByTestId('cc-ringkasan')).toContainText('DukunganRingkasan support.')
+  await expect(sesi.getByTestId('cc-ringkasan')).toContainText('Ringkasan support.')
   await expect(sesi.getByRole('button', { name: 'Ulangi wawancara' })).toBeVisible()
   await sesi.getByRole('button', { name: 'Sesuai, kirim' }).click()
-  await expect(sesi.getByRole('heading', { name: 'Terkirim' })).toBeVisible()
+  await expect(sesi.getByRole('heading', { name: 'Ringkasan AI' })).toBeVisible()
+  await expect(sesi.getByRole('note').filter({ hasText: 'Terkirim. Hasil diringkas ke HR dan atasan hanya melihat status selesai.' })).toBeVisible()
 
   expect(tulis.map((r) => `${r.method} ${r.path.replace('/cca/assignments/as-1', '')}`)).toEqual([
     'POST /consent', 'POST /turns', 'POST /turns', 'POST /turns', 'POST /turns', 'POST /summary', 'POST /summary/confirm',
   ])
   expect(tulis[0].body).toEqual({ consentVersion: CONSENT })
   expect(tulis[1].body).toEqual({ text: 'Cukup jelas' })
+})
+
+test('P7 AIV-2/4/6/7/9: daftar ber-bullet, sesi di kartu mandiri, audit agen, ringkasan berbingkai, kembali ke penugasan', async ({ page }) => {
+  await mockSesi(page)
+  await loginSebagai(page, 'karyawan', { flags: FLAGS })
+  await page.goto('/aiv')
+  const kartu = page.getByTestId('cc-wawancara-karyawan')
+  await expect(kartu.locator('.cc-list')).toHaveCSS('list-style-type', 'disc')
+  await expect(kartu.locator('.cc-list')).toHaveCSS('margin-bottom', '16px')
+  await expect(page.getByText('AI mewawancarai Anda tentang pemahaman')).toHaveCSS('margin-top', '0px')
+  await kartu.getByRole('button', { name: 'Mulai wawancara' }).click()
+  // AIV-6: isi kartu penugasan disembunyikan, sesi tampil di kartu sendiri
+  await expect(page.getByTestId('cc-wawancara-karyawan')).toHaveCount(0)
+  const sesi = page.getByTestId('cc-sesi')
+  await expect(sesi).toBeVisible()
+  await sesi.getByLabel('Saya sudah membaca keterangan di atas dan setuju mengikuti wawancara.').check()
+  await sesi.getByRole('button', { name: 'Mulai wawancara' }).click()
+  await expect(sesi.locator('.el-audit')).toContainText('ELGOS-AI (POC) · log audit: 0 jawaban')
+  await expect(sesi.getByTestId('cc-turn-ai').first()).toContainText('ELGOS-AI')
+  for (const jawaban of ['a', 'b', 'c', 'd']) {
+    await sesi.getByRole('textbox', { name: 'Jawaban' }).fill(jawaban)
+    await sesi.getByRole('button', { name: 'Kirim' }).click()
+    await expect(sesi.getByTestId('cc-turn-participant').last()).toContainText(jawaban)
+  }
+  await sesi.getByRole('button', { name: 'Buat ringkasan' }).click()
+  await sesi.getByRole('button', { name: 'Sesuai, kirim' }).click()
+  const baris = sesi.locator('.cc-mod').first()
+  await expect(baris).toHaveCSS('border-top-style', 'solid')
+  await sesi.getByRole('button', { name: 'Kembali ke penugasan' }).click()
+  await expect(page.getByTestId('cc-wawancara-karyawan')).toBeVisible()
 })
 
 test('karyawan: pertanyaan gagal dimuat bisa diminta ulang', async ({ page }) => {
@@ -142,23 +173,76 @@ test('HR: sintesis menandai gap besar, menyembunyikan angka di bawah 5 responden
   })
   await loginSebagai(page, 'hr', { flags: FLAGS })
   await page.goto('/cc?tab=aiv')
+  // P5 AH-1: KPI ke-4 Tema tersintesis dari sintesis
+  const hr = page.getByTestId('cc-wawancara-hr')
+  await expect(hr.locator('.el-kpi__label')).toHaveText(['Pimpinan ditugaskan', 'Wawancara pimpinan selesai', 'Karyawan selesai', 'Tema tersintesis'])
   const kartu = page.getByTestId('cc-sintesis')
-  await expect(kartu.getByText('Tema tersintesis')).toBeVisible()
+  // P5 AH-6/AH-7: daftar tema mockup, bukan tabel
+  await expect(kartu).toContainText('Tema dari wawancara pimpinan, dan seberapa jauh jawaban karyawan sejalan.')
+  await expect(kartu.getByRole('table')).toHaveCount(0)
+  const panas = kartu.getByTestId('cc-tema').filter({ hasText: 'Kolaborasi lintas tim' })
+  await expect(panas).toContainText('Visi')
+  await expect(panas).toContainText('pimpinan sepakat 100% · karyawan sejalan 80% · gap −20')
+  const bar = panas.getByRole('progressbar')
+  await expect(bar).toHaveAttribute('aria-valuenow', '80')
+  await expect(bar).toHaveClass(/el-bar--critical/)
+  const sedikit = kartu.getByTestId('cc-tema').filter({ hasText: 'Fokus pelanggan' })
+  await expect(sedikit).toContainText('pimpinan sepakat 100% · karyawan sejalan – · gap –')
+  await expect(sedikit.getByRole('progressbar')).not.toHaveClass(/el-bar--critical/)
   await expect(kartu.getByText('Angka karyawan diperbarui setiap 5 penyelesaian baru', { exact: false })).toBeVisible()
-  const panas = kartu.getByRole('row', { name: /Kolaborasi lintas tim/ })
-  await expect(panas).toContainText('80%')
-  await expect(panas).toContainText('5–9 karyawan')
-  await expect(panas).toContainText('Gap besar')
-  const sedikit = kartu.getByRole('row', { name: /Fokus pelanggan/ })
-  await expect(sedikit).toContainText('<5 karyawan')
-  await expect(sedikit.getByRole('button', { name: /Isi dari sintesis/ })).toHaveCount(0)
 
-  await panas.getByRole('button', { name: 'Isi dari sintesis Kolaborasi lintas tim' }).click()
+  // aksi sekunder di bagian lipat
+  await expect(kartu.getByRole('button', { name: /Isi dari sintesis/ })).toHaveCount(0)
+  await kartu.getByText('Kelola nilai aktual dan pratinjau').click()
+  const kelola = kartu.getByTestId('cc-sintesis-kelola')
+  await expect(kelola.getByRole('row', { name: /Fokus pelanggan/ }).getByRole('button', { name: /Isi dari sintesis/ })).toHaveCount(0)
+  await kelola.getByRole('button', { name: 'Isi dari sintesis Kolaborasi lintas tim' }).click()
   await expect(kartu.getByRole('status')).toHaveText('Nilai aktual Kolaborasi lintas tim diisi dari sintesis. Nilai sebelumnya: kosong.')
   expect(tulis[0].body).toEqual({ requirementIds: ['r-1'] })
 
-  await kartu.getByRole('button', { name: 'Karyawan' }).click()
-  await kartu.getByRole('button', { name: 'Pratinjau sesi karyawan' }).click()
+  await kartu.getByRole('button', { name: 'Pratinjau sesi pimpinan' }).click()
   await expect(kartu.getByTestId('cc-pratinjau')).toContainText('Dukungan: Pratinjau 4 Corporate Vision')
-  expect(tulis[1].query.get('tier')).toBe('employee')
+  expect(tulis[1].query.get('tier')).toBe('leader')
+  await kartu.getByRole('button', { name: 'Pratinjau sesi karyawan' }).click()
+  await expect.poll(() => tulis.length).toBe(3)
+  expect(tulis[2].query.get('tier')).toBe('employee')
+
+  await kartu.getByRole('link', { name: 'Lihat Corporate Values' }).click()
+  await expect(page.getByRole('tab', { name: 'Corporate Values' })).toHaveAttribute('aria-selected', 'true')
+  await page.getByRole('tab', { name: 'Wawancara AI' }).click()
+  await page.getByTestId('cc-sintesis').getByRole('link', { name: 'Lihat Vision & Mission' }).click()
+  await expect(page.getByRole('tab', { name: 'Corporate Vision & Mission' })).toHaveAttribute('aria-selected', 'true')
+})
+
+test('P5 AH-9: sintesis tanpa daftar tema menampilkan pesan galat, bukan kartu rusak', async ({ page }) => {
+  await mockApi(page, (req) => {
+    if (req.method === 'GET' && req.path === '/cca/assignments') return { json: { data: { role: 'hr', mine: { leader: null, employee: null }, kpis: { leadersEligible: 0, leadersAssigned: 0, leadersCompleted: 0, employeesAssigned: 0, employeesCompleted: 0 }, leaders: [] } } }
+    if (req.method === 'GET' && req.path.startsWith('/cca/')) return { json: { data: [] } }
+    return undefined
+  })
+  await loginSebagai(page, 'hr', { flags: FLAGS })
+  await page.goto('/cc?tab=aiv')
+  await expect(page.getByTestId('cc-sintesis')).toContainText('Sintesis belum bisa dimuat')
+  await expect(page.getByTestId('cc-sintesis').getByText('Lihat Vision & Mission')).toHaveCount(0)
+})
+
+// Paritas P8 (docs/designs/paritas-mockup/p8-keputusan-r1-r22.md)
+test('P8 R13 AIV-8: pilihan jawaban bergaya .ac mockup dan input satu baris "Atau ketik jawaban Anda sendiri"', async ({ page }) => {
+  await mockSesi(page)
+  await loginSebagai(page, 'karyawan', { flags: FLAGS })
+  await page.goto('/aiv')
+  await page.getByRole('button', { name: 'Mulai wawancara' }).click()
+  const sesi = page.getByTestId('cc-sesi')
+  await sesi.getByLabel('Saya sudah membaca keterangan di atas dan setuju mengikuti wawancara.').check()
+  await sesi.getByRole('button', { name: 'Mulai wawancara' }).click()
+  const pilihan = sesi.getByRole('group', { name: 'Pilihan jawaban' }).getByRole('button', { name: 'Cukup jelas' })
+  await expect(pilihan).toHaveClass(/iv-ac/)
+  await expect(pilihan).toHaveCSS('border-top-left-radius', '8px')
+  const jawaban = sesi.getByLabel('Jawaban', { exact: true })
+  await expect(jawaban).toHaveJSProperty('tagName', 'INPUT')
+  await expect(jawaban).toHaveAttribute('placeholder', 'Atau ketik jawaban Anda sendiri')
+  await pilihan.click()
+  // pertanyaan kedua tanpa pilihan: placeholder tanpa "Atau"
+  await expect(sesi.getByTestId('cc-turn-participant')).toHaveCount(1)
+  await expect(sesi.getByLabel('Jawaban', { exact: true })).toHaveAttribute('placeholder', 'Ketik jawaban Anda')
 })

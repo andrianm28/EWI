@@ -7,7 +7,7 @@ export type Level = 'basic' | 'intermediate' | 'advanced'
 export type ItemKind = 'K' | 'S' | 'A'
 export type StatusKey = 'available' | 'dev_approved' | 'dev_review' | 'dev_draft' | 'delivered' | 'confirmed' | 'requested' | 'none'
 export type RequestStatus = 'requested' | 'confirmed' | 'delivered' | 'installed' | 'cancelled'
-export interface Priority { rank: number; cumulativeShare: number }
+export interface Priority { rank: number; share?: number; cumulativeShare: number }
 export interface ModuleRow {
   id: string; code: string; name: string; level: Level; stream: string | null; catalogItemId: string | null
   jobRoles: { id: string; name: string }[]; counts: Record<ItemKind, number>

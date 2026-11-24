@@ -148,7 +148,7 @@ describe('GET /api/dashboard', () => {
       analysisDays: { median: 7, sessions: 2, targetDays: 14 },
     });
     expect(d.pareto.total).toBe(2);
-    expect(d.pareto.rows[0]).toMatchObject({ label: 'Root Cause Analysis', people: 2, hot: true });
+    expect(d.pareto.rows[0]).toMatchObject({ label: 'Root Cause Analysis', competencyId: 'c1', people: 2, hot: true });
     expect(d.pareto.rows[1]).toMatchObject({ label: 'Ticket Life Cycle', people: 1, hot: false });
     expect(d.pareto.hotCount).toBe(1);
     expect(d.actions).toEqual([
@@ -251,6 +251,8 @@ describe('GET /api/dashboard', () => {
     const { get, audit } = setup({ titleFinding: true });
     const res = await get('u-hr', 'hr_admin');
     expect(res.body.data.pareto.rows.map((r) => r.label)).toContain('Bahasa Inggris');
+    // P3 D1: baris dari judul temuan tidak punya kompetensi, jadi layar tidak menautkannya ke detail gap
+    expect(res.body.data.pareto.rows.find((r) => r.label === 'Bahasa Inggris').competencyId).toBeNull();
     const row = audit.rows.find((r) => r.resource === 'dashboard.pareto');
     expect(row).toBeTruthy();
     expect(row.meta.employeeIds).toEqual(['u-c']);

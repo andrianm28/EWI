@@ -159,6 +159,8 @@ export const useSessionStore = defineStore('session', () => {
     if (!u) return []
     return Array.isArray(u.roles) && u.roles.length ? u.roles : [u.role]
   })
+  /** Akun punya salah satu peran asli ini (B0 5.1: izin dari `roles`, bukan peran utama `role`). Penjaga UI saja. */
+  const hasAnyRole = (list: readonly string[]) => roles.value.some((r) => list.includes(r))
   // B2: bila API mengirim daftar peran yang bisa dipilih, tampilan diambil dari sana (otorisasi di API).
   // Tanpa itu (API lama), tampilan diturunkan di browser dari peran akun seperti B0.
   const apiRoles = computed(() => (access.value?.roles?.length ? access.value.roles : null))
@@ -224,5 +226,5 @@ export const useSessionStore = defineStore('session', () => {
 
   if (token.value) { scheduleExpiry(); startHeartbeat() }
 
-  return { token, user, role, roles, views, activeView, setView, homeReady, access, isAuthenticated, canOpen, hasFlag, login, loginWithEmailLink, loadAccess, logout, clear, expire, setExpiredHandler }
+  return { token, user, role, roles, hasAnyRole, views, activeView, setView, homeReady, access, isAuthenticated, canOpen, hasFlag, login, loginWithEmailLink, loadAccess, logout, clear, expire, setExpiredHandler }
 })

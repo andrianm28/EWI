@@ -1,0 +1,52 @@
+/* Kelas bersama layar Learning Intervention (Library, Program, Permintaan, Draf). Diimpor tiap view
+   supaya tata letak tidak bergantung pada Library yang sudah dimuat (paritas X-1). */
+.li-gap { margin-top: 16px; }
+.li-small { font-size: 13px; }
+.li-row { display: flex; gap: 12px; align-items: center; justify-content: space-between; flex-wrap: wrap; }
+.li-filters { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 12px; }
+.li-split { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 16px; align-items: start; }
+@media (max-width: 1100px) { .li-split { grid-template-columns: minmax(0, 1fr); } }
+.li-chips { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.li-chips--tight { gap: 6px; }
+.li-actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 16px; }
+/* LI-12: dua tombol aksi detail tetap sebaris selama ruang cukup */
+@media (min-width: 400px) { .li-actions--row { flex-wrap: nowrap; } }
+.li-h4 { font-size: 14px; font-weight: 500; margin: 12px 0 4px; }
+
+/* Library: kartu filter = baris label + chip (mockup `.card.t` + `.rad`, LI-5) */
+.li-filter { display: flex; flex-direction: column; gap: 10px; }
+.li-filter__row { display: flex; gap: 10px; align-items: center; }
+.li-filter__label { width: 70px; flex: none; font-weight: 500; color: var(--el-on-surface-variant); }
+
+/* Library: daftar modul (mockup `.tblwrap` + `.row.lk`, LI-6/LI-7) */
+.li-count { margin: 0 0 8px; }
+.li-list {
+  list-style: none; margin: 0; padding: 0; max-height: 640px; overflow: auto;
+  border: 1px solid var(--el-outline-variant); border-radius: 12px; background: var(--el-surface-card);
+}
+.li-item {
+  display: grid; grid-template-columns: 70px minmax(0, 1fr) auto; gap: 12px; align-items: center; width: 100%; text-align: left;
+  padding: 12px 16px; border: 0; border-bottom: 1px solid var(--el-outline-variant);
+  background: transparent; color: inherit; font: inherit; cursor: pointer;
+}
+.li-list li:last-child .li-item { border-bottom: 0; }
+.li-item:hover { background: var(--el-surface-1); }
+.li-item[aria-current='true'] { background: var(--el-surface-2); }
+/* gelap: surface-2 sama dengan surface-card, jadi baris terpilih memakai tingkat berikutnya */
+:root[data-theme='dark'] .li-item[aria-current='true'] { background: var(--el-surface-3); }
+.li-item:focus-visible { outline: 2px solid var(--el-primary); outline-offset: -2px; }
+.li-code { font-size: 12px; }
+.li-item__body { display: flex; flex-direction: column; min-width: 0; }
+.li-item__name { font-weight: 500; }
+.li-meta { font-size: 12px; }
+.li-item__body .li-chips { margin-top: 6px; }
+
+/* Library: detail modul */
+.li-detail { position: sticky; top: 12px; }
+.li-ksa { list-style: none; margin: 0 0 10px; padding: 0; }
+.li-ksa li { font-size: 13px; padding: 2px 0 2px 12px; border-left: 2px solid var(--el-outline-variant); color: var(--el-on-surface-variant); }
+
+/* Baris dalam kartu dipisah garis (Program, Permintaan) */
+.li-line { padding: 12px 0; border-top: 1px solid var(--el-outline-variant); }
+/* P8 R20: petunjuk kecil di bawah tombol */
+.li-hint { font-size: 12px; margin: 6px 0 0; }

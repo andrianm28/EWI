@@ -441,7 +441,7 @@ Seam: API (`supertest`, Postgres, stub AI) dan unit `synthesis.js`.
 ### 11.8 Layar (tahap 3, berkas yang sama)
 
 Rute `aiv`: percakapan dengan pilihan jawaban dan isian bebas, ringkasan per tema, tombol "Sesuai, kirim" dan "Ulangi"
-(sekali). Tab Wawancara AI HR: kartu sintesis + tombol "Isi nilai aktual dari sintesis" per tema, pratinjau sesi. E2E
+(sekali). Tab Wawancara AI HR: kartu sintesis berisi daftar tema; tombol "Isi nilai aktual dari sintesis" per tema dan pratinjau sesi berada di bagian lipat `<details>` "Kelola nilai aktual dan pratinjau" di bawah daftar tema (paritas P5 K-P5-3). E2E
 memakai `support/` (`loginSebagai`, `mockApi`).
 
 ### 11.9 Di luar tahap 2a
@@ -516,11 +516,11 @@ Mengikuti kontrak B0 (`docs/designs/b0-fondasi-ui.md` bagian 4 dan 5.3). `router
 - Flag `cca.interview` tidak dipasang di `meta.flag` rute `aiv`. Alasannya: penjaga rute mengalihkan diam-diam ke beranda, padahal butir menu `aiv` tetap tampil karena syaratnya hanya submodul. Layar menangkap 403 `FEATURE_DISABLED` dan menulis "Wawancara AI Core Competencies belum diaktifkan untuk organisasi Anda." Di layar HR, tab Wawancara AI hanya muncul bila flag menyala.
 - Tampilan atasan dipakai hanya bila API menjawab `role: leader`. Bila tampilan aktif atasan tetapi API menganggap pemanggil karyawan (peran belum dipetakan), layar menampilkan kartu karyawan.
 - Tab Corporate Values: hasil program (laporan agregat, pemilih program bila lebih dari satu, tombol impor, isian agregat, ubah program, program baru), lalu gap perilaku per nilai. Halaman ini tidak pernah menampilkan hasil per orang.
-- Kelola persyaratan memakai formulir sebaris di kartu sumber (tambah, ubah, validasi, tolak). Dialog belum ada di `src/ui`, jadi tidak ditambahkan.
+- Kelola persyaratan memakai formulir sebaris di kartu sumber (tambah, ubah, validasi, tolak). Dialog belum ada di `src/ui`, jadi tidak ditambahkan. Sejak paritas P5 (K-P5-1) klik baris membuka panel ubah lewat query `?ubah=<id>` (bisa dibagikan, Kembali menutup); panel memuat status validasi dan tombol Validasi/Tolak, fokus pindah ke judul panel, Tolak meminta konfirmasi di tempat, dan tombol nonaktif selama permintaan berjalan.
 - Formulir program memakai satu baris per butir dengan pemisah `|` (nilai, komponen, status, rekomendasi). [⏳ DITERIMA: cukup untuk pilot yang dikonfigurasi tim ETA; editor per butir menyusul bila HR klien mengatur sendiri.]
 - Bagian mockup yang belum ada datanya (sintesis tema, pratinjau sesi pimpinan, percakapan, ringkasan) tidak digambar dengan angka contoh. Layar menulis catatan bahwa percakapan menyusul.
 - Batas waktu penugasan default 14 hari dari hari ini, minimal hari ini, keduanya dihitung dalam WIB seperti API.
-- Tab Corporate Values menampilkan empat KPI: kesiapan, nilai dengan kesiapan terendah, gap terbesar, di bawah target.
+- Tab Corporate Values menampilkan tiga KPI (paritas P5): kesiapan karyawan, nilai dengan gap terbesar, di bawah target.
 - Baris yang ditolak hilang dari overview dan belum bisa dipulihkan dari layar (API `PATCH /requirements/:id` bisa). [⏳ DITERIMA: layar kelola sumber dan baris `rejected` ditambahkan bersama turunan AI tahap 2, saat penolakan menjadi alur utama.]
 
 ## 12. Catatan review egm

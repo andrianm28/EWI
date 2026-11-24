@@ -5,12 +5,14 @@
 .iv-small { font-size: 12px; }
 .iv-chat-head { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 12px; }
 .iv-h2 { font-size: 20px; font-weight: 500; margin: 0 0 8px; }
-.iv-chat { display: grid; gap: 12px; }
-.iv-msg { border: 1px solid var(--el-outline-variant, var(--el-outline)); border-radius: 12px; padding: 12px; font-size: 14px; max-width: 85%; }
-.iv-msg small { display: block; color: var(--el-on-surface-variant); margin-bottom: 4px; }
-.iv-msg--ai { justify-self: start; background: var(--el-surface-1, transparent); }
-.iv-msg--me { justify-self: end; background: var(--el-primary-container); color: var(--el-on-primary-container); }
-.iv-answer { display: flex; gap: 8px; align-items: flex-end; margin-top: 16px; }
+/* P7 IV-9: gelembung `.msg` mockup (tanpa bingkai, radius 16 dengan sudut 4 di sisi pengirim) */
+.iv-chat { display: grid; gap: 12px; align-content: start; min-height: 280px; }
+.iv-msg { border-radius: 16px; padding: 12px 16px; font-size: 14px; max-width: 78%; }
+.iv-msg small { display: block; font-size: 11px; opacity: 0.75; margin-bottom: 2px; letter-spacing: 0.4px; }
+.iv-msg--ai { justify-self: start; background: var(--el-surface-2); color: var(--el-on-surface); border-bottom-left-radius: 4px; }
+.iv-msg--me { justify-self: end; background: var(--el-primary); color: var(--el-on-primary); border-bottom-right-radius: 4px; }
+.iv-answer { display: flex; gap: 8px; align-items: center; margin-top: 16px; }
+.iv-acs + .iv-answer { margin-top: 0; }
 .iv-grow { flex: 1; }
 .iv-bullets { list-style: disc; padding-left: 20px; }
 .iv-list { margin-top: 20px; display: grid; gap: 12px; }
@@ -19,6 +21,19 @@
 @media (max-width: 720px) { .iv-layout { grid-template-columns: minmax(0, 1fr); } }
 .iv-mt { margin-top: 16px; }
 .iv-findings { list-style: none; padding: 0; margin: 12px 0 0; display: grid; gap: 12px; }
-.iv-finding { border: 1px solid var(--el-outline); border-radius: 12px; padding: 12px; display: grid; gap: 6px; }
+/* P7 IV-10: baris temuan `.mod`: konten kiri, chip kanan */
+.iv-finding { border: 1px solid var(--el-outline-variant); border-radius: 12px; padding: 12px 14px; display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; }
+.iv-finding__body { display: grid; gap: 4px; min-width: 0; }
+.iv-finding__chips { display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
+.iv-sub { margin: 0 0 20px; }
 .iv-finding__title { font-weight: 500; }
 .iv-note { display: grid; gap: 12px; max-width: 560px; }
+/* P8 R13 (AIV-8): pilihan jawaban `.ac` mockup: kotak radius 8, garis netral, teks warna teks */
+.iv-acs { display: flex; flex-wrap: wrap; gap: 8px; margin: 16px 0 8px; }
+.iv-ac {
+  display: inline-flex; align-items: center; min-height: 36px; padding: 8px 14px; border-radius: 8px; text-align: left;
+  border: 1px solid var(--el-outline); background: var(--el-surface-card); color: var(--el-on-surface); font: inherit; cursor: pointer;
+}
+.iv-ac:hover:not(:disabled) { background: var(--el-surface-2); }
+.iv-ac:disabled { color: var(--el-outline); cursor: not-allowed; }
+.iv-ac:focus-visible { outline: 2px solid var(--el-primary); outline-offset: 2px; }
