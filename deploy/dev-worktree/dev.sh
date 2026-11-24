@@ -59,7 +59,8 @@ ENV
 }
 
 public_url() {
-  dc logs tunnel 2>/dev/null | grep -oE 'https://[a-z0-9-]+\.trycloudflare\.com' | tail -1
+  # || true: grep tanpa hasil (tunnel belum siap) tidak boleh menghentikan skrip di bawah set -euo pipefail
+  dc logs tunnel 2>/dev/null | grep -oE 'https://[a-z0-9-]+\.trycloudflare\.com' | tail -1 || true
 }
 
 set_url() {
