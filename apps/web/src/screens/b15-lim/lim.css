@@ -12,3 +12,8 @@
 .lim-flow { display: grid; grid-template-columns: minmax(0, 240px) minmax(0, 1fr); gap: 16px; align-items: start; }
 @media (max-width: 720px) { .lim-flow { grid-template-columns: minmax(0, 1fr); } }
 .lim-item { padding: 10px 12px; border: 1px solid var(--el-outline-variant); border-radius: 8px; display: flex; justify-content: space-between; gap: 12px; align-items: center; }
+.lim-fold > summary { cursor: pointer; padding: 8px 0; }
+.lim-tabbar { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.lim-tabbar > .el-tabs { flex: 1 1 auto; min-width: 0; }
+.lim-plan { display: flex; align-items: center; gap: 12px; }
+.lim-plan p { margin: 0; }

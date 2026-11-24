@@ -4,12 +4,13 @@ import { DASHBOARD_HR } from './dashboard'
 import { ID_KOMPETENSI } from './tna-gap'
 
 // Demo langsung 25 Nov (mockup Pak Eji): flag dan data tambahan untuk e2e/demo-alur.spec.ts.
-// Semua flag layar mockup menyala, kecuali lim.reinterview (wawancara ulang LIM milik thread B15).
+// Semua flag layar mockup menyala, termasuk lim.reinterview (wawancara ulang LIM, spek B15 12.9).
 
 /** Flag yang dinyalakan untuk demo, di atas SEMUA_MODUL. */
 export const FLAG_DEMO: Record<string, boolean> = {
   'tna.interview_assignment': true, 'tna.interview_summary': true, 'tna.review_workspace': true,
   'cca.interview': true, 'dna.development': true, 'ina.ai_verification': true, assistant: true,
+  'lim.reinterview': true,
 }
 
 /** Sesi demo: semua modul dan layar mockup. */

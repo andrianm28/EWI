@@ -1,8 +1,9 @@
 'use strict';
 // B18 test alur (spek 3.3 baris "Pengukuran dampak belajar", B15): kamus DNA → library modul (B13) → pelatihan
 // offline dengan skor vendor (B14) → rencana pengukuran HR → rantai bukti memakai skor post dari Learning Delivery →
-// atasan mengisi skor kinerja timnya saja → HR menjadwalkan wawancara ulang per karyawan. Atasan tidak melihat
-// antrean; tanpa paket full_suite rute ditolak; tenant lain tidak melihat rencana.
+// atasan mengisi skor kinerja timnya saja → HR menjadwalkan wawancara ulang per karyawan → karyawan menjalankan
+// wawancara ulang AI sendiri (tahap 3, flag lim.reinterview, AI tiruan) → HR membuka hasil tanpa transkrip. Atasan tidak
+// melihat antrean maupun hasil; tanpa paket full_suite rute ditolak; tenant lain tidak melihat rencana.
 const crypto = require('crypto');
 const { createDb } = require('../../src/db');
 const { createStores } = require('../../src/db/stores');
@@ -14,7 +15,7 @@ const { siapkanTenant, tambahPengguna, pembuatMasuk, hapusTenant, langkah, kodeG
 const { JABATAN, KOMPETENSI, KARYAWAN_LAIN, TENANT_LAIN, tanggalWib: hari } = require('../alur/data');
 
 const run = process.env.DATABASE_URL ? describe : describe.skip;
-const FLAG_LIM = [FLAGS.MODULE_DNA, FLAGS.MODULE_LI, FLAGS.MODULE_LD, FLAGS.MODULE_LIM];
+const FLAG_LIM = [FLAGS.MODULE_DNA, FLAGS.MODULE_LI, FLAGS.MODULE_LD, FLAGS.MODULE_LIM, FLAGS.LIM_REINTERVIEW];
 
 run('Alur pengukuran dampak belajar (HR, atasan)', () => {
   let db; let a; const tenantIds = [];
@@ -106,6 +107,21 @@ run('Alur pengukuran dampak belajar (HR, atasan)', () => {
     expect((await a.lim.antrean(orang.hr, rencana.id)).find((x) => x.userId === orang.karyawan.id)).toMatchObject({ status: 'scheduled', scheduledOn: tanggal });
     await a.lim.jadwalkan(orang.hr, rencana.id, [orang.karyawan.id], null);
     expect((await a.lim.antrean(orang.hr, rencana.id)).find((x) => x.userId === orang.karyawan.id).status).toBe('none');
+  });
+
+  it('tahap 3: karyawan menjalankan wawancara ulang sendiri; HR membuka hasil tanpa transkrip; atasan ditolak', async () => {
+    await a.lim.jadwalkan(orang.hr, rencana.id, [orang.karyawan.id], hari(0));
+    const selesai = await a.lim.wawancaraUlang(orang.karyawan, rencana.id, 'Saya cek matriks eskalasi lalu konfirmasi ke L2.');
+    expect(selesai.pertanyaan).toBe(5); // 2 kompetensi × 2 + 1 penutup (T-4)
+
+    const baris = (await a.lim.antrean(orang.hr, rencana.id)).find((x) => x.userId === orang.karyawan.id);
+    expect(baris).toMatchObject({ status: 'done', canView: true });
+    const hasil = await a.lim.hasil(orang.hr, rencana.id, orang.karyawan.id);
+    expect(hasil.reinterviews[0].competencies.map((c) => c.name).sort()).toEqual([kEskalasi, kProduk].sort());
+    expect(JSON.stringify(hasil)).not.toContain('matriks eskalasi');
+    expect((await a.mentah('get', `/api/lim/plans/${rencana.id}/reinterviews/${orang.karyawan.id}`, orang.atasan)).status).toBe(403);
+    // karyawan lain tanpa jadwal tidak bisa memulai
+    expect((await a.mentah('post', `/api/lim/me/reinterviews/${rencana.id}/consent`, orang.lain, { consentVersion: 'lim-consent-id-v1.0' })).status).toBe(404);
   });
 
   it('tanpa paket full_suite rute ditolak meski flag menyala; tenant lain tidak melihat rencana', async () => {

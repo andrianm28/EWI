@@ -5,7 +5,7 @@ import { papanGapTna } from './support/tna-gap'
 import { tinjauanGap } from './support/tinjauan'
 import { sesiWawancara } from './support/wawancara'
 import { penanganHasilSaya } from './support/hasil-saya'
-import { penanganAdminDemo, penanganCcHr, penanganCpDemo, penanganDnaDemo, penanganInaHr, penanganLdDemo, penanganLiDemo, penanganLimDemo, penanganSuperDemo, penanganAtasanDemo, penanganKaryawanDemo } from './support/demo-modul'
+import { penanganAdminDemo, penanganCcHr, penanganCpDemo, penanganDnaDemo, penanganInaHr, penanganLdDemo, penanganLiDemo, penanganLimDemo, penanganWawancaraUlangDemo, penanganSuperDemo, penanganAtasanDemo, penanganKaryawanDemo } from './support/demo-modul'
 import { penanganDashboardDemo, penanganShellDemo, SESI_DEMO } from './support/demo'
 
 // Demo langsung 25 Nov: satu jalan-jalan per peran mengikuti cerita utama mockup Pak Eji (Main.dc.html).
@@ -163,6 +163,23 @@ test('demo HR: Library ke Program & Course, Permintaan, draf modul, lalu Learnin
     await bukaMenu(page, 'Learning Impact Measurement', page.getByText('Pilot L1'))
     await semuaTab(page, ['Ringkasan', 'Per kompetensi', 'Dampak bisnis', 'Pengukuran AI'])
   })
+  await test.step('LIM wawancara ulang: Lihat hasil membuka empat langkah mockup sampai ringkasan (spek B15 12.9)', async () => {
+    const antrean = page.getByRole('table', { name: 'Antrean wawancara ulang' })
+    await expect(antrean.getByRole('row', { name: /Karyawan B/ })).toContainText('Dijadwalkan')
+    await antrean.getByRole('button', { name: 'Lihat hasil Karyawan A' }).click()
+    const alur = page.getByTestId('wu-hasil')
+    await expect(alur.getByTestId('wu-skor')).toContainText('RCA & Post-Incident Report')
+    await alur.getByRole('button', { name: 'Lihat benchmark kinerja' }).click()
+    await expect(alur).toContainText('Hasil belajar terkonfirmasi')
+    await alur.getByRole('button', { name: 'Lanjut ke hasil bisnis' }).click()
+    await expect(alur).toContainText('Indikator tingkat tim, bukan per orang')
+    await alur.getByRole('button', { name: 'Lihat ringkasan' }).click()
+    await expect(alur.getByTestId('wu-keyakinan')).toContainText('Tinggi')
+    await expect(alur.getByTestId('wu-rekomendasi').first()).toContainText('Lanjutkan ke kompetensi berikutnya')
+    await expect(page.getByRole('alert')).toHaveCount(0)
+    await alur.getByRole('button', { name: 'Kembali ke antrean' }).click()
+    await expect(antrean).toBeVisible()
+  })
   await test.step('Career & Promotion: tiga tab', async () => {
     await bukaMenu(page, 'Career & Promotion', page.getByText('Ani'))
     await semuaTab(page, ['Karyawan per divisi', 'Jalur jenjang', 'Keputusan promosi'])
@@ -211,6 +228,9 @@ test('demo Atasan: Dashboard tim, Wawancara AI, Training Needs dengan Wawancara 
     await bukaMenu(page, 'Improvement Needs', page.getByRole('row', { name: /Perbarui SOP eskalasi insiden/ }))
     await expect(page.getByRole('table', { name: 'Tindakan perbaikan' })).toBeVisible()
     await bukaMenu(page, 'Learning Impact Measurement', page.getByText('Pilot L1'))
+    // LIM-9 (spek B15 6.5, 12.9): atasan tidak melihat antrean wawancara ulang per orang
+    await page.getByRole('tab', { name: 'Pengukuran AI', exact: true }).click()
+    await expect(page.getByText('Antrean wawancara ulang dikelola HR')).toBeVisible()
     await bukaMenu(page, 'Career & Promotion', page.getByText('Ani'))
   })
 })
@@ -218,6 +238,7 @@ test('demo Atasan: Dashboard tim, Wawancara AI, Training Needs dengan Wawancara 
 test('demo Karyawan: Hasil saya, wawancara akar masalah, Wawancara visi & nilai, dan Rencana belajar', async ({ page }) => {
   await mockApi(page, sesiWawancara({ pemilik: 'u-karyawan' }).penangan)
   await mockApi(page, penanganKaryawanDemo)
+  await mockApi(page, penanganWawancaraUlangDemo())
   await mockApiDasar(page, penanganHasilSaya('u-karyawan'))
   await masukDemo(page, 'karyawan')
 
@@ -241,6 +262,17 @@ test('demo Karyawan: Hasil saya, wawancara akar masalah, Wawancara visi & nilai,
   })
   await test.step('Rencana belajar', async () => {
     await bukaMenu(page, 'Rencana belajar', page.getByText('Analisis insiden'))
+  })
+  await test.step('Wawancara ulang LIM: persetujuan, tiga pertanyaan, selesai tanpa skor (spek B15 12.9)', async () => {
+    await bukaMenu(page, 'Wawancara ulang', page.getByTestId('wu-rencana'))
+    await page.getByTestId('wu-rencana').getByRole('button', { name: 'Mulai' }).click()
+    await page.getByLabel('Saya sudah membaca keterangan di atas dan setuju mengikuti wawancara ulang.').check()
+    await page.getByRole('button', { name: 'Mulai wawancara' }).click()
+    for (const n of [1, 2, 3]) {
+      await expect(page.getByText(`Pertanyaan ${n} dari 3`)).toBeVisible()
+      await page.getByRole('group', { name: 'Pilihan jawaban' }).getByRole('button').first().click()
+    }
+    await expect(page.getByTestId('wu-selesai')).toContainText('Jawaban Anda sudah tersimpan')
   })
   await test.step('kembali ke Hasil saya', async () => {
     await bukaMenu(page, 'Hasil saya', page.getByText('Otomasi infrastruktur'))
