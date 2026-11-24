@@ -5,7 +5,7 @@ const { forbidden, unauthorized } = require('../../core/errors');
 
 // Peran Admin Tenant (K2, B2). Masa interim hr_admin dicabut 24 Nov (keputusan user, review PR #8):
 // hanya tenant_admin dan Super Admin yang mengelola tenant (docs/designs/b11-admin-tenant.md bagian 4.2).
-const TENANT_ADMIN = 'tenant_admin';
+const TENANT_ADMIN = ROLES.TENANT_ADMIN;
 
 const ROLE_LABELS = Object.freeze({
   [ROLES.ETA_ADMIN]: 'Super Admin',
@@ -52,4 +52,4 @@ function requireTenantAdmin(store) {
 const assignableRoles = () => ALL_ROLES.filter((r) => r !== ROLES.ETA_ADMIN);
 const roleLabel = (role) => ROLE_LABELS[role] || role;
 
-module.exports = { TENANT_ADMIN, isTenantAdmin, requireTenantAdmin, assignableRoles, roleLabel };
+module.exports = { isTenantAdmin, requireTenantAdmin, assignableRoles, roleLabel };

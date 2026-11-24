@@ -4,7 +4,8 @@
 const { QueryTypes } = require('sequelize');
 const { ROLES } = require('../../core/rbac/roles');
 
-const MANAGER_ROLES = [ROLES.TENANT_ADMIN, ROLES.HR_ADMIN];
+// Pengelola tenant = tenant_admin saja sejak masa interim hr_admin dicabut 24 Nov (keputusan user, review PR #8).
+const MANAGER_ROLES = [ROLES.TENANT_ADMIN];
 
 function createPlatformStore(db) {
   const q = (sql, replacements = {}, opts = {}) => db.query(sql, { replacements, type: QueryTypes.SELECT, ...opts });
