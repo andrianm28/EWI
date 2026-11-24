@@ -40,7 +40,10 @@ const GAP_MATCH_COLS = Object.entries(GAP_MATCH_COLUMNS).map(([field, col]) => `
 // P9 CD-11: nama target dinormalkan persis seperti metricKey (performance.js): trim, spasi tunggal, huruf kecil.
 // `\s` JavaScript juga mencakup NBSP dan spasi Unicode lain; `\s` Postgres tidak, jadi kelasnya ditulis lengkap.
 const JS_SPACE_RUN = '[\\s\\u00a0\\u1680\\u2000-\\u200a\\u2028\\u2029\\u202f\\u205f\\u3000\\ufeff]+';
-const metricKeySql = (col) => `lower(btrim(regexp_replace(${col}, '${JS_SPACE_RUN}', ' ', 'g'), ' '))`;
+// Review 24 Nov: lower() memakai collation ICU akar ("und-x-icu"), bukan locale database. Pada locale C/C.UTF-8 lower()
+// libc hanya mengubah ASCII (atau memetakan İ berbeda), sedangkan toLowerCase JavaScript memakai pemetaan Unicode
+// penuh. Postgres image pgvector/pgvector:pg16 (CI dan deploy) dibangun dengan ICU, jadi collation ini selalu ada.
+const metricKeySql = (col) => `lower(btrim(regexp_replace(${col}, '${JS_SPACE_RUN}', ' ', 'g'), ' ') COLLATE "und-x-icu")`;
 /**
  * Predikat SQL kandidat satu gap (audit PR 39 butir 39-3, review 24 Nov): kompetensi temuan, baris kinerja temuan, atau
  * fokus sesinya. Butuh alias `f` (temuan), `pr` (baris kinerja), dan `s` (sesi). `gap`: `{ kind: 'competency', competencyId }`
@@ -840,7 +843,7 @@ function createLnaStores(sequelize, { cipher } = {}) {
                         f.performance_record_id AS "performanceRecordId", pr.name AS "metricName",
                         pr.target::float AS target, pr.actual::float AS actual, pr.direction, pr.tolerance::float AS tolerance, f.created_at AS "createdAt"
                    FROM lna_findings f
-                   LEFT JOIN users u ON u.id = f.user_id
+                   LEFT JOIN users u ON u.id = f.user_id AND u.tenant_id = f.tenant_id
                    LEFT JOIN lna_competencies c ON c.id = f.competency_id
                    LEFT JOIN lna_performance_records pr ON pr.id = f.performance_record_id
                   WHERE f.tenant_id = :tenantId AND f.category IN (:categories) AND f.review_status IN (:reviewed)`;
@@ -855,7 +858,7 @@ function createLnaStores(sequelize, { cipher } = {}) {
       let sql = `SELECT f.id, f.project_id AS "projectId", f.user_id AS "userId", u.name AS "userName", f.title,
                         pr.name AS "metricName", lf.title AS "linkedTrainingTitle", f.created_at AS "createdAt"
                    FROM lna_findings f
-                   LEFT JOIN users u ON u.id = f.user_id
+                   LEFT JOIN users u ON u.id = f.user_id AND u.tenant_id = f.tenant_id
                    LEFT JOIN lna_performance_records pr ON pr.id = f.performance_record_id
                    LEFT JOIN lna_findings lf ON lf.id = f.linked_finding_id
                   WHERE f.tenant_id = :tenantId AND f.category = 'non_training' AND f.review_status IN ${REVIEWED_SQL}`;
@@ -869,8 +872,8 @@ function createLnaStores(sequelize, { cipher } = {}) {
       return select(`SELECT g.supervisor_id AS "supervisorId", u.name AS "supervisorName", u.email AS "supervisorEmail",
                             g.granted_at AS "grantedAt", gb.name AS "grantedByName"
                        FROM lna_non_training_grants g
-                       JOIN users u ON u.id = g.supervisor_id
-                       LEFT JOIN users gb ON gb.id = g.granted_by
+                       JOIN users u ON u.id = g.supervisor_id AND u.tenant_id = g.tenant_id
+                       LEFT JOIN users gb ON gb.id = g.granted_by AND gb.tenant_id = g.tenant_id
                       WHERE g.tenant_id = :tenantId AND g.revoked_at IS NULL ORDER BY u.name NULLS LAST, u.email`, { tenantId });
     },
     async hasNonTrainingGrant(tenantId, supervisorId) {
@@ -1190,14 +1193,14 @@ function createLnaStores(sequelize, { cipher } = {}) {
       const frozenSql = excludeFrozen ? ` AND NOT ${planFrozen('p')}` : '';
       const sql = `SELECT ${PLAN_COLS}, f.title AS "findingTitle", ci.url AS "catalogItemUrl", cc.status AS "courseStatus", cc.score::float AS "courseScore"
                      FROM lna_training_plan_items p
-                     JOIN users u ON u.id = p.user_id LEFT JOIN lna_findings f ON f.id = p.finding_id
+                     JOIN users u ON u.id = p.user_id AND u.tenant_id = p.tenant_id LEFT JOIN lna_findings f ON f.id = p.finding_id
                      LEFT JOIN lna_catalog_items ci ON ci.tenant_id = p.tenant_id AND ci.source = p.catalog_source AND ci.external_ref = p.catalog_item_ref
                      LEFT JOIN lna_catalog_completions cc ON cc.tenant_id = p.tenant_id AND cc.catalog_item_id = ci.id AND cc.user_id = p.user_id
                     WHERE p.tenant_id = :tenantId${frozenSql}${scopeSql('p.user_id', scope, rep)} ORDER BY p.created_at DESC`;
       return open(tenantId, await select(sql, rep), ['note', 'findingTitle']);
     },
     async getPlanItem(tenantId, id) {
-      return open(tenantId, await one(`SELECT ${PLAN_COLS} FROM lna_training_plan_items p JOIN users u ON u.id = p.user_id
+      return open(tenantId, await one(`SELECT ${PLAN_COLS} FROM lna_training_plan_items p JOIN users u ON u.id = p.user_id AND u.tenant_id = p.tenant_id
                    WHERE p.tenant_id = :tenantId AND p.id = :id`, { tenantId, id }), ['note']);
     },
     /** Keputusan user 19 Nov: rencana dari temuan yang persetujuannya ditarik tidak diubah lagi. */
