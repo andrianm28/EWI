@@ -152,6 +152,16 @@ run('Login link email R3-2 (Postgres)', () => {
     expect(slow.sent.map((m) => m.to)).toEqual(['dimas@link.test']);
   });
 
+  it('Audit 24 Nov (8-11): lima permintaan bersamaan untuk satu akun tetap hanya mengirim tiga link', async () => {
+    await db.query("UPDATE login_links SET created_at = now() - interval '1 hour' WHERE user_id = :id", { replacements: { id: u.rina } });
+    mailer.sent.length = 0;
+    const fresh = createApp({ config: makeConfig(), stores, mailer }); // batas per IP baru
+    const all = await Promise.all(Array.from({ length: 5 }, () => request(fresh).post('/api/auth/email-link').send({ tenant: slug, email: 'rina@link.test' })));
+    expect(all.map((r) => r.status)).toEqual([202, 202, 202, 202, 202]);
+    await fresh.locals.emailLinks.drain();
+    expect(mailer.sent.filter((m) => m.to === 'rina@link.test')).toHaveLength(3);
+  });
+
   it('PK-16: Admin ETA di luar daftar email tidak menerima link', async () => {
     const [[eta]] = await db.query(`INSERT INTO users (tenant_id, email, name, role, status) VALUES (:t, 'eta@link.test', 'eta', 'eta_admin', 'active') RETURNING id`, { replacements: { t: tenant.id } });
     const strict = createApp({ config: makeConfig({ ETA_ADMIN_EMAILS: 'lain@link.test' }), stores, mailer });

@@ -95,7 +95,11 @@ describe('PK-07 / R-3 pengaman turun migrasi enkripsi', () => {
 
   it('migrasi lain tidak diperiksa', async () => {
     expect(await checkUndo(fakeQuery({ keys: 9 }), ['20261117000200-app-role-grants.js'])).toEqual([]);
-    expect(Object.keys(GUARDS)).toContain('20261113000008-tenant-keys.js');
+    expect(Object.keys(GUARDS).sort()).toEqual([
+      '20261113000008-tenant-keys.js', '20261117000400-ai-review.js', '20261117000501-consent-version.js',
+      '20261119000200-user-roles.js', '20261119000800-permintaan-data-karyawan.js',
+      '20261123001000-cca-wawancara.js', '20261123003000-lim-wawancara-ulang.js',
+    ]);
   });
 });
 
@@ -111,7 +115,9 @@ describe('Audit 24 Nov: pengaman turun migrasi yang menghapus data hukum/akses',
     ['20261117000501-consent-version.js', { consent_version: 4 }, /versi persetujuan/],
     ['20261119000200-user-roles.js', { "role = 'tenant_admin'": 1 }, /Admin Tenant/],
     ['20261119000200-user-roles.js', { user_roles: 2 }, /peran tambahan/],
-    ['20261117000400-ai-review.js', { reviewed_at: 5 }, /keputusan review HR/],
+    ['20261117000400-ai-review.js', { reviewed_by: 5 }, /keputusan review HR/],
+    ['20261123001000-cca-wawancara.js', { 'cca_assignments WHERE consent_version': 2 }, /persetujuan wawancara Core Competencies/],
+    ['20261123003000-lim-wawancara-ulang.js', { lim_reinterviews: 1 }, /wawancara ulang dampak belajar/],
   ];
   it.each(cases)('%s ditolak bila ada data (%o)', async (migration, counts, reason) => {
     const [r] = await checkUndo(q(counts), [migration]);

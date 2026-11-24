@@ -1,6 +1,7 @@
 const ExcelJS = require('exceljs');
 const v = require('../../src/modules/imports/values');
-const { parseUpload, parseCsv, MAX_ROWS, MAX_COLS } = require('../../src/modules/imports/parse');
+const JSZip = require('jszip');
+const { parseUpload, parseCsv, MAX_ROWS, MAX_COLS, MAX_UNZIPPED_BYTES } = require('../../src/modules/imports/parse');
 const { suggestMapping, checkMapping, applyMapping } = require('../../src/modules/imports/mapping');
 const { templateXlsx, templateCsv } = require('../../src/modules/imports/template');
 const { KINDS, getKind } = require('../../src/modules/imports/kinds');
@@ -82,6 +83,44 @@ describe('Audit 24 Nov: XLSX jarang dan lebar tidak menghabiskan memori (8-9)', 
     ws.addRow(['Email']);
     for (let i = 0; i <= MAX_ROWS; i += 1) ws.addRow([`u${i}@b.co`]);
     await expect(parseUpload(Buffer.from(await wb.xlsx.writeBuffer()), 'x.xlsx')).rejects.toMatchObject({ status: 413 });
+  });
+  it('tepat MAX_ROWS baris data dengan baris kosong di atas judul tetap diterima', async () => {
+    const wb = new ExcelJS.Workbook();
+    const ws = wb.addWorksheet('Data');
+    ws.getCell('A3').value = 'Email';
+    for (let i = 0; i < MAX_ROWS; i += 1) ws.getCell(`A${i + 4}`).value = `u${i}@b.co`;
+    const { rows } = await parseUpload(Buffer.from(await wb.xlsx.writeBuffer()), 'x.xlsx');
+    expect(rows).toHaveLength(MAX_ROWS);
+    expect(rows[0].__row).toBe(4);
+  });
+  it('baris berisi rumus kosong atau spasi di bawah data tidak dihitung ke batas baris', async () => {
+    const wb = new ExcelJS.Workbook();
+    const ws = wb.addWorksheet('Data');
+    ws.addRow(['Email', 'Skor']);
+    for (let i = 0; i < 100; i += 1) ws.addRow([`u${i}@b.co`, 1]);
+    for (let i = 0; i < MAX_ROWS + 500; i += 1) ws.addRow([' ', { formula: 'IF(1=0,1,"")', result: '' }]);
+    const { rows } = await parseUpload(Buffer.from(await wb.xlsx.writeBuffer()), 'x.xlsx');
+    expect(rows).toHaveLength(100);
+  });
+  it('XLSX yang membengkak saat dibuka (bom zip) ditolak sebelum dibaca exceljs', async () => {
+    const wb = new ExcelJS.Workbook();
+    wb.addWorksheet('Data').addRow(['Email']);
+    const zip = await JSZip.loadAsync(await wb.xlsx.writeBuffer());
+    zip.file('xl/media/besar.bin', Buffer.alloc(MAX_UNZIPPED_BYTES + 1, 0x41));
+    const bomb = await zip.generateAsync({ type: 'nodebuffer', compression: 'DEFLATE' });
+    expect(bomb.length).toBeLessThan(1024 * 1024);
+    await expect(parseUpload(bomb, 'x.xlsx')).rejects.toMatchObject({ status: 413, code: 'FILE_TOO_LARGE' });
+  });
+  it('CSV dari Excel dengan titik koma pengisi sampai ratusan kolom: lebar mengikuti isi', async () => {
+    const pad = ';'.repeat(MAX_COLS + 50);
+    const { headers, rows } = await parseUpload(Buffer.from(`Email;Nama${pad}\na@b.co;Ani${pad}\n`), 'a.csv');
+    expect(headers).toEqual(['Email', 'Nama']);
+    expect(rows).toHaveLength(1);
+  });
+  it('CSV berisi jutaan baris kosong selesai cepat dan menolak dengan pesan biasa', async () => {
+    const started = Date.now();
+    await expect(parseUpload(Buffer.from(`Email\n${'\n'.repeat(5_000_000)}`), 'a.csv')).rejects.toThrow(/baris data/);
+    expect(Date.now() - started).toBeLessThan(3000);
   });
 });
 

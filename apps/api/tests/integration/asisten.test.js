@@ -270,6 +270,8 @@ run('B17 Asisten ELGOS (Postgres)', () => {
     const byHr = await request(app()).get(`/api/employees/${u.ani}/export`).set(as('hr'));
     expect(byHr.status).toBe(200);
     expect(byHr.body.data.assistantLogs).toEqual([]);
+    expect(byHr.body.data.assistantLogsIncluded).toBe(false);
+    expect(exp.body.data.assistantLogsIncluded).toBe(true);
   });
 
   it('batas pakai 20 per 10 menit termasuk yang gagal; penyedia gagal -> 503, log error, pemakaian dicatat', async () => {
