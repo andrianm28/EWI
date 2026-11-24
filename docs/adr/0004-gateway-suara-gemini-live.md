@@ -1,4 +1,4 @@
-# ADR 0003 · Wawancara suara lewat gateway WebSocket di proses API ke Gemini Live (Vertex AI)
+# ADR 0004 · Wawancara suara lewat gateway WebSocket di proses API ke Gemini Live (Vertex AI)
 
 - Status: **Diusulkan** (25 Nov 2026, paket B19; menunggu review Andrian di PR #56)
 - Tanggal: 25 Nov 2026

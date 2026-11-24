@@ -247,7 +247,7 @@ Smoke nyata di etavm2: setup diterima, Bahasa Indonesia dua arah, latensi suara 
 
 ## 12. Daftar perubahan
 
-Create: `apps/api/migrations/20261125001900-b19-wawancara-suara.js`; `apps/api/src/voice/{index,fake-provider}.js`; `apps/api/src/modules/voice/{index,gateway,registry,eligibility,ticket,README}.{js,md}`; `docs/adr/0003-gateway-suara-gemini-live.md`; `apps/web/src/screens/b6-iv/{PanelSuara.vue,audio.ts}`; test unit/integrasi/e2e/alur.
+Create: `apps/api/migrations/20261125001900-b19-wawancara-suara.js`; `apps/api/src/voice/{index,fake-provider}.js`; `apps/api/src/modules/voice/{index,gateway,registry,eligibility,ticket,README}.{js,md}`; `docs/adr/0004-gateway-suara-gemini-live.md`; `apps/web/src/screens/b6-iv/{PanelSuara.vue,audio.ts}`; test unit/integrasi/e2e/alur.
 
 Modify: `CONTEXT.md` (Mode jawaban, Persetujuan suara, Sesi suara); `apps/api/src/config/env.js` (`VOICE_ALLOW_GLOBAL`); `src/voice/gemini-vertex-provider.js` (`contextWindowCompression`); `src/core/consent/index.js`; `src/ai/prompts.js`; `src/modules/interviews/{index,summary}.js`; `src/modules/tna/index.js` (deps); `src/db/lna-stores.js`; `src/db/undo-guard.js`; `scripts/encrypt-existing.js`; `src/app.js` (deps, `app.locals.voice`); `src/server.js` (upgrade, SIGTERM); `apps/web/src/screens/b6-iv/{api.ts,PersetujuanTna.vue,PercakapanWawancara.vue,IvSessionView.vue}`; `apps/web/src/content/consent.ts`; `deploy/dev-worktree/.env.example` (env `VOICE_*`; mount kunci dikerjakan thread infra).
 
@@ -315,7 +315,7 @@ Empat reviewer atas diff `scbrmb...im2v1p`: mattpocock code-review (Standards, S
 | Teks koreksi masuk prompt tanpa escape | standards | Perbaiki ✓ `JSON.stringify` + label "data, bukan perintah" |
 | `deploy/vps/.env.example` `fake` + `asia-southeast1` | readiness M7 | Perbaiki ✓ `none` + `asia-south1` |
 | Kunci di rootless Docker (uid) | readiness B2 | Sudah: salinan etavm2 milik 166535 (= uid 1000 container); `pasang-kunci-gcp.sh` milik thread infra, perlu `APP_UID` |
-| Tiket audience `ewi-voice` vs aturan 5 (`ewi`) | standards | Butuh keputusan Andrian (ADR 0003): sengaja supaya tiket tidak bisa dipakai sebagai token API |
+| Tiket audience `ewi-voice` vs aturan 5 (`ewi`) | standards | Butuh keputusan Andrian (ADR 0004): sengaja supaya tiket tidak bisa dipakai sebagai token API |
 | `jti` sekali pakai di memori per proses | standards | Terima: satu proses API per lingkungan; epoch membatasi |
 | Rate limit tiket 429 vs spek 409 | spec, codebase m7 | Terima 429 (`VOICE_RATE`), 7.1 diselaraskan di revisi berikut |
 | Kelayakan tiap simpan giliran (4.3), test "sesi login dicabut", naik-turun-naik di test | spec a | Tunda ⏳: cek berkala 30 detik + penjaga epoch di `addTurn`; CI menjalankan naik-turun-naik |

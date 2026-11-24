@@ -1,6 +1,6 @@
 # modules/voice · gateway wawancara suara (B19)
 
-Spek: `docs/designs/b19-wawancara-suara.md`. ADR: `docs/adr/0003-gateway-suara-gemini-live.md`.
+Spek: `docs/designs/b19-wawancara-suara.md`. ADR: `docs/adr/0004-gateway-suara-gemini-live.md`.
 
 | Berkas | Isi |
 | --- | --- |
