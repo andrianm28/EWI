@@ -54,8 +54,9 @@ async function buildExport({ stores, flags, tenantId, person, self }) {
     dna: { assessments, completions },
     // B8: permintaan data milik karyawan (tarik persetujuan, minta hapus)
     dataRequests: stores.dataRequests ? await stores.dataRequests.listForUser(tenantId, person.id) : [],
-    // B17: pertanyaan dan jawaban Asisten ELGOS milik karyawan
-    assistantLogs: stores.assistant ? (await stores.assistant.listForUser(tenantId, person.id))
+    // B17: pertanyaan dan jawaban Asisten ELGOS, hanya pada ekspor milik sendiri (spek B17: log atasan bisa memuat
+    // data anggota timnya, jadi tidak ikut ekspor yang diminta HR/Admin ETA; review 24 Nov)
+    assistantLogs: stores.assistant && self ? (await stores.assistant.listForUser(tenantId, person.id))
       .map(({ createdAt, view, question, answer, outcome }) => ({ createdAt, view, question, answer, outcome })) : [],
     coreCompetencies,
     impactMeasurement,
