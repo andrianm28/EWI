@@ -1,24 +1,27 @@
 'use strict';
-// Data dev: tenant "demo", user HR + learner, paket full_suite, flag DNA & TNA menyala (POC Des, RG-4).
-// Jangan dijalankan di staging/produksi.
+// Data uji tenant "demo" untuk dev dan staging. Aman diulang (idempoten).
+//
+// Di mana jalan:
+// - dev lokal dan stack dev etavm2 (deploy/dev-worktree/dev.sh): `npm run seed:dev`.
+// - STAGING: deploy/vps/deploy.sh langkah 6 menjalankan seed ini setelah deploy sukses (NODE_ENV=development
+//   di dalam kontainer). Tenant demo di staging jadi berisi semua flag layar demo (scripts/demo-flags.js),
+//   data demo per layar (scripts/seed-demo-data.js), dan akun eta_admin eta@demo.test. Akun itu hanya bisa
+//   masuk bila emailnya ada di ETA_ADMIN_EMAILS (etaAdminRequireList); di produksi daftar wajib dan seed tidak jalan.
+// - PRODUKSI: tidak pernah. Seed menolak NODE_ENV=production (data nyata, R2-4).
 require('dotenv').config();
 const { Client } = require('pg');
 const crypto = require('crypto');
 const bcrypt = require('bcryptjs');
 const { DEMO_FLAGS } = require('./demo-flags');
+const { seedDemoData } = require('./seed-demo-data');
 
-(async () => {
-  if (process.env.NODE_ENV === 'production') throw new Error('seed-dev dilarang di produksi');
-  const schema = process.env.DB_SCHEMA || 'ewi';
-  const c = new Client({ connectionString: process.env.DATABASE_URL });
-  await c.connect();
-  await c.query(`SET search_path TO "${schema}"`);
-  // Password diambil dari DEV_SEED_PASSWORD atau dibangkitkan acak lalu dicetak sekali.
-  const password = process.env.DEV_SEED_PASSWORD || crypto.randomBytes(9).toString('base64url');
+/** Isi tenant demo lewat klien pg `c` (search_path sudah di schema ELGOS). Mengembalikan id penting untuk test. */
+async function seedDev(c, { password, stores, slug = 'demo', env = process.env } = {}) {
+  if (env.NODE_ENV === 'production') throw new Error('seed-dev dilarang di produksi');
   const hash = await bcrypt.hash(password, 10);
   const { rows: [t] } = await c.query(
-    `INSERT INTO tenants (slug, name) VALUES ('demo', 'Demo Organisasi')
-     ON CONFLICT (slug) DO UPDATE SET name = EXCLUDED.name RETURNING id`);
+    `INSERT INTO tenants (slug, name) VALUES ($1, 'Demo Organisasi')
+     ON CONFLICT (slug) DO UPDATE SET name = EXCLUDED.name RETURNING id`, [slug]);
   const { rows: [hr] } = await c.query(
     `INSERT INTO users (tenant_id, email, name, role, password_hash, status) VALUES ($1, 'hr@demo.test', 'HR Demo', 'hr_admin', $2, 'active')
      ON CONFLICT (tenant_id, email) DO UPDATE SET password_hash = EXCLUDED.password_hash RETURNING id`, [t.id, hash]);
@@ -30,7 +33,7 @@ const { DEMO_FLAGS } = require('./demo-flags');
   // eta@demo.test ke daftar itu; di produksi seed ini tidak pernah jalan.
   await c.query(
     `INSERT INTO users (tenant_id, email, name, role, password_hash, status) VALUES ($1, 'eta@demo.test', 'Super Admin Demo', 'eta_admin', $2, 'active')
-     ON CONFLICT (tenant_id, email) DO UPDATE SET password_hash = EXCLUDED.password_hash`, [t.id, hash]);
+     ON CONFLICT (tenant_id, email) DO UPDATE SET password_hash = EXCLUDED.password_hash, role = EXCLUDED.role, status = 'active'`, [t.id, hash]);
   await c.query(
     `INSERT INTO users (tenant_id, email, name, role, password_hash, status, supervisor_id) VALUES ($1, 'learner@demo.test', 'Learner Demo', 'learner', $2, 'active', $3)
      ON CONFLICT (tenant_id, email) DO NOTHING`, [t.id, hash, hr.id]);
@@ -83,8 +86,8 @@ const { DEMO_FLAGS } = require('./demo-flags');
       if (!row) continue;
       for (const [i, userId] of members.entries()) {
         await c.query(`INSERT INTO lna_assessments (tenant_id, user_id, competency_id, score, confidence, evidence, source, assessor, assessed_at)
-                       VALUES ($1, $2, $3, $4, 1, 'Contoh hasil wawancara manual (seed)', 'manual_interview', 'Tim ETA', '2026-10-20')`,
-        [t.id, userId, comp.id, row[i]]);
+                       VALUES ($1, $2, $3, $4, 1, $5, 'manual_interview', 'Tim ETA', '2026-10-20')`,
+        [t.id, userId, comp.id, row[i], await stores.cipher.encrypt(t.id, 'Contoh hasil wawancara manual (seed)')]);
       }
     }
   }
@@ -98,8 +101,35 @@ const { DEMO_FLAGS } = require('./demo-flags');
     await c.query(`INSERT INTO feature_flags (tenant_id, key, enabled) VALUES ($1, $2, true)
                    ON CONFLICT (tenant_id, key) DO UPDATE SET enabled = true`, [t.id, key]);
   }
-  await c.end();
-  // Password hanya dicetak bila dibuat acak di sini; bila dari DEV_SEED_PASSWORD, pemilik env sudah tahu
-  const pwNote = process.env.DEV_SEED_PASSWORD ? 'password dari DEV_SEED_PASSWORD' : `password acak ${password} (set DEV_SEED_PASSWORD agar tidak dicetak)`;
-  console.log(`seed selesai: tenant demo, admin@demo.test, eta@demo.test, hr@demo.test, spv@demo.test, learner@demo.test, dimas|rina|budi@demo.test, ${pwNote}`);
-})().catch((e) => { console.error(e.message); process.exit(1); });
+  const demo = await seedDemoData(c, { stores, tenantId: t.id, jobRoleId: role.id, levelIds, hrId: hr.id, spvId: spv.id, memberIds: members });
+  return { tenantId: t.id, jobRoleId: role.id, hrId: hr.id, spvId: spv.id, memberIds: members, ...demo };
+}
+
+async function main(env = process.env) {
+  if (env.NODE_ENV === 'production') throw new Error('seed-dev dilarang di produksi');
+  // Store ELGOS (enkripsi per tenant) memakai konfigurasi yang sama dengan API: dev/staging = kunci induk lokal
+  const { loadConfig } = require('../src/config/env');
+  const { createDb } = require('../src/db');
+  const { createStores } = require('../src/db/stores');
+  const config = loadConfig(env);
+  const db = createDb(config);
+  const stores = createStores(db, { encryption: config.encryption });
+  const c = new Client({ connectionString: env.DATABASE_URL });
+  await c.connect();
+  try {
+    await c.query(`SET search_path TO "${config.dbSchema}"`);
+    // Password diambil dari DEV_SEED_PASSWORD atau dibangkitkan acak lalu dicetak sekali.
+    const password = env.DEV_SEED_PASSWORD || crypto.randomBytes(9).toString('base64url');
+    await seedDev(c, { password, stores, env });
+    // Password hanya dicetak bila dibuat acak di sini; bila dari DEV_SEED_PASSWORD, pemilik env sudah tahu
+    const pwNote = env.DEV_SEED_PASSWORD ? 'password dari DEV_SEED_PASSWORD' : `password acak ${password} (set DEV_SEED_PASSWORD agar tidak dicetak)`;
+    console.log(`seed selesai: tenant demo, admin@demo.test, eta@demo.test, hr@demo.test, spv@demo.test, learner@demo.test, dimas|rina|budi@demo.test, ${pwNote}`);
+  } finally {
+    await c.end();
+    await db.close();
+  }
+}
+
+if (require.main === module) main().catch((e) => { console.error(e.message); process.exit(1); });
+
+module.exports = { seedDev, main };

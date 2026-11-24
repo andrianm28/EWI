@@ -4,6 +4,7 @@ import { papanGapTna, COMP, DETAIL, ID_KOMPETENSI, ID_DIMAS, ID_PROYEK, type Ops
 import { penanganDashboardHr } from './support/dashboard'
 import { cocok, mockApi, permintaanBelumDimock, responsData } from './support/api'
 import { tanggalWib } from './support/tanggal'
+import { penanganHasilSaya } from './support/hasil-saya'
 
 /** Tenggat uji relatif (tanggal tetap kedaluwarsa karena batas 30 hari). */
 const TENGGAT = tanggalWib(11)
@@ -494,4 +495,113 @@ test('paritas TD-2/TD-3: nilai GAP merah; bukti dan hipotesis berupa baris ikon 
   const hipotesis = page.getByRole('list', { name: 'Hipotesis awal (belum terverifikasi)' })
   await expect(hipotesis.getByRole('listitem')).toHaveText(['Materi pelatihan belum mencakup langkah ini.'])
   await expect(hipotesis.getByRole('listitem').locator('svg')).toHaveCount(1)
+})
+
+// R39-2 (aturan 24 Nov, core/rbac denyEmployeeContent): Super Admin diblokir dari isi karyawan, jadi rute TNA memantul
+test('R39-2: Super Admin membuka rute TNA (papan, detail gap, kelola): dialihkan, tanpa memanggil API TNA', async ({ page }) => {
+  const minta: string[] = []
+  await mockApi(page, (req) => { if (req.path.startsWith('/tna/')) minta.push(`${req.method} ${req.path}`); return undefined })
+  await setup(page, { peran: 'super', flags: BOARD })
+  for (const alamat of ['/tna', `/tna/gap?kind=competency&competencyId=${ID_KOMPETENSI}&tab=kompetensi`, '/tna/kelola']) {
+    await page.goto(alamat)
+    await expect(page.getByRole('button', { name: 'Keluar' })).toBeVisible()
+    await expect(page).not.toHaveURL(/\/tna(\/|\?|$)/)
+  }
+  expect(minta).toEqual([])
+})
+
+// R39-3 (B2 multi-peran): kontrol mengikuti peran/tampilan aktif, bukan semua peran akun
+test('R39-3: akun HR + karyawan di tampilan Karyawan tidak melihat kontrol HR di /tna', async ({ page }) => {
+  const { penangan } = papanGapTna({ peran: 'hr', reviewPending: 3 })
+  await mockApi(page, penangan)
+  await mockApi(page, penanganDashboardHr)
+  await mockApi(page, penanganHasilSaya('u-hr'))
+  await loginSebagai(page, 'hr', { submodules: ['cca', 'dna', 'tna', 'ina'], flags: { 'dashboard.main': true, 'learner.home': true }, peranLain: ['karyawan'] })
+  const tampilan = page.getByRole('group', { name: 'Tampilan' })
+  await tampilan.getByRole('button', { name: 'Karyawan' }).click()
+  await expect(tampilan.getByRole('button', { name: 'Karyawan' })).toHaveAttribute('aria-pressed', 'true')
+  await page.goto('/tna')
+  await expect(page.getByTestId('tna-findings')).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Hasil TNA Anda' })).toBeVisible()
+  await expect(page.getByTestId('tna-review-banner')).toHaveCount(0)
+  await expect(page.locator('[data-import-panel]')).toHaveCount(0)
+  await expect(page.getByRole('link', { name: 'Riwayat review hasil AI' })).toHaveCount(0)
+  await expect(page.getByRole('button', { name: 'Buat training plan' })).toHaveCount(0)
+})
+
+test('R39-3: akun atasan + HR di tampilan Atasan: detail gap tanpa tautan tinjauan HR', async ({ page }) => {
+  const { penangan } = papanGapTna({ peran: 'atasan' })
+  await mockApi(page, penangan)
+  await mockApi(page, penanganDashboardHr)
+  await loginSebagai(page, 'atasan', { submodules: ['cca', 'dna', 'tna', 'ina'], flags: { ...BOARD, 'tna.interview_assignment': true, 'dashboard.main': true }, peranLain: ['hr'] })
+  const tampilan = page.getByRole('group', { name: 'Tampilan' })
+  await tampilan.getByRole('button', { name: 'Atasan' }).click()
+  await expect(tampilan.getByRole('button', { name: 'Atasan' })).toHaveAttribute('aria-pressed', 'true')
+  await page.goto(`/tna/gap?kind=competency&competencyId=${ID_KOMPETENSI}&tab=kompetensi`)
+  await expect(page.getByRole('heading', { level: 1 })).toBeVisible()
+  await expect(tampilan.getByRole('button', { name: 'Atasan' })).toHaveAttribute('aria-pressed', 'true')
+  await expect(page.getByText('Analisis insiden').first()).toBeVisible()
+  await expect(page.getByRole('link', { name: 'Langsung ke tinjauan HR' })).toHaveCount(0)
+  await expect(page.getByRole('button', { name: 'Langsung ke tinjauan HR' })).toHaveCount(0)
+  // akun yang sama di tampilan HR: tautan tinjauan tampil (bukti asersi negatif di atas memang karena peran aktif)
+  await tampilan.getByRole('button', { name: 'HR / L&D' }).click()
+  await expect(tampilan.getByRole('button', { name: 'HR / L&D' })).toHaveAttribute('aria-pressed', 'true')
+  await page.goto(`/tna/gap?kind=competency&competencyId=${ID_KOMPETENSI}&tab=kompetensi`)
+  await expect(page.getByText('Langsung ke tinjauan HR')).toBeVisible()
+})
+
+// Review egm R39 P2-1: menu mockup tampilan Admin Tenant hanya users, jobs, cfg (b0-fondasi-ui.md:145), jadi layar HR
+// (detail gap, tinjauan, antrean) tidak dibuka di tampilan admin; akun tenant_admin + hr_admin dipindah ke tampilan HR
+test('review R39 P2-1: akun Admin Tenant + HR dari tampilan admin membuka detail gap dan antrean: tampilan pindah ke HR', async ({ page }) => {
+  const { penangan } = papanGapTna({ peran: 'hr' })
+  await mockApi(page, penangan)
+  await mockApi(page, penanganDashboardHr)
+  await mockApi(page, (req) => (cocok(req, 'GET /tna/review') ? { json: { data: [], counts: { draft: 0, approved: 0, edited: 0, rejected: 0, held: 0, overdue: 0 }, targetDays: 2 } } : undefined))
+  await loginSebagai(page, 'admin', { submodules: ['cca', 'dna', 'tna', 'ina'], flags: { ...BOARD, 'dashboard.main': true }, peranLain: ['hr'] })
+  const tampilan = page.getByRole('group', { name: 'Tampilan' })
+  await expect(tampilan.getByRole('button', { name: 'Admin Tenant' })).toHaveAttribute('aria-pressed', 'true')
+  await page.goto(`/tna/gap?kind=competency&competencyId=${ID_KOMPETENSI}&tab=kompetensi`)
+  await expect(tampilan.getByRole('button', { name: 'HR / L&D' })).toHaveAttribute('aria-pressed', 'true')
+  await expect(page.getByText('Langsung ke tinjauan HR')).toBeVisible()
+  await tampilan.getByRole('button', { name: 'Admin Tenant' }).click()
+  await expect(tampilan.getByRole('button', { name: 'Admin Tenant' })).toHaveAttribute('aria-pressed', 'true')
+  await page.goto('/m/tna/review')
+  await expect(page.getByRole('heading', { level: 1, name: 'Review hasil AI' })).toBeVisible()
+  await expect(tampilan.getByRole('button', { name: 'HR / L&D' })).toHaveAttribute('aria-pressed', 'true')
+})
+
+// Review egm R39 P2-2: API B2 mengirim peran aktif (role, view, roles[]); kontrol mengikuti access.role setelah switch-role
+test('review R39 P2-2: API B2 (peran aktif dari /me/access): HR melihat kontrol HR, setelah ganti ke Karyawan tidak', async ({ page }) => {
+  const { penangan } = papanGapTna({ peran: 'hr', reviewPending: 3 })
+  await mockApi(page, penangan)
+  await mockApi(page, penanganDashboardHr)
+  await mockApi(page, penanganHasilSaya('u-hr'))
+  const ROLES = [{ role: 'hr_admin', view: 'hr', label: 'HR / L&D' }, { role: 'learner', view: 'karyawan', label: 'Karyawan (saya)' }]
+  const submodules = ['cca', 'dna', 'tna', 'ina']
+  const flags = { ...Object.fromEntries(submodules.map((s) => [`module.${s}`, true])), 'dashboard.main': true, 'learner.home': true }
+  let aktif: 'hr_admin' | 'learner' = 'hr_admin'
+  const ganti: unknown[] = []
+  await mockApi(page, (req) => {
+    if (cocok(req, 'GET /me/access')) {
+      return { json: { submodules, products: ['full_suite'], flags, roles: ROLES, role: aktif, view: aktif === 'learner' ? 'karyawan' : 'hr' } }
+    }
+    if (cocok(req, 'POST /auth/switch-role')) {
+      ganti.push(req.body)
+      aktif = (req.body as { role: 'hr_admin' | 'learner' }).role
+      return { json: { token: `token-${aktif}`, user: { id: 'u-hr', tenantId: 't-contoh', email: 'hr@contoh.test', name: 'Pengguna Contoh', role: aktif, roles: ['hr_admin', 'learner'], tenantName: 'PT Contoh' } } }
+    }
+    return undefined
+  })
+  await loginSebagai(page, 'hr', { submodules, flags, peranLain: ['karyawan'] })
+  const tampilan = page.getByRole('group', { name: 'Tampilan' })
+  await expect(tampilan.getByRole('button', { name: 'HR / L&D' })).toHaveAttribute('aria-pressed', 'true')
+  await page.goto('/tna')
+  await expect(page.getByTestId('tna-review-banner')).toContainText('3 temuan AI dari wawancara TNA menunggu review')
+  await tampilan.getByRole('button', { name: 'Karyawan (saya)' }).click()
+  await expect(tampilan.getByRole('button', { name: 'Karyawan (saya)' })).toHaveAttribute('aria-pressed', 'true')
+  expect(ganti).toEqual([{ role: 'learner' }])
+  await page.goto('/tna')
+  await expect(page.getByRole('heading', { name: 'Hasil TNA Anda' })).toBeVisible()
+  await expect(page.getByTestId('tna-review-banner')).toHaveCount(0)
+  await expect(page.locator('[data-import-panel]')).toHaveCount(0)
 })

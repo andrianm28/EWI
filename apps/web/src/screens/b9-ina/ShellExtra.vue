@@ -13,6 +13,8 @@ const pending = ref(0)
 
 async function refresh() {
   pending.value = 0
+  // Super Admin tidak membuka isi data karyawan (API: denyEmployeeContent), jadi tidak bertanya ke /ina sama sekali
+  if (session.activeView === 'super') return
   if (!session.canOpen('ina') || session.access?.flags['ina.ai_verification'] !== true) return
   try { pending.value = (await ina.me()).data.pendingVerifications } catch { /* pengingat bersifat tambahan */ }
 }

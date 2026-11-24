@@ -23,7 +23,13 @@ const ASK_TIMEOUT_MS = 30_000
 function errorText(e: unknown) {
   return e instanceof ApiError && e.code !== 'ERROR' ? e.message : FALLBACK_ERROR
 }
-const isViewForbidden = (e: unknown) => e instanceof ApiError && e.status === 403 && e.code === 'VIEW_FORBIDDEN'
+/**
+ * Server menolak asisten untuk tampilan atau akun ini: 403 VIEW_FORBIDDEN (tampilan tidak boleh untuk peran) atau
+ * 403 EMPLOYEE_CONTENT_PRIVATE (aturan 24 Nov, core/rbac denyEmployeeContent: Super Admin diblokir dari isi karyawan).
+ * Keduanya diperlakukan sama: tombol dan panel asisten disembunyikan.
+ */
+const DENIED_CODES: readonly string[] = ['VIEW_FORBIDDEN', 'EMPLOYEE_CONTENT_PRIVATE']
+const isViewForbidden = (e: unknown) => e instanceof ApiError && e.status === 403 && DENIED_CODES.includes(e.code)
 
 export const useAsistenStore = defineStore('b17-asisten', () => {
   const open = ref(false)
@@ -33,7 +39,7 @@ export const useAsistenStore = defineStore('b17-asisten', () => {
   const pending = ref(false)
   /** Kembalikan fokus ke input saat panel dipasang ulang (setelah tombol "Buka" menavigasi). */
   const refocus = ref(false)
-  /** Server menolak tampilan ini untuk peran akun (403 VIEW_FORBIDDEN): tombol asisten disembunyikan */
+  /** Server menolak asisten (403 VIEW_FORBIDDEN atau EMPLOYEE_CONTENT_PRIVATE): tombol asisten disembunyikan */
   const unavailable = ref(false)
   // Kunci {tenant}|{user.id}|{tampilan}: berubah saat ganti tampilan, keluar, atau akun lain
   let key = ''

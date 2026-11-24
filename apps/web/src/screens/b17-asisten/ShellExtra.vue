@@ -12,7 +12,8 @@ import { VIEW_LABEL } from '@/shell/views'
 import type { AssistantView } from '@/api/assistant'
 import { useAsistenStore } from './store'
 
-// Keputusan user 23 Nov: tidak di tampilan Super Admin; eta_admin memakainya dari tampilan HR tenant
+// Aturan 24 Nov (core/rbac denyEmployeeContent): Super Admin diblokir dari semua isi karyawan, jadi tidak ada asisten di
+// tampilan super. Tampilan lain akun eta_admin ditolak server (403 EMPLOYEE_CONTENT_PRIVATE) dan diperlakukan seperti VIEW_FORBIDDEN.
 const ASSISTANT_VIEWS: readonly AssistantView[] = ['karyawan', 'atasan', 'hr']
 
 const session = useSessionStore()
@@ -30,13 +31,13 @@ const enabled = computed(() => allowed.value && !unavailable.value)
 
 // Percakapan milik satu akun (tenant + pengguna) dan satu tampilan (mockup mengosongkan asTurns saat ganti peran).
 // FAB tampil langsung seperti mockup (keputusan user 24 Nov); salam dimuat di latar. Bila server menolak tampilan
-// (403 VIEW_FORBIDDEN), FAB dan panel disembunyikan saat jawaban itu tiba.
+// (403 VIEW_FORBIDDEN atau EMPLOYEE_CONTENT_PRIVATE), FAB dan panel disembunyikan saat jawaban itu tiba.
 watch(() => `${session.user?.tenantId ?? ''}|${session.user?.id ?? ''}|${view.value ?? ''}`, (k) => {
   store.bind(k)
   if (allowed.value) store.loadIntro(view.value!)
 }, { immediate: true })
 
-// 403 VIEW_FORBIDDEN tiba saat fokus di FAB atau panel: elemen itu hilang, jadi fokus dipindah ke isi halaman.
+// 403 VIEW_FORBIDDEN/EMPLOYEE_CONTENT_PRIVATE tiba saat fokus di FAB atau panel: elemen itu hilang, jadi fokus dipindah ke isi halaman.
 // flush 'pre': diperiksa sebelum DOM diperbarui, selagi elemen yang fokus masih ada.
 watch(unavailable, async (off) => {
   if (!off) return

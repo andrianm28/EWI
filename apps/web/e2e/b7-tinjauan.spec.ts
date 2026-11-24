@@ -403,6 +403,17 @@ test('atasan tidak bisa membuka tinjauan HR (spek B7: hanya HR; RV-3 perlu keput
   await expect(page).not.toHaveURL(/\/tna\/tinjauan/)
 })
 
+// R39-2 (aturan 24 Nov, core/rbac denyEmployeeContent): Super Admin diblokir dari isi karyawan, jadi rute tinjauan memantul
+test('R39-2: Super Admin membuka rute tinjauan HR dan antrean: dialihkan, tanpa permintaan /tna/review', async ({ page }) => {
+  const sent = await setup(page, { peran: 'super' })
+  for (const alamat of [ALAMAT, '/m/tna/review']) {
+    await page.goto(alamat)
+    await expect(page.getByRole('button', { name: 'Keluar' })).toBeVisible()
+    await expect(page).not.toHaveURL(/\/tna\/tinjauan|\/m\/tna\/review/)
+  }
+  expect(sent.filter((s) => s.path.startsWith('GET /tna/review'))).toEqual([])
+})
+
 // P9 S-1/CD-5 (B0 5.3 aturan 2): rute antrean punya meta.views; tautan langsung dari tampilan Atasan pindah ke HR
 test('P9 S-1: akun HR yang juga atasan membuka antrean dari tampilan Atasan: tampilan pindah ke HR', async ({ page }) => {
   await mockApi(page, papanGapTna({ peran: 'hr' }).penangan)
@@ -436,13 +447,20 @@ test('P9 CD-12: respons gap lama yang tiba belakangan tidak menimpa gap yang sed
   await mockApi(page, papanGapTna({ peran: 'hr' }).penangan)
   await mockApi(page, t.penangan)
   await loginSebagai(page, 'hr', { submodules: ['cca', 'dna', 'tna', 'ina'], flags: FLAGS })
+  // R39-4: tunggu respons gap pertama (yang lambat) benar-benar tiba, bukan jeda tetap
+  const responsLama = page.waitForResponse((r) => {
+    const u = new URL(r.url())
+    return u.pathname === '/api/tna/review' && u.searchParams.get('competencyId') === ID_KOMPETENSI
+  })
   await page.goto(ALAMAT)
   await expect.poll(() => sent.filter((x) => x.path === 'GET /tna/review').length).toBe(1)
   // navigasi di dalam aplikasi (tanpa memuat ulang) supaya permintaan gap pertama tetap berjalan
   const alamatB = `/tna/tinjauan?kind=competency&competencyId=${GAP_B}&tab=kompetensi`
   await page.evaluate(`history.pushState({}, '', ${JSON.stringify(alamatB)}); dispatchEvent(new PopStateEvent('popstate'))`)
   await expect(page.getByText('Gap kedua. HR memastikan klasifikasi')).toBeVisible()
-  await page.evaluate(() => new Promise((ok) => setTimeout(ok, 1200)))
+  await (await responsLama).finished()
+  // beri aplikasi satu putaran render setelah respons lama diproses (dua frame animasi)
+  await page.evaluate('new Promise((ok) => requestAnimationFrame(() => requestAnimationFrame(ok)))')
   await expect(page.getByText('Gap kedua. HR memastikan klasifikasi')).toBeVisible()
   await expect(page.getByText('Analisis insiden. HR memastikan')).toHaveCount(0)
   await expect(page.getByText('Belum ada temuan AI untuk gap ini.')).toBeVisible()

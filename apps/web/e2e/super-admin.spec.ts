@@ -131,6 +131,46 @@ test('1c. Panel Modul: jawaban modul berbentuk salah atau kosong diberi pesan', 
   await expect(panel).toContainText('Belum ada modul untuk tenant ini.')
 })
 
+test('1e. Panel Modul: baris memuat tampil, dan pindah tenant cepat tidak menampilkan modul tenant lain', async ({ page }) => {
+  let lepasLambat: () => void = () => {}
+  const lambat = new Promise<void>((r) => { lepasLambat = r })
+  await mockApi(page, async (req) => {
+    if (req.method === 'GET' && req.path === '/platform/tenants') {
+      return { json: { data: { kpis: { tenants: 2, activeTenants: 1, users: 43, modulesAvailable: 8 }, tenants: TENANTS.slice(0, 2) } } }
+    }
+    if (req.method === 'GET' && req.path === '/platform/settings') return { json: { data: SETTINGS } }
+    const m = cocok(req, 'GET /platform/tenants/:id/modules')
+    if (m?.id === 't-1') { await lambat; return { json: { data: [MODULES[0]] } } }
+    if (m?.id === 't-2') return { json: { data: [MODULES[2]] } }
+    return undefined
+  })
+  await loginSebagai(page, 'super', { flags: ON })
+  const rows = page.getByRole('table', { name: 'Daftar tenant' }).getByRole('row')
+  await rows.filter({ hasText: 'PT Elitery' }).getByRole('button', { name: 'Modul', exact: true }).click()
+  await expect(page.getByRole('region', { name: 'Modul PT Elitery' })).toContainText('Memuat modul…')
+  await rows.filter({ hasText: 'PT Tunggu' }).getByRole('button', { name: 'Modul', exact: true }).click()
+  const panel = page.getByRole('region', { name: 'Modul PT Tunggu' })
+  await expect(panel).toContainText('Training Needs')
+  lepasLambat()
+  await page.waitForTimeout(300)
+  await expect(panel).toContainText('Training Needs')
+  await expect(panel).not.toContainText('Core Competencies')
+})
+
+test('1d. Shell Super Admin tidak meminta isi karyawan (GET /ina/access/me) walau tenant menyalakan INA', async ({ page }) => {
+  const minta: string[] = []
+  await konsol(page)
+  await mockApi(page, (req) => {
+    if (req.path.startsWith('/ina/')) { minta.push(`${req.method} ${req.path}`); return { status: 403, json: { error: { code: 'EMPLOYEE_CONTENT_PRIVATE', message: 'tidak' } } } }
+    return undefined
+  })
+  await loginSebagai(page, 'super', { submodules: ['dna', 'tna', 'ina'], flags: { ...ON, 'ina.ai_verification': true } })
+  await expect(page.getByTestId('kpi-tenant')).toBeVisible()
+  await page.getByRole('link', { name: 'Konfigurasi platform' }).click()
+  await expect(page.getByRole('heading', { level: 1, name: 'Konfigurasi platform' })).toBeVisible()
+  expect(minta).toEqual([])
+})
+
 test('2. Buat tenant: Periksa memberi slug, slug ganda diperingatkan, simpan, undangan gagal bisa dikirim ulang', async ({ page }) => {
   const { sent } = await konsol(page)
   await loginSebagai(page, 'super', { flags: ON })

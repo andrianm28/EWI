@@ -162,3 +162,22 @@ Review independen atas empat commit di atas (tanpa P0/P1).
 | Gulir otomatis Asisten berhenti setelah batas 40 gelembung | P2 | Diperbaiki | Watch id gelembung terakhir, bukan panjang. E2E 21 giliran |
 | 403 terlambat menyembunyikan FAB/panel yang sedang fokus | P3 | Diperbaiki | Bila fokus di FAB/panel, fokus pindah ke `#isi` (ShellExtra; `store.ts` tidak diubah). E2E |
 | Uji: konfirmasi gagal → tanpa catatan sukses; solusi hanya untuk temuan yang diputus server | P3 | Diperbaiki | E2E 500 dan 409 |
+
+### Triase review penuh PR #39: R39-1..4 (24 Nov)
+
+| Temuan | Prioritas | Status | Catatan |
+|---|---|---|---|
+| R39-1: e2e, spek B17, dan komentar ShellExtra masih menyebut Super Admin memakai asisten dari tampilan HR | P1 | Diperbaiki | `store.ts`: 403 `EMPLOYEE_CONTENT_PRIVATE` = `VIEW_FORBIDDEN` (salam dan pertanyaan). E2E Super Admin + pertanyaan ditolak merah → hijau; spek dan komentar diselaraskan |
+| R39-2: rute tinjauan/antrean B7, rute TNA (`tna`, `tna-gap`, `tna-kelola`), `HR_ROLES`/`BOARD_ROLES` masih memuat super/eta_admin | P2 | Diperbaiki | Dihapus dari `views`, `roles`, dan konstanta. E2E Super Admin dialihkan dari kelima rute tanpa memanggil API TNA, merah → hijau |
+| R39-3: `hasAnyRole` di TnaPengelolaan, TnaScreen, TnaGapView, board.ts membaca semua peran akun | P2 | Diperbaiki | Store sesi: `activeRoles`/`hasActiveRole` (peran aktif API B2, atau peran yang tampilan utamanya = tampilan aktif; Karyawan → `learner`). E2E HR + karyawan di tampilan Karyawan dan atasan + HR di tampilan Atasan, merah → hijau |
+| R39-4: `b7-tinjauan.spec.ts` menunggu 1200 ms tetap sebelum asersi negatif | P3 | Diperbaiki | `waitForResponse` untuk respons gap lama + dua frame animasi |
+
+### Review egm atas R39-1..4 (`040b075`, 24 Nov)
+
+| Temuan | Prioritas | Status | Catatan |
+|---|---|---|---|
+| Tampilan admin (tenant_admin + hr_admin): rute `review`, `tna-review`, `tna-gap` terbuka di tampilan admin, tetapi `activeRoles` = `['tenant_admin']` sehingga kontrol HR tersembunyi | P2 | Diperbaiki | Dipilih: `admin` dihapus dari `views` ketiga rute (bukan menambah `tenant_admin` ke `HR_ROLES`). Dasar: `docs/designs/b0-fondasi-ui.md:145` (menu mockup tampilan admin hanya `users`, `jobs`, `cfg`); `:153` menyebut DNA/TNA di tampilan admin hanya butir peralihan; API juga tidak memberi `tenant_admin` hak HR. Akun tenant_admin + hr_admin kini dipindah ke tampilan HR oleh penjaga rute. E2E merah → hijau |
+| Cabang `access.role` (API B2) di `activeRoles` belum diuji | P2 | Diperbaiki | E2E: `/me/access` mengirim `role`, `view`, `roles[]`, `POST /auth/switch-role` di-mock; HR melihat banner review, setelah ganti ke Karyawan tidak (switch-role terkirim `{ role: 'learner' }`) |
+| Tampilan Karyawan: `learner` hanya ditambahkan di cabang API lama | P3 | Diperbaiki | `learner` selalu dimuat di tampilan Karyawan, di kedua cabang |
+| Uji atasan + HR hanya asersi negatif | P3 | Diperbaiki | Di test yang sama, setelah pindah ke tampilan HR tautan "Langsung ke tinjauan HR" tampil |
+| Uji pertanyaan ditolak `EMPLOYEE_CONTENT_PRIVATE` tidak memastikan `POST /assistant/ask` terkirim | P3 | Diperbaiki | `expect.poll` jumlah POST = 1 dan body `{ question, view }` |
