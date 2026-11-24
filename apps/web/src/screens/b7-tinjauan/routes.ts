@@ -3,14 +3,16 @@ import type { RouteRecordRaw } from 'vue-router'
 
 export default [
   // Mockup layar `review`: tinjauan temuan AI satu gap, dibuka dari detail gap (query = rujukan gap + tab asal).
-  // Hanya HR dan Admin ETA (spek B7: endpoint tinjauan hanya HR; akses atasan RV-3 menunggu keputusan).
+  // Hanya HR dan Admin ETA (spek B7: endpoint tinjauan hanya HR; RV-3 diputuskan R1 23 Nov: tetap HR saja).
+  // `views` sama dengan rute antrean: HR, plus Admin Tenant (juga HR, K2) dan Admin ETA di butir peralihan TNA.
   {
     path: '/tna/tinjauan', name: 'review', component: () => import('./TinjauanView.vue'),
     meta: { views: ['hr', 'admin', 'super'], submodule: 'tna', flag: 'tna.review_workspace', roles: ['hr_admin', 'eta_admin'], menuKey: 'tna', title: 'Tinjauan HR' },
   },
   // Antrean lintas karyawan (PK-14, PR #16): mengubah teks, menolak, dan riwayat. Tanpa flag (pengaman wajib).
+  // B0 5.3 aturan 2: anak menu `tna` mengulang `views` (P9 S-1); tautan dari tampilan Atasan pindah ke HR.
   {
     path: '/m/tna/review', name: 'tna-review', component: () => import('./AntreanView.vue'),
-    meta: { submodule: 'tna', roles: ['hr_admin', 'eta_admin'], menuKey: 'tna', title: 'Tinjauan hasil AI' },
+    meta: { views: ['hr', 'admin', 'super'], submodule: 'tna', roles: ['hr_admin', 'eta_admin'], menuKey: 'tna', title: 'Tinjauan hasil AI' },
   },
 ] satisfies RouteRecordRaw[]

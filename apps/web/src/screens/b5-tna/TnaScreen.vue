@@ -26,7 +26,7 @@ const showBoard = useShowBoard()
 // Triase P5 M1: banner temuan AI menunggu review ikut pindah ke Kelola TNA, jadi HR diberi catatan ringkas di papan
 const reviewPending = ref(0)
 async function loadReviewPending() {
-  if (!showBoard.value || !HR_ROLES.includes(session.role)) return
+  if (!showBoard.value || !session.hasAnyRole(HR_ROLES)) return
   try { reviewPending.value = (await lna.tnaDashboard()).data.reviewPending ?? 0 } catch { /* catatan opsional; galat papan ditangani loadBoard */ }
 }
 
@@ -122,7 +122,7 @@ const ivTo = computed(() => (routeOpen('iv', session.activeView, session) ? { na
       <UiNote v-if="reviewPending" tone="warning" class="tna-gap-b" data-testid="tna-review-ringkas">
         <div class="tna-row">
           <span>{{ reviewPending }} temuan AI dari wawancara TNA menunggu review.</span>
-          <UiButton size="sm" to="/m/tna/review">Review</UiButton>
+          <UiButton size="sm" :to="{ name: 'tna-review' }">Review</UiButton>
         </div>
       </UiNote>
       <UiTabs id="tna-tab" v-model="tab" :tabs="TABS" label="Bagian Training Needs" />

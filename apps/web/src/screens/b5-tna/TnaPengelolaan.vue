@@ -12,6 +12,7 @@ import {
   type Finding, type NonTrainingFinding, type NonTrainingGrant, type ParetoRow, type PlanItem, type Project, type Session, type TnaDashboard,
 } from '@/api/lna'
 import { useSessionStore } from '@/stores/session'
+import { HR_ROLES } from './api'
 
 const session = useSessionStore()
 const dash = ref<TnaDashboard | null>(null)
@@ -28,15 +29,17 @@ const projects = ref<Project[]>([])
 const error = ref('')
 const notice = ref('')
 
-const isHr = computed(() => ['hr_admin', 'eta_admin'].includes(session.role))
-const isLearner = computed(() => session.role === 'learner')
+// B0 5.1: izin dari semua peran akun (session.roles), bukan peran utama; akun atasan yang juga HR melihat bagian HR
+const isHr = computed(() => session.hasAnyRole(HR_ROLES))
+const isSupervisor = computed(() => session.hasAnyRole(['supervisor']))
+/** Hanya peran karyawan (tanpa HR maupun atasan). */
+const isLearner = computed(() => session.hasAnyRole(['learner']) && !isHr.value && !isSupervisor.value)
 // R-1: saat penugasan dari papan gap menyala, jadwal massal lama disembunyikan (penugasan lewat detail gap)
 const assignmentOn = computed(() => session.hasFlag('tna.interview_assignment'))
 // PM-8 B: BT-31 ditunda, tombol permintaan training hanya tampil bila flag dinyalakan
 const canRequestTraining = computed(() => isLearner.value && session.hasFlag(FLAG_TRAINING_REQUEST))
 // PM-6: temuan di luar pelatihan untuk HR; atasan hanya bila HR memberinya akses
 const nonTrainingOn = computed(() => session.hasFlag(FLAG_NON_TRAINING_HR))
-const isSupervisor = computed(() => session.role === 'supervisor')
 const showNonTraining = computed(() => nonTrainingOn.value && (isHr.value || (isSupervisor.value && supervisorGranted.value)))
 const ungranted = computed(() => supervisors.value.filter((s) => !grants.value.some((g) => g.supervisorId === s.id)))
 // Q38: undangan yang belum selesai, untuk dipantau dan diperpanjang HR
@@ -141,10 +144,10 @@ const target = (f: Finding) => (f.metricName ? `${f.metricName}: target ${f.targ
           <div class="tna-strong">{{ dash.reviewPending }} temuan AI dari wawancara TNA menunggu review</div>
           <div>Temuan baru tampil ke atasan dan karyawan, dan baru dihitung di dashboard, setelah Anda setujui.</div>
         </div>
-        <UiButton size="sm" to="/m/tna/review">Review</UiButton>
+        <UiButton size="sm" :to="{ name: 'tna-review' }">Review</UiButton>
       </div>
     </UiNote>
-    <p v-else-if="isHr"><RouterLink to="/m/tna/review" class="tna-a">Riwayat review hasil AI</RouterLink></p>
+    <p v-else-if="isHr"><RouterLink :to="{ name: 'tna-review' }" class="tna-a">Riwayat review hasil AI</RouterLink></p>
 
     <TnaMySessions :sessions="sessions" />
 
