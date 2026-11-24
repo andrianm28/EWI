@@ -46,6 +46,18 @@ Semua peringatan di etavm2 juga tercatat: `journalctl -t elgos-alert --since tod
   (setel `ELGOS_ENV=prod ELGOS_ENV_FILE=/srv/elgos-prod/.env ELGOS_DB_ENV_FILE=/srv/elgos-prod/db.env`
   dan `. current.env` dulu, atau pakai `. ops/common.sh; env_compose prod logs --tail 200 api`).
 - Baru saja deploy? Rollback: Actions > Deploy > Run workflow `prod` dengan SHA di `previous.env`.
+
+### Rollback dengan skema baru (deploy prod gagal setelah migrasi)
+Deploy prod yang gagal sesudah migrasi hanya memasang image lama; skema `ewi` tetap versi baru
+(audit 3-2). Job menampilkan `::warning::` dengan path backup pra-deploy.
+1. Cek image lama sehat: `curl -s localhost:8180/api/ready`, log API tanpa error kolom/tabel.
+   Bila sehat, biarkan: aturan migrasi tambah-dulu (alur-rilis.md) membuat image lama jalan di skema baru.
+   Perbaiki rilisnya lalu deploy ulang ke depan.
+2. Restore skema hanya bila image lama rusak karena skema baru, dan setelah sadar tulisan pengguna
+   sejak backup akan hilang. Catat jamnya, lalu:
+   `KONFIRMASI=prod /srv/elgos-prod/ops/restore.sh pulihkan prod /srv/elgos-prod/backups/<...-before-<sha>.dump>`
+   (restore.sh membuat backup pengaman dulu; ekspor tulisan baru dari backup itu bila perlu).
+3. Deploy ulang SHA di `previous.env` agar role dan container sesuai.
 - Container berhenti tanpa deploy: `env_compose prod up -d --wait`. Cek OOM: `dmesg | grep -i oom`.
 - KMS/SES gagal (log menyebut AccessDenied): cek kunci IAM aplikasi (kedaluwarsa, salah IP sumber
   setelah IP etavm2 berubah) dan [rotasi-kunci.md](rotasi-kunci.md).

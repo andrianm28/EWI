@@ -6,7 +6,7 @@ Istilah dan tanda:
 
 | Istilah | Arti |
 | --- | --- |
-| Admin Tenant, pengelola | Orang yang lolos `isTenantAdmin` (4.2): saat ini `tenant_admin`, `eta_admin`, dan sementara `hr_admin` |
+| Admin Tenant, pengelola | Orang yang lolos `isTenantAdmin` (4.2): `tenant_admin` dan `eta_admin` (masa interim `hr_admin` dicabut 24 Nov) |
 | `tenant_admin` | Kunci peran Admin Tenant yang ditambahkan B2 |
 | Super Admin | `eta_admin` (Admin ETA) |
 | K2, R2-x, R3-x, PK-xx | Kode keputusan di brief bangun penuh 19 Nov dan audit 17 Nov (`/mnt/project-files/elgos-eksekusi/`) |
@@ -48,7 +48,7 @@ Data demo mockup ("Karyawan A", "Elitery", nama jabatan ilustratif, catatan "con
 - R3-3: alur impor berkas (unggah → petakan → pratinjau → simpan), baris mentah dihapus setelah disimpan.
 - R2-2: perubahan dicatat di audit log; pencatatan gagal berarti request gagal.
 - K4: EliteMentor lewat API OAuth2 + webhook HMAC; bila klien tidak memakai EliteMentor, ekspor gap ke LMS.
-- PK-13: akun pengelola pertama dibuat skrip onboarding dengan peran `hr_admin`.
+- PK-13: akun pengelola pertama dibuat skrip onboarding dengan peran `hr_admin` (sejak 24 Nov onboarding wajib memuat `tenant_admin`).
 
 ### 3.1 Alternatif yang ditolak
 
@@ -71,8 +71,8 @@ Flag baru `admin.tenant` (konstanta `FLAGS.TENANT_ADMIN`), default mati. Semua e
 Satu fungsi `isTenantAdmin(user)` di `src/modules/tenant-admin/access.js` menjadi satu-satunya tempat aturan peran:
 
 - `eta_admin` lolos (Super Admin, konsisten dengan `requireRole`);
-- peran `tenant_admin` lolos (peran ini belum ada di `ROLES` dan belum diizinkan CHECK kolom `users.role`; B2 yang menambahkannya);
-- `hr_admin` lolos **sementara** `[⏳ DITERIMA]`. Alasan: sampai B2 masuk, tidak ada akun yang bisa berperan `tenant_admin`, sedangkan PK-13 membuat pengelola tenant sebagai `hr_admin`, dan mockup menyebut Admin Tenant "juga HR". Akibatnya selama peralihan **setiap** `hr_admin` di tenant bisa mengundang akun, mengubah peran, dan menonaktifkan akun lain. **Audit 23 Nov:** `hr_admin` interim tidak bisa memberi peran `tenant_admin` dan tidak bisa mengubah akun yang memegang `tenant_admin` (utama atau lewat `user_roles`); lihat `docs/designs/audit-23nov-perbaikan-akses.md`. Setelah B2 masuk, `hr_admin` dicabut dari fungsi ini (satu baris), dengan **prasyarat**: pengelola hasil onboarding sudah diberi peran `tenant_admin` (migrasi data di PR B2), supaya tidak ada tenant yang terkunci. Keduanya tercatat di bagian 10. Test `tests/unit/tenant-admin.test.js › eta_admin dan tenant_admin lolos; hr_admin lolos sementara sampai B2; peran lain tidak` diubah menjadi menolak `hr_admin` pada PR itu.
+- peran `tenant_admin` lolos (`ROLES.TENANT_ADMIN`, ditambahkan B2 beserta CHECK kolom `users.role`);
+- ~~`hr_admin` lolos **sementara**~~ **Dicabut 24 Nov** (keputusan user di review PR #8, kartu "Cabut sekarang"): B2 sudah masuk, jadi hanya `tenant_admin` dan `eta_admin` yang lolos. `INTERIM_ADMIN_ROLES`, `assertCanGrant`, dan `assertCanManage` (batas interim audit 23 Nov) dihapus karena tidak ada lagi pengelola interim; Admin Tenant boleh memberi peran `tenant_admin` dan mengubah akun Admin Tenant lain. Onboarding (PK-13) kini wajib memuat minimal satu `tenant_admin`. Tidak ada migrasi data yang menaikkan `hr_admin` lama: tenant yang hanya punya `hr_admin` tidak terkunci, karena Super Admin tetap lolos gerbang ini dan bisa memberi peran `tenant_admin` lewat layar Pengguna & peran. Layar web B11 kini hanya untuk tampilan `admin` dan `super`; seed dev menambah `admin@demo.test` (`tenant_admin`). Riwayat keputusan lama: `docs/designs/audit-23nov-perbaikan-akses.md`.
 - Kontrak B2 (dikonfirmasi thread B2 pada 19 Nov di `docs/designs/b2-peran.md`; berkas itu masuk basis integrasi bersama PR B2): nama peran `tenant_admin`; `req.user.role` adalah peran aktif bernilai tunggal dan satu-satunya dasar otorisasi; `req.user.roles` (peran yang boleh dipilih) tidak pernah meloloskan akses. Pemberian banyak peran per akun adalah rute B2 (`GET/PUT /api/users/:id/roles`, flag `auth.multi_role`); layar Pengguna & peran memanggilnya setelah B2 masuk, sedangkan `PATCH /users/:id` paket ini tetap mengatur peran utama.
 
 Gerbang `requireTenantAdmin(store)` **membaca ulang peran dan status pelaku dari DB di setiap request** (`tenantAdmin.actor`), bukan hanya dari klaim token. Alasannya: token berlaku sampai 8 jam dan layar ini memberi peran, jadi admin yang diturunkan atau dinonaktifkan harus langsung kehilangan akses ke sini. Syaratnya: akun pelaku `active` di DB, peran aktif di token lolos `isTenantAdmin`, dan peran aktif itu masih termasuk peran yang diberikan kepadanya di DB (saat ini kolom `users.role`; setelah B2, daftar peran akun). Memeriksa peran aktif terhadap daftar peran, bukan hanya `users.role`, mencegah pengguna B2 yang `tenant_admin`-nya peran tambahan terkunci. `[⏳ DITERIMA]` Pemeriksaan DB ini hanya untuk `/api/tenant-admin`; di modul lain `hr_admin` yang diturunkan tetap memakai haknya sampai token habis (maks. 8 jam).
@@ -88,7 +88,7 @@ Paket ini **tidak** mengubah `core/rbac/roles.js` dan tidak mengubah CHECK `user
 - Admin tenant tidak bisa mengubah peran atau status akunnya sendiri (409 `SELF_CHANGE`). Karena pelaku harus admin aktif dan tidak bisa menurunkan dirinya, satu perubahan oleh admin tenant tidak pernah menghabiskan pengelola aktif. Pengecualian: dua admin yang saling menonaktifkan pada saat bersamaan, dan perubahan oleh `eta_admin` (bagian 10).
 - Memberi peran `hr_admin` (yang melihat semua karyawan) adalah fungsi layar ini; setiap pemberian tercatat audit dengan `from`/`to`.
 - Mengganti peran akun `supervisor` ke peran lain mencabut izin temuan di luar pelatihan (PM-6) miliknya, dicatat audit `delete` resource `tna.non_training_access` dengan `via: 'tenant-admin'`, `reason: 'role_changed'`. Dijadikan atasan lagi tidak memulihkan izin itu.
-- Peran yang boleh diberikan: semua isi `ALL_ROLES` kecuali `eta_admin` (jadi `tenant_admin` ikut otomatis setelah B2). Audit 23 Nov: pengelola interim (`hr_admin`) tidak ditawari dan tidak bisa memberi `tenant_admin`.
+- Peran yang boleh diberikan: semua isi `ALL_ROLES` kecuali `eta_admin` (jadi `tenant_admin` ikut otomatis setelah B2). ~~Audit 23 Nov: pengelola interim (`hr_admin`) tidak ditawari dan tidak bisa memberi `tenant_admin`.~~ Sejak 24 Nov tidak ada pengelola interim; Admin Tenant boleh memberi `tenant_admin`.
 
 ## 5. Data dan migrasi
 
@@ -205,7 +205,7 @@ Data individu: admin tenant tidak membaca hasil individu (`dna_results` tidak di
 
 ## 7. Perubahan web
 
-Dibangun di atas kontrak B0 (PR #18). Layar di `apps/web/src/screens/b11-admin/`: `UsersView.vue` (Pengguna & peran), `JobsView.vue` (Jabatan & kamus kompetensi), `ConfigView.vue` (Impor data & integrasi), `AdminNav.vue` (tab antar layar), dan `ImportFlow.vue` (alur unggah → petakan → periksa → simpan, khusus Admin Tenant; `ImportPanel.vue` HR tidak dipakai karena memanggil rute HR). Rute di `routes.ts`: nama `users`, `jobs`, `cfg` di `/admin/pengguna`, `/admin/jabatan`, `/admin/impor`, meta `flag: 'admin.tenant'`, `views: ['admin', 'hr', 'super']` (`hr` sementara sampai B2). Menu memakai `routeOpen()` dari B0, jadi butir hanya tampil bila rute bisa dibuka. Butir menu `users`/`jobs`/`cfg` hanya untuk tampilan `admin` (peran `tenant_admin`), jadi **sebelum B2 tidak ada akun yang melihat butir menunya**; HR dan Super Admin membuka layar lewat alamatnya. Disengaja agar menu HR tetap sama dengan mockup. API klien `apps/web/src/api/tenantAdmin.ts`.
+Dibangun di atas kontrak B0 (PR #18). Layar di `apps/web/src/screens/b11-admin/`: `UsersView.vue` (Pengguna & peran), `JobsView.vue` (Jabatan & kamus kompetensi), `ConfigView.vue` (Impor data & integrasi), `AdminNav.vue` (tab antar layar), dan `ImportFlow.vue` (alur unggah → petakan → periksa → simpan, khusus Admin Tenant; `ImportPanel.vue` HR tidak dipakai karena memanggil rute HR). Rute di `routes.ts`: nama `users`, `jobs`, `cfg` di `/admin/pengguna`, `/admin/jabatan`, `/admin/impor`, meta `flag: 'admin.tenant'`, `views: ['admin', 'super']` (`hr` dicabut 24 Nov). Menu memakai `routeOpen()` dari B0, jadi butir hanya tampil bila rute bisa dibuka. Butir menu `users`/`jobs`/`cfg` hanya untuk tampilan `admin` (peran `tenant_admin`), jadi **sebelum B2 tidak ada akun yang melihat butir menunya**; HR dan Super Admin membuka layar lewat alamatnya. Disengaja agar menu HR tetap sama dengan mockup. API klien `apps/web/src/api/tenantAdmin.ts`.
 
 Detail tampilan (hasil code review):
 
@@ -219,7 +219,7 @@ E2E `apps/web/e2e/admin-tenant.spec.ts` (4 test) dengan API mock.
 
 `apps/api/tests/unit/tenant-admin.test.js` (tanpa DB, store in-memory):
 
-- `learner`, `supervisor`, `pimpinan` → 403; `hr_admin` lolos sementara; `eta_admin` lolos; `tenant_admin` lolos (token buatan); gerbang membaca peran dari DB (termasuk DC-1);
+- `learner`, `supervisor`, `pimpinan` → 403; `hr_admin` ditolak sejak 24 Nov; `eta_admin` lolos; `tenant_admin` lolos (token buatan); gerbang membaca peran dari DB (termasuk DC-1);
 - opsi impor `jobRoleId`/`source` (tabel aturan 6.3) dan gerbang impor admin.
 
 `apps/api/tests/unit/gating.test.js`: `requireSubmodule { tenantFlag: false }` (entitlement wajib, kill switch dihormati, flag tenant tidak disyaratkan, tanpa opsi perilaku lama).
@@ -264,12 +264,12 @@ E2E `apps/web/e2e/admin-tenant.spec.ts` (4 test) dengan API mock.
 
 | Tanda | Isi | Ditutup oleh |
 | --- | --- | --- |
-| ⏳ | `hr_admin` berlaku sebagai admin tenant sampai B2 menambah peran `tenant_admin` | PR lanjutan setelah B2 |
+| ✅ | ~~`hr_admin` berlaku sebagai admin tenant sampai B2 menambah peran `tenant_admin`~~ | Dicabut 24 Nov (PR #44) |
 | ⏳ | Token akun yang dinonaktifkan masih berlaku sampai kedaluwarsa | PK-16/B1 (sesi) |
 | ⚠️ | Bentuk berkas DACUM asli belum dilihat | Data Mas Abdan 26 Nov, B4 |
 | ⚠️ | "Terkonfigurasi" EliteMentor belum uji panggil | Kontrak FR-EM |
-| ⏳ | Selama peralihan setiap `hr_admin` adalah admin tenant penuh (termasuk menonaktifkan pengelola hasil onboarding) | Diterima user 23 Nov, juga bila B2 lewat 2 Des; setiap perubahan tercatat di audit. Review Andrian tetap wajib (aturan 7) |
-| ⏳ | Prasyarat B2: pengelola hasil onboarding dimigrasi ke `tenant_admin` sebelum `hr_admin` dicabut | PR B2 |
+| ✅ | ~~Selama peralihan setiap `hr_admin` adalah admin tenant penuh (termasuk menonaktifkan pengelola hasil onboarding)~~ Ditutup 24 Nov | Diterima user 23 Nov, juga bila B2 lewat 2 Des; setiap perubahan tercatat di audit. Review Andrian tetap wajib (aturan 7) |
+| ✅ | ~~Prasyarat B2: pengelola hasil onboarding dimigrasi ke `tenant_admin` sebelum `hr_admin` dicabut~~ Tanpa migrasi data: tenant yang hanya punya `hr_admin` dipulihkan Super Admin (menaikkan HR ke `tenant_admin`, ada test); konsol platform juga tidak lagi menghitung `hr_admin` sebagai pengelola | 24 Nov (PR #44 dan susulannya) |
 | ⏳ | `hr_admin` yang diturunkan tetap memakai hak HR di modul lain sampai token habis (8 jam) | PK-16/B1 |
 | ⏳ | Dua admin saling menonaktifkan bersamaan bisa meninggalkan tenant tanpa pengelola | Pemulihan lewat Super Admin (B12); kunci baris bila B2 menambah aturan admin terakhir |
 | ⏳ | Audit dicatat sesudah simpan: audit gagal → 500 padahal data tersimpan | Diterima (pola repo) |

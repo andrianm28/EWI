@@ -41,6 +41,11 @@ test('atasan membuka alamat layar khusus HR, Admin Tenant, atau Super Admin: dia
   await dialihkanKeBeranda(page, 'atasan', [...LAYAR_HR_SAJA, ...LAYAR_ADMIN, ...LAYAR_SUPER])
 })
 
+test('HR membuka alamat layar Admin Tenant atau Super Admin: dialihkan ke Dashboard (masa interim dicabut 24 Nov)', async ({ page }) => {
+  await loginSebagai(page, 'hr', semuaModulDengan({ 'admin.tenant': true }))
+  await dialihkanKeBeranda(page, 'hr', [...LAYAR_ADMIN, ...LAYAR_SUPER])
+})
+
 test('Admin Tenant membuka alamat layar Super Admin: dialihkan ke Pengguna & peran', async ({ page }) => {
   await loginSebagai(page, 'admin', SEMUA_MODUL)
   await dialihkanKeBeranda(page, 'admin', LAYAR_SUPER)

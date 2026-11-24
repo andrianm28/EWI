@@ -314,7 +314,7 @@ run('B10 tahap 2: wawancara dan sintesis Core Competencies (Postgres)', () => {
       expect(calls).toHaveLength(0);
       expect((await get('/interview/preview?tier=x', 'hr')).status).toBe(400);
       expect((await get('/interview/preview', 'k1')).status).toBe(403);
-      expect((await get('/synthesis', 'eta')).status).toBe(200);
+      expect((await get('/synthesis', 'eta')).body.error.code).toBe('EMPLOYEE_CONTENT_PRIVATE');
     });
 
     it('penugasan batal: sesi terbaca sebagai cancelled dan semua rute tulis 409; flag mati menutup rute tahap 2', async () => {

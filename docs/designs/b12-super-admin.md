@@ -533,7 +533,7 @@ Titik tetap: `origin/claude/project-thread-scbrmb`. Standar: `CLAUDE.md` + basel
 
 | Sumbu | Temuan | Keputusan |
 | --- | --- | --- |
-| Standar | Rute platform memfilter tenant dari path, bukan `req.tenantId` (aturan 2) | Diterima sebagai pengecualian konsol lintas tenant; dicatat di ADR 0002 (status "Diusulkan", perlu Andrian) |
+| Standar | Rute platform memfilter tenant dari path, bukan `req.tenantId` (aturan 2) | Diterima sebagai pengecualian konsol lintas tenant; dicatat di ADR 0002, ✅ Diterima user 24 Nov (review PR #8) |
 | Standar | Endpoint baru di balik flag baru default mati (aturan 3) | Sesuai: `platform.console`, `auth.session_idle` |
 | Standar | Migrasi punya `down`, naik-turun-naik bersih (aturan 6) | Sesuai, diuji lokal dan di CI |
 | Standar | Duplicated Code: pembungkus `wrap` async di rute platform dan rute lain | Dibiarkan; perapihan lintas modul di luar thread ini |

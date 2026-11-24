@@ -201,7 +201,10 @@ run('B6 ringkasan wawancara akar masalah (Postgres)', () => {
     const sid = await openSession('cici');
     const a = api(app, sid);
     await a.summary('cici').expect(201);
-    for (const who of ['hr', 'eta', 'spv']) {
+    for (const res of [await a.summary('eta'), await a.read('eta'), await a.confirm('eta', {}), await a.restart('eta')]) {
+      expect(res.body.error.code).toBe('EMPLOYEE_CONTENT_PRIVATE');
+    }
+    for (const who of ['hr', 'spv']) {
       for (const res of [await a.summary(who), await a.read(who)]) {
         expect(res.status).toBe(403);
         expect(res.body.error.code).toBe('SUMMARY_PRIVATE');

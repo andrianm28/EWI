@@ -223,19 +223,13 @@ run('Improvement Needs B9 (Postgres)', () => {
     await request(app).put(`${BASE}/access/${id.spv}`).set(as('hr'));
   });
 
-  it('spek B9 §15: Admin ETA hanya membaca seluruh tindakan, tidak membuat atau mengubah', async () => {
+  it('Super Admin ditolak di semua rute INA (keputusan user 24 Nov, menggantikan spek B9 §15 baca-saja)', async () => {
     await addUser(A.id, 'eta', 'eta_admin');
-    const list = await get('/actions', 'eta');
-    expect(list.status).toBe(200);
-    expect(list.body.meta.level).toBe('read');
-    expect(list.body.data.length).toBe(list.body.kpis.total);
-    // tindakan tanpa pemilik yang tampil di daftar juga bisa dibuka
-    expect(list.body.data.map((x) => x.id)).toContain(id.aBudaya);
-    expect((await get(`/actions/${id.aBudaya}`, 'eta')).status).toBe(200);
-    expect((await post('/actions', { title: 'Judul sah', category: 'sop' }, 'eta')).status).toBe(403);
-    expect((await patch(`/actions/${id.aSop}`, { status: 'in_progress' }, 'eta')).status).toBe(403);
-    expect((await get('/access', 'eta')).status).toBe(403);
-    expect((await get('/owners', 'eta')).status).toBe(403);
+    for (const res of [await get('/actions', 'eta'), await get(`/actions/${id.aBudaya}`, 'eta'),
+      await post('/actions', { title: 'Judul sah', category: 'sop' }, 'eta'), await patch(`/actions/${id.aSop}`, { status: 'in_progress' }, 'eta'),
+      await get('/access', 'eta'), await get('/owners', 'eta')]) {
+      expect([res.status, res.body.error.code]).toEqual([403, 'EMPLOYEE_CONTENT_PRIVATE']);
+    }
   });
 
   it('pimpinan hanya angka ringkasan; karyawan ditolak', async () => {

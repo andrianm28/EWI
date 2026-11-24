@@ -1,6 +1,6 @@
 # ADR 0002 · Konsol platform Super Admin membaca dan mengubah tenant lain lewat jalur `/api/platform`
 
-- Status: **Diusulkan** (19 Nov 2026, paket B12; menunggu review Andrian di PR)
+- Status: **Diterima** (24 Nov 2026, keputusan user di review PR #8, kartu "Terima"; diusulkan 19 Nov, paket B12)
 - Tanggal: 19 Nov 2026
 
 Aturan arsitektur 2 di `CLAUDE.md` mewajibkan setiap query data bisnis memfilter `tenant_id` dari `req.tenantId` (tenant akun yang login), tidak pernah dari body atau query. Super Admin (Admin ETA, peran `eta_admin`) di mockup final mengelola **semua** tenant dari satu konsol: daftar tenant, jumlah pengguna, modul per tenant, kualitas AI, dan biaya token. Kami memutuskan satu pengecualian yang sempit: hanya router `src/modules/platform` (dipasang di `/api/platform`, di luar router `/api` biasa) yang boleh memakai `tenantId` dari **path**, hanya untuk peran aktif `eta_admin`, dan hanya untuk membaca angka agregat dan metadata tenant (nama, slug, status admin, modul, angka kualitas dan biaya) serta mengubah flag modul dan membuat tenant. Router ini tidak pernah membaca isi data karyawan (jawaban wawancara, temuan, nilai), sehingga larangan Super Admin melihat isi jawaban wawancara tetap berlaku. Setiap perubahan lintas tenant dicatat dua kali: di audit tenant sasaran (agar Admin Tenant melihatnya) dan di log audit platform.

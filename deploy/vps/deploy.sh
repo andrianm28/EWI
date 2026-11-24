@@ -5,8 +5,12 @@
 #
 # Tahap: cek konfigurasi -> pull image -> backup DB (+ verifikasi) -> migrasi (pemilik skema) ->
 # role aplikasi -> ganti container -> kesiapan (/api/ready) lokal + publik.
-# Gagal setelah backup = rollback otomatis: image sebelumnya dipasang lagi; schema ewi dipulihkan
-# dari backup HANYA bila migrasi sempat jalan dan backup sudah terverifikasi terbaca (N-5).
+# Gagal setelah backup dan sebelum siap lokal = rollback otomatis: image sebelumnya dipasang lagi.
+# Staging: schema ewi dipulihkan dari backup bila migrasi sempat jalan dan backup terverifikasi (N-5).
+# Prod: schema TIDAK pernah dipulihkan otomatis (audit 3-2); image lama jalan di atas skema baru dan
+# restore manual lewat ops/restore.sh (docs/infra/runbook-insiden.md). ROLLBACK_RESTORE_DB=1 memaksa
+# restore otomatis di prod, hanya untuk deploy manual yang diawasi saat tidak ada tulisan pengguna.
+# Gagal cek publik sesudah siap lokal tidak memicu rollback.
 # Aturan migrasi (I-1): tambah dulu, hapus di rilis berikutnya, supaya image lama tetap jalan
 # di atas skema baru. Lihat docs/infra/alur-rilis.md.
 #
@@ -58,6 +62,10 @@ done
 [ -n "$(fileval "$ELGOS_DB_ENV_FILE" POSTGRES_PASSWORD)" ] || missing+=("POSTGRES_PASSWORD (db.env)")
 [ -n "$(fileval "$ELGOS_DB_ENV_FILE" DB_MIGRATION_PASSWORD)" ] || missing+=("DB_MIGRATION_PASSWORD (db.env)")
 [ "$(envval DB_USER)" = "$APP_DB_USER" ] || missing+=("DB_USER=$APP_DB_USER")
+# Profil global. wajib opt-in per lingkungan (keputusan user 24 Nov, PR #44): image baru menolak boot tanpa ini.
+if [[ "$(envval BEDROCK_MODEL_ID)" == global.* ]] && [ "$(envval AI_ALLOW_GLOBAL_PROFILE)" != true ]; then
+  missing+=("AI_ALLOW_GLOBAL_PROFILE=true (BEDROCK_MODEL_ID memakai profil global.; prod hanya setelah DPIA)")
+fi
 [ "${#missing[@]}" = 0 ] || { echo "::error::Kosong: ${missing[*]}"; exit 1; }
 if grep -Eq '^(POSTGRES_PASSWORD|DB_MIGRATION_PASSWORD)=' "$ELGOS_ENV_FILE"; then
   echo "::error::POSTGRES_PASSWORD dan DB_MIGRATION_PASSWORD harus di db.env, bukan .env (password superuser/pemilik tidak boleh masuk container API)"
@@ -124,7 +132,18 @@ rollback() {
   trap - ERR
   log "GAGAL (exit $code) saat deploy $TAG. Rollback ke $OLD_SHA."
   dc logs --no-color --tail 80 api web >&2 || true
-  if [ "$MIGRATED" = 1 ]; then
+  if [ "$MIGRATED" = 1 ] && [ "$ENV" = prod ] && [ "${ROLLBACK_RESTORE_DB:-0}" != 1 ]; then
+    # Audit 3-2: container lama tetap melayani selama migrasi, jadi restore otomatis di prod bisa
+    # menghapus tulisan pengguna di sela itu. Prod hanya rollback image (aturan migrasi tambah-dulu);
+    # restore skema diputuskan manusia lewat ops/restore.sh (runbook-insiden.md).
+    SCHEMA_NOTE=" Skema prod TETAP versi baru (tidak direstore otomatis)."
+    log "Migrasi sudah jalan di prod: skema TIDAK direstore otomatis. Image lama dipasang di atas skema baru."
+    echo "::warning::Skema prod tetap versi $TAG; image lama dipasang di atasnya. Lihat runbook-insiden.md 'Rollback dengan skema baru'."
+    if [ "$BACKUP_OK" = 1 ]; then
+      log "Backup pra-deploy untuk restore manual: KONFIRMASI=prod $DIR/ops/restore.sh pulihkan prod $BACKUP"
+      echo "::warning::Restore manual bila perlu: KONFIRMASI=prod $DIR/ops/restore.sh pulihkan prod $BACKUP"
+    fi
+  elif [ "$MIGRATED" = 1 ]; then
     if [ "$BACKUP_OK" = 1 ] && verify_backup "$BACKUP"; then
       log "Migrasi sudah jalan: pulihkan schema ewi dari $BACKUP"
       dc stop api web || true
@@ -139,13 +158,15 @@ rollback() {
   if [ -z "$OLD_API" ]; then
     log "Tidak ada versi sebelumnya untuk rollback (deploy pertama). Container dihentikan."
     dc stop api web || true
+    echo "::error::Deploy pertama $TAG ke $ENV gagal; container dihentikan (tidak ada versi lama).${SCHEMA_NOTE:-}"
   elif ELGOS_API_IMAGE="$OLD_API" ELGOS_WEB_IMAGE="$OLD_WEB" dc up -d --wait --wait-timeout 180 api web >&2 \
      && ready "$LOCAL_URL" 15; then
     log "Rollback ke $OLD_SHA berhasil."
+    echo "::error::Deploy $TAG ke $ENV gagal dan sudah di-rollback ke $OLD_SHA.${SCHEMA_NOTE:-} Lihat log di atas."
   else
     log "Rollback juga GAGAL. Perlu penanganan manual di etavm2 (runbook: docs/infra/runbook-insiden.md)."
+    echo "::error::Deploy $TAG ke $ENV gagal DAN rollback ke $OLD_SHA gagal. Tangani manual (runbook-insiden.md).${SCHEMA_NOTE:-}"
   fi
-  echo "::error::Deploy $TAG ke $ENV gagal dan sudah di-rollback ke $OLD_SHA. Lihat log di atas."
   exit 1
 }
 
@@ -193,12 +214,18 @@ apply_db_roles
 dc up -d --wait --wait-timeout 180 api web
 ready "$LOCAL_URL"
 log "Siap lokal ($LOCAL_URL)"
-if [ "${SKIP_PUBLIC_CHECK:-0}" != 1 ]; then
-  ready "$PUBLIC_URL" 15
-  log "Siap publik ($PUBLIC_URL)"
-fi
-
 trap - ERR
+
+# Cek publik sesudah trap dilepas (audit 3-2): aplikasi sudah siap lokal, jadi gangguan Cloudflare/
+# Caddy/DNS tidak boleh memicu rollback. Gagal publik = job gagal dengan peringatan, tanpa rollback.
+if [ "${SKIP_PUBLIC_CHECK:-0}" != 1 ]; then
+  if ready "$PUBLIC_URL" 15; then
+    log "Siap publik ($PUBLIC_URL)"
+  else
+    PUBLIC_FAIL=1
+    log "PERINGATAN: siap lokal tetapi tidak terjangkau di $PUBLIC_URL. Tidak di-rollback; cek Caddy/DNS."
+  fi
+fi
 
 # 6. Seed data demo hanya di staging, setelah deploy dinyatakan sukses (gagal seed = peringatan).
 #    Prod tidak pernah di-seed (data nyata, R2-4).
@@ -227,3 +254,7 @@ install -m 644 "$REPO_ROOT/deploy/vps/ops/app-role.sql" "$DIR/ops/"
 printf 'ELGOS_API_IMAGE=%s\nELGOS_WEB_IMAGE=%s\nELGOS_SHA=%s\n' "$NEW_API" "$NEW_WEB" "$TAG" > "$DIR/current.env"
 docker image prune -f --filter "until=336h" >/dev/null || true
 log "Deploy $TAG selesai"
+if [ "${PUBLIC_FAIL:-0}" = 1 ]; then
+  echo "::error::Deploy $TAG terpasang dan siap lokal, tetapi $PUBLIC_URL tidak terjangkau (Caddy/DNS)."
+  exit 1
+fi

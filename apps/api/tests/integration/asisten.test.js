@@ -236,16 +236,11 @@ run('B17 Asisten ELGOS (Postgres)', () => {
     await ask(app(aiP), 'pim', 'Bagaimana status wawancara tim saya?');
     expect(aiP.calls[0].facts.wawancaraTim).toMatchObject({ members: 0, notCompleted: [] });
 
-    const e = await request(app()).get('/api/assistant').set(as('eta'));
-    expect(e.body.data).toMatchObject({ view: 'super', roleLabel: 'Super Admin', views: [{ key: 'super', label: 'Super Admin' }] });
-    expect(e.body.data.suggestions).toContain('Gap terbesar apa?');
+    // Keputusan user 24 Nov: Super Admin tidak memakai asisten (fakta hr memuat data karyawan), AI tidak dipanggil
+    expect((await request(app()).get('/api/assistant').set(as('eta'))).body.error.code).toBe('EMPLOYEE_CONTENT_PRIVATE');
     const aiE = recorder();
-    await ask(app(aiE), 'eta', 'Apa yang perlu saya lakukan hari ini?');
-    expect(aiE.calls[0].facts.tinjauan).toMatchObject({ draft: 1 });
-    expect(aiE.calls[0].view).toBe('hr');
-    const [a] = await sql(`SELECT meta, user_id AS "userId" FROM audit_logs WHERE tenant_id = :t AND resource = 'assistant.answer' ORDER BY id DESC LIMIT 1`, { t: tenant.id });
-    expect(a).toMatchObject({ userId: u.eta, meta: { view: 'super' } });
-    expect((await request(app()).get('/api/assistant?view=hr').set(as('eta'))).body.error.code).toBe('VIEW_FORBIDDEN');
+    expect((await ask(app(aiE), 'eta', 'Apa yang perlu saya lakukan hari ini?')).body.error.code).toBe('EMPLOYEE_CONTENT_PRIVATE');
+    expect(aiE.calls).toHaveLength(0);
   });
 
   it('answer null -> teks pengganti dan no_answer', async () => {
@@ -266,6 +261,12 @@ run('B17 Asisten ELGOS (Postgres)', () => {
     expect(usage).toEqual({ submodule: 'assistant', operation: 'assistant_reply', userId: u.ani });
     const exp = await request(app()).get(`/api/employees/${u.ani}/export`).set(as('ani'));
     expect(exp.body.data.assistantLogs[0]).toMatchObject({ question: 'Apa rencana belajar saya?', outcome: 'answered', view: 'karyawan' });
+    // review 24 Nov: log asisten hanya ikut ekspor milik sendiri (spek B17: "ekspor hanya ke atasan itu sendiri")
+    const byHr = await request(app()).get(`/api/employees/${u.ani}/export`).set(as('hr'));
+    expect(byHr.status).toBe(200);
+    expect(byHr.body.data.assistantLogs).toEqual([]);
+    expect(byHr.body.data.assistantLogsIncluded).toBe(false);
+    expect(exp.body.data.assistantLogsIncluded).toBe(true);
   });
 
   it('batas pakai 20 per 10 menit termasuk yang gagal; penyedia gagal -> 503, log error, pemakaian dicatat', async () => {

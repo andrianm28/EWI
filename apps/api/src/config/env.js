@@ -144,7 +144,9 @@ const JAKARTA = 'ap-southeast-3';
 const SINGAPORE = 'ap-southeast-1';
 const DEFAULT_AI_REGIONS = [JAKARTA, SINGAPORE];
 const PROFILE_PREFIX = /(?:^|inference-profile\/)(global|apac|us|us-gov|eu|au|in|jp|ca)\./i;
-// Profil lintas region yang lolos tanpa AI_ALLOW_CROSS_REGION
+// Profil lintas region yang lolos tanpa AI_ALLOW_CROSS_REGION. global. juga di sini, tetapi hanya dengan opt-in
+// AI_ALLOW_GLOBAL_PROFILE=true per lingkungan (keputusan user 24 Nov, review PR #8): global. bisa memproses prompt di
+// luar APAC, jadi transfer lintas negara (UU PDP) harus selalu pilihan sadar di .env, bukan bawaan.
 const DEFAULT_ALLOWED_PROFILES = ['apac', 'global'];
 
 function numberOr(raw, fallback, { min = 0 } = {}) {
@@ -160,6 +162,7 @@ function loadAiConfig(env, errors) {
   if (!['stub', 'bedrock'].includes(provider)) errors.push('AI_PROVIDER harus stub atau bedrock');
   if (production && provider === 'stub') errors.push('AI_PROVIDER=stub tidak boleh di produksi (pakai bedrock)');
   const allowCrossRegion = env.AI_ALLOW_CROSS_REGION === 'true';
+  const allowGlobalProfile = env.AI_ALLOW_GLOBAL_PROFILE === 'true';
   const allowedRegions = (env.AI_ALLOWED_REGIONS || DEFAULT_AI_REGIONS.join(',')).split(',').map((r) => r.trim()).filter(Boolean);
   const region = env.BEDROCK_REGION || SINGAPORE;
   const modelId = (env.BEDROCK_MODEL_ID || '').trim();
@@ -172,7 +175,9 @@ function loadAiConfig(env, errors) {
     }
     if (!allowCrossRegion && profile && !DEFAULT_ALLOWED_PROFILES.includes(profile)) {
       const izin = DEFAULT_ALLOWED_PROFILES.map((p) => `${p}.`).join('/');
-      errors.push(`BEDROCK_MODEL_ID memakai profil lintas region "${profile}."; PD-2b hanya mengizinkan model in-region Jakarta/Singapura atau profil ${izin}`);
+      errors.push(`BEDROCK_MODEL_ID memakai profil lintas region "${profile}."; PD-2b hanya mengizinkan model in-region Jakarta/Singapura atau profil ${izin} (global. dengan AI_ALLOW_GLOBAL_PROFILE=true)`);
+    } else if (!allowCrossRegion && profile === 'global' && !allowGlobalProfile) {
+      errors.push('BEDROCK_MODEL_ID memakai profil global. butuh opt-in: isi AI_ALLOW_GLOBAL_PROFILE=true di lingkungan ini (prompt bisa diproses di luar APAC; DPIA wajib sebelum data karyawan sungguhan)');
     }
     if (env.BEDROCK_EXTRA_FIELDS) {
       try { extraFields = JSON.parse(env.BEDROCK_EXTRA_FIELDS); } catch { errors.push('BEDROCK_EXTRA_FIELDS harus JSON yang valid'); }
@@ -187,7 +192,7 @@ function loadAiConfig(env, errors) {
   for (const [k, v] of Object.entries(nums)) if (Number.isNaN(v)) errors.push(`Nilai ${k} untuk AI tidak valid`);
   // Lokasi pemrosesan untuk log dan DPIA: in-region atau profil lintas region (mis. global)
   const processing = profile ? `cross-region:${profile}` : `in-region:${region}`;
-  return Object.freeze({ provider, region, modelId, extraFields, allowCrossRegion, allowedRegions, processing, ...nums });
+  return Object.freeze({ provider, region, modelId, extraFields, allowCrossRegion, allowGlobalProfile, allowedRegions, processing, ...nums });
 }
 
 module.exports = { loadConfig, loadAiConfig, JAKARTA, SINGAPORE, STAGING_DEFAULT_MAIL_DOMAINS };

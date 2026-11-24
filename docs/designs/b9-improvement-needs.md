@@ -360,3 +360,5 @@ Hasil utama:
 Akibat ikutan (review diff PR #36): izin atasan di TNA (`PUT`/`DELETE /api/tna/non-training-access/:id`) adalah izin yang sama dengan panel akses INA, jadi rute itu kini hanya untuk `hr_admin` (sebelumnya `requireRole` meloloskan `eta_admin`). Detail tindakan untuk level `read` dengan cakupan seluruh tenant juga membuka tindakan tanpa pemilik, supaya daftar dan detail Admin ETA konsisten.
 
 Catatan: kartu 1 sempat menyebut pilihan itu "seperti sekarang di kode"; itu keliru, karena kode memberi `eta_admin` level `manage`. Yang diikuti adalah isi pilihannya: Admin ETA tidak membuat atau mengubah tindakan. Admin ETA tetap bisa membaca (bukan 403), sejalan dengan keputusan 19 Nov bahwa Super Admin melihat hasil karyawan.
+
+> **Diganti 24 Nov 2026:** Super Admin ditolak di semua rute INA (403 `EMPLOYEE_CONTENT_PRIVATE`, aturan inti di `app.js`). Lihat `review-24nov-perbaikan.md` bagian Super Admin. Baris level `read` untuk Admin ETA di dokumen ini adalah riwayat.
