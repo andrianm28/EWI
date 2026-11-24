@@ -86,7 +86,7 @@ function emailLinkRoutes({ users, links, sessions, policy, audit, limits, attemp
     res.status(202).json({ message: GENERIC });
     // B1: percobaan untuk akun yang dikenal dicatat di audit tenant; email tak dikenal tidak (lihat attempts.js)
     if (!user) {
-      queue.run('unknown', () => attempts.unknownAccount(users, slug, 'email_link'));
+      queue.run(Symbol('unknown'), () => attempts.unknownAccount(users, slug, 'email_link')); // tanpa status: tidak perlu berurutan
       return;
     }
     queue.run(`user:${user.id}`, async () => {
@@ -99,7 +99,13 @@ function emailLinkRoutes({ users, links, sessions, policy, audit, limits, attemp
         }
         return;
       }
-      await links.issue(user, 'login', { tenantName: users.tenantName ? await users.tenantName(user.tenantId) : null });
+      try {
+        await links.issue(user, 'login', { tenantName: users.tenantName ? await users.tenantName(user.tenantId) : null });
+      } catch (e) {
+        // jawaban sudah terkirim; kegagalan tetap terlihat di audit tenant (dulu 500 ke pemanggil)
+        await attempts.record(user, { method: 'email_link', outcome: 'link_failed' });
+        throw e;
+      }
       await attempts.record(user, { method: 'email_link', outcome: 'link_sent' });
     });
   }));

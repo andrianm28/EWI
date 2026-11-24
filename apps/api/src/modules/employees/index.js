@@ -46,6 +46,7 @@ async function buildExport({ stores, flags, tenantId, person, self }) {
     format: EXPORT_VERSION,
     exportedAt: new Date().toISOString(),
     transcriptIncluded: self,
+    assistantLogsIncluded: self,
     profile: person,
     interviews,
     findings,

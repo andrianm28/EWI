@@ -65,7 +65,16 @@ const GUARDS = {
   ]),
   // turun = keputusan review HR atas hasil AI dan teks asli AI hilang (PK-14)
   '20261117000400-ai-review.js': rowsCheck([
-    ['keputusan review HR atas temuan', 'SELECT count(*)::int AS n FROM lna_findings WHERE reviewed_at IS NOT NULL'],
+    // reviewed_by, bukan reviewed_at: arah naik mengisi reviewed_at untuk temuan lama tanpa peninjau
+    ['keputusan review HR atas temuan', 'SELECT count(*)::int AS n FROM lna_findings WHERE reviewed_by IS NOT NULL'],
+  ]),
+  // turun = bukti persetujuan dan transkrip wawancara Core Competencies hilang
+  '20261123001000-cca-wawancara.js': rowsCheck([
+    ['persetujuan wawancara Core Competencies', 'SELECT count(*)::int AS n FROM cca_assignments WHERE consent_version IS NOT NULL'],
+  ]),
+  // turun = wawancara ulang dampak belajar (beserta persetujuannya) hilang
+  '20261123003000-lim-wawancara-ulang.js': rowsCheck([
+    ['wawancara ulang dampak belajar', 'SELECT count(*)::int AS n FROM lim_reinterviews'],
   ]),
 };
 
