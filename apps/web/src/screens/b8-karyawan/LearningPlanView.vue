@@ -60,8 +60,8 @@ async function launch(c: LearningCard) {
       <UiErrorSummary :errors="[{ message: error }]" />
       <UiButton variant="outlined" size="sm" :disabled="loading" @click="load">Coba lagi</UiButton>
     </template>
-    <!-- region tetap ada supaya galat peluncuran diumumkan pembaca layar saat muncul -->
-    <div role="alert"><UiNote v-if="launchError" tone="critical" class="b8-gap">{{ launchError }}</UiNote></div>
+    <!-- role="alert" diumumkan pembaca layar saat disisipkan; tanpa galat tidak ada alert di halaman (uji demo-alur) -->
+    <div v-if="launchError" role="alert"><UiNote tone="critical" class="b8-gap">{{ launchError }}</UiNote></div>
     <p v-if="cards && !cards.length" class="el-muted">Belum ada rencana belajar. Modul akan muncul di sini setelah HR menyetujui hasil wawancara Anda.</p>
     <div v-if="cards?.length" class="b8-grid">
       <UiCard v-for="c in cards" :key="c.id" :data-testid="`li-card-${c.id}`" class="b8-card">
