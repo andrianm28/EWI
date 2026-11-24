@@ -145,7 +145,7 @@ export function tinjauanGap(o: OpsiTinjauan = {}): { penangan: Penangan; terkiri
       return data({ handedOff: ids, already: [], skipped: [] })
     }
     if (cocok(req, 'GET /tna/plan-items/export.csv')) {
-      terkirim.push({ path: 'export.csv', body: null })
+      terkirim.push({ path: 'export.csv', body: Object.fromEntries(req.query) })
       return { json: 'ID Karyawan,Nama' }
     }
     return undefined

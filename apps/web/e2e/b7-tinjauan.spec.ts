@@ -217,6 +217,8 @@ test('tenant belajar di LMS sendiri: buat rencana saja, lalu unduh daftar gap', 
   await solusi.getByRole('button', { name: 'Unduh daftar gap (CSV)' }).click()
   await unduh
   expect(sent.map((s) => s.path).filter((p) => /^(plan|assign|export)/.test(p))).toEqual([`plan ${T_PELATIHAN}`, 'export.csv'])
+  // P9 IR-5: CSV di layar per gap hanya gap ini (rujukan gap ikut, tanpa tab asal)
+  expect(sent.find((s) => s.path === 'export.csv')?.body).toEqual({ kind: 'competency', competencyId: ID_KOMPETENSI })
 })
 
 test('tindakan perbaikan: teruskan ke Improvement Needs', async ({ page }) => {

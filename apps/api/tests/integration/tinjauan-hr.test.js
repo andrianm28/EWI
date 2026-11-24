@@ -676,6 +676,41 @@ run('B7 tinjauan HR (Postgres)', () => {
       const unfiltered = await request(app()).get('/api/tna/review/solutions').set(as('hr'));
       expect(unfiltered.body.data.training.length).toBeGreaterThan(1);
     });
+
+    // P9 CD-11: predikat SQL menormalkan nama target sama dengan metricKey (tab, NBSP, spasi Unicode lain)
+    it('gap OKR: nama target dengan tab dan NBSP tetap cocok di predikat SQL', async () => {
+      const [[rec]] = await db.query(
+        `INSERT INTO lna_performance_records (tenant_id, project_id, user_id, metric_type, name, target, actual, is_met, period, direction)
+         VALUES (:t, :p, :u, 'sla', :name, 85, 70, false, '2026-11', 'higher') RETURNING id`,
+        { replacements: { t: tenant.id, p: projectId, u: u.beni, name: '\u00a0Waktu\tpulih\u00a0\u00a0B7 ' } },
+      );
+      const id = (await finding('beni', { title: 'Pulih lambat', category: 'non_training', competencyId: null, sessionId: null, performanceRecordId: rec.id, reviewStatus: 'approved' })).id;
+      const res = await review({ kind: 'okr', metricType: 'sla', name: 'Waktu pulih B7', period: '2026-11', status: 'all' });
+      expect(res.status).toBe(200);
+      expect(ids(res)).toEqual([id]);
+      const statuses = ['draft', 'approved', 'edited', 'rejected'];
+      const viaStore = await stores.tna.reviewQueue(tenant.id, { statuses, gap: { kind: 'okr', metricType: 'sla', metricKey: 'waktu pulih b7', period: '2026-11' } });
+      expect(viaStore.map((x) => x.id)).toEqual([id]);
+    });
+
+    // P9 IR-5: tombol CSV di layar per gap mengekspor rencana gap itu saja (parameter sama dengan GET /tna/review)
+    it('ekspor CSV dengan filter gap: hanya rencana dari temuan gap itu; rujukan gap divalidasi', async () => {
+      const a = app();
+      const plan = await request(a).post(`/api/tna/findings/${g.e}/plan`).set(as('hr')).send({});
+      expect(plan.status).toBe(201);
+      const csv = (res) => res.text.replace(/^\uFEFF/, '').trim().split('\r\n');
+      const all = csv(await request(a).get('/api/tna/plan-items/export.csv').set(as('hr')));
+      const res = await request(a).get(`/api/tna/plan-items/export.csv?${new URLSearchParams({ kind: 'competency', competencyId: gapComp })}`).set(as('hr'));
+      expect(res.status).toBe(200);
+      const lines = csv(res);
+      expect(lines).toHaveLength(2); // header + rencana g.e
+      expect(lines[1]).toMatch(/^E-beni,beni,beni@b7\.test,Analisis insiden,/);
+      expect(all.length).toBeGreaterThan(lines.length);
+      const log = await audits('tna.plan_items');
+      expect(log.filter((r) => r.action === 'export').pop().meta).toMatchObject({ count: 1, employeeIds: [u.beni] });
+      expect((await request(a).get('/api/tna/plan-items/export.csv?kind=lain').set(as('hr'))).status).toBe(400);
+      expect((await request(a).get(`/api/tna/plan-items/export.csv?${new URLSearchParams({ kind: 'competency', competencyId: otherComp })}`).set(as('hr'))).status).toBe(404);
+    });
   });
 
   // Pertahanan berlapis: join kompetensi dan baris kinerja ikut memfilter tenant, jadi rujukan silang tenant
