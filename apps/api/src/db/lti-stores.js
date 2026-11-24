@@ -64,7 +64,7 @@ function createLtiStores(sequelize) {
                                       FROM lti_resource_links l
                                       JOIN ld_trainings t ON t.id = l.training_id AND t.tenant_id = l.tenant_id
                                       JOIN ld_participants lp ON lp.training_id = t.id AND lp.tenant_id = t.tenant_id AND lp.user_id = :userId
-                                     WHERE l.tenant_id = :tenantId AND l.kind = 'offline_training' AND ${OPEN_TRAINING}
+                                     WHERE l.tenant_id = :tenantId AND l.kind = 'offline_training' AND t.assessment_mode = 'elitementor' AND ${OPEN_TRAINING}
                                      ORDER BY t.starts_on NULLS LAST, t.title`, { tenantId, userId });
       return { byPlanItem: new Map(plans.map((l) => [l.planItemId, l])), offline };
     },

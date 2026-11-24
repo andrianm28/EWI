@@ -78,7 +78,7 @@ function buildIdToken({ issuer, tool, link, user, sub, nonce, base, contextKey, 
   const root = (base || '').replace(/\/+$/, '');
   const ags = `${root}/api/lti/ags/links/${link.id}`;
   const custom = { course_code: link.courseRef, mode: offline ? 'offline' : 'online' };
-  if (offline) custom.session_code = link.courseRef;
+  if (offline) { custom.session_code = link.courseRef; custom.training_title = link.title; }
   return {
     iss: issuer, aud: tool.clientId, sub, nonce, iat: now, exp: now + ID_TOKEN_TTL_SECONDS,
     name: user.name, email: user.email,
@@ -91,7 +91,8 @@ function buildIdToken({ issuer, tool, link, user, sub, nonce, base, contextKey, 
     [CLAIM.context]: { id: `${contextKey}:${link.courseRef}`, label: link.courseRef, title: link.title },
     [CLAIM.custom]: custom,
     [CLAIM.launchPresentation]: { document_target: 'window', return_url: `${root}/li` },
-    [CLAIM.agsEndpoint]: { scope: [AGS_SCOPES.lineitem, AGS_SCOPES.score], lineitems: `${ags}/lineitems`, lineitem: `${ags}/lineitem` },
+    // hanya skor yang dilayani (spek §3.3): tidak mengiklankan lineitems/scope lineitem
+    [CLAIM.agsEndpoint]: { scope: [AGS_SCOPES.score], lineitem: `${ags}/lineitem` },
   };
 }
 

@@ -150,11 +150,11 @@ function ltiPublicRouter({ service, stores, flags, entitlements, key, jwksClient
     let claims;
     try {
       const pub = await jwksClient.getKey(tool.jwksUrl, decoded.header.kid);
-      claims = jwt.verify(b.client_assertion, pub, { algorithms: ['RS256'], issuer: tool.clientId, subject: tool.clientId, audience: tokenAudiences, maxAge: '10m' });
+      claims = jwt.verify(b.client_assertion, pub, { algorithms: ['RS256'], issuer: tool.clientId, subject: tool.clientId, audience: tokenAudiences, maxAge: '5m' });
     } catch {
       return oauthError(res, 401, 'invalid_client', 'client_assertion tidak valid');
     }
-    if (!claims.jti || !claims.exp || !claims.iat || claims.exp - Math.floor(Date.now() / 1000) > 600) return oauthError(res, 401, 'invalid_client', 'client_assertion tidak lengkap');
+    if (!claims.jti || !claims.exp || !claims.iat || claims.exp - Math.floor(Date.now() / 1000) > 300) return oauthError(res, 401, 'invalid_client', 'client_assertion tidak lengkap');
     if (!(await stores.lti.useJti(tool.id, claims.jti, new Date(claims.exp * 1000)))) return oauthError(res, 401, 'invalid_client', 'client_assertion sudah dipakai');
     if (!(await flags.isEnabled(tool.tenantId, FLAGS.ELITEMENTOR_LTI))) return oauthError(res, 401, 'invalid_client', 'Integrasi belum diaktifkan');
     const scope = scopes.join(' ');
@@ -190,7 +190,9 @@ function ltiPublicRouter({ service, stores, flags, entitlements, key, jwksClient
     let result = { kind: out.kind };
     if (out.kind === 'progress') {
       if (ldOpen) result.ld = await stores.ld.applySyncEvent(tenantId, out.event);
-      if (!result.ld || !result.ld.duplicate) {
+      // rencana belajar milik submodul TNA (aturan 3): tanpa TNA aktif, skor hanya ke Learning Delivery
+      const tnaOpen = await submoduleActive({ entitlements, flags }, tenantId, 'tna');
+      if (tnaOpen && (!result.ld || !result.ld.duplicate)) {
         await stores.lti.advancePlan(tenantId, link.planItemId, out.planStatus);
         if (out.completion) await stores.lti.recordCompletion(tenantId, { userId: user.id, courseRef: link.courseRef, status: out.completion, score: out.event.score, at: out.event.occurredAt });
       }
@@ -212,9 +214,9 @@ function ltiPublicRouter({ service, stores, flags, entitlements, key, jwksClient
 function ltiAssignmentAdapter({ stores, service }) {
   return {
     available: (tenantId) => service.available(tenantId),
-    async assign({ tenantId, tool, plan, userId }) {
+    async assign({ tenantId, tool, plan, actorId }) {
       const link = await stores.lti.ensurePlanItemLink(tenantId, {
-        toolId: tool.id, planItemId: plan.id, userId: plan.userId, courseRef: plan.catalogItemRef, title: plan.catalogItemTitle, createdBy: userId,
+        toolId: tool.id, planItemId: plan.id, userId: plan.userId, courseRef: plan.catalogItemRef, title: plan.catalogItemTitle, createdBy: actorId,
       });
       if (!link) throw new Error('Resource link gagal dibuat');
       return { ref: link.id };

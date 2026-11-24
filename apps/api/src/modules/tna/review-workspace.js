@@ -185,7 +185,7 @@ function reviewWorkspaceRouter({ stores, settings, catalog, flags, audit, assign
     try {
       // EM-LTI: mode LTI tidak memanggil jaringan; penugasan = resource link yang bisa diluncurkan karyawan
       ({ ref } = gate.mode === 'lti'
-        ? await ltiAssignments.assign({ tenantId: req.tenantId, tool: gate.tool, plan, userId: req.user.id })
+        ? await ltiAssignments.assign({ tenantId: req.tenantId, tool: gate.tool, plan, actorId: req.user.id })
         : await assignments.assign({
           organizationId: conf.lms.elitementorOrganizationId,
           employee: { employeeId: plan.employeeId, email: plan.email },

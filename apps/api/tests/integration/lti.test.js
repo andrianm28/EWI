@@ -43,8 +43,8 @@ run('LTI 1.3 Platform (Postgres)', () => {
     const m = /name="id_token" value="([^"]+)"/.exec(res.text || '');
     return { start, login, params, res, cookie: cookieOf(start), idToken: m && m[1] };
   }
-  async function agsToken({ scope = `${AGS_SCOPES.score} ${AGS_SCOPES.lineitemRead}`, jti = crypto.randomUUID(), cid = clientId, aud = ISSUER } = {}) {
-    const assertion = jwt.sign({ iss: cid, sub: cid, aud, jti }, toolPair.privateKey, { algorithm: 'RS256', keyid: 'tool-k1', expiresIn: 300 });
+  async function agsToken({ scope = `${AGS_SCOPES.score} ${AGS_SCOPES.lineitemRead}`, jti = crypto.randomUUID(), cid = clientId, aud = ISSUER, expiresIn = 300 } = {}) {
+    const assertion = jwt.sign({ iss: cid, sub: cid, aud, jti }, toolPair.privateKey, { algorithm: 'RS256', keyid: 'tool-k1', expiresIn });
     return request(app).post('/api/lti/token').type('form').send({
       grant_type: 'client_credentials', client_assertion_type: 'urn:ietf:params:oauth:client-assertion-type:jwt-bearer', client_assertion: assertion, scope,
     });
@@ -185,6 +185,9 @@ run('LTI 1.3 Platform (Postgres)', () => {
     const res = await request(app).get('/api/my/learning-plan').set(as('ani'));
     expect(res.body.data.find((c) => c.id === planId).lti).toBeNull();
     await flag('em.lti', true);
+    await flag('module.tna', false); // rencana belajar milik TNA (aturan 3)
+    expect((await request(app).post('/api/my/elitementor/launch').set(as('ani')).send({ linkId: s.link })).status).toBe(403);
+    await flag('module.tna', true);
   });
 
   test('token AGS: assertion tool valid, jti sekali pakai, scope disaring', async () => {
@@ -196,6 +199,7 @@ run('LTI 1.3 Platform (Postgres)', () => {
     expect((await agsToken({ jti })).status).toBe(200);
     expect((await agsToken({ jti })).status).toBe(401);
     expect((await agsToken({ aud: 'https://lain.test' })).status).toBe(401);
+    expect((await agsToken({ expiresIn: 600 })).status).toBe(401); // exp maksimal 5 menit (spek §3.3)
     expect((await agsToken({ scope: 'openid' })).status).toBe(400);
     const forged = jwt.sign({ iss: clientId, sub: clientId, aud: ISSUER, jti: 'x' }, crypto.generateKeyPairSync('rsa', { modulusLength: 2048 }).privateKey, { algorithm: 'RS256', keyid: 'tool-k1', expiresIn: 300 });
     expect((await request(app).post('/api/lti/token').type('form').send({ grant_type: 'client_credentials', client_assertion_type: 'urn:ietf:params:oauth:client-assertion-type:jwt-bearer', client_assertion: forged, scope: AGS_SCOPES.score })).status).toBe(401);

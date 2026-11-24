@@ -102,6 +102,7 @@ function myRouter({ stores, flags, entitlements, settings, audit, lti, appBaseUr
   // EM-LTI §3.1: mulai peluncuran EliteMentor untuk diri sendiri. Jawaban: URL login tool + cookie pengikat untuk authorize.
   r.post('/elitementor/launch', wrap(async (req, res) => {
     if (!lti) throw forbidden('FEATURE_DISABLED', 'EliteMentor lewat LTI belum diaktifkan untuk organisasi Anda');
+    if (!(await active(req, 'tna'))) throw forbidden('FEATURE_DISABLED', 'Rencana belajar belum diaktifkan untuk organisasi Anda');
     const { url, binder } = await lti.startLaunch({ tenantId: req.tenantId, userId: req.user.id, linkId: (req.body || {}).linkId });
     res.set('Cache-Control', 'no-store');
     res.append('Set-Cookie', binderCookie(binder, appBaseUrl || ''));

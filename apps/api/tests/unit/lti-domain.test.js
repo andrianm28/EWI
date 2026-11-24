@@ -75,14 +75,13 @@ describe('buildIdToken', () => {
     expect(p[CLAIM.custom]).toEqual({ course_code: 'SD-B1', mode: 'online' });
     expect(p[CLAIM.launchPresentation]).toEqual({ document_target: 'window', return_url: 'https://elgos.test/li' });
     expect(p[CLAIM.agsEndpoint]).toEqual({
-      scope: [AGS_SCOPES.lineitem, AGS_SCOPES.score],
-      lineitems: 'https://elgos.test/api/lti/ags/links/link-1/lineitems',
+      scope: [AGS_SCOPES.score],
       lineitem: 'https://elgos.test/api/lti/ags/links/link-1/lineitem',
     });
   });
   test('offline membawa kode sesi', () => {
     const p = buildIdToken({ issuer: 'i', tool, link: { ...link, kind: 'offline_training', courseRef: 'IAC-1512' }, user, sub: 'abc', nonce: 'n', base, now });
-    expect(p[CLAIM.custom]).toEqual({ course_code: 'IAC-1512', mode: 'offline', session_code: 'IAC-1512' });
+    expect(p[CLAIM.custom]).toEqual({ course_code: 'IAC-1512', mode: 'offline', session_code: 'IAC-1512', training_title: 'Root Cause Analysis' });
   });
 });
 

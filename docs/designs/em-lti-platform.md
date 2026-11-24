@@ -26,7 +26,7 @@ Lihat `CONTEXT.md`: **Tool LTI**, **Resource link**, **Tiket peluncuran**, **AGS
 2. API memeriksa: flag `em.lti`, link milik tenant dan milik karyawan ini (online: `user_id` link; offline: karyawan peserta pelatihan), tool aktif. Membuat **tiket peluncuran** (acak 32 byte, yang disimpan hanya SHA-256-nya, berlaku 5 menit, sekali pakai) dan pengikat browser (acak 32 byte, cookie `elgos_lti` HttpOnly, Secure bila https, SameSite=Lax, Path=/api/lti/authorize, 5 menit; hash-nya di tiket, review egm #9), lalu menjawab `{ url }` = `login_url` tool + query `iss`, `login_hint` (= `sub` karyawan), `target_link_uri` (= `launch_url` tool), `client_id`, `lti_deployment_id`, `lti_message_hint` (= tiket).
 3. Web berpindah ke `url` (tab yang sama; tombol "Kembali ke ELGOS" di halaman tool).
 4. Tool membuat state + nonce, lalu mengarahkan browser ke `GET|POST /api/lti/authorize` dengan `scope=openid`, `response_type=id_token`, `response_mode=form_post`, `prompt=none`, `client_id`, `redirect_uri`, `login_hint`, `lti_message_hint`, `state`, `nonce`.
-5. ELGOS authorize (tanpa Bearer, karena navigasi browser): parameter wajib lengkap dan bernilai sesuai spek; tiket ditemukan lewat hash, belum dipakai, belum kedaluwarsa; `client_id` = tool tiket; `login_hint` = `sub` tiket; `redirect_uri` sama persis (string) dengan salah satu `redirect_uris` tool setelah diselesaikan terhadap `APP_BASE_URL`; cookie `elgos_lti` cocok dengan pengikat tiket. Tiket ditandai terpakai secara atomik (`UPDATE ... WHERE used_at IS NULL RETURNING`). Flag `em.lti` dicek ulang.
+5. ELGOS authorize (tanpa Bearer, karena navigasi browser): parameter wajib lengkap dan bernilai sesuai spek; tiket ditemukan lewat hash, belum dipakai, belum kedaluwarsa; `client_id` = tool tiket; `login_hint` = `sub` tiket; `redirect_uri` sama persis (string) dengan salah satu `redirect_uris` tool setelah diselesaikan terhadap `APP_BASE_URL`; cookie `elgos_lti` cocok dengan pengikat tiket. Tiket ditandai terpakai secara atomik (`UPDATE ... WHERE used_at IS NULL RETURNING`) sebelum pemeriksaan lain, jadi permintaan yang gagal pemeriksaan apa pun juga menghanguskan tiket (lebih aman terhadap tebakan berulang; karyawan cukup menekan tombol lagi). Flag `em.lti` dicek ulang.
 6. ELGOS menjawab halaman HTML yang mem-POST `id_token` + `state` ke `redirect_uri` (form auto-submit dengan skrip ber-nonce CSP, plus tombol "Lanjutkan ke EliteMentor" untuk browser tanpa JS). Header CSP helmet **diganti seluruhnya**: `default-src 'none'; script-src 'nonce-…'; style-src 'unsafe-inline'; form-action <origin redirect_uri>; base-uri 'none'; frame-ancestors 'none'`, plus `Cache-Control: no-store` dan `Referrer-Policy: no-referrer`. Rute authorize dan token memasang `express.urlencoded({ extended: false, limit: '16kb' })` sendiri (app hanya punya `express.json`, review egm #1).
 7. Gagal di langkah 5: halaman galat HTML 400 berbahasa Indonesia ("Tautan EliteMentor sudah tidak berlaku. Kembali ke ELGOS dan tekan tombolnya lagi."), tanpa redirect ke tool (tidak ada `redirect_uri` yang tervalidasi).
 
@@ -52,7 +52,7 @@ Lihat `CONTEXT.md`: **Tool LTI**, **Resource link**, **Tiket peluncuran**, **AGS
 
 ### 3.3 Nilai balik (AGS 2.0)
 
-- `POST /api/lti/token`: `grant_type=client_credentials`, `client_assertion_type=urn:ietf:params:oauth:client-assertion-type:jwt-bearer`, `client_assertion` (JWT RS256 dari tool, `algorithms: ['RS256']` dipaku, `kid`/`jti`/`iat`/`exp` wajib: `iss = sub = client_id`, `aud` ∈ {`<base>/api/lti/token`, `LTI_ISSUER`}, `exp` ≤ 5 menit ke depan, `jti` sekali pakai sampai `exp`), `scope` (subset dari scope AGS lineitem.readonly, lineitem, score). Kunci tool diambil dari `jwks_url` tool (cache 5 menit, timeout 5 detik, maksimal 64 KB). Jawaban `{ access_token, token_type: "Bearer", expires_in: 3600, scope }`. Token = JWT RS256 kunci platform dengan `aud = "elgos-lti-ags"` (berbeda dari audience sesi `ewi`, jadi tidak pernah diterima sebagai sesi), `sub = toolId`, `tid = tenantId`, `scope`.
+- `POST /api/lti/token`: `grant_type=client_credentials`, `client_assertion_type=urn:ietf:params:oauth:client-assertion-type:jwt-bearer`, `client_assertion` (JWT RS256 dari tool, `algorithms: ['RS256']` dipaku, `kid`/`jti`/`iat`/`exp` wajib: `iss = sub = client_id`, `aud` ∈ {`<base>/api/lti/token`, `LTI_ISSUER/api/lti/token`, `LTI_ISSUER`}, `exp` ≤ 5 menit ke depan, `jti` sekali pakai sampai `exp`), `scope` (scope AGS yang dikenal disaring: lineitem.readonly, lineitem, score; tanpa satu pun scope dikenal = `invalid_scope`). id_token hanya mengiklankan scope `score` dan URL `lineitem`. Kunci tool diambil dari `jwks_url` tool (cache 5 menit, timeout 5 detik, maksimal 64 KB). Jawaban `{ access_token, token_type: "Bearer", expires_in: 3600, scope }`. Token = JWT RS256 kunci platform dengan `aud = "elgos-lti-ags"` (berbeda dari audience sesi `ewi`, jadi tidak pernah diterima sebagai sesi), `sub = toolId`, `tid = tenantId`, `scope`.
 - Satu lineitem implisit per resource link (URL di klaim). `GET lineitems`/`lineitem` tidak dibangun untuk demo (review egm #6): tool membaca URL lineitem dari klaim.
 - `POST …/links/:id/lineitem/scores` (`application/vnd.ims.lis.v1.score+json` atau JSON): `userId` (= `sub`), `scoreGiven`, `scoreMaximum`, `activityProgress`, `gradingProgress`, `timestamp`, opsional `comment`, dan ekstensi non-standar `progressPct` (0–100) untuk progres belajar. Jawaban 204.
 
@@ -114,23 +114,25 @@ Tenant `demo`: tool "EliteMentor (simulasi)" (`client_id` tetap, login/launch re
 - Unit `lti-domain.test.js`: `toSyncEvent` (tabel §3.3), `subOf` stabil dan beda per tenant, validasi parameter authorize, pembentukan klaim id_token.
 - Unit `lti-keys.test.js`: JWKS dari PEM, tanda tangan id_token terverifikasi dengan JWK publik, kunci sementara di non-produksi, galat di produksi.
 - Integrasi `lti.test.js` (Postgres): alur penuh dengan tool palsu di test (kunci RSA test, JWKS lewat `fetchImpl` palsu): launch → authorize → verifikasi id_token → token AGS → skor online (rencana + LD) → skor offline (kehadiran + skor) ; tiket dipakai ulang 400; tiket kedaluwarsa 400; redirect_uri asing 400; flag mati 403/400; tenant lain ditolak; userId asing 403; jti ulang 401; token sesi ELGOS ditolak di AGS; penugasan HR mode LTI membuat link dan idempoten.
-- Web: unit `view.ts` label tombol; e2e mock rute untuk kartu dengan `lti` (tombol memanggil launch dan berpindah).
+- Web: label tombol dibentuk API (diuji di integrasi `lti.test.js`), jadi tanpa unit `view.ts`; e2e mock rute untuk kartu dengan `lti` (tombol memanggil launch dan berpindah).
 
 ## 10. Daftar perubahan
 
-- [ ] `docs/adr/0003-elgos-lti-platform.md`, `CONTEXT.md` istilah
-- [ ] migrasi `20261125000100-lti-platform.js`
-- [ ] `src/core/flags`: `em.lti`
-- [ ] `src/integrations/elitementor/lti/keys.js` (kunci, JWKS, sign/verify RS256), `jwks-client.js`
-- [ ] `src/modules/lti/domain.js` (murni), `routes.js` (publik), `assignments.js` (adapter mode LTI)
-- [ ] `src/db/lti-stores.js`, sambungkan di `stores.js`
-- [ ] `src/app.js` pasang rute; `config/env.js` `LTI_ISSUER`, `ELGOS_LTI_PRIVATE_KEY`
-- [ ] `modules/tna/review-workspace.js` gate + adapter LTI
-- [ ] `modules/my/index.js` kartu `lti`, kartu offline, `POST /elitementor/launch`
-- [ ] web: `api/lna.ts` tipe, `LearningPlanView.vue` tombol
-- [ ] `deploy/dev-worktree/em-sim/*`, compose, `dev.sh`, `deploy/dev-public/nginx.conf` lokasi `/em-sim/`
-- [ ] `scripts/seed-lti-demo.js`, `package.json` skrip
-- [ ] test di atas
+Semua selesai di PR EM-LTI. Smoke lokal ujung ke ujung (API + em-sim + proxy) lulus: rencana SD-B1 menjadi selesai, Learning Delivery menerima skor, check-in offline mencatat kehadiran, kode sesi salah diumumkan.
+
+- [x] `docs/adr/0003-elgos-lti-platform.md`, `CONTEXT.md` istilah
+- [x] migrasi `20261125000100-lti-platform.js`
+- [x] `src/core/flags`: `em.lti`
+- [x] `src/integrations/elitementor/lti/keys.js` (kunci, JWKS, sign/verify RS256), `jwks-client.js`
+- [x] `src/modules/lti/domain.js` (murni), `index.js` (layanan, rute publik, adapter penugasan mode LTI)
+- [x] `src/db/lti-stores.js`, sambungkan di `stores.js`
+- [x] `src/app.js` pasang rute; `config/env.js` `LTI_ISSUER`, `ELGOS_LTI_PRIVATE_KEY`
+- [x] `modules/tna/review-workspace.js` gate + adapter LTI
+- [x] `modules/my/index.js` kartu `lti`, kartu offline, `POST /elitementor/launch`
+- [x] web: `api/lna.ts` tipe, `LearningPlanView.vue` tombol
+- [x] `deploy/dev-worktree/em-sim/*`, compose, `dev.sh`, `deploy/dev-public/nginx.conf` lokasi `/em-sim/`
+- [x] `scripts/seed-lti-demo.js`, `package.json` skrip
+- [x] test di atas
 
 ## 11. Triase review egm spek
 
