@@ -320,7 +320,10 @@ function createLdStores(sequelize) {
 
   /** Skor asesmen pelatihan offline yang dijalankan lewat EliteMentor; dicocokkan dengan kode asesmen isian HR. */
   async function applyAssessment(tenantId, ev, t) {
-    const trainings = await select(`SELECT id FROM ld_trainings WHERE tenant_id = :tenantId AND source = 'manual' AND assessment_mode = 'elitementor'
+    // EM-LTI: resource link sudah tahu pelatihannya; tanpa itu dicocokkan lewat assessment_ref (webhook B14)
+    const trainings = ev.trainingId
+      ? await select(`SELECT id FROM ld_trainings WHERE tenant_id = :tenantId AND id = :id AND status <> 'cancelled'`, { tenantId, id: ev.trainingId }, t)
+      : await select(`SELECT id FROM ld_trainings WHERE tenant_id = :tenantId AND source = 'manual' AND assessment_mode = 'elitementor'
                                        AND assessment_ref = :ref AND status <> 'cancelled'`, { tenantId, ref: ev.course.ref }, t);
     if (trainings.length !== 1) return { applied: false, reason: trainings.length ? 'training_ambiguous' : 'training_not_found' };
     const userId = await findUser(tenantId, ev.user, t);

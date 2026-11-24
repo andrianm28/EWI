@@ -49,6 +49,8 @@ services:
       ENCRYPTION_PROVIDER: local
       MAIL_PROVIDER: log
       TENANT_KEY_PROVIDER: local
+      # EM-LTI: issuer tetap (tidak ikut URL tunnel yang berubah); kunci platform ELGOS_LTI_PRIVATE_KEY dari .env (dibuat dev.sh)
+      LTI_ISSUER: https://elgos-dev.local
       # B14: dokumentasi pelatihan offline (foto/video). Tanpa ini unggah menjawab 501 STORAGE_NOT_CONFIGURED.
       EWI_UPLOAD_DIR: /app/uploads
     volumes:
@@ -62,6 +64,26 @@ services:
       timeout: 3s
       retries: 40
       start_period: 5s
+
+  # EM-LTI: "EliteMentor (simulasi)", Tool LTI 1.3 tiruan untuk demo (bukan EliteMentor asli). Dilayani web di /em-sim/.
+  # Spek docs/designs/em-lti-platform.md §6; data tool di seed scripts/seed-lti-demo.js.
+  em-sim:
+    build:
+      context: ${WORKTREE}/deploy/dev-worktree/em-sim
+    restart: unless-stopped
+    depends_on:
+      api: { condition: service_healthy }
+    environment:
+      PORT: 4300
+      BASE_PATH: /em-sim
+      PLATFORM_ISSUER: https://elgos-dev.local
+      CLIENT_ID: elitementor-sim
+      DEPLOYMENT_ID: elgos-demo
+      PLATFORM_AUTH_URL: /api/lti/authorize
+      ELGOS_INTERNAL_URL: http://api:4100
+    deploy:
+      resources:
+        limits: { cpus: "0.25", memory: 96m }
 
   web:
     build:

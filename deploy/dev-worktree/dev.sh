@@ -43,6 +43,9 @@ free_port() {
   echo "Tidak ada port bebas di 8200-8399" >&2; return 1
 }
 
+# EM-LTI: kunci RSA platform (PEM PKCS#8, base64 satu baris). Tetap per worktree: tool LTI meng-cache JWKS.
+lti_key() { openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:2048 2>/dev/null | base64 | tr -d '\n'; }
+
 init_state() {
   mkdir -p "$STATE"
   if [ ! -f "$DEV_ENV_FILE" ]; then
@@ -55,10 +58,16 @@ EWI_JWT_SECRET=$(openssl rand -hex 48)
 EWI_LOCAL_MASTER_KEY=$(openssl rand -hex 32)
 TENANT_KEY_LOCAL_MASTER=$(openssl rand -base64 32)
 DEV_SEED_PASSWORD=$(openssl rand -base64 12 | tr -dc 'A-Za-z0-9' | cut -c1-14)Aa1
+ELGOS_LTI_PRIVATE_KEY=$(lti_key)
 PUBLIC_URL=
 APP_BASE_URL=
 CORS_ORIGIN=
 ENV
+  fi
+  # state lama (sebelum EM-LTI): tambahkan kunci LTI sekali
+  if ! grep -q '^ELGOS_LTI_PRIVATE_KEY=.' "$DEV_ENV_FILE"; then
+    sed -i '/^ELGOS_LTI_PRIVATE_KEY=/d' "$DEV_ENV_FILE"
+    echo "ELGOS_LTI_PRIVATE_KEY=$(lti_key)" >> "$DEV_ENV_FILE"
   fi
 }
 
@@ -78,10 +87,18 @@ cmd_up() {
   local public=1
   [ "${1:-}" = --local ] && public=0
   echo "== $PROJECT (branch $BRANCH, worktree $WORKTREE)"
-  dc build --pull api web
-  dc up -d --wait --wait-timeout 300 db api web
+  dc build --pull api web em-sim
+  dc up -d --wait --wait-timeout 300 db api em-sim web
   if [ "$(dc exec -T db psql -U elgos -d elgos_dev -tAc "SELECT to_regclass('ewi.tenants') IS NOT NULL AND EXISTS (SELECT 1 FROM ewi.tenants WHERE slug='demo')" 2>/dev/null)" != t ]; then
     dc exec -T api docker-entrypoint.sh npm run --silent seed:dev && echo "Seed demo selesai"
+  fi
+  # EM-LTI: EliteMentor (simulasi) + flag em.lti; idempoten, jadi dijalankan setiap up (juga pada DB lama)
+  dc exec -T api docker-entrypoint.sh npm run --silent seed:lti-demo
+  if [ "$public" = 0 ]; then
+    # EM-LTI: tautan EliteMentor diselesaikan terhadap APP_BASE_URL, jadi mode lokal memakai origin loopback
+    local lurl
+    lurl="http://127.0.0.1:$(envval WEB_PORT)"
+    if [ "$(envval APP_BASE_URL)" != "$lurl" ]; then set_url "$lurl"; dc up -d --wait api >/dev/null; fi
   fi
   if [ "$public" = 1 ]; then
     dc --profile public up -d tunnel
@@ -99,7 +116,7 @@ cmd_up() {
 cmd_url() {
   echo "Lokal : http://127.0.0.1:$(envval WEB_PORT)"
   local url; url="$(public_url || true)"
-  [ -n "$url" ] && echo "Publik: $url"
+  [ -n "$url" ] && echo "Publik: $url (tombol EliteMentor hanya jalan dari URL ini)"
   echo "Login : hr@demo.test / learner@demo.test, tenant demo, password DEV_SEED_PASSWORD di $DEV_ENV_FILE"
 }
 

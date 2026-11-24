@@ -78,6 +78,8 @@ export interface LearningCard {
   id: string; title: string; description: string | null; level: string | null; mode: string | null; code: string | null
   status: 'new' | 'in_progress' | 'completed'; courseStatus: string | null; courseScore: number | null; reason: string | null
   needsModule: boolean; where: LearningDelivery; launchUrl: string | null
+  /** EM-LTI: modul EliteMentor yang bisa diluncurkan lewat LTI (null bila tidak ada atau flag em.lti mati) */
+  lti?: { linkId: string; label: string } | null
 }
 export type DataRequestType = 'withdraw_consent' | 'delete_data'
 export interface DataRequest { id: string; type: DataRequestType; createdAt: string; dueAt: string | null; status?: string; sessions?: number }
@@ -121,6 +123,8 @@ export const lna = {
   reviewFinding: (id: string, body: ReviewDecision) => post<{ data: ReviewItem }>(`/tna/findings/${id}/review`, body),
   myResults: () => call<{ data: MyResults }>('/my/results'),
   myLearningPlan: () => call<{ data: LearningCard[]; delivery: LearningDelivery }>('/my/learning-plan'),
+  /** EM-LTI: URL login EliteMentor (OIDC); API juga memasang cookie pengikat untuk langkah authorize. */
+  launchElitementor: (linkId: string) => post<{ data: { url: string } }>('/my/elitementor/launch', { linkId }),
   /** Permintaan data milik sendiri, semua status; tanpa flag (hak subjek data). */
   myDataRequests: () => call<{ data: DataRequest[] }>('/employees/me/data-requests'),
   createDataRequest: (type: DataRequestType, reason?: string) => post<{ data: DataRequest }>('/employees/me/data-requests', { type, reason }),

@@ -74,19 +74,25 @@ function toReviewItem(row, targetDays, now = new Date()) {
   };
 }
 
-function reviewWorkspaceRouter({ stores, settings, catalog, flags, audit, assignments, wrap }) {
+function reviewWorkspaceRouter({ stores, settings, catalog, flags, audit, assignments, ltiAssignments, wrap }) {
   const r = express.Router();
   const hr = requireRole(ROLES.HR_ADMIN);
   const flag = requireFlag(flags, FLAGS.TNA_REVIEW_WORKSPACE, 'Tinjauan HR versi baru belum diaktifkan untuk organisasi Anda');
   const conflict = (code, message) => new HttpError(409, code, message);
 
-  /** Bisakah tenant ini menugaskan langsung ke EliteMentor? Baris 5 dan 6 tabel keputusan di spek. */
+  /**
+   * Bisakah tenant ini menugaskan langsung ke EliteMentor? Baris 5 dan 6 tabel keputusan di spek B7.
+   * EM-LTI (spek em-lti-platform §3.4): ekspor LMS tetap dicek dulu; lalu mode LTI (flag em.lti + tool aktif) didahulukan,
+   * kalau tidak jalur REST lama. Return { mode: 'lti', tool } | { mode: 'rest' } | { blocked }.
+   */
   async function assignGate(tenantId, conf) {
-    if (conf.lms.delivery === 'lms_export') return conflict('ASSIGN_VIA_EXPORT', `Organisasi Anda belajar di ${conf.lms.lmsName}. Ekspor daftar gap untuk diunggah ke sana.`);
+    if (conf.lms.delivery === 'lms_export') return { blocked: conflict('ASSIGN_VIA_EXPORT', `Organisasi Anda belajar di ${conf.lms.lmsName}. Ekspor daftar gap untuk diunggah ke sana.`) };
+    const tool = ltiAssignments ? await ltiAssignments.available(tenantId) : null;
+    if (tool) return { mode: 'lti', tool };
     if (!assignments || !conf.lms.elitementorOrganizationId || !(await flags.isEnabled(tenantId, FLAGS.GAPS_AUTOSEND))) {
-      return conflict('ASSIGN_UNAVAILABLE', 'Penugasan langsung ke EliteMentor belum tersedia untuk organisasi Anda');
+      return { blocked: conflict('ASSIGN_UNAVAILABLE', 'Penugasan langsung ke EliteMentor belum tersedia untuk organisasi Anda') };
     }
-    return null;
+    return { mode: 'rest' };
   }
 
   // --- Klasifikasi tiga tombol ---
@@ -155,7 +161,7 @@ function reviewWorkspaceRouter({ stores, settings, catalog, flags, audit, assign
     }
     const improvement = rows.filter((x) => x.category === 'non_training')
       .map((f) => ({ findingId: f.findingId, userId: f.userId, userName: f.userName, title: f.title, handedOffAt: f.handedOffAt }));
-    const delivery = { ...deliveryFor(conf, null), assignAvailable: !(await assignGate(req.tenantId, conf)) };
+    const delivery = { ...deliveryFor(conf, null), assignAvailable: !(await assignGate(req.tenantId, conf)).blocked };
     await audit.readIndividual(req, 'tna.review_solutions', { employeeIds: rows.map((f) => f.userId), objectType: 'tna_finding', objectIds: rows.map((f) => f.findingId) });
     res.json({ data: { training, improvement, delivery, inaEnabled } });
   }));
@@ -169,21 +175,24 @@ function reviewWorkspaceRouter({ stores, settings, catalog, flags, audit, assign
     if (!plan.catalogItemRef) throw conflict('NEEDS_MODULE', 'Rencana ini belum punya course. Pilih atau buat modulnya dulu.');
     if (plan.assignmentStatus === 'sent') return res.json({ data: await stores.tna.getPlanItem(req.tenantId, plan.id) });
     const conf = await settings.get(req.tenantId);
-    const blocked = await assignGate(req.tenantId, conf);
-    if (blocked) throw blocked;
+    const gate = await assignGate(req.tenantId, conf);
+    if (gate.blocked) throw gate.blocked;
     if (plan.catalogSource !== 'elitementor') throw conflict('COURSE_NOT_IN_TARGET', 'Course rencana ini bukan course EliteMentor. Ekspor daftar gap untuk LMS perusahaan.');
     const claimedAt = await stores.tna.claimPlanAssignment(req.tenantId, plan.id);
     if (!claimedAt) throw conflict('ASSIGN_IN_PROGRESS', 'Penugasan rencana ini sedang dikirim. Coba lagi sebentar.');
 
-    const meta = { employeeIds: [plan.userId], objectType: 'tna_plan_item', objectIds: [plan.id], target: 'elitementor' };
+    const meta = { employeeIds: [plan.userId], objectType: 'tna_plan_item', objectIds: [plan.id], target: 'elitementor', mode: gate.mode };
     let ref;
     try {
-      ({ ref } = await assignments.assign({
-        organizationId: conf.lms.elitementorOrganizationId,
-        employee: { employeeId: plan.employeeId, email: plan.email },
-        course: { ref: plan.catalogItemRef, title: plan.catalogItemTitle },
-        planItemId: plan.id,
-      }));
+      // EM-LTI: mode LTI tidak memanggil jaringan; penugasan = resource link yang bisa diluncurkan karyawan
+      ({ ref } = gate.mode === 'lti'
+        ? await ltiAssignments.assign({ tenantId: req.tenantId, tool: gate.tool, plan, actorId: req.user.id })
+        : await assignments.assign({
+          organizationId: conf.lms.elitementorOrganizationId,
+          employee: { employeeId: plan.employeeId, email: plan.email },
+          course: { ref: plan.catalogItemRef, title: plan.catalogItemTitle },
+          planItemId: plan.id,
+        }));
     } catch (e) {
       // hanya nama galat yang dicatat; pesan bisa memuat data
       console.error(`Penugasan EliteMentor gagal (rencana ${plan.id}): ${e.name || 'Error'}`);

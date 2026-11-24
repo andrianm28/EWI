@@ -93,3 +93,21 @@ _Avoid_: cabut consent, hapus wawancara
 **Permintaan data**:
 Permintaan karyawan atas datanya sendiri yang harus ditindaklanjuti HR: tarik persetujuan atau hapus data.
 _Avoid_: tiket privasi, request DSR
+
+### Integrasi EliteMentor (LTI)
+
+**Tool LTI**:
+Aplikasi belajar yang diluncurkan dari ELGOS lewat LTI 1.3, saat ini EliteMentor; terdaftar per tenant dengan client_id dan deployment_id.
+_Avoid_: plugin, app eksternal
+
+**Resource link**:
+Satu modul EliteMentor yang ditugaskan ke karyawan (dari rencana belajar) atau ke peserta pelatihan offline; dibuat saat HR menekan "Tugaskan di EliteMentor".
+_Avoid_: enrollment, penugasan REST
+
+**Tiket peluncuran**:
+Bukti sekali pakai berumur 5 menit yang mengikat karyawan, resource link, dan tool selama perpindahan browser ke EliteMentor.
+_Avoid_: token login, SSO
+
+**AGS**:
+Layanan nilai LTI (Assignment and Grade Services) tempat tool mengirim progres dan skor kembali ke ELGOS.
+_Avoid_: webhook nilai, sync back

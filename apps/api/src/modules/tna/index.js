@@ -36,7 +36,7 @@ const CATEGORIES = ['training', 'non_training'];
 module.exports = {
   key: 'tna',
   title: 'Training Needs Analysis',
-  router({ stores, ai, aiConfig, settings, catalog, flags, audit, analysis, assignments } = {}) {
+  router({ stores, ai, aiConfig, settings, catalog, flags, audit, analysis, assignments, ltiAssignments } = {}) {
     const r = express.Router();
     const hr = requireRole(ROLES.HR_ADMIN);
 
@@ -241,7 +241,7 @@ module.exports = {
     }));
 
     // B7: klasifikasi tiga tombol, solusi, penugasan, ekspor gap, serah ke Improvement Needs (flag tna.review_workspace)
-    r.use(reviewWorkspaceRouter({ stores, settings, catalog, flags, audit, assignments, wrap }));
+    r.use(reviewWorkspaceRouter({ stores, settings, catalog, flags, audit, assignments, ltiAssignments, wrap }));
 
     // PM-6 (jawaban user 17 Nov): temuan "bukan masalah pelatihan" tampil untuk HR secara bawaan, ringkas,
     // tanpa rencana aksi. Atasan langsung melihat temuan timnya hanya bila HR memberinya akses (bisa dicabut,
