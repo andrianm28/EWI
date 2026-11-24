@@ -244,7 +244,7 @@ run('B16 Career & Promotion (Postgres)', () => {
     const list = await get('/decisions', 'hr');
     expect(rowOf(list, 'ani')).toMatchObject({ supervisor: { decision: 'recommend', byName: 'spv', note: 'Siap naik' }, actions: ['approve', 'hold'], blockedReason: null });
     expect(rowOf(await get('/decisions', 'spv'), 'ani').supervisor.note).toBe('Siap naik');
-        expect((await get('/map', 'hr')).body.data.employees.find((e) => e.name === 'ani').decisionState).toBe('supervisor_recommend');
+    expect((await get('/map', 'hr')).body.data.employees.find((e) => e.name === 'ani').decisionState).toBe('supervisor_recommend');
     expect((await get(`/employees/${u.ani}/evidence`, 'hr')).body.data.supervisorRecommendation).toMatchObject({ decision: 'recommend', byName: 'spv' });
     const audits = await q(`SELECT user_id, action, meta FROM audit_logs WHERE tenant_id = :t AND resource = 'dna.promotion_decision' ORDER BY id`, { t: tenant.id });
     expect(audits).toHaveLength(3);

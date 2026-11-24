@@ -58,7 +58,7 @@ Flag baru `auth.multi_role` (default mati, per tenant): bila mati, `switchableRo
 
 ~~Keputusan user 19 Nov 20.30 WIB (kartu keputusan, pilihan "Seperti sekarang"): Super Admin tetap melihat hasil karyawan, termasuk kutipan jawaban yang tersimpan di hasil analisis (`evidence`, `detail`); **hanya transkrip mentah yang ditutup**.~~
 
-- `visibleEmployeeScope` untuk `eta_admin` tidak berubah (`{ all: true }`).
+- ~~`visibleEmployeeScope` untuk `eta_admin` tidak berubah (`{ all: true }`).~~ Sejak 24 Nov: `{ userIds: [] }`.
 - Transkrip: sudah ditutup oleh PR #11 (PK-15, kini di branch integrasi). `GET /:id/transcript` menjawab 403 `TRANSCRIPT_PRIVATE` untuk semua orang selain yang diwawancarai, termasuk Super Admin; `GET /:id` hanya memberi status sesi. B2 tidak mengubah kontrak itu.
 - `requireRole(...)` tetap meloloskan `eta_admin`. Middleware baru `denyRoles(...)` dipasang di `POST /:id/turns` dan `POST /:id/complete` (`modules/interviews`, dipasang sebagai `/api/<submodul>/sessions`) → 403 `INTERVIEW_CONTENT_PRIVATE`: Super Admin tidak ikut percakapan dan tidak menutup sesi orang lain. Middleware ini bisa dipakai B6, B10, B17.
 

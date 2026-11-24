@@ -2,7 +2,7 @@
 const { forbidden, unauthorized } = require('../errors');
 const { ROLES } = require('./roles');
 
-/** Middleware: hanya role tertentu. ETA admin selalu lolos. */
+/** Middleware: hanya role tertentu. ETA admin selalu lolos; di router data karyawan ia sudah ditolak lebih dulu oleh denyEmployeeContent. */
 function requireRole(...roles) {
   return (req, _res, next) => {
     if (!req.user) return next(unauthorized());

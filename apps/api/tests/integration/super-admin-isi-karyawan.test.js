@@ -73,6 +73,12 @@ run('Super Admin tidak membaca isi data karyawan (Postgres)', () => {
     expect(res.body.error.code).toBe('EMPLOYEE_CONTENT_PRIVATE');
   });
 
+  it('impor KPI/OKR per karyawan lewat layar Admin Tenant ditolak; impor model kompetensi tidak kena', async () => {
+    await db.query(`INSERT INTO feature_flags (tenant_id, key, enabled) VALUES (:t, 'admin.tenant', true)`, { replacements: { t: tenant.id } });
+    expect((await request(app).get('/api/tenant-admin/imports/tna/templates').set(as('eta'))).body.error.code).toBe('EMPLOYEE_CONTENT_PRIVATE');
+    expect((await request(app).get('/api/tenant-admin/imports/dna/templates').set(as('eta'))).body.error?.code).not.toBe('EMPLOYEE_CONTENT_PRIVATE');
+  });
+
   it('peran lain tidak kena aturan ini', async () => {
     for (const who of ['hr', 'ani']) {
       const res = await request(app).get(`/api/employees/${u.ani}/export`).set(as(who));
@@ -83,5 +89,9 @@ run('Super Admin tidak membaca isi data karyawan (Postgres)', () => {
   it('jalur konfigurasi Super Admin tetap terbuka', async () => {
     expect((await request(app).get('/api/me/access').set(as('eta'))).status).toBe(200);
     expect((await request(app).get('/api/admin/flags').set(as('eta'))).status).toBe(200);
+    expect((await request(app).get('/api/sessions/mine').set(as('eta'))).status).toBe(200);
+    expect((await request(app).get('/api/projects').set(as('eta'))).status).toBe(200);
+    // layar Admin Tenant (flag admin.tenant dinyalakan di test impor di atas): daftar akun bukan isi data karyawan
+    expect((await request(app).get('/api/tenant-admin/users').set(as('eta'))).status).toBe(200);
   });
 });
