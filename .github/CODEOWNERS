@@ -1,0 +1,10 @@
+# PK-10 / PD-11 opsi A: berkas yang menyentuh deploy, server, dan akun AWS hanya berubah lewat PR
+# yang disetujui pemiliknya. Aktif bila branch protection main + dev mewajibkan review CODEOWNERS
+# (Settings > Branches). Reviewer cadangan untuk inti (auth, migrasi, enkripsi, deploy): Pringgo
+# (PD-5), tambahkan akun GitHub-nya di sini setelah diketahui.
+/.github/workflows/   @andrianm28
+/.github/CODEOWNERS   @andrianm28
+/deploy/              @andrianm28
+/infra/               @andrianm28
+/docs/infra/          @andrianm28
+/apps/api/migrations/ @andrianm28

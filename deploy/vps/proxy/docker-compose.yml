@@ -1,0 +1,21 @@
+# Caddy di network host agar bisa meneruskan ke 127.0.0.1:8180/8181 (web prod/staging).
+#   cd deploy/vps/proxy && ACME_EMAIL=... docker compose up -d
+name: elgos-proxy
+
+services:
+  caddy:
+    image: caddy:2.10-alpine
+    restart: unless-stopped
+    network_mode: host
+    environment:
+      ACME_EMAIL: ${ACME_EMAIL:?ACME_EMAIL wajib}
+      PROD_HOST: ${PROD_HOST:-elgos.eliteacademy.id}
+      STAGING_HOST: ${STAGING_HOST:-stg-elgos.eliteacademy.id}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+
+volumes:
+  caddy-data:
+  caddy-config:

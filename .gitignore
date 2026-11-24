@@ -8,3 +8,8 @@ coverage/
 .eslintcache
 playwright-report/
 test-results/
+.elgos-dev/
+infra/.akun-elgos.env
+infra/live/backend.hcl
+*.tfstate*
+.terraform/

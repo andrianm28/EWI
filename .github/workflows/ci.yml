@@ -1,13 +1,13 @@
 name: CI
 
 # Gate merge (keputusan P2, 4 Nov): unit + lint + type-check + e2e Playwright di setiap PR.
+# Push ke main menjalankan CI lewat deploy.yml (workflow_call), sebelum deploy staging.
 on:
   pull_request:
-  push:
-    branches: [main]
+  workflow_call:
 
 concurrency:
-  group: ci-${{ github.ref }}
+  group: ci-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -63,21 +63,28 @@ jobs:
 
   infra:
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: infra
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with: { node-version: 24, cache: npm, cache-dependency-path: infra/package-lock.json }
-      - run: npm ci
-      - run: npm run build
-      - run: npm test
-      - name: cdk synth (tanpa kredensial AWS)
-        run: npm run synth -- -q
+      - uses: hashicorp/setup-terraform@v3
+        with: { terraform_version: 1.13.4 }
+      - name: terraform fmt
+        run: terraform fmt -recursive -check infra
+      - name: terraform validate (tanpa backend/kredensial)
+        run: |
+          for d in bootstrap live/shared live/staging live/prod; do
+            echo "::group::$d"
+            terraform -chdir=infra/$d init -backend=false -input=false
+            terraform -chdir=infra/$d validate
+            echo "::endgroup::"
+          done
+      - name: Cek skrip + compose deploy VPS
+        run: |
+          for f in deploy/vps/*.sh deploy/vps/ops/*.sh deploy/dev-worktree/*.sh; do bash -n "$f"; done
+          shellcheck -x deploy/vps/*.sh deploy/vps/ops/*.sh deploy/dev-worktree/*.sh
+          ELGOS_ENV=staging ELGOS_ENV_FILE="$PWD/deploy/vps/.env.example" ELGOS_DB_ENV_FILE="$PWD/deploy/vps/db.env.example" ELGOS_API_IMAGE=a ELGOS_WEB_IMAGE=w \
+            PUBLIC_URL=https://contoh WEB_PORT=8181 docker compose -f deploy/vps/docker-compose.yml config -q
+          ACME_EMAIL=ci@example.com docker compose -f deploy/vps/proxy/docker-compose.yml config -q
       - name: Build image API
-        working-directory: .
-        run: docker build -f apps/api/Dockerfile -t ewi-api:ci .
+        run: docker build -f apps/api/Dockerfile -t elgos-api:ci .
       - name: Build image web (dev publik)
-        working-directory: .
-        run: docker build -f apps/web/Dockerfile -t ewi-web:ci .
+        run: docker build -f apps/web/Dockerfile -t elgos-web:ci .

@@ -1,0 +1,2 @@
+# Salin ke live/backend.hcl (diabaikan git) setelah infra/bootstrap di-apply.
+bucket = "elgos-tfstate-<ACCOUNT_ID>"

@@ -45,6 +45,11 @@ services:
       EWI_JWT_AUDIENCE: ewi
       EWI_JWT_ISSUER: ewi-api-dev
       CORS_ORIGIN: ${PUBLIC_URL:-}
+      # R2-3: di AWS kunci per tenant memakai KMS; dev memakai kunci induk lokal dari .env
+      # (EWI_LOCAL_MASTER_KEY), hanya untuk data sintetis. Email dev hanya dicatat di log.
+      ENCRYPTION_PROVIDER: local
+      MAIL_PROVIDER: log
+      APP_BASE_URL: ${PUBLIC_URL}
 
   web:
     build:
