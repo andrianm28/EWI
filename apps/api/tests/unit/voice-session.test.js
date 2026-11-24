@@ -266,6 +266,26 @@ describe('VoiceSession (B19)', () => {
     });
   });
 
+  test('baris biaya memakai harga per modalitas dari rincian audio yang dijumlah per giliran', async () => {
+    const stores = fakeStores();
+    const provider = scriptedProvider();
+    const vs = createVoiceSession({
+      provider, stores, aiConfig: { maxQuestions: 8 },
+      voiceConfig: { priceInputPerMTok: 0.75, priceOutputPerMTok: 4.5, priceAudioInputPerMTok: 3, priceAudioOutputPerMTok: 12 },
+      tenantId: 't', session: { id: 's', projectId: 'p', intervieweeId: 'u', submodule: 'tna', restartCount: 0, durationMinutes: 30 },
+      epoch: 1, instructions: async () => 'I', recheck: async () => null, send: () => {}, close: () => {},
+      limits: { readyTimeoutMs: 1000, recheckMs: 60000, backoffMs: [1] },
+    });
+    await vs.start();
+    const up = provider.ups[0];
+    up.emit('ready');
+    up.emit('usage', { inputTokens: 600000, outputTokens: 50000, inputAudioTokens: 400000, outputAudioTokens: 40000 });
+    up.emit('usage', { inputTokens: 400000, outputTokens: 50000, inputAudioTokens: 400000, outputAudioTokens: 50000 });
+    await vs.stop('stopped');
+    // masuk 800k audio*3 + 200k teks*0.75; keluar 90k audio*12 + 10k teks*4.5 -> 3.675
+    expect(stores.state.usage[0]).toMatchObject({ inputTokens: 1e6, outputTokens: 1e5, costUsd: 3.675 });
+  });
+
   test('goAway: sambungan baru dengan handle terakhir, tanpa pemicu ulang; tidak dihitung kegagalan', async () => {
     const { vs, out, provider, stores } = setup();
     await vs.start();

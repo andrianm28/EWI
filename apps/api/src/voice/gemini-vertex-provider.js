@@ -53,8 +53,17 @@ function dispatch(emitter, msg) {
       // Token berpikir ditagih dengan harga keluaran
       outputTokens: (u.responseTokenCount ?? u.candidatesTokenCount ?? 0) + (u.thoughtsTokenCount || 0),
       totalTokens: u.totalTokenCount || 0,
+      // Rincian modalitas untuk harga audio vs teks; null bila Google tidak mengirim rincian
+      inputAudioTokens: audioTokens(u.promptTokensDetails),
+      outputAudioTokens: audioTokens(u.responseTokensDetails ?? u.candidatesTokensDetails),
     });
   }
+}
+
+/** Jumlah token AUDIO dari daftar rincian modalitas; null bila daftar tidak ada. */
+function audioTokens(details) {
+  if (!Array.isArray(details)) return null;
+  return details.filter((d) => d && d.modality === 'AUDIO').reduce((n, d) => n + (d.tokenCount || 0), 0);
 }
 
 function createGeminiVertexProvider({ config, tokenSource, WebSocket = require('ws') }) {

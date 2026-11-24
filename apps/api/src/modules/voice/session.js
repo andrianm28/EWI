@@ -3,7 +3,7 @@
 // sambungan Gemini berturut-turut (goAway, sambung ulang). Semua event diproses berurutan lewat satu rantai janji supaya
 // urutan simpan giliran sama dengan urutan bicara. Spek: docs/designs/b19-wawancara-suara.md.
 const { questionLimit } = require('../interviews/summary');
-const { estimateCost } = require('../../ai');
+const { estimateVoiceCost } = require('../../voice/pricing');
 
 const MAX_TEXT = 8000;
 const PCM_IN_BPS = 32000; // 16 kHz x 16 bit
@@ -108,11 +108,12 @@ function createVoiceSession(deps) {
       operation: 'voice_live', provider: provider.name, model: provider.model,
       inputTokens: c.tokens.input, outputTokens: c.tokens.output,
     };
+    const priced = { ...usage, inputAudioTokens: c.tokens.inputAudio, outputAudioTokens: c.tokens.outputAudio };
     try {
       await stores.aiUsage.record(tenantId, {
         projectId: session.projectId, sessionId: session.id, userId: session.intervieweeId, submodule: session.submodule || 'tna',
         ...usage, latencyMs: c.firstAudioAt ? c.firstAudioAt - c.openedAt : null,
-        costUsd: estimateCost(usage, deps.voiceConfig || {}),
+        costUsd: estimateVoiceCost(priced, deps.voiceConfig || {}),
         audioSecondsIn: round2(c.bytesIn / PCM_IN_BPS), audioSecondsOut: round2(c.bytesOut / PCM_OUT_BPS),
       });
     } catch (e) { console.error(`Gagal mencatat biaya suara: ${e.message}`); }
@@ -122,6 +123,10 @@ function createVoiceSession(deps) {
     // Smoke etavm2 25 Nov: usageMetadata Gemini Live per giliran (prompt giliran berikutnya sudah memuat riwayat), jadi dijumlah.
     c.tokens.input += u.inputTokens || 0;
     c.tokens.output += u.outputTokens || 0;
+    // Rincian audio: null (tidak diketahui) menular, supaya biaya memakai batas atas, bukan menganggap 0 token audio
+    const add = (prev, n) => (prev === null || n === null || n === undefined ? null : prev + n);
+    c.tokens.inputAudio = add(c.tokens.inputAudio, u.inputAudioTokens);
+    c.tokens.outputAudio = add(c.tokens.outputAudio, u.outputAudioTokens);
   }
 
   async function openUpstream({ resume }) {
@@ -136,7 +141,7 @@ function createVoiceSession(deps) {
     }
     if (ended) { try { u.close(); } catch { /* */ } return undefined; }
     up = u;
-    const c = { openedAt: Date.now(), firstAudioAt: null, bytesIn: 0, bytesOut: 0, tokens: { input: 0, output: 0 }, ready: false };
+    const c = { openedAt: Date.now(), firstAudioAt: null, bytesIn: 0, bytesOut: 0, tokens: { input: 0, output: 0, inputAudio: 0, outputAudio: 0 }, ready: false };
     conn = c;
     const mine = (fn) => (p) => enqueue(() => (up === u && !ended ? fn(p) : undefined));
     const readyTimer = later(() => enqueue(() => (up === u && !c.ready ? onUpstreamFailure({ code: 'VOICE_UNAVAILABLE', setup: true }) : undefined)), limits.readyTimeoutMs);
