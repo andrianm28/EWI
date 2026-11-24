@@ -186,6 +186,8 @@ run('seed-dev: tenant demo untuk demo langsung (Postgres)', () => {
     const asLearner = (await post(tok.pimpinan, 'learner')).body.token;
     const back = (await post(asLearner, 'supervisor')).body.token;
     await request(app).get('/api/dashboard').set({ Authorization: `Bearer ${back}` }).expect(200);
+    // Improvement Needs: HR sudah memberi akses tindakan perbaikan (K1), seperti Atasan Demo
+    await request(app).get('/api/ina/actions').set({ Authorization: `Bearer ${back}` }).expect(200);
     // tetap pimpinan yang belum ditugaskan HR (gap B4)
     const hr = (await get('hr', '/cca/assignments').expect(200)).body.data;
     expect(hr.leaders.find((l) => l.name === 'Kepala Divisi Demo')).toMatchObject({ status: 'none' });
