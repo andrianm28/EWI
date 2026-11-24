@@ -74,7 +74,7 @@ const isAdmin = (role) => [ROLES.HR_ADMIN, ROLES.ETA_ADMIN].includes(role);
 // dipenuhi. Sama persis dengan pemeriksaan `person.role` di DELETE /:userId.
 const isAdminAccount = (user) => isAdmin(user.primaryRole || user.role);
 
-function employeeRouter({ stores, flags, audit }) {
+function employeeRouter({ stores, flags, audit, voice = null }) {
   const r = express.Router();
   const hr = requireRole(ROLES.HR_ADMIN);
 
@@ -101,6 +101,8 @@ function employeeRouter({ stores, flags, audit }) {
           employeeIds: [me], type, requestId: o.request.id, sessions: o.sessionIds.length, objectType: 'interview_session', objectIds: o.sessionIds,
         }, { transaction }),
       });
+      // B19: wawancara suara yang sedang berjalan berhenti seketika (audio tidak lagi dikirim ke Google)
+      if (voice) for (const id of out.sessionIds) await voice.registry.stop(id, 'withdrawn');
       return res.status(out.created ? 201 : 200).json({ data: { ...out.request, sessions: out.sessionIds.length } });
     }));
 

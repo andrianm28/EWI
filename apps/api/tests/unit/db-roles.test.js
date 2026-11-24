@@ -98,7 +98,7 @@ describe('PK-07 / R-3 pengaman turun migrasi enkripsi', () => {
     expect(Object.keys(GUARDS).sort()).toEqual([
       '20261113000008-tenant-keys.js', '20261117000400-ai-review.js', '20261117000501-consent-version.js',
       '20261119000200-user-roles.js', '20261119000800-permintaan-data-karyawan.js',
-      '20261123001000-cca-wawancara.js', '20261123003000-lim-wawancara-ulang.js',
+      '20261123001000-cca-wawancara.js', '20261123003000-lim-wawancara-ulang.js', '20261125001900-b19-wawancara-suara.js',
     ]);
   });
 });

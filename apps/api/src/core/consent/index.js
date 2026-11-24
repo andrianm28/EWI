@@ -18,6 +18,16 @@ const CONSENT_VERSIONS = Object.freeze({
   ina: Object.freeze(['ina-verifikasi-v1.0']),
 });
 
+// B19 (7.1): persetujuan suara terpisah dari persetujuan utama. v0.1 hanya untuk demo dan tenant uji; flag voice.realtime
+// tetap mati untuk tenant sungguhan sampai teks v1.0 terbit dari legal (Fasha).
+const VOICE_CONSENT_VERSIONS = Object.freeze({
+  tna: Object.freeze(['tna-voice-consent-id-v0.1']),
+});
+
+const latest = (list) => (list && list.length ? list[list.length - 1] : null);
+const currentVoiceConsentVersion = (submodule) => latest(VOICE_CONSENT_VERSIONS[submodule]);
+const isAcceptedVoiceConsentVersion = (submodule, version) => (VOICE_CONSENT_VERSIONS[submodule] || []).includes(version);
+
 const currentConsentVersion = (submodule) => {
   const list = CONSENT_VERSIONS[submodule] || [];
   return list.length ? list[list.length - 1] : null;
@@ -25,4 +35,4 @@ const currentConsentVersion = (submodule) => {
 
 const isAcceptedConsentVersion = (submodule, version) => (CONSENT_VERSIONS[submodule] || []).includes(version);
 
-module.exports = { CONSENT_VERSIONS, currentConsentVersion, isAcceptedConsentVersion };
+module.exports = { CONSENT_VERSIONS, VOICE_CONSENT_VERSIONS, currentConsentVersion, isAcceptedConsentVersion, currentVoiceConsentVersion, isAcceptedVoiceConsentVersion };

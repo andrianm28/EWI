@@ -50,6 +50,22 @@ _Avoid_: pending, hold (di teks bebas)
 Keadaan gap yang belum punya wawancara selesai maupun temuan apa pun.
 _Avoid_: pending, belum dianalisis
 
+**Mode jawaban**:
+Cara karyawan menjawab wawancara akar masalah: **Ketik** (bawaan) atau **Suara**. Satu sesi bisa berpindah mode kapan saja; transkripnya tetap satu.
+_Avoid_: voice mode, mode bicara
+
+**Persetujuan suara**:
+Persetujuan tambahan berversi (terpisah dari persetujuan wawancara) bahwa suara karyawan diproses penyedia suara di luar ELGOS. ELGOS tidak menyimpan rekaman suara, hanya transkripnya.
+_Avoid_: izin mikrofon (itu izin browser, bukan persetujuan)
+
+**Sesi suara**:
+Satu sambungan suara browser ke gateway ELGOS selama wawancara; bisa memakai beberapa sambungan ke penyedia suara berturut-turut. Satu sesi wawancara punya paling banyak satu sesi suara aktif.
+_Avoid_: call, panggilan
+
+**Koreksi jawaban**:
+Teks pengganti yang karyawan tulis untuk jawaban terakhirnya (salah dengar atau salah ketik). Ringkasan dan analisis memakai koreksi; teks asli tetap tersimpan.
+_Avoid_: edit transkrip
+
 ### Platform
 
 **Tenant**:

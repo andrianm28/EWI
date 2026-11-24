@@ -29,7 +29,15 @@ async function main() {
   await ai.verify();
   console.log(`AI: ${ai.name}${ai.model && ai.model !== ai.name ? ` (${ai.model}, ${config.ai.processing})` : ''}`);
   const app = createApp({ config, stores, ai });
-  app.listen(config.port, () => console.log(`ewi-api listening on :${config.port}`));
+  const server = app.listen(config.port, () => console.log(`ewi-api listening on :${config.port}`));
+  // B19: upgrade WS /api/voice/sessions/:id/stream (gateway suara). Penyedia suara tanpa kunci di log.
+  app.locals.voice.attach(server);
+  console.log(`Suara: ${app.locals.voice.provider.name}${app.locals.voice.provider.location ? ` (${app.locals.voice.provider.model}, ${app.locals.voice.provider.location})` : ''}`);
+  // B19 4.3: SIGTERM menyimpan giliran suara yang terbuka dan mencatat biaya sebelum proses berhenti.
+  process.once('SIGTERM', () => {
+    app.locals.voice.shutdown().catch(() => {}).finally(() => server.close(() => process.exit(0)));
+    setTimeout(() => process.exit(0), 10000).unref();
+  });
   // PK-14: jalankan ulang job analisis yang tertinggal (proses mati di tengah jalan) atau gagal dan masih boleh diulang.
   const sweep = () => app.locals.analysis.sweep().catch((e) => console.error(`Penyapu analisis gagal: ${e.message}`));
   setTimeout(sweep, 5000).unref();

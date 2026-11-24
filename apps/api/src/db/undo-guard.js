@@ -13,6 +13,7 @@ const ENCRYPTED_COLUMNS = [
   ['lna_findings', 'detail'],
   ['lna_training_plan_items', 'note'],
   ['lna_interview_turns', 'text'],
+  ['lna_interview_turns', 'corrected_text'],
 ];
 
 async function encryptedDataCheck(query) {
@@ -75,6 +76,11 @@ const GUARDS = {
   // turun = wawancara ulang dampak belajar (beserta persetujuannya) hilang
   '20261123003000-lim-wawancara-ulang.js': rowsCheck([
     ['wawancara ulang dampak belajar', 'SELECT count(*)::int AS n FROM lim_reinterviews'],
+  ]),
+  // turun = bukti persetujuan suara dan koreksi transkrip karyawan hilang (B19)
+  '20261125001900-b19-wawancara-suara.js': rowsCheck([
+    ['persetujuan wawancara suara', 'SELECT count(*)::int AS n FROM lna_interview_sessions WHERE voice_consent_at IS NOT NULL'],
+    ['koreksi jawaban wawancara', 'SELECT count(*)::int AS n FROM lna_interview_turns WHERE corrected_text IS NOT NULL'],
   ]),
 };
 

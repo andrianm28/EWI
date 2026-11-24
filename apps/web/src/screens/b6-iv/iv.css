@@ -37,3 +37,20 @@
 .iv-ac:hover:not(:disabled) { background: var(--el-surface-2); }
 .iv-ac:disabled { color: var(--el-outline); cursor: not-allowed; }
 .iv-ac:focus-visible { outline: 2px solid var(--el-primary); outline-offset: 2px; }
+/* B19 wawancara suara: caption sementara, tombol Ubah, panel suara */
+.iv-chat + .iv-msg--pending { margin-top: 12px; }
+.iv-msg--pending { opacity: 0.7; font-style: italic; display: block; width: fit-content; }
+.iv-msg--pending.iv-msg--me { margin-left: auto; }
+.iv-msg__edit { margin-top: 4px; color: inherit; }
+.iv-edit { display: grid; gap: 8px; min-width: min(420px, 70vw); }
+.iv-edit .el-input { color: var(--el-on-surface); }
+.iv-voice { display: grid; gap: 12px; margin-top: 16px; padding: 12px 16px; border: 1px solid var(--el-outline-variant); border-radius: 12px; }
+.iv-voice__status { display: flex; align-items: center; gap: 8px; margin: 0; font-weight: 500; }
+.iv-voice__dot { inline-size: 10px; block-size: 10px; border-radius: 50%; background: var(--el-outline); }
+.iv-voice__dot--listening { background: var(--el-primary); }
+.iv-voice__dot--speaking { background: var(--el-tertiary, var(--el-primary)); }
+@media (prefers-reduced-motion: no-preference) { .iv-voice__dot--listening, .iv-voice__dot--speaking { animation: iv-pulse 1.4s ease-in-out infinite; } }
+@keyframes iv-pulse { 50% { opacity: 0.35; } }
+.iv-mode { border: 0; padding: 0; margin: 0; display: grid; gap: 8px; }
+.iv-mode legend { font-weight: 600; font-size: 15px; margin-bottom: 4px; }
+.iv-mode__options { display: flex; gap: 16px; flex-wrap: wrap; }

@@ -1,7 +1,7 @@
 <script setup lang="ts">
 // Sesi wawancara akar masalah (mockup layar `iv`): Undangan → Persetujuan → Wawancara → Ringkasan → Selesai.
 // Spek: docs/designs/b6-wawancara-akar-masalah.md bagian 4 (aturan A2–A12) dan 15 (kontrak layar).
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import AppShell from '@/components/AppShell.vue'
 import { ApiError } from '@/api/client'
@@ -9,10 +9,11 @@ import { UiAuditLine, UiBreadcrumb, UiButton, UiCard, UiChip, UiErrorSummary, Ui
 import { useSessionStore } from '@/stores/session'
 import PercakapanWawancara from './PercakapanWawancara.vue'
 import PersetujuanTna from './PersetujuanTna.vue'
+import PanelSuara from './PanelSuara.vue'
 import { TNA_CONSENT_VERSION } from '@/content/consent'
 import { CLASSIFICATION_LABEL } from '../b5-tna/labels'
 import { AI_PRODUCT_LABEL } from '@/api/ai'
-import { iv, stepOf, type SessionView, type Step, type Summary } from './api'
+import { iv, stepOf, type AgreePayload, type Mode, type SessionView, type Step, type Summary, type Turn } from './api'
 import { ivCrumbs } from './crumbs'
 import './iv.css'
 import '../b5-tna/tna.css'
@@ -24,6 +25,8 @@ const route = useRoute()
 const router = useRouter()
 const id = computed(() => route.params.id as string)
 const summaryOn = computed(() => session.hasFlag('tna.interview_summary'))
+// Ubah jawaban (V5) bagian dari B19, ikut flag voice.realtime (spek bagian 2)
+const voiceFlagOn = computed(() => session.hasFlag('voice.realtime'))
 
 const s = ref<SessionView | null>(null)
 const turns = computed(() => s.value?.turns ?? [])
@@ -41,12 +44,25 @@ const errors = computed(() => [
   ...(error.value ? [{ message: error.value }] : []),
 ])
 
+// B19 wawancara suara
+const mode = computed<Mode>(() => s.value?.mode ?? 'text')
+const voiceStream = ref<MediaStream | null>(null)
+const caption = ref<{ speaker: 'ai' | 'human'; text: string } | null>(null)
+const voiceNotice = ref('')
+const canReturnToVoice = ref(false)
+const panelKey = ref(0)
+const voiceElsewhere = ref(false)
+const voiceHere = () => { voiceElsewhere.value = false; panelKey.value += 1 }
+const releaseMic = () => { voiceStream.value?.getTracks().forEach((t) => t.stop()); voiceStream.value = null }
+
 async function load({ keepSummary = false } = {}) {
   const r = (await iv.session(id.value)).data
   s.value = r
   const t = r.turns ?? []
-  // Setelah muat ulang: AI selesai bila giliran terakhir milik karyawan atau batas pertanyaan tercapai
-  aiDone.value = t.length > 0 && (t[t.length - 1]!.speaker === 'human' || (!!r.questionLimit && t.filter((x) => x.speaker === 'ai').length >= r.questionLimit))
+  // Setelah muat ulang: mode suara memakai tanda server (ai_done_at); mode teks: AI selesai bila giliran terakhir milik
+  // karyawan atau batas pertanyaan tercapai
+  aiDone.value = r.aiDone === true || (r.mode !== 'voice' && t.length > 0
+    && (t[t.length - 1]!.speaker === 'human' || (!!r.questionLimit && t.filter((x) => x.speaker === 'ai' && !x.interrupted).length >= r.questionLimit)))
   if (!keepSummary) summary.value = null
   // Ringkasan gagal dimuat tidak boleh mengosongkan layar: langkah sesi tetap tampil bersama galatnya
   if (!summary.value && stepOf(r) === 'summary' && summaryOn.value && r.transcriptVisible !== false) summary.value = (await iv.getSummary(id.value)).data
@@ -69,13 +85,62 @@ const steps = computed(() => [
 ])
 const STEP_KEY: Record<Step, string> = { expired: 'undangan', consent: 'persetujuan', chat: 'wawancara', summary: 'ringkasan', done: 'selesai', closed: 'selesai' }
 
-const consent = () => run(async () => {
-  const r = (await iv.consent(id.value, s.value?.consentVersionRequired || TNA_CONSENT_VERSION)).data
+const consent = (p: AgreePayload = { mode: 'text' }) => run(async () => {
+  const voice = p.mode === 'voice' && p.voiceConsentVersion ? { mode: 'voice' as const, voiceConsentVersion: p.voiceConsentVersion } : undefined
+  let r
+  try { r = (await iv.consent(id.value, s.value?.consentVersionRequired || TNA_CONSENT_VERSION, voice)).data } catch (e) { p.stream?.getTracks().forEach((t) => t.stop()); throw e }
   if (!s.value) return
-  // Pertanyaan pertama datang di respons persetujuan; sesi lanjut ke langkah wawancara tanpa muat ulang
-  s.value = { ...s.value, status: 'in_progress', step: s.value.step ? 'chat' : undefined, turns: r.question ? [r.question] : [] }
+  // Mode teks: pertanyaan pertama datang di respons persetujuan. Mode suara: AI menyapa lewat panel suara.
+  voiceStream.value = voice ? p.stream ?? null : null
+  s.value = { ...s.value, status: 'in_progress', step: s.value.step ? 'chat' : undefined, turns: r.question ? [r.question] : [], mode: voice ? 'voice' : 'text', hasVoiceConsent: Boolean(voice) || s.value.hasVoiceConsent }
   aiDone.value = false
 }, 'Persetujuan gagal disimpan')
+
+function onVoiceTurn(t: Turn) {
+  const list = s.value?.turns ?? (s.value!.turns = [])
+  if (t.id != null && list.some((x) => x.id === t.id)) return
+  list.push(t)
+  if (t.speaker === 'human' && s.value && typeof s.value.answerCount === 'number') s.value.answerCount += 1
+}
+/** Pindah ke teks: dari tombol Ketik saja atau otomatis saat sambungan suara gagal (7.3). */
+const toText = (notice = '', allowBack = false) => run(async () => {
+  releaseMic()
+  caption.value = null
+  const r = (await iv.switchMode(id.value, 'text')).data
+  if (!s.value) return
+  s.value.mode = 'text'
+  if (r.question) (s.value.turns ?? (s.value.turns = [])).push(r.question)
+  voiceNotice.value = notice
+  canReturnToVoice.value = allowBack
+}, 'Gagal pindah ke mode ketik')
+const backToVoice = () => run(async () => {
+  await iv.switchMode(id.value, 'voice')
+  if (!s.value) return
+  s.value.mode = 'voice'
+  voiceNotice.value = ''
+  canReturnToVoice.value = false
+  panelKey.value += 1
+}, 'Gagal kembali ke mode suara')
+function onVoiceEnded(reason: string, message?: string) {
+  caption.value = null
+  releaseMic()
+  if (reason === 'done') { aiDone.value = true; return }
+  if (reason === 'time') return toText('Batas waktu wawancara suara habis. Lanjutkan dengan mengetik.', false)
+  if (reason === 'provider') return toText(`${message || 'Sambungan suara terputus.'} Anda bisa melanjutkan dengan mengetik.`, true)
+  if (reason === 'blocked') return toText(`${message || 'Wawancara suara tidak bisa dilanjutkan.'} Lanjutkan dengan mengetik.`, false)
+  // Tab lain yang sekarang memegang sesi suara: jangan pindah mode (akan menghentikan tab itu); tawarkan lanjut di sini
+  if (reason === 'superseded') { voiceElsewhere.value = true; return undefined }
+  if (reason === 'session_changed' || reason === 'withdrawn') return run(load, 'Sesi wawancara tidak bisa dimuat')
+  return undefined
+}
+const editTurn = (t: Turn, text: string, done: (ok: boolean) => void) => run(async () => {
+  try {
+    const r = (await iv.correct(id.value, t.id!, text)).data
+    Object.assign(t, r)
+    done(true)
+  } catch (e) { done(false); throw e }
+}, 'Jawaban gagal diubah')
+onBeforeUnmount(releaseMic)
 
 function send(text: string, restore: (t: string) => void) {
   if (!s.value) return
@@ -147,12 +212,31 @@ const audit = computed(() => {
           <p>Undangan sudah berakhir. Minta HR memperpanjang undangan Anda.</p>
         </template>
 
-        <PersetujuanTna v-else-if="step === 'consent'" :version="s.consentVersionRequired || TNA_CONSENT_VERSION" :busy="busy" @agree="consent" @later="router.push({ name: 'iv' })" />
+        <PersetujuanTna
+          v-else-if="step === 'consent'" :version="s.consentVersionRequired || TNA_CONSENT_VERSION" :busy="busy"
+          :voice-available="s.voiceAvailable" :voice-version="s.voiceConsentVersionRequired" @agree="consent" @later="router.push({ name: 'iv' })"
+        />
 
         <template v-else-if="step === 'chat'">
-          <PercakapanWawancara :turns="turns" :question-limit="s.questionLimit" :can-answer="!aiDone" :busy="busy" @send="send">
-            <template #masukan-suara />
+          <PercakapanWawancara
+            :turns="turns" :question-limit="s.questionLimit" :can-answer="!aiDone" :busy="busy" :mode="mode" :pending="caption" :can-edit="voiceFlagOn"
+            @send="send" @edit="editTurn"
+          >
+            <template #masukan-suara>
+              <div v-if="voiceElsewhere" class="iv-voice" data-testid="suara-di-tab-lain">
+                <p role="status">Wawancara suara sedang dibuka di tab atau perangkat lain.</p>
+                <div class="iv-actions"><UiButton variant="outlined" @click="voiceHere">Lanjutkan di sini</UiButton></div>
+              </div>
+              <PanelSuara
+                v-else :key="panelKey" :session-id="id" :stream="voiceStream"
+                @turn="onVoiceTurn" @caption="caption = $event" @ended="onVoiceEnded" @type="toText()"
+              />
+            </template>
           </PercakapanWawancara>
+          <UiNote v-if="voiceNotice && mode === 'text'" tone="warning" class="iv-mt">{{ voiceNotice }}</UiNote>
+          <div v-if="mode === 'text' && !aiDone && s.voiceAvailable && s.hasVoiceConsent && canReturnToVoice" class="iv-actions iv-mt">
+            <UiButton variant="outlined" :disabled="busy" @click="backToVoice">Kembali ke suara</UiButton>
+          </div>
           <div class="iv-actions iv-mt">
             <template v-if="summaryOn">
               <UiButton v-if="hasAnswer" :variant="aiDone ? 'filled' : 'text'" :disabled="busy" @click="makeSummary">Lihat ringkasan temuan</UiButton>

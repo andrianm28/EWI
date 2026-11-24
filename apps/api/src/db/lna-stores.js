@@ -18,6 +18,13 @@ const JOB_FUNCTION_COLS = `f.id, f.job_role_id AS "jobRoleId", f.fn_order AS "or
   COALESCE((SELECT array_agg(m.competency_id ORDER BY m.competency_id) FROM lna_job_function_competencies m
             WHERE m.job_function_id = f.id AND m.tenant_id = f.tenant_id), '{}') AS "competencyIds"`;
 
+/** B19 7.4: bentuk giliran untuk API. Koreksi menggantikan `text`; teks asli hanya ikut bila dikoreksi. */
+function turnView({ correctedText, ...t }) {
+  const out = { ...t, mode: t.mode || 'text', interrupted: Boolean(t.interrupted), corrected: correctedText != null };
+  if (correctedText != null) { out.originalText = t.text; out.text = correctedText; }
+  return out;
+}
+
 /** Baris { reviewStatus, n } menjadi hitungan per status review, status tanpa baris bernilai 0. */
 function byReviewStatus(rows) {
   const out = { draft: 0, approved: 0, edited: 0, rejected: 0 };
@@ -483,7 +490,9 @@ function createLnaStores(sequelize, { cipher } = {}) {
                          s.duration_minutes AS "durationMinutes", s.focus_kind AS "focusKind", s.focus_label AS "focusLabel",
                          s.assigned_by AS "assignedBy", ab.name AS "assignedByName",
                          s.summary_at AS "summaryAt", s.summary_confirmed_at AS "summaryConfirmedAt",
-                         s.summary_disputed AS "summaryDisputed", s.restart_count AS "restartCount"
+                         s.summary_disputed AS "summaryDisputed", s.restart_count AS "restartCount",
+                         s.voice_consent_version AS "voiceConsentVersion", s.voice_consent_at AS "voiceConsentAt", s.voice_epoch AS "voiceEpoch",
+                         s.voice_started_at AS "voiceStartedAt", s.ai_done_at AS "aiDoneAt", s.transcript_edited_at AS "transcriptEditedAt"
                     FROM lna_interview_sessions s
                     LEFT JOIN users ab ON ab.id = s.assigned_by AND ab.tenant_id = s.tenant_id
                    WHERE s.tenant_id = :tenantId AND s.id = :id`, { tenantId, id });
@@ -494,11 +503,12 @@ function createLnaStores(sequelize, { cipher } = {}) {
      * Simpan ringkasan hanya bila sesi masih berjalan, belum punya ringkasan, belum diulang, dan tidak ada jawaban baru
      * sejak permintaan dimulai (A2). null bila kalah balapan.
      */
-    async saveSummary(tenantId, id, findings, { restartCount, turnCount }) {
+    async saveSummary(tenantId, id, findings, { restartCount, turnCount, editedAt = null }) {
       // turnCount: jumlah giliran saat transkrip dibaca. Jawaban yang masuk selama AI meringkas membatalkan ringkasan ini.
       // Kunci baris lebih dulu (menunggu addTurn yang sedang menyimpan), lalu hitung giliran di pernyataan baru supaya
       // jawaban yang baru commit ikut terhitung.
-      const replacements = { tenantId, id, restartCount, turnCount, findings: JSON.stringify(await cipher.encryptJson(tenantId, findings)) };
+      // B19: editedAt = transcript_edited_at saat transkrip dibaca; koreksi jawaban di tengah pembuatan ringkasan membatalkannya.
+      const replacements = { tenantId, id, restartCount, turnCount, editedAt, findings: JSON.stringify(await cipher.encryptJson(tenantId, findings)) };
       // Bergantung pada READ COMMITTED (bawaan): hitungan giliran di pernyataan kedua memakai snapshot baru.
       return sequelize.transaction(async (transaction) => {
         const q = (sql) => sequelize.query(sql, { replacements, transaction });
@@ -506,6 +516,7 @@ function createLnaStores(sequelize, { cipher } = {}) {
         const [[row]] = await q(`UPDATE lna_interview_sessions s SET summary_findings = CAST(:findings AS jsonb), summary_at = now()
                       WHERE s.tenant_id = :tenantId AND s.id = :id AND s.status = 'in_progress' AND s.summary_at IS NULL AND s.restart_count = :restartCount
                         AND (SELECT count(*) FROM lna_interview_turns t WHERE t.session_id = s.id) = :turnCount
+                        AND s.transcript_edited_at IS NOT DISTINCT FROM CAST(:editedAt AS timestamptz)
                       RETURNING s.id, s.summary_at AS "summaryAt"`);
         return row || null;
       });
@@ -557,7 +568,9 @@ function createLnaStores(sequelize, { cipher } = {}) {
                                     WHERE s.id = t.session_id AND s.tenant_id = :tenantId AND s.id = :id RETURNING t.id`);
         const [[row]] = await q(`UPDATE lna_interview_sessions
                                     SET status = 'scheduled', consent_at = NULL, consent_version = NULL, started_at = NULL,
-                                        summary_findings = NULL, summary_at = NULL, restart_count = restart_count + 1
+                                        summary_findings = NULL, summary_at = NULL, restart_count = restart_count + 1,
+                                        mode = 'text', voice_consent_version = NULL, voice_consent_at = NULL, voice_epoch = voice_epoch + 1,
+                                        voice_started_at = NULL, ai_done_at = NULL, transcript_edited_at = NULL
                                   WHERE tenant_id = :tenantId AND id = :id
                                   RETURNING id, status, restart_count AS "restartCount"`);
         return { ...row, deletedTurns: deleted.length };
@@ -622,21 +635,30 @@ function createLnaStores(sequelize, { cipher } = {}) {
                       WHERE tenant_id = :tenantId AND id = :id AND submodule = 'tna' AND status = 'scheduled' AND assigned_by IS NOT NULL
                       RETURNING id, status`, { tenantId, id });
     },
+    /**
+     * Giliran sesi (B19 7.4): `text` = koreksi karyawan bila ada (dipakai ringkasan dan analisis), `originalText` hanya
+     * ada pada giliran yang dikoreksi.
+     */
     async turns(tenantId, sessionId) {
-      const rows = await select(`SELECT t.speaker, t.text, t.at FROM lna_interview_turns t
+      const rows = await select(`SELECT t.id, t.speaker, t.text, t.corrected_text AS "correctedText", t.at, t.mode, t.interrupted
+                                   FROM lna_interview_turns t
                                    JOIN lna_interview_sessions s ON s.id = t.session_id
                                   WHERE s.tenant_id = :tenantId AND t.session_id = :sessionId ORDER BY t.id`, { tenantId, sessionId });
-      return open(tenantId, rows, ['text']);
+      return (await open(tenantId, rows, ['text', 'correctedText'])).map(turnView);
     },
     /**
      * Mulai sesi setelah persetujuan (B8): hanya dari 'scheduled' dan bila persetujuan belum ditarik, supaya
      * penarikan yang tiba bersamaan tidak tertimpa. null bila syarat tidak terpenuhi.
      */
-    async start(tenantId, id, { consentAt, consentVersion }) {
+    async start(tenantId, id, { consentAt, consentVersion, mode = 'text', voiceConsentVersion = null }) {
+      // B19: mode suara menyimpan persetujuan suara di UPDATE yang sama
+      const voice = mode === 'voice';
       return insert(`UPDATE lna_interview_sessions
-                        SET status = 'in_progress', consent_at = :consentAt, consent_version = :consentVersion, started_at = :consentAt
+                        SET status = 'in_progress', consent_at = :consentAt, consent_version = :consentVersion, started_at = :consentAt,
+                            mode = :mode, voice_consent_version = :voiceConsentVersion,
+                            voice_consent_at = CASE WHEN :voice THEN CAST(:consentAt AS timestamptz) ELSE NULL END
                       WHERE tenant_id = :tenantId AND id = :id AND status = 'scheduled' AND consent_withdrawn_at IS NULL
-                      RETURNING id, status`, { tenantId, id, consentAt, consentVersion });
+                      RETURNING id, status, mode`, { tenantId, id, consentAt, consentVersion, mode: voice ? 'voice' : 'text', voiceConsentVersion: voice ? voiceConsentVersion : null, voice });
     },
     /**
      * Satu pintu penyimpanan giliran. Giliran hanya tersimpan selama sesi masih berjalan (B8: sesi bisa dihentikan
@@ -645,18 +667,77 @@ function createLnaStores(sequelize, { cipher } = {}) {
      * dimulai (B6 A4). null bila tidak tersimpan.
      */
     async addTurn(tenantId, sessionId, speaker, text, opts = {}) {
-      const rep = { tenantId, sessionId, speaker, text: await enc(tenantId, text) };
+      // B19: opts.mode ('text' | 'voice'), opts.interrupted; guard.voiceEpoch = penulis suara berlaku (fencing token, spek 4.1),
+      // guard.mode = sesi harus di mode ini (jalur teks menolak menulis saat sesi di mode suara).
+      const rep = { tenantId, sessionId, speaker, text: await enc(tenantId, text), mode: opts.mode === 'voice' ? 'voice' : 'text', interrupted: Boolean(opts.interrupted) };
       let guard = '';
       if (opts.guard) {
-        // FOR SHARE: bila ulangi/ringkasan sedang memegang kunci baris, tunggu lalu periksa ulang penjaga pada baris yang sudah commit
-        guard = ' AND s.summary_at IS NULL AND s.restart_count = :restartCount FOR SHARE OF s';
+        guard = ' AND s.summary_at IS NULL AND s.restart_count = :restartCount';
         rep.restartCount = opts.guard.restartCount ?? 0;
+        if (opts.guard.voiceEpoch !== undefined) {
+          guard += " AND s.mode = 'voice' AND s.ai_done_at IS NULL AND s.voice_epoch = :voiceEpoch";
+          rep.voiceEpoch = opts.guard.voiceEpoch;
+        } else if (opts.guard.mode) {
+          guard += ' AND s.mode = :guardMode';
+          rep.guardMode = opts.guard.mode;
+        }
+        // FOR SHARE: bila ulangi/ringkasan sedang memegang kunci baris, tunggu lalu periksa ulang penjaga pada baris yang sudah commit
+        guard += ' FOR SHARE OF s';
       }
-      const row = await insert(`INSERT INTO lna_interview_turns (session_id, speaker, text)
-                                SELECT s.id, :speaker, :text FROM lna_interview_sessions s
+      const row = await insert(`INSERT INTO lna_interview_turns (session_id, speaker, text, mode, interrupted)
+                                SELECT s.id, :speaker, :text, :mode, :interrupted FROM lna_interview_sessions s
                                  WHERE s.tenant_id = :tenantId AND s.id = :sessionId AND s.status = 'in_progress'${guard}
-                                RETURNING speaker, at`, rep);
-      return row ? { ...row, text } : null;
+                                RETURNING id, speaker, at, mode, interrupted`, rep);
+      return row ? turnView({ ...row, text, correctedText: null }) : null;
+    },
+    /** B19: tiket suara baru menaikkan epoch; penulis suara dengan epoch lama tidak bisa menyimpan lagi. */
+    async bumpVoiceEpoch(tenantId, id) {
+      const row = await insert(`UPDATE lna_interview_sessions SET voice_epoch = voice_epoch + 1
+                                 WHERE tenant_id = :tenantId AND id = :id RETURNING voice_epoch AS "voiceEpoch"`, { tenantId, id });
+      return row ? row.voiceEpoch : null;
+    },
+    /** B19: pindah mode jawaban. Epoch selalu naik; voiceConsentVersion dicatat bila belum ada persetujuan suara. */
+    async setMode(tenantId, id, mode, { voiceConsentVersion = null } = {}) {
+      return (await insert(`UPDATE lna_interview_sessions
+                        SET mode = :mode, voice_epoch = voice_epoch + 1,
+                            voice_consent_version = COALESCE(voice_consent_version, CAST(:voiceConsentVersion AS varchar)),
+                            voice_consent_at = CASE WHEN voice_consent_at IS NULL AND CAST(:voiceConsentVersion AS varchar) IS NOT NULL THEN now() ELSE voice_consent_at END
+                      WHERE tenant_id = :tenantId AND id = :id AND status = 'in_progress' AND summary_at IS NULL AND ai_done_at IS NULL
+                      RETURNING id, mode, voice_epoch AS "voiceEpoch", voice_consent_at AS "voiceConsentAt"`, { tenantId, id, mode, voiceConsentVersion })) || null;
+    },
+    /** B19 6.3: waktu sesi suara pertama terhubung (batas waktu per sesi wawancara). Diisi sekali. */
+    async markVoiceStarted(tenantId, id) {
+      const row = await insert(`UPDATE lna_interview_sessions SET voice_started_at = COALESCE(voice_started_at, now())
+                                 WHERE tenant_id = :tenantId AND id = :id RETURNING voice_started_at AS "voiceStartedAt"`, { tenantId, id });
+      return row ? row.voiceStartedAt : null;
+    },
+    /** B19 6.2: AI selesai bertanya di mode suara. Hanya penulis suara yang berlaku. */
+    async markAiDone(tenantId, id, { voiceEpoch }) {
+      return (await insert(`UPDATE lna_interview_sessions SET ai_done_at = now()
+                      WHERE tenant_id = :tenantId AND id = :id AND status = 'in_progress' AND summary_at IS NULL AND ai_done_at IS NULL
+                        AND mode = 'voice' AND voice_epoch = :voiceEpoch
+                      RETURNING id, ai_done_at AS "aiDoneAt"`, { tenantId, id, voiceEpoch })) || null;
+    },
+    /**
+     * B19 (V5): koreksi jawaban karyawan terbaru. Penjaga restart_count + FOR SHARE seperti addTurn. Kembalian: giliran
+     * terkoreksi, { error: 'NOT_LATEST_ANSWER' }, atau null bila sesi berubah.
+     */
+    async correctTurn(tenantId, sessionId, turnId, text, { restartCount }) {
+      const textEnc = await enc(tenantId, text);
+      return sequelize.transaction(async (transaction) => {
+        const run = (sql) => sequelize.query(sql, { replacements: { tenantId, sessionId, turnId, restartCount, text: textEnc }, transaction });
+        const [[s]] = await run(`SELECT id FROM lna_interview_sessions WHERE tenant_id = :tenantId AND id = :sessionId AND status = 'in_progress'
+                                    AND summary_at IS NULL AND restart_count = :restartCount FOR SHARE`);
+        if (!s) return null;
+        const [[latest]] = await run(`SELECT id FROM lna_interview_turns WHERE session_id = :sessionId AND speaker = 'human' ORDER BY id DESC LIMIT 1`);
+        if (!latest || String(latest.id) !== String(turnId)) return { error: 'NOT_LATEST_ANSWER' };
+        const [[row]] = await run(`UPDATE lna_interview_turns SET corrected_text = :text WHERE id = :turnId AND session_id = :sessionId
+                                    RETURNING id, speaker, text, corrected_text AS "correctedText", at, mode, interrupted`);
+        // Presisi milidetik: nilai ini kembali lewat Date JS ke penjaga saveSummary (editedAt)
+        await run("UPDATE lna_interview_sessions SET transcript_edited_at = date_trunc('milliseconds', clock_timestamp()) WHERE tenant_id = :tenantId AND id = :sessionId");
+        const [opened] = await open(tenantId, [row], ['text', 'correctedText']);
+        return turnView(opened);
+      });
     },
     /** Tutup sesi hanya bila masih berjalan; null bila sudah ditutup permintaan lain (PK-14). */
     async close(tenantId, id) {
@@ -1703,10 +1784,10 @@ function createLnaStores(sequelize, { cipher } = {}) {
   const aiUsage = {
     async record(tenantId, r) {
       await sequelize.query(`INSERT INTO ai_usage_logs (tenant_id, project_id, session_id, user_id, submodule, operation, provider, model,
-                                                        input_tokens, output_tokens, latency_ms, cost_usd)
+                                                        input_tokens, output_tokens, latency_ms, cost_usd, audio_seconds_in, audio_seconds_out)
                              VALUES (:tenantId, :projectId, :sessionId, :userId, :submodule, :operation, :provider, :model,
-                                     :inputTokens, :outputTokens, :latencyMs, :costUsd)`,
-      { replacements: withNulls({ tenantId, ...r }, ['projectId', 'sessionId', 'userId', 'submodule', 'latencyMs', 'costUsd']) });
+                                     :inputTokens, :outputTokens, :latencyMs, :costUsd, :audioSecondsIn, :audioSecondsOut)`,
+      { replacements: withNulls({ tenantId, ...r }, ['projectId', 'sessionId', 'userId', 'submodule', 'latencyMs', 'costUsd', 'audioSecondsIn', 'audioSecondsOut']) });
     },
     async sessionTotals(tenantId, sessionId) {
       return one(`SELECT count(*)::int AS calls, COALESCE(sum(input_tokens), 0)::int AS "inputTokens",

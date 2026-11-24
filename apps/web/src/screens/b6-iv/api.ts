@@ -4,7 +4,14 @@ import { useSessionStore } from '@/stores/session'
 
 export type Step = 'expired' | 'consent' | 'chat' | 'summary' | 'done' | 'closed'
 export type SummaryState = 'confirmed' | 'disputed' | 'unchecked' | 'pending' | 'not_applicable'
-export interface Turn { speaker: 'ai' | 'human'; text: string; at: string }
+export interface Turn {
+  speaker: 'ai' | 'human'; text: string; at: string
+  /** B19: id giliran (koreksi), mode jawaban, tanda disela, koreksi karyawan (originalText = teks sebelum dikoreksi). */
+  id?: string | number; mode?: 'text' | 'voice'; interrupted?: boolean; corrected?: boolean; originalText?: string
+}
+export type Mode = 'text' | 'voice'
+/** B19: hasil langkah Persetujuan. stream = mikrofon yang sudah diizinkan, diteruskan ke panel suara. */
+export interface AgreePayload { mode: Mode; voiceConsentVersion?: string; stream?: MediaStream }
 export interface ListSession {
   id: string; intervieweeId: string; status: string; inviteExpiresAt?: string | null; focusLabel?: string | null; durationMinutes?: number | null
   /** B8: persetujuan ditarik; hanya dikirim ke HR dan yang diwawancarai. */
@@ -17,6 +24,8 @@ export interface SessionView {
   summaryAt?: string | null; summaryConfirmedAt?: string | null; sessionCode?: string
   /** B8: persetujuan ditarik (sesi berhenti, data tetap sampai HR menghapus). */
   consentWithdrawnAt?: string | null
+  /** B19 wawancara suara */
+  mode?: Mode; aiDone?: boolean; hasVoiceConsent?: boolean; voiceAvailable?: boolean; voiceConsentVersionRequired?: string | null
 }
 export interface SummaryFinding { title: string; detail: string | null; category: 'training' | 'non_training'; confidence: number | null }
 export interface Summary { findings: SummaryFinding[]; createdAt: string; confirmedAt: string | null; state: SummaryState }
@@ -27,7 +36,11 @@ const post = <T>(path: string, body: unknown = {}) => call<T>(path, { method: 'P
 export const iv = {
   list: () => call<{ data: ListSession[] }>(''),
   session: (id: string) => call<{ data: SessionView }>(`/${id}`),
-  consent: (id: string, consentVersion: string) => post<{ data: { question: Turn | null } }>(`/${id}/consent`, { consentVersion }),
+  consent: (id: string, consentVersion: string, voice?: { mode: 'voice'; voiceConsentVersion: string }) =>
+    post<{ data: { question: Turn | null; mode?: Mode } }>(`/${id}/consent`, { consentVersion, ...(voice ?? {}) }),
+  voiceTicket: (id: string) => post<{ data: { ticket: string; path: string; expiresIn: number } }>(`/${id}/voice/ticket`),
+  switchMode: (id: string, to: Mode, voiceConsentVersion?: string) => post<{ data: { mode: Mode; question?: Turn | null } }>(`/${id}/voice/switch`, { to, voiceConsentVersion }),
+  correct: (id: string, turnId: string | number, text: string) => call<{ data: Turn }>(`/${id}/turns/${turnId}`, { method: 'PATCH', body: JSON.stringify({ text }) }),
   answer: (id: string, text: string) => post<{ data: { question: Turn | null; done: boolean } }>(`/${id}/turns`, { text }),
   complete: (id: string) => post<{ data: { status: string } }>(`/${id}/complete`),
   makeSummary: (id: string) => post<{ data: Summary }>(`/${id}/summary`),

@@ -1,22 +1,37 @@
 <script setup lang="ts">
 // Persetujuan wawancara TNA (PM-9, teks legal v1.0) dengan perilaku mockup: tombol selalu aktif, tanpa centang muncul ringkasan galat.
+// B19: bila suara tersedia, fieldset "Cara menjawab" (Ketik bawaan / Suara) dengan persetujuan suara terpisah (v0.1, draf).
 import { ref } from 'vue'
 import { UiButton, UiErrorSummary } from '@/ui'
+import type { AgreePayload, Mode } from './api'
+import { MIC_CONSTRAINTS } from './audio'
 import './iv.css'
 
-defineProps<{ version: string; busy?: boolean }>()
-const emit = defineEmits<{ agree: []; later: [] }>()
+const props = defineProps<{ version: string; busy?: boolean; voiceAvailable?: boolean; voiceVersion?: string | null }>()
+const emit = defineEmits<{ agree: [payload: AgreePayload]; later: [] }>()
 const agreed = ref(false)
+const mode = ref<Mode>('text')
+const voiceAgreed = ref(false)
+const checking = ref(false)
 const errors = ref<{ message: string; fieldId?: string }[]>([])
 
-function next() {
-  if (!agreed.value) {
-    errors.value = [{ message: 'Centang persetujuan untuk melanjutkan', fieldId: 'iv-consent' }]
-    // UiErrorSummary mengambil fokus dan dibacakan; tautannya membawa ke kotak centang
-    return
-  }
-  errors.value = []
-  emit('agree')
+async function next() {
+  const list: { message: string; fieldId?: string }[] = []
+  if (!agreed.value) list.push({ message: 'Centang persetujuan untuk melanjutkan', fieldId: 'iv-consent' })
+  if (mode.value === 'voice' && !voiceAgreed.value) list.push({ message: 'Centang persetujuan suara, atau pilih Ketik', fieldId: 'iv-voice-consent' })
+  errors.value = list
+  // UiErrorSummary mengambil fokus dan dibacakan; tautannya membawa ke kotak centang
+  if (list.length) return
+  if (mode.value !== 'voice' || !props.voiceVersion) return emit('agree', { mode: 'text' })
+  // Izin mikrofon diminta di sini; stream diteruskan ke panel suara supaya izin tidak diminta dua kali
+  checking.value = true
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia(MIC_CONSTRAINTS)
+    emit('agree', { mode: 'voice', voiceConsentVersion: props.voiceVersion, stream })
+  } catch {
+    mode.value = 'text'
+    errors.value = [{ message: 'Mikrofon tidak bisa dipakai (izin ditolak atau tidak ada mikrofon). Pilihan kembali ke Ketik; Anda bisa melanjutkan dengan mengetik.', fieldId: 'iv-mode-text' }]
+  } finally { checking.value = false }
 }
 </script>
 
@@ -55,8 +70,27 @@ function next() {
         <input id="iv-consent" v-model="agreed" type="checkbox" data-testid="consent-check">
         <span>Saya sudah membaca keterangan di atas dan setuju mengikuti wawancara.</span>
       </label>
+      <fieldset v-if="voiceAvailable && voiceVersion" class="iv-mode" data-testid="mode-jawab">
+        <legend>Cara menjawab</legend>
+        <div class="iv-mode__options">
+          <label class="el-check"><input id="iv-mode-text" v-model="mode" type="radio" name="iv-mode" value="text"><span>Ketik</span></label>
+          <label class="el-check"><input id="iv-mode-voice" v-model="mode" type="radio" name="iv-mode" value="voice"><span>Suara</span></label>
+        </div>
+        <template v-if="mode === 'voice'">
+          <p>
+            Dengan suara, AI bertanya dengan suara dan Anda menjawab lewat mikrofon. Suara Anda diproses oleh Google Gemini Live di
+            Google Cloud, dan lokasi pemrosesannya tidak dijamin di Indonesia. <strong>ELGOS tidak menyimpan rekaman suara</strong>,
+            hanya teks percakapannya. Anda bisa pindah ke mengetik kapan saja.
+          </p>
+          <label class="el-check">
+            <input id="iv-voice-consent" v-model="voiceAgreed" type="checkbox" data-testid="voice-consent-check">
+            <span>Saya setuju suara saya diproses seperti dijelaskan di atas.</span>
+          </label>
+          <p class="el-muted iv-small">{{ voiceVersion }}</p>
+        </template>
+      </fieldset>
       <div class="iv-actions">
-        <UiButton :disabled="busy" @click="next">Lanjut ke wawancara</UiButton>
+        <UiButton :disabled="busy || checking" @click="next">Lanjut ke wawancara</UiButton>
         <UiButton variant="outlined" @click="emit('later')">Tidak sekarang</UiButton>
       </div>
       <p class="el-muted iv-small">{{ version }}</p>

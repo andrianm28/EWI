@@ -13,6 +13,8 @@ const DEMO_FLAGS = Object.freeze([
   // layar mockup demo 25 Nov
   'tna.interview_assignment', 'tna.interview_summary', 'tna.review_workspace',
   'cca.interview', 'dna.development', 'ina.ai_verification', 'assistant', 'lim.reinterview',
+  // B19 wawancara suara (penyedia ditentukan VOICE_PROVIDER deploy; tanpa kunci = fake di dev)
+  'voice.realtime',
 ]);
 
 module.exports = { DEMO_FLAGS };

@@ -10,7 +10,7 @@ import { ID_KOMPETENSI } from './tna-gap'
 export const FLAG_DEMO: Record<string, boolean> = {
   'tna.interview_assignment': true, 'tna.interview_summary': true, 'tna.review_workspace': true,
   'cca.interview': true, 'dna.development': true, 'ina.ai_verification': true, assistant: true,
-  'lim.reinterview': true,
+  'lim.reinterview': true, 'voice.realtime': true,
   // gap B2: seed dev menyalakan ganti tampilan multi-peran; web membaca daftar peran dari /me/access, bukan flag ini
   'auth.multi_role': true,
 }
