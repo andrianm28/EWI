@@ -202,7 +202,7 @@ test('flag admin.tenant mati: layar tidak bisa dibuka', async ({ page }) => {
   await expect(page).not.toHaveURL(/\/admin\/pengguna$/)
 })
 
-test('triase P7 ADM-1: HR yang membuka layar admin lewat alamat mendapat tautan antar tiga layar; menu tetap 1:1 mockup', async ({ page }) => {
+test('triase P7 ADM-1: Super Admin yang membuka layar admin lewat alamat mendapat tautan antar tiga layar; menu tetap 1:1 mockup', async ({ page }) => {
   await page.route('**/api/tenant-admin/**', (r) => {
     const path = new URL(r.request().url()).pathname.replace(/^.*\/api\/tenant-admin/, '')
     if (path === '/users') return json(r, { data: USERS, meta: { total: USERS.length, sso: false } })
@@ -210,7 +210,7 @@ test('triase P7 ADM-1: HR yang membuka layar admin lewat alamat mendapat tautan 
     if (path === '/job-roles') return json(r, { data: JOBS })
     return json(r, { error: { code: 'NOT_FOUND', message: 'tidak ada' } }, 404)
   })
-  await login(page, 'hr_admin')
+  await login(page, 'eta_admin')
   await expect(nav(page).getByRole('link', { name: 'Pengguna & peran' })).toHaveCount(0)
   await page.goto('/admin/pengguna')
   const links = page.getByRole('navigation', { name: 'Layar Admin Tenant' })
