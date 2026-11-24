@@ -62,6 +62,10 @@ done
 [ -n "$(fileval "$ELGOS_DB_ENV_FILE" POSTGRES_PASSWORD)" ] || missing+=("POSTGRES_PASSWORD (db.env)")
 [ -n "$(fileval "$ELGOS_DB_ENV_FILE" DB_MIGRATION_PASSWORD)" ] || missing+=("DB_MIGRATION_PASSWORD (db.env)")
 [ "$(envval DB_USER)" = "$APP_DB_USER" ] || missing+=("DB_USER=$APP_DB_USER")
+# Profil global. wajib opt-in per lingkungan (keputusan user 24 Nov, PR #44): image baru menolak boot tanpa ini.
+if [[ "$(envval BEDROCK_MODEL_ID)" == global.* ]] && [ "$(envval AI_ALLOW_GLOBAL_PROFILE)" != true ]; then
+  missing+=("AI_ALLOW_GLOBAL_PROFILE=true (BEDROCK_MODEL_ID memakai profil global.; prod hanya setelah DPIA)")
+fi
 [ "${#missing[@]}" = 0 ] || { echo "::error::Kosong: ${missing[*]}"; exit 1; }
 if grep -Eq '^(POSTGRES_PASSWORD|DB_MIGRATION_PASSWORD)=' "$ELGOS_ENV_FILE"; then
   echo "::error::POSTGRES_PASSWORD dan DB_MIGRATION_PASSWORD harus di db.env, bukan .env (password superuser/pemilik tidak boleh masuk container API)"
