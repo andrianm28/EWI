@@ -81,7 +81,7 @@ test('P7 IV-1/3/4/5/9/10/11: judul persetujuan, audit sebelum setuju di dalam ka
   await page.getByTestId('consent-check').check()
   await page.getByRole('button', { name: 'Lanjut ke wawancara' }).click()
   const ai = page.getByTestId('turn-ai').first()
-  await expect(ai).toContainText('ELGOS AI')
+  await expect(ai).toContainText('ELGOS-AI')
   await expect(ai).toHaveCSS('border-top-width', '0px')
   await expect(ai).toHaveCSS('border-top-left-radius', '16px')
   await page.getByLabel('Jawaban').fill('Saya belum pernah dilatih eskalasi.')

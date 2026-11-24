@@ -5,7 +5,7 @@ import { computed, onMounted, ref } from 'vue'
 import type { RouteLocationRaw } from 'vue-router'
 import { cca, fmt, fmtDate, type Program, type ProgramReport } from '@/api/cca'
 import ImportPanel from '@/components/ImportPanel.vue'
-import { UiButton, UiCard, UiChip, UiDataTable, UiErrorSummary, UiField, UiKpiCard, UiNote, UiProgressBar, type UiColumn } from '@/ui'
+import { EMPTY, UiButton, UiCard, UiChip, UiDataTable, UiErrorSummary, UiField, UiKpiCard, UiNote, UiProgressBar, type UiColumn } from '@/ui'
 import ManualReportForm from './ManualReportForm.vue'
 import ProgramForm from './ProgramForm.vue'
 
@@ -67,7 +67,7 @@ const componentRows = computed(() => {
   if (!r) return []
   return [
     ...r.components.map((c) => ({ name: c.name, weight: fmt(c.weight, '%'), done: `${c.done} (${fmt(c.donePct, '%')})`, avg: fmt(c.avg), contribution: fmt(c.contribution) })),
-    { name: 'Total program', weight: '100%', done: `${r.total.done} (${fmt(r.total.donePct, '%')})`, avg: '-', contribution: fmt(r.total.avgFinal) },
+    { name: 'Total program', weight: '100%', done: `${r.total.done} (${fmt(r.total.donePct, '%')})`, avg: EMPTY, contribution: fmt(r.total.avgFinal) },
   ]
 })
 const DIVISION_COLS: UiColumn[] = [

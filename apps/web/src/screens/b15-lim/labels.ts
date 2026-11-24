@@ -1,4 +1,5 @@
 // Label tampilan B15. Teks statis mockup (jebakan, prinsip pelaporan) ada di sini, bukan di API (spek bagian 3).
+import { EMPTY, formatNumber, formatScore } from '@/ui/format'
 import type { Application, Confidence, Coverage, Indicator, QueueRow, Retention, Strength, Verdict } from './api'
 
 type Tone = 'success' | 'warning' | 'critical' | 'info' | 'neutral'
@@ -39,13 +40,13 @@ export const PITFALLS = 'Jangan hanya mengukur yang mudah dikumpulkan seperti pe
 export const PRINCIPLE = 'Hubungan belajar dan hasil bukan bukti sebab-akibat otomatis; harga, musim, atau perubahan produk juga memengaruhi. ELGOS menampilkan garis bukti dan faktor lain yang perlu dicek.'
 
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des']
-export const tanggal = (d: string | null) => (d ? `${Number(d.slice(8, 10))} ${MONTHS[Number(d.slice(5, 7)) - 1]} ${d.slice(0, 4)}` : '—')
-export const score = (v: number | null) => (v === null ? '—' : String(v))
+export const tanggal = (d: string | null) => (d ? `${Number(d.slice(8, 10))} ${MONTHS[Number(d.slice(5, 7)) - 1]} ${d.slice(0, 4)}` : EMPTY)
+export const score = (v: number | null) => formatScore(v)
 /** Nilai indikator dengan satuan: "92 mnt", "11%". */
 export function withUnit(v: number | null, unit: string | null) {
-  if (v === null) return '—'
-  const n = String(v).replace('.', ',')
+  if (v === null) return EMPTY
+  const n = formatNumber(v)
   if (!unit) return n
   return unit === '%' ? `${n}%` : `${n} ${unit}`
 }
-export const targetText = (i: Indicator) => (i.target === null ? '—' : `${i.direction === 'lower_better' ? '≤' : '≥'} ${withUnit(i.target, i.unit)}`)
+export const targetText = (i: Indicator) => (i.target === null ? EMPTY : `${i.direction === 'lower_better' ? '≤' : '≥'} ${withUnit(i.target, i.unit)}`)

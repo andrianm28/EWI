@@ -1,7 +1,7 @@
 // Fungsi murni layar B8 (label dan pilihan tombol), dipakai "Hasil saya" dan "Rencana belajar".
 // Spek: docs/designs/b8-karyawan.md "Layar web".
 // Angka memakai formatter bersama (koma desimal id-ID, paritas P8 R4).
-import { formatNumber } from '@/ui/format'
+import { EMPTY, formatNumber } from '@/ui/format'
 import type { DataRequestType, LearningCard, MyCompetencyStatus, MyResults } from '@/api/lna'
 
 type Tone = 'success' | 'warning' | 'critical' | 'neutral'
@@ -19,7 +19,7 @@ export function competencyStatus(status: string): { label: string; tone: Tone } 
 }
 
 export function scoreText(score: number | null, required: number): string {
-  return `${score === null ? '—' : formatNumber(score)} / ${formatNumber(required)}`
+  return `${score === null ? EMPTY : formatNumber(score)} / ${formatNumber(required)}`
 }
 
 // Label tampilan karyawan mengikuti mockup ("Belum dimulai"), sengaja berbeda dari PLAN_STATUS_LABEL HR di api/lna.ts.

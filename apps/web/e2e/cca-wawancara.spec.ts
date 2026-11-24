@@ -98,8 +98,8 @@ test('P7 AIV-2/4/6/7/9: daftar ber-bullet, sesi di kartu mandiri, audit agen, ri
   await expect(sesi).toBeVisible()
   await sesi.getByLabel('Saya sudah membaca keterangan di atas dan setuju mengikuti wawancara.').check()
   await sesi.getByRole('button', { name: 'Mulai wawancara' }).click()
-  await expect(sesi.locator('.el-audit')).toContainText('Agen ELGOS (POC) · log audit: 0 jawaban')
-  await expect(sesi.getByTestId('cc-turn-ai').first()).toContainText('ELGOS AI')
+  await expect(sesi.locator('.el-audit')).toContainText('ELGOS-AI (POC) · log audit: 0 jawaban')
+  await expect(sesi.getByTestId('cc-turn-ai').first()).toContainText('ELGOS-AI')
   for (const jawaban of ['a', 'b', 'c', 'd']) {
     await sesi.getByRole('textbox', { name: 'Jawaban' }).fill(jawaban)
     await sesi.getByRole('button', { name: 'Kirim' }).click()
@@ -187,7 +187,7 @@ test('HR: sintesis menandai gap besar, menyembunyikan angka di bawah 5 responden
   await expect(bar).toHaveAttribute('aria-valuenow', '80')
   await expect(bar).toHaveClass(/el-bar--critical/)
   const sedikit = kartu.getByTestId('cc-tema').filter({ hasText: 'Fokus pelanggan' })
-  await expect(sedikit).toContainText('pimpinan sepakat 100% · karyawan sejalan - · gap -')
+  await expect(sedikit).toContainText('pimpinan sepakat 100% · karyawan sejalan – · gap –')
   await expect(sedikit.getByRole('progressbar')).not.toHaveClass(/el-bar--critical/)
   await expect(kartu.getByText('Angka karyawan diperbarui setiap 5 penyelesaian baru', { exact: false })).toBeVisible()
 

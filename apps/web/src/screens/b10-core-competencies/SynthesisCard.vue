@@ -5,7 +5,7 @@
 // Paritas P5 (AH-6/AH-7): daftar tema mockup; isi nilai aktual dan pratinjau karyawan di bagian lipat (K-P5-3).
 import { onMounted, ref } from 'vue'
 import { cca, THEME_LABEL, type InterviewQuestion, type Synthesis, type SynthesisRow } from '@/api/cca'
-import { UiButton, UiCard, UiChip, UiDataTable, UiErrorSummary, UiProgressBar, type UiColumn } from '@/ui'
+import { EMPTY, formatPercent, UiButton, UiCard, UiChip, UiDataTable, UiErrorSummary, UiProgressBar, type UiColumn } from '@/ui'
 
 const emit = defineEmits<{ loaded: [themes: number] }>()
 const data = ref<Synthesis | null>(null)
@@ -26,8 +26,8 @@ async function load() {
 onMounted(load)
 
 const SOURCE_LABEL = { vision: 'Visi', mission: 'Misi', value: 'Nilai' } as const
-const pct = (n: number | null) => (n === null ? '-' : `${n}%`)
-const gapText = (r: SynthesisRow) => (r.gap === null ? '-' : `−${Math.abs(r.gap)}`)
+const pct = (n: number | null) => formatPercent(n)
+const gapText = (r: SynthesisRow) => (r.gap === null ? EMPTY : `−${Math.abs(r.gap)}`)
 const COLUMNS: UiColumn[] = [
   { key: 'name', label: 'Tema' },
   { key: 'respondents', label: 'Responden' },
@@ -91,7 +91,7 @@ async function showPreview(tier: 'leader' | 'employee') {
           <template #cell-name="{ row }"><span class="cc-name">{{ row.name }}</span><div class="el-muted cc-small">{{ SOURCE_LABEL[asRow(row).sourceKind] }} · {{ row.sourceTitle }}</div></template>
           <template #cell-respondents="{ row }"><span class="cc-small">{{ row.leaderRespondents }} pimpinan · {{ row.employeeRespondents }} karyawan</span></template>
           <template #cell-aksi="{ row }">
-            <div class="cc-small">{{ asRow(row).actualScore ?? '-' }}<span v-if="row.actualSource === 'synthesis'" class="el-muted"> (sintesis)</span></div>
+            <div class="cc-small">{{ asRow(row).actualScore ?? EMPTY }}<span v-if="row.actualSource === 'synthesis'" class="el-muted"> (sintesis)</span></div>
             <UiButton v-if="asRow(row).employeeAligned !== null" variant="text" size="sm" :disabled="busy" @click="apply(asRow(row))">Isi dari sintesis<span class="el-sr-only"> {{ row.name }}</span></UiButton>
           </template>
         </UiDataTable>

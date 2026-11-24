@@ -3,7 +3,7 @@
 import { computed, nextTick, onMounted, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { cca, CLASS_LABEL, fmt, type GroupKey, type Overview, type OverviewGroup, type OverviewRow, type SourceKind } from '@/api/cca'
-import { UiButton, UiCard, UiChip, UiDataTable, UiErrorSummary, UiField, UiKpiCard, UiNote, UiProgressBar, type UiColumn } from '@/ui'
+import { EMPTY, UiButton, UiCard, UiChip, UiDataTable, UiErrorSummary, UiField, UiKpiCard, UiNote, UiProgressBar, type UiColumn } from '@/ui'
 
 const props = defineProps<{ group: GroupKey }>()
 const isVm = computed(() => props.group === 'vm')
@@ -69,10 +69,10 @@ const kpis = computed(() => {
   const k = data.value?.kpis
   if (!k) return []
   const first = { label: 'Kesiapan karyawan', value: fmt(k.readiness, '%'), note: isVm.value ? 'terhadap visi dan misi' : 'terhadap nilai korporasi' }
-  const gap = { label: 'Gap terbesar', value: k.biggestGap ? `−${fmt(k.biggestGap.gap)}` : '-', note: k.biggestGap?.name ?? 'belum ada nilai aktual' }
+  const gap = { label: 'Gap terbesar', value: k.biggestGap ? `−${fmt(k.biggestGap.gap)}` : EMPTY, note: k.biggestGap?.name ?? 'belum ada nilai aktual' }
   const below = { label: 'Di bawah target', value: `${k.belowTarget.count} dari ${k.belowTarget.measured}`, note: rowWord.value }
   if (isVm.value) return [first, gap, below]
-  const weakest = { label: 'Nilai dengan gap terbesar', value: k.weakestSource?.title ?? '-', note: k.weakestSource ? `kesiapan ${fmt(k.weakestSource.readiness, '%')}` : 'belum ada nilai aktual' }
+  const weakest = { label: 'Nilai dengan gap terbesar', value: k.weakestSource?.title ?? EMPTY, note: k.weakestSource ? `kesiapan ${fmt(k.weakestSource.readiness, '%')}` : 'belum ada nilai aktual' }
   return [first, weakest, below]
 })
 

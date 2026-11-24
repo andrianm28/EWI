@@ -3,7 +3,7 @@
 import { computed, onMounted, ref } from 'vue'
 import { RouterLink } from 'vue-router'
 import AppShell from '@/components/AppShell.vue'
-import { UiButton, UiCard, UiChip, UiKpiCard, UiNote, UiProgressBar } from '@/ui'
+import { EMPTY, formatNumber, formatPercent, UiButton, UiCard, UiChip, UiKpiCard, UiNote, UiProgressBar } from '@/ui'
 import { ApiError } from '@/api/client'
 import { routeOpen } from '@/router'
 import { useSessionStore } from '@/stores/session'
@@ -27,9 +27,8 @@ onMounted(async () => {
 // Label dan kartu mengikuti cakupan data yang benar-benar dikirim API (peran utama), bukan tampilan aktif:
 // pengguna multi-peran di tampilan Atasan bisa saja menerima data seluruh tenant (spek B3 bagian 4).
 const isTeam = computed(() => (data.value ? data.value.scope === 'team' : session.activeView === 'atasan'))
-const DASH = '–'
 const OFF = 'Modul belum aktif'
-const num = (n: number | null) => (n == null ? DASH : n.toLocaleString('id-ID'))
+const num = (n: number | null) => (n == null ? EMPTY : formatNumber(n))
 
 // Definisi angka: spek bagian 3.3. null = modul sumber tertutup, kecuali disebut lain.
 const kpis = computed(() => {
@@ -49,12 +48,12 @@ const kpis = computed(() => {
     ...cards,
     {
       label: 'Kesepakatan AI–HR',
-      value: ag?.percent == null ? DASH : `${ag.percent}%`,
+      value: formatPercent(ag?.percent),
       note: !ag ? OFF : ag.percent == null ? 'Belum ada temuan yang ditinjau HR' : `target pilot ≥ ${ag.targetPercent}% · pemantauan tinjauan HR`,
     },
     {
       label: 'Waktu analisis',
-      value: days ? `${days.median} hari` : DASH,
+      value: days ? `${formatNumber(days.median)} hari` : EMPTY,
       note: days ? `median ${days.sessions} sesi · target ≤ ${days.targetDays} hari` : tnaOn ? 'Belum ada sesi yang selesai ditinjau' : OFF,
     },
   ]

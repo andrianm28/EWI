@@ -6,7 +6,7 @@ import { ApiError } from '@/api/client'
 import { cca, fmtDate, STATUS_LABEL, type Assignment, type Assignments, type AssignmentStatus, type TeamRow } from '@/api/cca'
 import AppShell from '@/components/AppShell.vue'
 import { useSessionStore } from '@/stores/session'
-import { UiBreadcrumb, UiButton, UiCard, UiChip, UiDataTable, UiErrorSummary, UiNote, type UiColumn } from '@/ui'
+import { EMPTY, UiBreadcrumb, UiButton, UiCard, UiChip, UiDataTable, UiErrorSummary, UiNote, type UiColumn } from '@/ui'
 import AssignDueDialog from './AssignDueDialog.vue'
 import { focusIfLost } from './focus'
 import InterviewFlow from './InterviewFlow.vue'
@@ -119,7 +119,7 @@ async function assign(rows: TeamRow[], dueDate: string) {
             <p class="el-muted cc-cardsub">Karyawan diwawancarai AI untuk menilai gap terhadap hasil wawancara Anda. Penugasan dari Anda, hasilnya masuk ke HR.</p>
             <UiNote v-if="!leader.canAssign" tone="warning" style="margin: 12px 0">Selesaikan wawancara pimpinan Anda dulu sebelum menugaskan anggota tim.</UiNote>
             <UiDataTable :columns="COLUMNS" :rows="leader.team" row-key="userId" caption="Anggota tim Anda" caption-hidden empty-text="Belum ada anggota tim yang tercatat sebagai bawahan langsung Anda.">
-              <template #cell-jobRoleName="{ row }">{{ row.jobRoleName ?? '-' }}</template>
+              <template #cell-jobRoleName="{ row }">{{ row.jobRoleName ?? EMPTY }}</template>
               <template #cell-status="{ row }"><UiChip :tone="TONE[asRow(row).status]">{{ STATUS_LABEL[asRow(row).status] }}</UiChip></template>
               <template #cell-aksi="{ row }">
                 <UiButton v-if="open(asRow(row).status)" variant="tonal" size="sm" :disabled="busy || !leader.canAssign" @click="openDialog([asRow(row)])">Tugaskan<span class="el-sr-only"> {{ row.name }}</span></UiButton>

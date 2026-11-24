@@ -5,7 +5,7 @@ import { computed, onMounted, ref, watch } from 'vue'
 import AppShell from '@/components/AppShell.vue'
 import { ApiError } from '@/api/client'
 import { useSessionStore } from '@/stores/session'
-import { UiButton, UiCard, UiDataTable, UiNote, UiStatus, UiTabs, type UiColumn } from '@/ui'
+import { EMPTY, UiButton, UiCard, UiDataTable, UiNote, UiStatus, UiTabs, type UiColumn } from '@/ui'
 import { lim, type CompetencyRow, type Indicator, type Overview, type PlanSummary, type QueueRow } from './api'
 import { COVERAGE, PITFALLS, PRINCIPLE, QUESTIONS, QUEUE_STATUS, STRENGTH, VERDICT, WINDOW, score, tanggal, targetText, withUnit } from './labels'
 import ImportPanel from '@/components/ImportPanel.vue'
@@ -138,7 +138,7 @@ const chainLabel = (r: Record<string, unknown>) => `${r.level} · ${r.label}`
           <div class="lim-q5">
             <div v-for="q in QUESTIONS" :key="q.key" class="lim-q">
               <div class="el-muted lim-small">{{ q.label }}</div>
-              <div class="lim-strong">{{ data.plan[q.key] || '—' }}</div>
+              <div class="lim-strong">{{ data.plan[q.key] || EMPTY }}</div>
             </div>
           </div>
         </UiCard>

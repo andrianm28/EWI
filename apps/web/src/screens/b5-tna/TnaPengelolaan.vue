@@ -6,7 +6,7 @@
 import { computed, onMounted, ref } from 'vue'
 import ImportPanel from '@/components/ImportPanel.vue'
 import TnaMySessions from './TnaMySessions.vue'
-import { UiButton, UiCard, UiDataTable, UiField, UiKpiCard, UiNote, type UiColumn } from '@/ui'
+import { EMPTY, UiButton, UiCard, UiDataTable, UiField, UiKpiCard, UiNote, type UiColumn } from '@/ui'
 import {
   lna, COURSE_STATUS_LABEL, PLAN_STATUS_LABEL, PLAN_NEXT, FLAG_TRAINING_REQUEST, FLAG_NON_TRAINING_HR, formatWib,
   type Finding, type NonTrainingFinding, type NonTrainingGrant, type ParetoRow, type PlanItem, type Project, type Session, type TnaDashboard,
@@ -192,7 +192,7 @@ const target = (f: Finding) => (f.metricName ? `${f.metricName}: target ${f.targ
         <template #cell-intervieweeName="{ row }">{{ row.intervieweeName }}</template>
         <template #cell-status="{ row }">{{ row.status === 'scheduled' ? 'Belum mulai' : 'Berjalan' }}</template>
         <template #cell-inviteExpiresAt="{ row }">
-          <span :class="{ 'tna-crit': isExpired(asSession(row)) }">{{ row.inviteExpiresAt ? `${formatWib(asSession(row).inviteExpiresAt!)} WIB` : '-' }}{{ isExpired(asSession(row)) ? ' (berakhir)' : '' }}</span>
+          <span :class="{ 'tna-crit': isExpired(asSession(row)) }">{{ row.inviteExpiresAt ? `${formatWib(asSession(row).inviteExpiresAt!)} WIB` : EMPTY }}{{ isExpired(asSession(row)) ? ' (berakhir)' : '' }}</span>
         </template>
         <template #cell-aksi="{ row }"><UiButton variant="text" size="sm" @click="extend(asSession(row))">Perpanjang 7 hari</UiButton></template>
       </UiDataTable>

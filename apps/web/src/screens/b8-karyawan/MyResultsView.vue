@@ -7,7 +7,7 @@ import AppShell from '@/components/AppShell.vue'
 import { ApiError } from '@/api/client'
 import { formatWib, lna, type MyResults } from '@/api/lna'
 import DataSaya from './DataSaya.vue'
-import { UiButton, UiCard, UiDataTable, UiErrorSummary, UiNote, type UiColumn } from '@/ui'
+import { EMPTY, UiButton, UiCard, UiDataTable, UiErrorSummary, UiNote, type UiColumn } from '@/ui'
 import { competencyStatus, inviteAction, planSummary, scoreText } from './view'
 import { routeOpen } from '@/router'
 import { leaveIfDisabled } from './gate'
@@ -53,7 +53,7 @@ const columns: UiColumn[] = [
   { key: 'status', label: 'Status' },
 ]
 const rows = computed(() => (res.value?.competencies?.items ?? []).map((c) => ({
-  id: c.competencyId, code: c.code ?? '—', name: c.name, score: scoreText(c.score, c.required), status: c.status,
+  id: c.competencyId, code: c.code ?? EMPTY, name: c.name, score: scoreText(c.score, c.required), status: c.status,
 })))
 </script>
 

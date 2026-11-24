@@ -8,6 +8,7 @@ import { cca, THEME_LABEL, type InterviewSession } from '@/api/cca'
 import { CCA_CONSENT_VERSION } from '@/content/consent'
 import { UiAuditLine, UiButton, UiChip, UiErrorSummary, UiNote } from '@/ui'
 import '../b6-iv/iv.css'
+import { AI_NAME, AI_PRODUCT_LABEL } from '@/api/ai'
 
 const props = defineProps<{ assignmentId: string }>()
 const emit = defineEmits<{ finished: []; close: [] }>()
@@ -99,7 +100,7 @@ const confirm = () => act(async () => { await cca.confirm(props.assignmentId); e
       </div>
       <div class="iv-chat" role="log" aria-live="polite" aria-label="Percakapan wawancara">
         <div v-for="(t, i) in s.turns" :key="i" :class="['iv-msg', t.role === 'ai' ? 'iv-msg--ai' : 'iv-msg--me']" :data-testid="`cc-turn-${t.role}`">
-          <small>{{ t.role === 'ai' ? `ELGOS AI · ${THEME_LABEL[t.theme]}` : 'Anda' }}</small>{{ t.text }}
+          <small>{{ t.role === 'ai' ? `${AI_NAME} · ${THEME_LABEL[t.theme]}` : 'Anda' }}</small>{{ t.text }}
         </div>
       </div>
       <template v-if="pending">
@@ -121,7 +122,7 @@ const confirm = () => act(async () => { await cca.confirm(props.assignmentId); e
         <UiButton :disabled="busy" @click="act(() => cca.summarize(assignmentId))">Buat ringkasan</UiButton>
       </div>
       <!-- AIV-7: baris audit agen di kartu sesi -->
-      <UiAuditLine :items="['Agen ELGOS (POC)', `log audit: ${s.answerCount} jawaban`]" />
+      <UiAuditLine :items="[AI_PRODUCT_LABEL, `log audit: ${s.answerCount} jawaban`]" />
     </template>
 
     <!-- AIV-9: susunan mockup "Ringkasan AI": baris .mod (tema kecil abu, jawaban tebal) -->

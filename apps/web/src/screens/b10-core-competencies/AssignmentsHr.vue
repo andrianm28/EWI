@@ -3,7 +3,7 @@
 // HR tidak menerima daftar karyawan per orang; sintesis pimpinan vs karyawan di SynthesisCard (tahap 2).
 import { computed, onMounted, ref } from 'vue'
 import { cca, fmtDate, STATUS_LABEL, type Assignments, type AssignmentStatus, type LeaderRow } from '@/api/cca'
-import { UiButton, UiCard, UiChip, UiDataTable, UiErrorSummary, UiKpiCard, type UiColumn } from '@/ui'
+import { EMPTY, UiButton, UiCard, UiChip, UiDataTable, UiErrorSummary, UiKpiCard, type UiColumn } from '@/ui'
 import AssignDueDialog from './AssignDueDialog.vue'
 import { focusIfLost } from './focus'
 import InterviewFlow from './InterviewFlow.vue'
@@ -48,7 +48,7 @@ const kpis = computed(() => {
     { label: 'Wawancara pimpinan selesai', value: `${k.leadersCompleted} dari ${k.leadersEligible}`, note: 'menjadi dasar persyaratan' },
     { label: 'Karyawan selesai', value: `${k.employeesCompleted} dari ${k.employeesAssigned}`, note: 'ditugaskan oleh atasan masing-masing' },
     // Paritas P5 AH-1: kartu ke-4 dari sintesis (SynthesisCard memuatnya sendiri dan melapor lewat @loaded)
-    { label: 'Tema tersintesis', value: themes.value === null ? '-' : String(themes.value), note: 'visi, misi, dan nilai' },
+    { label: 'Tema tersintesis', value: themes.value === null ? EMPTY : String(themes.value), note: 'visi, misi, dan nilai' },
   ]
 })
 const asRow = (r: Record<string, unknown>) => r as unknown as LeaderRow
@@ -92,7 +92,7 @@ const cancel = (row: LeaderRow) => run(async () => { await cca.cancelAssignment(
         <p class="el-muted cc-cardsub">Topik: visi, misi, dan nilai korporasi. Atasan yang selesai bisa meneruskan wawancara ke anggota timnya.</p>
         <UiDataTable :columns="COLUMNS" :rows="data.leaders" row-key="userId" caption="Pimpinan dan atasan yang bisa ditugaskan" caption-hidden empty-text="Belum ada pengguna berperan atasan atau pimpinan. Impor data karyawan dulu.">
           <template #cell-name="{ row }"><b>{{ row.name }}</b><div v-if="row.jobRoleName" class="el-muted cc-small">{{ row.jobRoleName }}</div></template>
-          <template #cell-division="{ row }">{{ row.division ?? '-' }}</template>
+          <template #cell-division="{ row }">{{ row.division ?? EMPTY }}</template>
           <!-- P8 R2 (AH-3): tenggat jadi teks kecil di sel Status -->
           <template #cell-status="{ row }">
             <UiChip :tone="TONE[asRow(row).status]">{{ STATUS_LABEL[asRow(row).status] }}</UiChip>

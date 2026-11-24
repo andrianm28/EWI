@@ -8,7 +8,7 @@ import {
   ATTEMPT_LABEL, platform, type AiCostRow, type AiQualityRow, type AttemptRow, type PlatformLogRow, type PlatformSettings,
 } from '@/api/platform'
 import { AI_PRODUCT_LABEL } from '@/api/ai'
-import { UiButton, UiCard, UiChip, UiErrorSummary, UiField, UiNote, UiStatus } from '@/ui'
+import { EMPTY, formatNumber, formatPercent, UiButton, UiCard, UiChip, UiErrorSummary, UiField, UiNote, UiStatus } from '@/ui'
 
 const settings = ref<PlatformSettings | null>(null)
 const quality = ref<AiQualityRow[]>([])
@@ -79,8 +79,9 @@ async function save(confirmed = false) {
 
 const openDaily = ref<string | null>(null)
 const bar = (n: number | null) => `${Math.max(0, Math.min(100, n ?? 0))}%`
-const fmtPct = (n: number | null) => (n === null ? '–' : `${n.toLocaleString('id-ID')}%`)
-const fmtNum = (n: number) => n.toLocaleString('id-ID')
+const fmtPct = (n: number | null) => formatPercent(n)
+const fmtNum = (n: number) => formatNumber(n)
+// Biaya: empat angka desimal (sen dolar per panggilan), di luar formatNumber yang membulatkan dua angka
 const fmtUsd = (n: number) => `US$${n.toLocaleString('id-ID', { minimumFractionDigits: 2, maximumFractionDigits: 4 })}`
 const fmtTime = (iso: string) => new Date(iso).toLocaleString('id-ID', { dateStyle: 'medium', timeStyle: 'short', timeZone: 'Asia/Jakarta' })
 const RESOURCE: Record<string, string> = { tenant: 'Tenant', 'tenant.invitation': 'Undangan', 'tenant.module': 'Modul tenant', 'platform.setting': 'Konfigurasi platform' }
@@ -250,7 +251,7 @@ async function downloadCsv() {
                 <td>{{ fmtTime(r.at) }}</td>
                 <td>{{ r.actorEmail ?? 'Akun dihapus' }}</td>
                 <td>{{ RESOURCE[r.resource] ?? r.resource }}: {{ logDetail(r) }}</td>
-                <td>{{ r.targetTenantName ?? '–' }}</td>
+                <td>{{ r.targetTenantName ?? EMPTY }}</td>
               </tr>
               <tr v-if="!log.length"><td colspan="4" class="el-muted">Belum ada tindakan platform.</td></tr>
             </tbody>

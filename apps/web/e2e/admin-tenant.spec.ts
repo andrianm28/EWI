@@ -114,7 +114,7 @@ test('Jabatan & kamus: daftar, nama kembar ditolak, lihat kamus', async ({ page 
   await expect(row('Sales').getByRole('button', { name: 'Lihat kamus' })).toHaveCount(0)
   // P7 JOB-2/JOB-3: jumlah "—" tanpa kamus, sumber kosong copy mockup
   await expect(row('Sales')).toContainText('Belum ada lokakarya DACUM')
-  await expect(row('Sales').getByRole('cell', { name: '—' }).first()).toBeVisible()
+  await expect(row('Sales').getByRole('cell', { name: '–' }).first()).toBeVisible()
   await expect(page.getByRole('navigation', { name: 'Layar Admin Tenant' })).toHaveCount(0)
 
   await page.getByTestId('job-tambah').click()

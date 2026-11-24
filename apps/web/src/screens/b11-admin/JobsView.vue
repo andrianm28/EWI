@@ -5,7 +5,7 @@ import AppShell from '@/components/AppShell.vue'
 import AdminLinks from './AdminLinks.vue'
 import { ApiError } from '@/api/client'
 import { tenantAdmin, SOURCE_LABEL, type Competency, type JobRole } from '@/api/tenantAdmin'
-import { UiButton, UiCard, UiChip, UiDataTable, UiErrorSummary, UiField, UiNote, type UiColumn, type UiSortState } from '@/ui'
+import { EMPTY, UiButton, UiCard, UiChip, UiDataTable, UiErrorSummary, UiField, UiNote, type UiColumn, type UiSortState } from '@/ui'
 
 const jobs = ref<JobRole[]>([])
 const loading = ref(true)
@@ -122,7 +122,7 @@ async function openDictionary(j: JobRole) {
         <template #cell-dictionary="{ row }">
           <UiChip :tone="asJob(row).dictionary === 'tersedia' ? 'success' : 'neutral'">{{ asJob(row).dictionary === 'tersedia' ? 'Tersedia' : 'Belum tersedia' }}</UiChip>
         </template>
-        <template #cell-competencyCount="{ row }">{{ asJob(row).dictionary === 'tersedia' ? asJob(row).competencyCount : '—' }}</template>
+        <template #cell-competencyCount="{ row }">{{ asJob(row).dictionary === 'tersedia' ? asJob(row).competencyCount : EMPTY }}</template>
         <template #cell-sources="{ row }"><span class="el-muted">{{ sourceText(asJob(row)) }}</span></template>
         <template #cell-aksi="{ row }">
           <div class="adm__row">

@@ -23,9 +23,9 @@ test('karyawan mendarat di Hasil saya dengan skor vs target dan status kompetens
   await expect(page.getByText('Posisi: Engineer Service Delivery · L1.')).toBeVisible()
   const tabel = page.getByRole('table')
   await expect(tabel.getByRole('row', { name: /ST-B4.*Manajemen tiket.*3 \/ 3.*Menguasai/ })).toBeVisible()
-  await expect(tabel.getByRole('row', { name: /—.*Analisis insiden.*3 \/ 4.*Sebagian/ })).toBeVisible()
+  await expect(tabel.getByRole('row', { name: /–.*Analisis insiden.*3 \/ 4.*Sebagian/ })).toBeVisible()
   await expect(tabel.getByRole('row', { name: /TC-I1.*Otomasi infrastruktur.*1 \/ 4.*Belum/ })).toBeVisible()
-  await expect(tabel.getByRole('row', { name: /ST-A2.*Komunikasi pelanggan.*— \/ 2.*Belum dinilai/ })).toBeVisible()
+  await expect(tabel.getByRole('row', { name: /ST-A2.*Komunikasi pelanggan.*– \/ 2.*Belum dinilai/ })).toBeVisible()
 })
 
 test('menu karyawan sesuai mockup, tanpa butir peralihan; undangan membuka sesi', async ({ page }) => {
