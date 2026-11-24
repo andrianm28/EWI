@@ -224,6 +224,35 @@ test('ganti tampilan mengosongkan percakapan dan memakai label tampilan baru', a
   expect(diterima.filter((r) => r.method === 'GET').map((r) => r.query.get('view'))).toEqual(['hr', 'karyawan'])
 })
 
+// P9 CD-12: jawaban lama yang tiba setelah ganti tampilan lalu kembali (kunci sama) tidak masuk percakapan baru
+test('P9 CD-12: jawaban basi setelah ganti tampilan bolak-balik dibuang', async ({ page }) => {
+  let lepas: (() => void) | null = null
+  await mockAsisten(page, {
+    jawab: (req) => (req.body as { question: string }).question === 'Pertanyaan lambat'
+      ? new Promise((ok) => { lepas = () => ok(responsData({ answer: 'JAWABAN-BASI', action: null, outcome: 'answered' })) })
+      : responsData({ answer: 'Jawaban baru', action: null, outcome: 'answered' }),
+  })
+  await masuk(page, 'hr', { ...DENGAN_ASISTEN, peranLain: ['karyawan'] })
+  await fab(page).click()
+  const input = panel(page).getByRole('textbox', { name: 'Pertanyaan' })
+  await input.fill('Pertanyaan lambat')
+  await input.press('Enter')
+  await expect(panel(page)).toContainText('Sedang menyiapkan jawaban…')
+  const tampilan = page.getByRole('group', { name: 'Tampilan' })
+  await tampilan.getByRole('button', { name: 'Karyawan (saya)' }).click()
+  await expect(panel(page)).toContainText('Tanyakan urusan Anda · Karyawan')
+  await tampilan.getByRole('button', { name: 'HR / L&D' }).click()
+  await expect(panel(page)).toContainText('Tanyakan urusan Anda · HR / L&D')
+  await input.fill('Pertanyaan baru')
+  await input.press('Enter')
+  await expect(panel(page).getByText('Jawaban baru')).toBeVisible()
+  await expect.poll(() => lepas !== null).toBe(true)
+  lepas!()
+  await page.evaluate(() => new Promise((ok) => setTimeout(ok, 300)))
+  await expect(panel(page).getByText('JAWABAN-BASI')).toHaveCount(0)
+  await expect(panel(page).locator('.b17-msg--me')).toHaveCount(1)
+})
+
 test('snapshot: panel terbuka dengan percakapan (karyawan)', async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 })
   await mockAsisten(page)

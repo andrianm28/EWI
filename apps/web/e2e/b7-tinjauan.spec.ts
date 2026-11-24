@@ -278,6 +278,35 @@ test('P9 S-1: akun HR yang juga atasan membuka antrean dari tampilan Atasan: tam
   await expect(tampilan.getByRole('button', { name: 'HR / L&D' })).toHaveAttribute('aria-pressed', 'true')
 })
 
+// P9 CD-12: pindah gap saat respons gap sebelumnya belum tiba; respons lama tidak menimpa gap terbaru
+test('P9 CD-12: respons gap lama yang tiba belakangan tidak menimpa gap yang sedang dibuka', async ({ page }) => {
+  const GAP_B = '9b9b9b9b-9b9b-49b9-89b9-9b9b9b9b9b9b'
+  let sent: { path: string; body: unknown }[] = []
+  const t = tinjauanGap({
+    galat: async (path) => {
+      if (path !== 'GET /tna/review') return undefined
+      const q = sent.filter((x) => x.path === path).at(-1)?.body as Record<string, string>
+      if (q.competencyId === GAP_B) {
+        return { json: { data: [], counts: { draft: 0, approved: 0, edited: 0, rejected: 0, held: 0, overdue: 0 }, targetDays: 2, gap: { key: `c:${GAP_B}`, label: 'Gap kedua' } } }
+      }
+      await new Promise((ok) => setTimeout(ok, 800))
+      return undefined
+    },
+  })
+  sent = t.terkirim
+  await mockApi(page, papanGapTna({ peran: 'hr' }).penangan)
+  await mockApi(page, t.penangan)
+  await loginSebagai(page, 'hr', { submodules: ['cca', 'dna', 'tna', 'ina'], flags: FLAGS })
+  await page.goto(ALAMAT)
+  await expect.poll(() => sent.filter((x) => x.path === 'GET /tna/review').length).toBe(1)
+  await page.evaluate((url) => { history.pushState({}, '', url); dispatchEvent(new PopStateEvent('popstate')) }, `/tna/tinjauan?kind=competency&competencyId=${GAP_B}&tab=kompetensi`)
+  await expect(page.getByText('Gap kedua. HR memastikan klasifikasi')).toBeVisible()
+  await page.evaluate(() => new Promise((ok) => setTimeout(ok, 1200)))
+  await expect(page.getByText('Gap kedua. HR memastikan klasifikasi')).toBeVisible()
+  await expect(page.getByText('Analisis insiden. HR memastikan')).toHaveCount(0)
+  await expect(page.getByText('Belum ada temuan AI untuk gap ini.')).toBeVisible()
+})
+
 test('antrean lama memakai komponen ELGOS', async ({ page }) => {
   await setup(page)
   await page.goto('/m/tna/review')
