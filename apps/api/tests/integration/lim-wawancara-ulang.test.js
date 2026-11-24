@@ -175,6 +175,9 @@ run('B15 tahap 3 wawancara ulang AI (Postgres)', () => {
     expect(res.status).toBe(204);
     const [log] = await q("SELECT meta FROM audit_logs WHERE tenant_id = :t AND resource = 'lim.reinterview' AND action = 'update' ORDER BY id DESC LIMIT 1", { t: tenant.id });
     expect(log.meta).toMatchObject({ planId: plan.id, employeeIds: [u.a], reviewed: true, reinterviewId: expect.any(String) });
+    // reinterviewId dari layar (yang dibaca HR) dipakai bila dikirim; id asing 404
+    expect((await send('post', `/plans/${plan.id}/reinterviews/${u.a}/review`, { reinterviewId: log.meta.reinterviewId }, 'hr')).status).toBe(204);
+    expect((await send('post', `/plans/${plan.id}/reinterviews/${u.a}/review`, { reinterviewId: '00000000-0000-4000-8000-000000000000' }, 'hr')).status).toBe(404);
     expect((await send('post', `/plans/${plan.id}/reinterviews/${u.b}/review`, {}, 'hr')).status).toBe(404);
     expect((await send('post', `/plans/${plan.id}/reinterviews/bukan-uuid/review`, {}, 'hr')).status).toBe(404);
     expect((await send('post', `/plans/${plan.id}/reinterviews/${u.a}/review`, {}, 'spv')).status).toBe(403);

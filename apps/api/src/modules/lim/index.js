@@ -91,7 +91,7 @@ async function planFields(body, { stores, tenantId, create }) {
 module.exports = {
   key: 'lim',
   title: 'Learning Impact Measurement',
-  router({ stores, audit, flags, ai, aiConfig } = {}) {
+  router({ stores, audit, flags, ai, aiConfig, mailer, appBaseUrl = '' } = {}) {
     const r = express.Router();
     // B15 tahap 3: wawancara ulang AI. Rute karyawan dipasang sebelum pembatas peran HR/atasan (spek 12.3).
     const reinterview = requireFlag(flags, FLAGS.LIM_REINTERVIEW, 'Wawancara ulang AI belum diaktifkan untuk organisasi Anda');
@@ -344,9 +344,11 @@ module.exports = {
     }));
     r.post('/plans/:id/queue/schedule', hr, idParam, wrap(async (req, res) => {
       const plan = await loadPlan(req);
-      const { userIds, date } = req.body || {};
+      const { userIds, date, notify = false } = req.body || {};
       if (!Array.isArray(userIds) || !userIds.length || userIds.length > MAX_SCHEDULE) throw badRequest(`userIds harus 1-${MAX_SCHEDULE} karyawan`);
       if (date === undefined) throw badRequest('date wajib diisi (atau null untuk membatalkan)');
+      // "Mulai sekarang" (mockup): notify = kabari karyawan lewat email bahwa wawancara ulang sudah bisa dimulai
+      if (notify && date === null) throw badRequest('notify hanya untuk penjadwalan, bukan pembatalan');
       const err = lim.checkScheduleDate(date, todayJakarta());
       if (err) throw badRequest(err);
       const [{ queue }, index] = await Promise.all([queueOf(req, plan), stores.lim.reinterviewIndex(req.tenantId, plan.id)]);
@@ -362,8 +364,21 @@ module.exports = {
         await stores.lim.schedule(req.tenantId, plan.id, userId, entry.competencies.map((c) => c.competencyId), date, req.user.id);
         scheduled.push(userId);
       }
-      if (scheduled.length) await audit.record(req, 'update', 'lim.measurement', { planId: plan.id, employeeIds: scheduled, reinterviewOn: date });
-      res.json({ data: { scheduled, skipped, rejected } });
+      let notified = 0;
+      if (notify && scheduled.length && mailer) {
+        for (const p of await stores.people.list(req.tenantId, { userIds: scheduled })) {
+          try {
+            await mailer.send({
+              to: p.email, subject: 'Wawancara ulang Anda sudah bisa dimulai',
+              text: [`Halo ${p.name || ''},`.replace(' ,', ','), '', `Tim HR membuka wawancara ulang singkat untuk "${plan.title}". Buka menu Wawancara ulang di ELGOS untuk memulainya.`,
+                appBaseUrl ? `${appBaseUrl}` : '', '', 'Pesan ini dikirim oleh tim HR lewat ELGOS.'].filter((l, i, a) => l !== '' || a[i - 1] !== '').join('\n'),
+            });
+            notified += 1;
+          } catch (e) { console.error(`[lim.notify] gagal kirim: ${e.message}`); }
+        }
+      }
+      if (scheduled.length) await audit.record(req, 'update', 'lim.measurement', { planId: plan.id, employeeIds: scheduled, reinterviewOn: date, ...(notify ? { notified } : {}) });
+      res.json({ data: { scheduled, skipped, rejected, ...(notify ? { notified } : {}) } });
     }));
 
     mountHrResult(r, { stores, audit, gate: reinterview, hr, idParam, loadPlan, planData, decorateInd, buildChain: lim.buildChain });

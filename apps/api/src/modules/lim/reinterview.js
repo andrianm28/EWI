@@ -191,8 +191,10 @@ function mountHrResult(r, { stores, audit, gate, hr, idParam, loadPlan, planData
     const plan = await loadPlan(req);
     const userId = String(req.params.userId);
     const list = UUID.test(userId) ? await stores.lim.completedReinterviews(req.tenantId, userId, { planId: plan.id }) : [];
-    if (!list.length) throw notFound('Hasil wawancara ulang tidak ditemukan');
-    await audit.record(req, 'update', 'lim.reinterview', { planId: plan.id, employeeIds: [userId], reinterviewId: list[0].id, reviewed: true });
+    const wanted = req.body && req.body.reinterviewId;
+    const ri = wanted ? list.find((x) => x.id === String(wanted)) : list[0];
+    if (!ri) throw notFound('Hasil wawancara ulang tidak ditemukan');
+    await audit.record(req, 'update', 'lim.reinterview', { planId: plan.id, employeeIds: [userId], reinterviewId: ri.id, reviewed: true });
     res.status(204).end();
   }));
 }

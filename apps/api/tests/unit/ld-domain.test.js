@@ -126,7 +126,7 @@ describe('KPI dan insight', () => {
   });
   it('Minta konfirmasi: offline akan datang dalam 14 hari, punya peserta, kehadiran belum dicatat', () => {
     const r = decorate(offline({ id: 'k', startsOn: '2026-12-24', endsOn: '2026-12-24', participants: 4, attendanceRecorded: 0 }), TODAY);
-    expect(buildInsights([r], TODAY).actions).toEqual([{ key: 'confirm:k', trainingId: 'k', kind: 'confirm', title: 'Minta konfirmasi kehadiran peserta Workshop RCA 24/12/2026', detail: '4 peserta belum mengonfirmasi kehadiran' }]);
+    expect(buildInsights([r], TODAY).actions).toEqual([{ key: 'confirm:k', trainingId: 'k', kind: 'confirm', title: 'Minta konfirmasi kehadiran peserta Workshop RCA 24/12/2026', detail: '4 peserta terdaftar, kehadiran belum dicatat' }]);
     const far = decorate(offline({ id: 'l', startsOn: '2026-12-25', endsOn: '2026-12-25' }), TODAY);
     const empty = decorate(offline({ id: 'm', participants: 0 }), TODAY);
     const recorded = decorate(offline({ id: 'n', attendanceRecorded: 2 }), TODAY);

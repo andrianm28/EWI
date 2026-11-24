@@ -163,7 +163,7 @@ function buildInsights(rows, today) {
     }
     if (r.mode === 'offline' && r.group === 'upcoming' && r.startsOn && daysBetween(today, day(r.startsOn)) <= INSIGHT_WINDOW_DAYS
       && n(r.participants) > 0 && n(r.attendanceRecorded) === 0) {
-      actions.push({ key: `confirm:${r.id}`, trainingId: r.id, kind: 'confirm', title: `Minta konfirmasi kehadiran peserta ${r.title} ${fmt(r.startsOn)}`, detail: `${n(r.participants)} peserta belum mengonfirmasi kehadiran` });
+      actions.push({ key: `confirm:${r.id}`, trainingId: r.id, kind: 'confirm', title: `Minta konfirmasi kehadiran peserta ${r.title} ${fmt(r.startsOn)}`, detail: `${n(r.participants)} peserta terdaftar, kehadiran belum dicatat` });
     }
     if (r.mode === 'online' && r.group === 'running' && r.health === 'ok' && n(r.inactive) === 0 && n(r.nearlyDone) > 0) {
       actions.push({ key: `invite:${r.id}`, trainingId: r.id, kind: 'invite', title: `Dorong ${n(r.nearlyDone)} peserta ${r.title} yang hampir selesai`,
