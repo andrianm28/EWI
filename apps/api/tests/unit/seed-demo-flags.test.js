@@ -28,6 +28,7 @@ describe('seed-dev: flag tenant demo', () => {
     expect(expected.length).toBeGreaterThan(10);
     expect([...DEMO_FLAGS].sort()).toEqual(expected.sort());
     expect(DEMO_FLAGS).toContain(FLAGS.LIM_REINTERVIEW);
+    expect(DEMO_FLAGS).toContain(FLAGS.VOICE_REALTIME); // B19: wawancara suara di demo 25 Nov
   });
   // Penjaga produksi dan pemakaian DEMO_FLAGS diuji sebagai perilaku di tests/integration/seed-dev.test.js
 });
