@@ -123,7 +123,10 @@ Review ulang head `fd7bda2` (empat reviewer: egm API, egm web, Spec, Standards; 
 | DraftView `act` menimpa draf lokal dengan respons | P3 | Terbuka | Ketikan selama simpan bisa hilang; perlu readonly saat busy atau gabung metadata saja |
 | Dialog AssignmentsHr, InterviewAssignmentView, TnaGapView bisa ditutup saat request berjalan | P3 | Terbuka | Di luar lingkup putaran ini |
 | AntreanView tab tanpa penjaga urutan respons | P3 | Terbuka | Pola `loadSeq` seperti TinjauanView |
-| Spec (a) 1 LD-10, (a) 3 LIM-6/LIM-8, (b) 4/6/7 | Spec | Terbuka | LD-10 sudah tercatat (SP-3); sisanya menunggu keputusan user |
+| Spec (b) 4: saran AI tidak dipilihkan | Spec | Diputuskan user 24 Nov: ikuti mockup | Saran AI tampil terpilih; klik HR (pilihan itu atau tombol solusi) menyimpannya lewat classify. API tidak berubah. `a0603c8` |
+| Spec (b) 5: nama karyawan di meta temuan, tautan "Ubah teks atau tolak temuan…" | Spec | Diputuskan user 24 Nov: ikuti mockup | Meta hanya "· AI n%", tautan dihapus (teks sukses sudah diperbaiki di baris atas). `a0603c8` |
+| Spec (b) 6: gelembung "Sedang menyiapkan jawaban…", FAB menunggu salam | Spec | Diputuskan user 24 Nov: ikuti mockup | Gelembung dihapus; FAB ternyata sudah tampil tanpa menunggu salam (hanya komentar yang keliru), kini dijaga e2e. 403 `VIEW_FORBIDDEN` menyembunyikan FAB saat tiba. `42f1aa0` |
+| Spec (a) 1 LD-10, (a) 3 LIM-6/LIM-8, (b) 7 | Spec | Terbuka | LD-10 sudah tercatat (SP-3); sisanya menunggu keputusan user |
 | Standards: nama branch, gerbang reviewer Andrian, smell duplikasi/switch | Standards | Terbuka | Butir badan PR (IR-2) dan refactor terpisah |
 
 ### Review egm atas perbaikan 24 Nov
