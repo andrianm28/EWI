@@ -1089,12 +1089,37 @@ function createLnaStores(sequelize, { cipher } = {}) {
      * Teruskan temuan Improvement Needs yang sudah diputus ke modul Improvement Needs. Satu UPDATE bersyarat, jadi dua
      * permintaan bersamaan tidak menandai dua kali. Return { handedOff, already, skipped } berisi id.
      */
-    async handoffImprovement(tenantId, ids, userId) {
-      const [done] = await sequelize.query(`UPDATE lna_findings SET improvement_handoff_at = now(), improvement_handoff_by = :userId
-                                             WHERE tenant_id = :tenantId AND id IN (:ids) AND category = 'non_training'
-                                               AND review_status IN ${REVIEWED_SQL} AND improvement_handoff_at IS NULL
-                                               AND ${notFrozen('lna_findings')}
-                                             RETURNING id, user_id AS "userId"`, { replacements: { tenantId, ids, userId } });
+    async handoffImprovement(tenantId, ids, userId, { categorize = () => 'lainnya' } = {}) {
+      // Demo 25 Nov (C1): tandai temuan dan buat tindakan Improvement Needs dalam satu transaksi, jadi temuan tidak
+      // pernah bertanda "diteruskan" tanpa tindakannya. Hanya judul yang dibawa (tanpa rincian, pemilik, atau nama
+      // karyawan): involves_individual = false sesuai kontrak listImprovementHandoffs. Judul dienkripsi ulang per tenant.
+      const { done, actions } = await sequelize.transaction(async (transaction) => {
+        const [rows] = await sequelize.query(`UPDATE lna_findings SET improvement_handoff_at = now(), improvement_handoff_by = :userId
+                                               WHERE tenant_id = :tenantId AND id IN (:ids) AND category = 'non_training'
+                                                 AND review_status IN ${REVIEWED_SQL} AND improvement_handoff_at IS NULL
+                                                 AND ${notFrozen('lna_findings')}
+                                               RETURNING id, user_id AS "userId", title, competency_id AS "competencyId",
+                                                         performance_record_id AS "performanceRecordId"`, { replacements: { tenantId, ids, userId }, transaction });
+        const opened = await open(tenantId, rows, ['title']);
+        const created = [];
+        for (const f of opened) {
+          const [[act]] = await sequelize.query(
+            `INSERT INTO ina_actions (tenant_id, finding_id, title, category, source_ref, competency_id, performance_record_id, involves_individual, created_by)
+             VALUES (:tenantId, :findingId, :title, :category,
+                     (SELECT name FROM lna_competencies WHERE tenant_id = :tenantId AND id = :competencyId), :competencyId, :performanceRecordId, false, :userId)
+             ON CONFLICT (tenant_id, finding_id) WHERE finding_id IS NOT NULL DO NOTHING
+             RETURNING id`,
+            { replacements: { tenantId, findingId: f.id, title: await enc(tenantId, f.title || 'Temuan Improvement Needs'), category: categorize(f.title),
+              competencyId: f.competencyId || null, performanceRecordId: f.performanceRecordId || null, userId }, transaction },
+          );
+          if (act) created.push({ id: act.id, findingId: f.id, userId: f.userId });
+        }
+        if (created.length) {
+          await sequelize.query(`UPDATE lna_findings SET status = 'planned' WHERE tenant_id = :tenantId AND id IN (:fids) AND status <> 'planned'`,
+            { replacements: { tenantId, fids: created.map((c) => c.findingId) }, transaction });
+        }
+        return { done: rows, actions: created };
+      });
       // dibaca setelah UPDATE: "already" hanya untuk temuan yang memang sudah bertanda diteruskan
       // temuan beku yang sudah diserahkan sebelum penarikan masuk "skipped": INA tidak melihatnya lagi
       const marked = await select(`SELECT id FROM lna_findings
@@ -1107,6 +1132,7 @@ function createLnaStores(sequelize, { cipher } = {}) {
         handedOff: ids.filter((id) => handedOff.has(id)),
         already: ids.filter((id) => known.has(id) && !handedOff.has(id)),
         skipped: ids.filter((id) => !known.has(id) && !handedOff.has(id)),
+        actions,
       };
     },
     /**

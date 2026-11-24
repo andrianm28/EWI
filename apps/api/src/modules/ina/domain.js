@@ -38,6 +38,21 @@ function kpis(actions, today) {
   return out;
 }
 
+// Demo 25 Nov (C1): tebakan kategori untuk tindakan yang dibuat dari serah temuan TNA. Urutan = prioritas;
+// tanpa kata kunci -> `lainnya`. HR tetap bisa mengubah kategori di layar Improvement Needs.
+const CATEGORY_HINTS = Object.freeze([
+  ['sop', ['sop', 'prosedur', 'alur kerja']],
+  ['sistem', ['sistem', 'aplikasi', 'akses', 'jaringan', 'server']],
+  ['alat', ['alat', 'tools', 'tool', 'perangkat', 'peralatan']],
+  ['budaya', ['budaya', 'motivasi', 'komunikasi tim', 'kerja sama']],
+]);
+/** Kategori INA dari judul temuan non-training. Pencocokan per kata (huruf kecil), bukan potongan kata. */
+function inferCategory(text) {
+  const t = ` ${String(text || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ')} `;
+  const hit = CATEGORY_HINTS.find(([, words]) => words.some((w) => t.includes(` ${w} `)));
+  return hit ? hit[0] : 'lainnya';
+}
+
 /** 'YYYY-MM-DD' yang benar-benar ada di kalender. */
 function isDate(v) {
   if (typeof v !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(v)) return false;
@@ -52,5 +67,5 @@ const normId = (v) => (typeof v === 'string' ? v.trim().toLowerCase() : v);
 
 module.exports = {
   CATEGORIES, CATEGORY_LABEL, PROCESS_CATEGORIES, STATUSES, STATUS_LABEL, OPEN_STATUSES, TRANSITIONS,
-  canTransition, isOpen, isOverdue, kpis, isDate, isUuid, normId,
+  canTransition, isOpen, isOverdue, kpis, isDate, isUuid, normId, inferCategory,
 };

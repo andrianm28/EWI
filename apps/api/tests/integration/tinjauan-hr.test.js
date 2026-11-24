@@ -442,6 +442,26 @@ run('B7 tinjauan HR (Postgres)', () => {
       expect((await audits('tna.improvement_handoff'))[0].meta).toMatchObject({ objectIds: [f.h], employeeIds: [u.ani] });
     });
 
+    it('C1 demo 25 Nov: serah membuat tindakan di Improvement Needs (judul terenkripsi, kategori ditebak, tercatat audit)', async () => {
+      const a = app();
+      await setFlag('ina.dashboard', true);
+      const list = await request(a).get('/api/ina/actions').set(as('hr'));
+      expect(list.status).toBe(200);
+      const act = list.body.data.find((x) => x.findingId === f.h);
+      expect(act).toMatchObject({ title: 'Ragu-ragu', category: 'lainnya', status: 'new', involvesIndividual: false, ownerUserId: null, sourceRef: 'Pemahaman SLA' });
+      const [raw] = await db.query('SELECT title FROM ina_actions WHERE id = :id', { replacements: { id: act.id }, type: 'SELECT' });
+      expect(raw.title).not.toContain('Ragu-ragu');
+      const [fs] = await db.query('SELECT status FROM lna_findings WHERE id = :id', { replacements: { id: f.h }, type: 'SELECT' });
+      expect(fs.status).toBe('planned');
+      const logs = await audits('ina.action');
+      expect(logs.find((l) => l.action === 'create' && l.meta.objectIds.includes(act.id)).meta).toMatchObject({ fromFinding: true, via: 'tna.handoff' });
+      // serah ulang tidak membuat tindakan kedua
+      await handoff(a, [f.h]);
+      const again = await request(a).get('/api/ina/actions').set(as('hr'));
+      expect(again.body.data.filter((x) => x.findingId === f.h)).toHaveLength(1);
+      await setFlag('ina.dashboard', false);
+    });
+
     it('kontrak B9: listImprovementHandoffs tanpa data individu', async () => {
       const rows = await stores.tna.listImprovementHandoffs(tenant.id);
       expect(rows).toHaveLength(1);
