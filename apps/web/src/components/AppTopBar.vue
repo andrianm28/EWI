@@ -56,7 +56,7 @@ function logout() {
     </div>
     <span class="el-pill"><UiIcon name="verified_user" :size="16" />Log audit aktif</span>
     <div v-if="viewOptions.length > 1" class="el-top__views">
-      <span class="el-top__tenant">Tampilan:</span>
+      <span class="el-top__tenant el-top__views-label">Tampilan:</span>
       <UiSegmented v-model="view" :options="viewOptions" label="Tampilan" />
     </div>
     <span v-if="session.user" class="el-pill" data-testid="identitas"><UiIcon name="person" :size="16" />{{ VIEW_LABEL[session.activeView] }} · {{ session.user.email }}</span>
@@ -73,7 +73,7 @@ function logout() {
    perbedaan render font di CI membuat bar membungkus. Saat satu baris, judul tetap melebar mengisi ruang. */
 .el-top__title { flex: 1 1 160px; font-weight: 500; min-width: 0; }
 .el-top__tenant { font-size: 12px; font-weight: 400; color: var(--el-on-surface-variant); }
-.el-top__views { display: flex; align-items: center; gap: 6px; }
+.el-top__views { display: flex; align-items: center; gap: 6px; max-width: 100%; min-width: 0; }
 .el-top__menu {
   width: 40px; height: 40px; border-radius: 20px; border: 0; background: transparent; color: var(--el-on-surface-variant);
   display: inline-flex; align-items: center; justify-content: center; cursor: pointer;
@@ -83,5 +83,10 @@ function logout() {
 @media (max-width: 900px) {
   .el-top { padding: 8px 16px; }
   .el-top__menu { display: inline-flex; }
+}
+/* UAT NFR-01 (E-10): di ponsel, pengalih tiga tampilan (Admin Tenant, HR / L&D, Karyawan (saya)) tidak muat bersama label.
+   Label disembunyikan secara visual; grup tetap bernama "Tampilan" untuk pembaca layar. */
+@media (max-width: 480px) {
+  .el-top__views-label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 }
 </style>
