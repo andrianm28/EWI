@@ -13,7 +13,7 @@ function record(s) {
 const names = (ev) => ev.map(([n]) => n);
 
 describe('penyedia suara fake (B19)', () => {
-  test('naskah: sapaan, dua jawaban, alat akhiri, penutup', async () => {
+  test('naskah: sapaan, tiga jawaban, alat akhiri, penutup', async () => {
     const p = createVoiceProvider({ provider: 'fake', model: 'fake-live', location: 'lokal' });
     expect(p).toMatchObject({ name: 'fake', model: 'fake-live', location: 'lokal' });
     const s = await p.openSession({ systemInstruction: 'x', tools: [] });
@@ -34,6 +34,12 @@ describe('penyedia suara fake (B19)', () => {
     await tick();
     expect(ev.filter(([n]) => n === 'inputText').map(([, p]) => p.text)).toEqual(['Jawaban suara 1']);
     expect(ev.filter(([n]) => n === 'outputText').map(([, p]) => p.text)).toEqual(['Pertanyaan 2: apa yang sudah Anda coba?']);
+    ev.length = 0;
+
+    s.sendAudio(Buffer.alloc(3200).toString('base64'));
+    s.endAudio();
+    await tick();
+    expect(ev.filter(([n]) => n === 'outputText').map(([, p]) => p.text)).toEqual(['Pertanyaan 3: dukungan apa yang Anda butuhkan?']);
     ev.length = 0;
 
     s.sendAudio(Buffer.alloc(3200).toString('base64'));

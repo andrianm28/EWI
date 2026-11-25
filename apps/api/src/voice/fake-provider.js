@@ -3,9 +3,9 @@
 const { EventEmitter } = require('events');
 
 const GREETING = 'Halo, terima kasih sudah bersedia. Pertanyaan 1: apa kendala terbesar Anda bulan ini?';
-const NEXT = ['Pertanyaan 2: apa yang sudah Anda coba?', 'Pertanyaan 3: dukungan apa yang Anda butuhkan?'];
+const NEXT = ['Pertanyaan 2: apa yang sudah Anda coba?', 'Pertanyaan 3: dukungan apa yang Anda butuhkan?', 'Pertanyaan 4: ada hal lain yang perlu kami ketahui?'];
 const CLOSING = 'Terima kasih, wawancara selesai.';
-const ANSWERS_BEFORE_END = 2;
+const ANSWERS_BEFORE_END = 3; // gateway menolak akhiri_wawancara sebelum 3 jawaban (UAT 25 Nov)
 const SILENCE = Buffer.alloc(4800).toString('base64'); // 0,1 detik PCM16 24 kHz
 
 function createFakeVoiceProvider({ config = {} } = {}) {
@@ -52,7 +52,7 @@ function createFakeVoiceProvider({ config = {} } = {}) {
         sendToolResponse(responses) {
           const r = (responses || [])[0];
           if (!r || r.name !== 'akhiri_wawancara') return;
-          later(() => speak(r.response && r.response.ok ? CLOSING : NEXT[1]));
+          later(() => speak(r.response && r.response.ok ? CLOSING : NEXT[NEXT.length - 1]));
         },
         close() {
           if (closed) return;
