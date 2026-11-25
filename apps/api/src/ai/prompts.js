@@ -127,10 +127,11 @@ function parseQuestion(raw) {
  * B19 bagian 5: instruksi sistem wawancara suara TNA. Konteks sama dengan interviewSystemPrompt (PM-10: tanpa nama,
  * email, atau data orang lain), ditambah aturan lisan dan alat. Transkrip dilampirkan untuk sesi lanjutan.
  */
-function voiceSystemPrompt({ context, maxQuestions, askedCount, transcript = [] }) {
+function voiceSystemPrompt({ context, maxQuestions, askedCount, minAnswers = 3, transcript = [] }) {
   const { competencies, triggers } = codes(context);
   const remaining = Math.max(0, maxQuestions - askedCount);
   const focus = !triggers.length && context.focus && context.focus.label ? context.focus : null;
+  const noTargets = !triggers.length && !focus;
   const heading = focus ? 'Topik yang dibahas:' : 'Target milik karyawan ini yang belum tercapai (boleh Anda sebut nama dan angkanya):';
   const resume = transcript.length
     ? `\nPercakapan sebelumnya (lanjutkan dari pertanyaan berikutnya, tanpa menyapa ulang):\n${transcriptBlock(transcript)}\n`
@@ -150,7 +151,9 @@ ${COMMON_RULES}
 - Satu pertanyaan per giliran, paling banyak dua kalimat pendek. Jangan mengucapkan kode (K1, T1); kode hanya untuk alat.
 - Bila belum ada percakapan, sapa singkat lalu ajukan pertanyaan pertama.
 - Panggil alat catat_topik_selesai dengan kode target atau kompetensi saat penyebabnya sudah jelas.
-- Sisa kuota pertanyaan: ${remaining}. Bila penyebab setiap target sudah jelas atau kuota habis, ucapkan penutup singkat lalu panggil alat akhiri_wawancara.
+- Ajukan paling sedikit ${minAnswers} pertanyaan dan dengarkan jawabannya sebelum mengucapkan penutup atau memanggil akhiri_wawancara. Satu jawaban hampir tidak pernah cukup; gali dengan pertanyaan lanjutan (contoh, sejak kapan, apa yang sudah dicoba, dukungan apa yang dibutuhkan).
+${noTargets ? '- Tidak ada target meleset: gali kendala kerja sehari-hari dan kebutuhan belajar karyawan berdasarkan kompetensi jabatan di atas.' : ''}
+- Sisa kuota pertanyaan: ${remaining}. Bila ${noTargets ? 'kendala dan kebutuhan belajar utama sudah jelas' : 'penyebab setiap target sudah jelas'} (dan minimal ${minAnswers} jawaban) atau kuota habis, ucapkan penutup singkat lalu panggil alat akhiri_wawancara.
 ${resume}`;
 }
 

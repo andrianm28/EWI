@@ -155,7 +155,7 @@ describe('VoiceSession (B19)', () => {
   });
 
   test('akhiri_wawancara diterima tapi turnComplete tidak datang: selesai done sesudah tenggang', async () => {
-    const { vs, out, stores, provider } = setup({ limits: { endGraceMs: 5 } });
+    const { vs, out, stores, provider } = setup({ limits: { endGraceMs: 5 }, aiConfig: { maxQuestions: 1 } });
     await vs.start();
     const up = provider.ups[0];
     up.emit('ready');
@@ -181,7 +181,8 @@ describe('VoiceSession (B19)', () => {
   });
 
   test('akhiri_wawancara ditolak tanpa jawaban; sesudah ada jawaban diterima, penutup disimpan, ai_done, ended done', async () => {
-    const { vs, out, stores, provider, closes } = setup();
+    // Kuota 1 pertanyaan: minimum jawaban sebelum menutup ikut turun menjadi 1
+    const { vs, out, stores, provider, closes } = setup({ aiConfig: { maxQuestions: 1 } });
     await vs.start();
     const up = provider.ups[0];
     up.emit('ready');
@@ -205,6 +206,26 @@ describe('VoiceSession (B19)', () => {
     expect(closes).toEqual([1000]);
     expect(up.closed).toBe(true);
     expect(vs.summary()).toMatchObject({ reason: 'done', topics: 1 });
+  });
+
+  test('UAT 25 Nov: akhiri_wawancara sesudah satu jawaban ditolak (minimal 3 jawaban); jawaban ketiga membuka penutupan', async () => {
+    const { vs, out, stores, provider } = setup();
+    await vs.start();
+    const up = provider.ups[0];
+    up.emit('ready');
+    const akhiri = async (id) => { up.emit('toolCall', { calls: [{ id, name: 'akhiri_wawancara', args: {} }] }); await flush(); return up.sent.pop(); };
+    const qa = async (q, a) => { up.emit('outputText', { text: q }); up.emit('inputText', { text: a }); up.emit('outputText', { text: 'lanjut' }); up.emit('turnComplete'); await flush(); };
+    up.emit('outputText', { text: 'P1?' }); up.emit('turnComplete'); await flush();
+    up.emit('inputText', { text: 'J1' });
+    expect(await akhiri('a1')).toEqual(['tool', [{ id: 'a1', name: 'akhiri_wawancara', response: { ok: false, alasan: 'Terlalu cepat: baru 1 jawaban. Ajukan pertanyaan lanjutan sampai minimal 3 jawaban sebelum menutup.' } }]]);
+    up.emit('outputText', { text: 'P2?' }); up.emit('turnComplete'); await flush();
+    await qa('', 'J2');
+    expect((await akhiri('a2'))[1][0].response.ok).toBe(false);
+    up.emit('inputText', { text: 'J3' });
+    expect(await akhiri('a3')).toEqual(['tool', [{ id: 'a3', name: 'akhiri_wawancara', response: { ok: true } }]]);
+    up.emit('outputText', { text: 'Terima kasih.' }); up.emit('turnComplete'); await flush();
+    expect(stores.state.turns.filter((t) => t.speaker === 'human').map((t) => t.text)).toEqual(['J1', 'J2', 'J3']);
+    expect(out[out.length - 1]).toEqual({ type: 'ended', reason: 'done' });
   });
 
   test('kuota dari giliran AI tersimpan tanpa yang disela: pesan kuota sekali, lalu pertanyaan lebih mengakhiri', async () => {

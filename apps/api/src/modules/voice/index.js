@@ -10,7 +10,7 @@ const { FLAGS } = require('../../core/flags');
 const { createTicketService } = require('./ticket');
 const { createVoiceRegistry } = require('./registry');
 const { createVoiceEligibility, VoiceError } = require('./eligibility');
-const { createVoiceSession, voiceTimeLimitMs } = require('./session');
+const { createVoiceSession, voiceTimeLimitMs, minAnswers } = require('./session');
 
 const STREAM_PATH = /^\/api\/voice\/sessions\/([0-9a-fA-F-]{36})\/stream$/;
 const AUTH_TIMEOUT_MS = 5000;
@@ -57,7 +57,8 @@ function createVoiceModule(deps) {
       instructions: async (transcript) => {
         const ctx = aiContext(await buildContext(stores, claims.tenantId, session), session);
         const askedCount = transcript.filter((t) => t.speaker === 'ai' && !t.interrupted).length;
-        return voiceSystemPrompt({ context: ctx, maxQuestions: questionLimit(session, deps.aiConfig || {}), askedCount, transcript });
+        const maxQuestions = questionLimit(session, deps.aiConfig || {});
+        return voiceSystemPrompt({ context: ctx, maxQuestions, askedCount, minAnswers: minAnswers(maxQuestions), transcript });
       },
       recheck: async () => {
         try { await eligibility.assertVoiceEligible({ claims, sessionId, epoch }); return null; } catch (e) {

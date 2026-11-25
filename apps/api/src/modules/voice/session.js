@@ -13,6 +13,9 @@ const RATE_FACTOR = 1.5;
 const END_GRACE_MS = 8000; // akhiri_wawancara diterima tapi turnComplete tidak datang
 const FAILURE_WINDOW_MS = 60000;
 const MAX_FAILURES = 3;
+const MIN_ANSWERS = 3; // UAT 25 Nov: Gemini menutup sesudah satu jawaban; akhiri_wawancara ditolak sebelum minimal 3 jawaban
+/** Minimal jawaban sebelum akhiri_wawancara diterima, tidak melebihi kuota pertanyaan sesi. */
+const minAnswers = (maxQuestions) => Math.max(1, Math.min(MIN_ANSWERS, maxQuestions));
 
 const START_TEXT = 'Mulai wawancara.';
 const RESUME_TEXT = 'Lanjutkan wawancara dari pertanyaan berikutnya, tanpa menyapa ulang.';
@@ -47,6 +50,7 @@ function createVoiceSession(deps) {
   const { provider, stores, tenantId, session, epoch, send, close } = deps;
   const limits = { readyTimeoutMs: 10000, recheckMs: 30000, backoffMs: [500, 1000, 2000], endGraceMs: END_GRACE_MS, ...(deps.limits || {}) };
   const maxQuestions = questionLimit(session, deps.aiConfig || {});
+  const minToEnd = minAnswers(maxQuestions);
   const guard = { restartCount: session.restartCount || 0, voiceEpoch: epoch };
 
   let chain = Promise.resolve();
@@ -226,8 +230,11 @@ function createVoiceSession(deps) {
         if (call.args && call.args.kode) topics.add(String(call.args.kode).slice(0, 16));
         response = { ok: true };
       } else if (call.name === 'akhiri_wawancara') {
-        if (savedHuman === 0 && !openHuman.trim()) response = { ok: false, alasan: 'Belum ada jawaban karyawan.' };
-        else {
+        const answers = savedHuman + (openHuman.trim() ? 1 : 0);
+        if (answers === 0) response = { ok: false, alasan: 'Belum ada jawaban karyawan.' };
+        else if (answers < minToEnd && !quotaNotified) {
+          response = { ok: false, alasan: `Terlalu cepat: baru ${answers} jawaban. Ajukan pertanyaan lanjutan sampai minimal ${minToEnd} jawaban sebelum menutup.` };
+        } else {
           response = { ok: true }; endAfterTurn = true;
           later(() => enqueue(() => finish('done')), limits.endGraceMs);
         }
@@ -334,4 +341,4 @@ function createVoiceSession(deps) {
   };
 }
 
-module.exports = { createVoiceSession, VOICE_TOOLS, voiceTimeLimitMs, START_TEXT, RESUME_TEXT, QUOTA_TEXT };
+module.exports = { createVoiceSession, VOICE_TOOLS, voiceTimeLimitMs, minAnswers, START_TEXT, RESUME_TEXT, QUOTA_TEXT };
