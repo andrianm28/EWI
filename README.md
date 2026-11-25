@@ -1,9 +1,11 @@
-# Elite Workforce Intelligence (EWI)
+# Elite Learning & Growth Operating System (ELGOS)
 
-Repo produk EWI, Modul 01 Learning Needs Analysis: **CCA, DNA, TNA, INA**.
-EWI adalah produk yang **terpisah penuh** dari EliteMentor: repo, database, deploy, dan login sendiri.
+Repo produk ELGOS, Modul 01 Learning Needs Analysis: **CCA, DNA, TNA, INA**.
+ELGOS adalah produk yang **terpisah penuh** dari EliteMentor: repo, database, deploy, dan login sendiri.
 Integrasi ke EliteMentor hanya lewat API OAuth2 dan webhook bertanda tangan
 (lihat [ADR 0001](docs/adr/0001-ewi-terpisah-penuh.md)).
+
+> **Nama produk.** Sejak 13 Nov 2026 (keputusan komersial G3-A) nama produk adalah **ELGOS**; **EWI (Elite Workforce Intelligence)** adalah nama lama. Proyek HR Elitery adalah implementasi pertama ELGOS. Learning Needs Analysis (CCA, DNA, TNA, INA) adalah satu dari 4 module ELGOS; rekomendasi promosi berbasis kompetensi adalah module terpisah (G2-A). Identifier teknis (nama repo, schema `ewi`, env `EWI_*`, audience JWT `ewi`, image/paket `ewi-*`, stack CDK `Ewi*`, path di server dev) sengaja belum diganti sampai ada keputusan terpisah.
 
 ## Struktur
 
@@ -11,8 +13,24 @@ Integrasi ke EliteMentor hanya lewat API OAuth2 dan webhook bertanda tangan
 apps/api   Node 24 + Express + Sequelize + Postgres (schema `ewi`)
 apps/web   Vue 3 + Vite + TypeScript + Pinia + Tailwind, e2e Playwright
 docs/      ADR, arsitektur, spec tiket (docs/ewi/tickets/ELITMEN-xxx.md)
-infra/     AWS CDK: lingkungan staging + prod (docs/infra/aws-staging-prod.md)
+infra/     Terraform: hanya KMS per tenant + SES di AWS (docs/infra/vps-etavm2.md)
+deploy/    vps/ = staging + prod di etavm2; dev-worktree/ = dev per worktree; dev-public/ = berkas compose/nginx lama (etavm1 dihentikan 23 Nov)
 ```
+
+## UI web
+
+Design system, komponen bersama (`apps/web/src/ui/`), shell, dan kontrak rute untuk paket layar dijelaskan di
+`docs/designs/b0-fondasi-ui.md`. Ringkasnya: layar baru menambah `apps/web/src/screens/<paket>/routes.ts`, memakai
+nama rute sesuai kunci menu, membungkus isi dengan `<AppShell>`, dan hanya memakai komponen `Ui*` serta token `--el-*`.
+Referensi komponen: `VITE_UI_KIT=1 npm run dev:web`, lalu buka `/ui-kit`.
+
+## Branch dan lingkungan
+
+| Branch | Lingkungan | Workflow |
+|---|---|---|
+| PR ke mana pun | – | `ci.yml`: lint, migrasi naik-turun-naik, jest, build, e2e, terraform validate, cek skrip deploy |
+| `dev` | dev per worktree di etavm2 (etavm1 dihentikan 23 Nov) | `deploy-dev.yml`: CI → image GHCR (tanpa deploy) |
+| `main` | staging di etavm2 (prod: dijalankan manual dengan SHA yang sama) | `deploy.yml` |
 
 Di dalam API:
 

@@ -1,1 +1,205 @@
 @import "tailwindcss";
+
+/*
+ * Design system ELGOS (B0), dari mockup Pak Eji: Material 3 dengan navy sebagai warna utama.
+ * Spek: docs/designs/b0-fondasi-ui.md. Semua komponen memakai token --el-*; jangan menulis kode warna langsung.
+ */
+:root {
+  --el-primary: #0b3a6e;
+  --el-on-primary: #ffffff;
+  --el-primary-container: #d6e3ff;
+  --el-on-primary-container: #001b3e;
+  --el-secondary-container: #dce3f0;
+  --el-on-secondary-container: #141c27;
+  --el-tertiary-container: #bdebf5;
+  --el-on-tertiary-container: #001f26;
+  --el-tertiary: #00606e;
+  --el-surface: #f8f9fc;
+  --el-surface-1: #f2f4f9;
+  --el-surface-2: #eceff5;
+  --el-surface-3: #e3e7ef;
+  --el-surface-card: #ffffff;
+  --el-on-surface: #191c20;
+  --el-on-surface-variant: #43474e;
+  --el-outline: #73777f;
+  --el-outline-variant: #c3c6cf;
+  /* Latar di belakang laci melayang dan dialog modal; sama di dua tema */
+  --el-scrim: rgb(0 0 0 / 0.4);
+  --el-success: #1b6e3f;
+  --el-success-container: #c6f0d3;
+  --el-on-success-container: #00210f;
+  --el-warning: #7a4f00;
+  --el-warning-container: #ffe2a8;
+  --el-on-warning-container: #2b1700;
+  --el-critical: #b3261e;
+  --el-critical-container: #f9dedc;
+  --el-on-critical-container: #410002;
+  --el-shadow: 0 4px 12px rgb(0 0 0 / 0.25);
+  --el-font: 'Roboto', system-ui, sans-serif;
+  --el-font-mono: 'Roboto Mono', ui-monospace, monospace;
+  color-scheme: light;
+}
+
+/* Mode gelap: turunan peran warna Material 3 (tidak ada di mockup, lihat spek bagian 3). */
+:root[data-theme='dark'] {
+  --el-primary: #a9c7ff;
+  --el-on-primary: #00305f;
+  --el-primary-container: #0b3a6e;
+  --el-on-primary-container: #d6e3ff;
+  --el-secondary-container: #3a4352;
+  --el-on-secondary-container: #dce3f0;
+  --el-tertiary-container: #004e5a;
+  --el-on-tertiary-container: #bdebf5;
+  --el-tertiary: #82d3e0;
+  --el-surface: #111418;
+  --el-surface-1: #191c20;
+  --el-surface-2: #1d2024;
+  --el-surface-3: #272a2f;
+  --el-surface-card: #1d2024;
+  --el-on-surface: #e1e2e8;
+  --el-on-surface-variant: #c3c6cf;
+  --el-outline: #8d9199;
+  --el-outline-variant: #43474e;
+  --el-success: #8bd8a5;
+  --el-success-container: #0b5229;
+  --el-on-success-container: #c6f0d3;
+  --el-warning: #f3bf5b;
+  --el-warning-container: #5c3b00;
+  --el-on-warning-container: #ffe2a8;
+  --el-critical: #ffb4ab;
+  --el-critical-container: #8c1d18;
+  --el-on-critical-container: #f9dedc;
+  --el-shadow: 0 4px 12px rgb(0 0 0 / 0.6);
+  color-scheme: dark;
+
+  /*
+   * Halaman lama (DNA, TNA, wawancara) memakai utilitas Tailwind slate/white/blue/indigo/red/emerald/amber.
+   * Variabel warnanya dipetakan ulang supaya tetap terbaca di mode gelap tanpa menulis ulang halamannya.
+   */
+  --color-white: #1d2024;
+  --color-slate-50: #111418;
+  --color-slate-100: #272a2f;
+  --color-slate-200: #43474e;
+  --color-slate-300: #5b5f67;
+  --color-slate-400: #8d9199;
+  --color-slate-500: #a9adb5;
+  --color-slate-600: #c3c6cf;
+  --color-slate-700: #d5d8df;
+  --color-slate-800: #e1e2e8;
+  --color-slate-900: #e1e2e8;
+  --color-blue-50: #0b3a6e;
+  --color-blue-100: #0b3a6e;
+  --color-blue-200: #2a5591;
+  --color-blue-600: #a9c7ff;
+  --color-blue-700: #a9c7ff;
+  --color-blue-800: #d6e3ff;
+  --color-indigo-50: #0b3a6e;
+  --color-indigo-100: #0b3a6e;
+  --color-indigo-200: #2a5591;
+  --color-indigo-600: #a9c7ff;
+  --color-indigo-700: #a9c7ff;
+  --color-indigo-800: #d6e3ff;
+  --color-red-50: #8c1d18;
+  --color-red-100: #8c1d18;
+  --color-red-200: #a8362f;
+  --color-red-600: #ffb4ab;
+  --color-red-700: #ffb4ab;
+  --color-red-800: #f9dedc;
+  --color-emerald-50: #0b5229;
+  --color-emerald-100: #0b5229;
+  --color-emerald-200: #1b6e3f;
+  --color-emerald-600: #8bd8a5;
+  --color-emerald-700: #8bd8a5;
+  --color-emerald-800: #c6f0d3;
+  --color-amber-50: #5c3b00;
+  --color-amber-100: #5c3b00;
+  --color-amber-200: #7a4f00;
+  --color-amber-600: #f3bf5b;
+  --color-amber-700: #f3bf5b;
+  --color-amber-800: #ffe2a8;
+}
+
+@theme inline {
+  --color-primary: var(--el-primary);
+  --color-on-primary: var(--el-on-primary);
+  --color-primary-container: var(--el-primary-container);
+  --color-on-primary-container: var(--el-on-primary-container);
+  --color-secondary-container: var(--el-secondary-container);
+  --color-on-secondary-container: var(--el-on-secondary-container);
+  --color-tertiary: var(--el-tertiary);
+  --color-tertiary-container: var(--el-tertiary-container);
+  --color-on-tertiary-container: var(--el-on-tertiary-container);
+  --color-surface: var(--el-surface);
+  --color-surface-1: var(--el-surface-1);
+  --color-surface-2: var(--el-surface-2);
+  --color-surface-3: var(--el-surface-3);
+  --color-surface-card: var(--el-surface-card);
+  --color-on-surface: var(--el-on-surface);
+  --color-on-surface-variant: var(--el-on-surface-variant);
+  --color-outline: var(--el-outline);
+  --color-outline-variant: var(--el-outline-variant);
+  --color-success: var(--el-success);
+  --color-success-container: var(--el-success-container);
+  --color-warning: var(--el-warning);
+  --color-warning-container: var(--el-warning-container);
+  --color-critical: var(--el-critical);
+  --color-critical-container: var(--el-critical-container);
+  --font-sans: var(--el-font);
+  --font-mono: var(--el-font-mono);
+}
+
+@layer base {
+  body {
+    margin: 0;
+    font-family: var(--el-font);
+    font-size: 14px;
+    line-height: 20px;
+    background: var(--el-surface);
+    color: var(--el-on-surface);
+  }
+  :focus-visible {
+    outline: 2px solid var(--el-primary);
+    outline-offset: 2px;
+  }
+}
+
+/* Tipografi halaman baru. Halaman lama tetap memakai utilitas Tailwind-nya sendiri. */
+@layer components {
+  .el-h1 { font-size: 28px; line-height: 36px; font-weight: 400; margin: 0 0 4px; }
+  .el-h2 { font-size: 20px; line-height: 28px; font-weight: 500; margin: 0 0 12px; }
+  .el-h3 { font-size: 16px; line-height: 24px; font-weight: 500; margin: 0 0 8px; }
+  .el-muted { color: var(--el-on-surface-variant); }
+  .el-mono { font-family: var(--el-font-mono); }
+  .el-grid { display: grid; gap: 16px; }
+  .el-grid-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .el-grid-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .el-grid-4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  @media (max-width: 1000px) {
+    .el-grid-3, .el-grid-4 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  }
+  @media (max-width: 640px) {
+    .el-grid-2, .el-grid-3, .el-grid-4 { grid-template-columns: minmax(0, 1fr); }
+  }
+  /* Dipakai UiCard dan UiKpiCard; di sini supaya tidak bergantung pada urutan impor komponen */
+  .el-card { background: var(--el-surface-card); border: 1px solid var(--el-outline-variant); border-radius: 16px; padding: 20px; }
+  .el-card--tonal { background: var(--el-surface-1); }
+  .el-pill {
+    display: inline-flex; gap: 6px; align-items: center; padding: 4px 12px; border-radius: 16px;
+    background: var(--el-surface-2); font-size: 12px; white-space: nowrap;
+  }
+  .el-input {
+    height: 48px; border: 1px solid var(--el-outline); border-radius: 8px; padding: 0 16px; font: inherit;
+    background: var(--el-surface-card); color: var(--el-on-surface); min-width: 0;
+  }
+  .el-input:focus { outline: 2px solid var(--el-primary); border-color: var(--el-primary); }
+  select.el-input { padding-right: 8px; }
+  textarea.el-input { height: auto; min-height: 96px; padding: 12px 16px; }
+  .el-input[aria-invalid='true'] { border-color: var(--el-critical); border-width: 2px; }
+  .el-label { display: block; font-weight: 500; margin: 16px 0 6px; }
+  .el-check { display: inline-flex; align-items: flex-start; gap: 10px; cursor: pointer; }
+  .el-check input { width: 18px; height: 18px; margin: 1px 0 0; accent-color: var(--el-primary); flex: none; }
+  .el-sr-only {
+    position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden;
+    clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0;
+  }
+}

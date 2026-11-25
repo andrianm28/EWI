@@ -1,0 +1,110 @@
+# Dev ELGOS per git worktree (keputusan user 17 Nov 2026: "dev env per git worktree per thread").
+# Setiap worktree = project compose sendiri (elgos-dev-<slug>), DB sendiri, port sendiri, URL publik
+# sendiri lewat Cloudflare quick tunnel. Dijalankan lewat dev.sh, bukan langsung:
+#   deploy/dev-worktree/dev.sh up      # build dari worktree ini, migrasi, seed, cetak URL
+# Hanya data sintetis. Data karyawan nyata hanya di prod.
+# Di etavm2 dijalankan sebagai user elgos-dev (Docker rootless, terpisah dari staging/prod).
+# Batas per worktree: DB + API masing-masing 1 vCPU / 768 MB, web 128 MB (8 thread paralel muat).
+services:
+  db:
+    image: pgvector/pgvector:pg16
+    restart: unless-stopped
+    env_file: ${DEV_ENV_FILE:?DEV_ENV_FILE wajib}
+    environment:
+      POSTGRES_USER: elgos
+      POSTGRES_DB: elgos_dev
+    command: ["postgres", "-c", "shared_buffers=128MB"]
+    volumes:
+      - db-data:/var/lib/postgresql/data
+    deploy:
+      resources:
+        limits: { cpus: "1", memory: 768m }
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U elgos -d elgos_dev"]
+      interval: 3s
+      timeout: 3s
+      retries: 30
+
+  api:
+    build:
+      context: ${WORKTREE:?WORKTREE wajib}
+      dockerfile: apps/api/Dockerfile
+    restart: unless-stopped
+    depends_on:
+      db: { condition: service_healthy }
+    env_file: ${DEV_ENV_FILE}
+    environment:
+      NODE_ENV: development
+      EWI_ENV: dev
+      PORT: 4100
+      DB_HOST: db
+      DB_PORT: 5432
+      DB_NAME: elgos_dev
+      DB_USER: elgos
+      DB_SSL: "false"
+      DB_SCHEMA: ewi
+      RUN_MIGRATIONS: "true"
+      EWI_JWT_AUDIENCE: ewi
+      EWI_JWT_ISSUER: elgos-api-dev
+      ENCRYPTION_PROVIDER: local
+      MAIL_PROVIDER: log
+      TENANT_KEY_PROVIDER: local
+      # EM-LTI: issuer tetap (tidak ikut URL tunnel yang berubah); kunci platform ELGOS_LTI_PRIVATE_KEY dari .env (dibuat dev.sh)
+      LTI_ISSUER: https://elgos-dev.local
+      # B14: dokumentasi pelatihan offline (foto/video). Tanpa ini unggah menjawab 501 STORAGE_NOT_CONFIGURED.
+      EWI_UPLOAD_DIR: /app/uploads
+    volumes:
+      - uploads:/app/uploads
+    deploy:
+      resources:
+        limits: { cpus: "1", memory: 768m }
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:4100/api/health | grep -q '\"ok\"'"]
+      interval: 3s
+      timeout: 3s
+      retries: 40
+      start_period: 5s
+
+  # EM-LTI: "EliteMentor (simulasi)", Tool LTI 1.3 tiruan untuk demo (bukan EliteMentor asli). Dilayani web di /em-sim/.
+  # Spek docs/designs/em-lti-platform.md §6; data tool di seed scripts/seed-lti-demo.js.
+  em-sim:
+    build:
+      context: ${WORKTREE}/deploy/dev-worktree/em-sim
+    restart: unless-stopped
+    depends_on:
+      api: { condition: service_healthy }
+    environment:
+      PORT: 4300
+      BASE_PATH: /em-sim
+      PLATFORM_ISSUER: https://elgos-dev.local
+      CLIENT_ID: elitementor-sim
+      DEPLOYMENT_ID: elgos-demo
+      PLATFORM_AUTH_URL: /api/lti/authorize
+      ELGOS_INTERNAL_URL: http://api:4100
+    deploy:
+      resources:
+        limits: { cpus: "0.25", memory: 96m }
+
+  web:
+    build:
+      context: ${WORKTREE}
+      dockerfile: apps/web/Dockerfile
+    restart: unless-stopped
+    depends_on:
+      api: { condition: service_healthy }
+    ports:
+      - "127.0.0.1:${WEB_PORT:?WEB_PORT wajib}:80"
+    deploy:
+      resources:
+        limits: { cpus: "0.5", memory: 128m }
+
+  tunnel:
+    profiles: [public]
+    image: cloudflare/cloudflared:2025.10.0
+    restart: unless-stopped
+    depends_on: [web]
+    command: tunnel --no-autoupdate --url http://web:80
+
+volumes:
+  db-data:
+  uploads:

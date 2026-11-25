@@ -1,0 +1,2 @@
+self-hosted-runner:
+  labels: [etavm2, elgos]

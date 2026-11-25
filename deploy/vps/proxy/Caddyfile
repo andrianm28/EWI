@@ -1,0 +1,29 @@
+# Reverse proxy TLS bersama untuk staging + prod di etavm2. Sertifikat Let's Encrypt otomatis
+# (butuh DNS A record ke IP publik etavm2 dan port 80/443 terbuka).
+{
+	email {$ACME_EMAIL}
+}
+
+(umum) {
+	encode zstd gzip
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options nosniff
+		Referrer-Policy strict-origin-when-cross-origin
+		-Server
+	}
+	request_body {
+		max_size 20MB
+	}
+}
+
+{$PROD_HOST:elgos.eliteacademy.id} {
+	import umum
+	reverse_proxy 127.0.0.1:8180
+}
+
+{$STAGING_HOST:stg-elgos.eliteacademy.id} {
+	import umum
+	header X-Robots-Tag "noindex, nofollow"
+	reverse_proxy 127.0.0.1:8181
+}

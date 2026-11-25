@@ -1,0 +1,19 @@
+/* Gaya bersama layar B15 (Learning Impact Measurement, wawancara ulang). */
+.lim-gap { margin-top: 16px; }
+.lim-small { font-size: 13px; }
+.lim-strong { font-weight: 500; }
+.lim-big { font-size: 24px; font-weight: 500; margin: 4px 0; }
+.lim-row { display: flex; gap: 12px; align-items: end; justify-content: space-between; flex-wrap: wrap; }
+.lim-q5 { display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); margin-top: 8px; }
+.lim-q { padding: 12px; border: 1px solid var(--el-outline-variant); border-radius: 12px; }
+.lim-factor { padding: 8px 12px; border: 1px solid var(--el-outline-variant); border-radius: 8px; margin: 0 0 8px; }
+.lim-actions { display: flex; gap: 4px; flex-wrap: wrap; }
+.lim-stack { display: flex; flex-direction: column; gap: 12px; }
+.lim-flow { display: grid; grid-template-columns: minmax(0, 240px) minmax(0, 1fr); gap: 16px; align-items: start; }
+@media (max-width: 720px) { .lim-flow { grid-template-columns: minmax(0, 1fr); } }
+.lim-item { padding: 10px 12px; border: 1px solid var(--el-outline-variant); border-radius: 8px; display: flex; justify-content: space-between; gap: 12px; align-items: center; }
+.lim-fold > summary { cursor: pointer; padding: 8px 0; }
+.lim-tabbar { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.lim-tabbar > .el-tabs { flex: 1 1 auto; min-width: 0; }
+.lim-plan { display: flex; align-items: center; gap: 12px; margin-left: auto; }
+.lim-plan p { margin: 0; }

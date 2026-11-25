@@ -1,0 +1,30 @@
+{
+  "id": "improvement-alat",
+  "versi": 1,
+  "operasi": "tna",
+  "deskripsi": "Produktivitas turun karena aplikasi tiket sering macet dan perangkat lama. Kemampuan karyawan cukup.",
+  "karyawan": {
+    "nama": "Sari Contoh",
+    "jabatan": "Agen Layanan L1"
+  },
+  "target": [
+    {
+      "kpi": "Tiket selesai per hari",
+      "target": 40,
+      "aktual": 28
+    }
+  ],
+  "naskah": [
+    "Aplikasi tiket sering berhenti merespons saat jam sibuk, kadang sampai sepuluh menit.",
+    "Laptop saya sudah lima tahun dan VPN sering putus, jadi saya harus masuk ulang berkali-kali.",
+    "Cara menyelesaikan tiketnya saya sudah hafal, rekan satu tim juga mengalami masalah yang sama.",
+    "Sudah pernah lapor ke tim IT tetapi belum ada penggantian perangkat."
+  ],
+  "jawabanCadangan": "Saya rasa itu saja yang bisa saya ceritakan.",
+  "harapan": {
+    "kategori": [
+      "non_training"
+    ],
+    "minTemuan": 1
+  }
+}

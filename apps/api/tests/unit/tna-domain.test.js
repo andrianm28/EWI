@@ -1,4 +1,5 @@
-const { evaluate, normalizeRow } = require('../../src/modules/tna/performance');
+const { evaluate, effectiveRule, metricKey } = require('../../src/modules/tna/performance');
+const { moodleAdapter, createCatalogService } = require('../../src/integrations/catalog');
 const { selectInterviewees } = require('../../src/modules/tna/targeting');
 const { rankTrainingNeeds } = require('../../src/modules/tna/pareto');
 
@@ -13,15 +14,37 @@ describe('evaluate target kinerja (RG-2)', () => {
   });
 });
 
-describe('normalizeRow', () => {
-  it('menolak baris tanpa identitas karyawan atau tipe salah', () => {
-    expect(normalizeRow({ metricType: 'kpi', name: 'x', target: 1, actual: 1 }).error).toMatch(/employeeId/);
-    expect(normalizeRow({ email: 'a@b.c', metricType: 'nps', name: 'x', target: 1, actual: 1 }).error).toMatch(/metricType/);
-    expect(normalizeRow({ email: 'a@b.c', metricType: 'kpi', name: 'x', target: 'a', actual: 1 }).error).toMatch(/angka/);
+describe('toleransi per KPI (PK-20, PM-1 opsi B)', () => {
+  it('lebih tinggi: tercapai bila realisasi >= target - toleransi', () => {
+    expect(evaluate({ target: 90, actual: 86, tolerance: 5 }).isMet).toBe(true);
+    expect(evaluate({ target: 90, actual: 84, tolerance: 5 })).toEqual({ isMet: false, missRatio: 6 / 90 });
   });
-  it('menghitung isMet dan menormalkan email', () => {
-    const { row } = normalizeRow({ email: 'Dimas@ELGOS.test', metricType: 'SLA', name: 'Respons tiket', target: 15, actual: 25, direction: 'lower' });
-    expect(row).toMatchObject({ email: 'dimas@elgos.test', metricType: 'sla', isMet: false, direction: 'lower' });
+  it('lebih rendah: tercapai bila realisasi <= target + toleransi', () => {
+    expect(evaluate({ target: 4, actual: 4.5, direction: 'lower', tolerance: 0.5 }).isMet).toBe(true);
+    expect(evaluate({ target: 4, actual: 4.6, direction: 'lower', tolerance: 0.5 }).isMet).toBe(false);
+  });
+  it('tenggat selalu lebih awal lebih baik, biner tanpa toleransi', () => {
+    expect(effectiveRule('tenggat', { direction: 'higher', tolerance: 2 })).toEqual({ direction: 'lower', tolerance: 2 });
+    expect(effectiveRule('biner', { direction: 'lower', tolerance: 3 })).toEqual({ direction: 'higher', tolerance: 0 });
+    expect(effectiveRule('persen', {})).toEqual({ direction: 'higher', tolerance: 0 });
+  });
+  it('kunci KPI tidak peka huruf dan spasi', () => {
+    expect(metricKey('  Resolusi   Tiket ')).toBe('resolusi tiket');
+  });
+});
+
+describe('katalog statis Moodle (PK-18)', () => {
+  it('adapter memakai course hasil impor yang dipetakan ke kompetensi', async () => {
+    const calls = [];
+    const store = { async findForCompetency(tenantId, q) { calls.push({ tenantId, ...q }); return [{ ref: 'SDL1-101', title: 'Membaca SLA', url: null }]; } };
+    const svc = createCatalogService({ moodle: moodleAdapter(store) });
+    const hit = await svc.match({ tenantId: 't', targets: ['elitementor', 'moodle'], competency: { id: 'c1', name: 'SLA' }, tier: 'basic' });
+    expect(hit).toEqual({ source: 'moodle', ref: 'SDL1-101', title: 'Membaca SLA', url: null });
+    expect(calls).toEqual([{ tenantId: 't', source: 'moodle', competencyId: 'c1', tier: 'basic' }]);
+  });
+  it('tanpa store atau tanpa kompetensi hasilnya kosong', async () => {
+    expect(await moodleAdapter().findForCompetency({ tenantId: 't', competency: { id: 'c1' } })).toEqual([]);
+    expect(await moodleAdapter({ findForCompetency: async () => [{ ref: 'x' }] }).findForCompetency({ tenantId: 't', competency: null })).toEqual([]);
   });
 });
 

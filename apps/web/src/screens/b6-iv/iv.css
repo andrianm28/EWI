@@ -1,0 +1,56 @@
+.iv-consent { display: grid; gap: 12px; font-size: 14px; }
+.iv-consent ul { margin: 0; padding-left: 20px; list-style: disc; }
+.iv-h3 { font-size: 15px; font-weight: 600; margin: 4px 0 0; }
+.iv-actions { display: flex; gap: 12px; flex-wrap: wrap; }
+.iv-small { font-size: 12px; }
+.iv-chat-head { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 12px; }
+.iv-h2 { font-size: 20px; font-weight: 500; margin: 0 0 8px; }
+/* P7 IV-9: gelembung `.msg` mockup (tanpa bingkai, radius 16 dengan sudut 4 di sisi pengirim) */
+.iv-chat { display: grid; gap: 12px; align-content: start; min-height: 280px; }
+.iv-msg { border-radius: 16px; padding: 12px 16px; font-size: 14px; max-width: 78%; }
+.iv-msg small { display: block; font-size: 11px; opacity: 0.75; margin-bottom: 2px; letter-spacing: 0.4px; }
+.iv-msg--ai { justify-self: start; background: var(--el-surface-2); color: var(--el-on-surface); border-bottom-left-radius: 4px; }
+.iv-msg--me { justify-self: end; background: var(--el-primary); color: var(--el-on-primary); border-bottom-right-radius: 4px; }
+.iv-answer { display: flex; gap: 8px; align-items: center; margin-top: 16px; }
+.iv-acs + .iv-answer { margin-top: 0; }
+.iv-grow { flex: 1; }
+.iv-bullets { list-style: disc; padding-left: 20px; }
+.iv-list { margin-top: 20px; display: grid; gap: 12px; }
+.iv-item { display: grid; gap: 4px; }
+.iv-layout { display: grid; grid-template-columns: minmax(0, 240px) minmax(0, 1fr); gap: 16px; align-items: start; }
+@media (max-width: 720px) { .iv-layout { grid-template-columns: minmax(0, 1fr); } }
+.iv-mt { margin-top: 16px; }
+.iv-findings { list-style: none; padding: 0; margin: 12px 0 0; display: grid; gap: 12px; }
+/* P7 IV-10: baris temuan `.mod`: konten kiri, chip kanan */
+.iv-finding { border: 1px solid var(--el-outline-variant); border-radius: 12px; padding: 12px 14px; display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; }
+.iv-finding__body { display: grid; gap: 4px; min-width: 0; }
+.iv-finding__chips { display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
+.iv-sub { margin: 0 0 20px; }
+.iv-finding__title { font-weight: 500; }
+.iv-note { display: grid; gap: 12px; max-width: 560px; }
+/* P8 R13 (AIV-8): pilihan jawaban `.ac` mockup: kotak radius 8, garis netral, teks warna teks */
+.iv-acs { display: flex; flex-wrap: wrap; gap: 8px; margin: 16px 0 8px; }
+.iv-ac {
+  display: inline-flex; align-items: center; min-height: 36px; padding: 8px 14px; border-radius: 8px; text-align: left;
+  border: 1px solid var(--el-outline); background: var(--el-surface-card); color: var(--el-on-surface); font: inherit; cursor: pointer;
+}
+.iv-ac:hover:not(:disabled) { background: var(--el-surface-2); }
+.iv-ac:disabled { color: var(--el-outline); cursor: not-allowed; }
+.iv-ac:focus-visible { outline: 2px solid var(--el-primary); outline-offset: 2px; }
+/* B19 wawancara suara: caption sementara, tombol Ubah, panel suara */
+.iv-chat + .iv-msg--pending { margin-top: 12px; }
+.iv-msg--pending { opacity: 0.7; font-style: italic; display: block; width: fit-content; }
+.iv-msg--pending.iv-msg--me { margin-left: auto; }
+.iv-msg__edit { margin-top: 4px; color: inherit; }
+.iv-edit { display: grid; gap: 8px; min-width: min(420px, 70vw); }
+.iv-edit .el-input { color: var(--el-on-surface); }
+.iv-voice { display: grid; gap: 12px; margin-top: 16px; padding: 12px 16px; border: 1px solid var(--el-outline-variant); border-radius: 12px; }
+.iv-voice__status { display: flex; align-items: center; gap: 8px; margin: 0; font-weight: 500; }
+.iv-voice__dot { inline-size: 10px; block-size: 10px; border-radius: 50%; background: var(--el-outline); }
+.iv-voice__dot--listening { background: var(--el-primary); }
+.iv-voice__dot--speaking { background: var(--el-tertiary, var(--el-primary)); }
+@media (prefers-reduced-motion: no-preference) { .iv-voice__dot--listening, .iv-voice__dot--speaking { animation: iv-pulse 1.4s ease-in-out infinite; } }
+@keyframes iv-pulse { 50% { opacity: 0.35; } }
+.iv-mode { border: 0; padding: 0; margin: 0; display: grid; gap: 8px; }
+.iv-mode legend { font-weight: 600; font-size: 15px; margin-bottom: 4px; }
+.iv-mode__options { display: flex; gap: 16px; flex-wrap: wrap; }

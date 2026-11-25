@@ -32,9 +32,43 @@ describe('entitlement + feature flag gating', () => {
     const app = makeApp({ entitlements: { 't-1': ['full_suite'] }, flags: { 't-1': { 'module.dna': true } } });
     const token = await tokenFor(app);
     const access = await request(app).get('/api/me/access').set('Authorization', `Bearer ${token}`);
-    expect(access.body.submodules).toEqual(['cca', 'dna', 'tna', 'ina']);
+    expect(access.body.submodules).toEqual(['cca', 'dna', 'tna', 'ina', 'li', 'ld', 'lim']);
     expect(access.body.flags['module.dna']).toBe(true);
     expect(access.body.flags['module.ina']).toBe(false);
+  });
+
+  it('/me/access mengirim produk entitlement aktif, untuk gerbang modul 2–5 di menu web', async () => {
+    let app = makeApp({ entitlements: { 't-1': ['full_suite'] } });
+    let access = await request(app).get('/api/me/access').set('Authorization', `Bearer ${await tokenFor(app)}`);
+    expect(access.body.products).toEqual(['full_suite']);
+    app = makeApp({ entitlements: { 't-1': ['tna', 'dna'], 't-2': ['full_suite'] } });
+    access = await request(app).get('/api/me/access').set('Authorization', `Bearer ${await tokenFor(app)}`);
+    expect(access.body.products).toEqual(['dna', 'tna']);
+    // Tanpa entitlement aktif: daftar kosong, bukan field hilang (web gagal-tertutup pada keduanya)
+    app = makeApp({ entitlements: { 't-2': ['full_suite'] } });
+    access = await request(app).get('/api/me/access').set('Authorization', `Bearer ${await tokenFor(app)}`);
+    expect(access.body.products).toEqual([]);
+  });
+
+  it.each([['li', 'module.li'], ['ld', 'module.ld']])('modul %s (B13/B14) butuh full_suite dan flag-nya', async (mod, flagKey) => {
+    let app = makeApp({ entitlements: { 't-1': ['tna', 'dna'] }, flags: { 't-1': { [flagKey]: true } } });
+    let res = await request(app).get(`/api/${mod}`).set('Authorization', `Bearer ${await tokenFor(app)}`);
+    expect(res.status).toBe(403);
+    expect(res.body.error.code).toBe('NOT_ENTITLED');
+    app = makeApp({ entitlements: { 't-1': ['full_suite'] } });
+    res = await request(app).get(`/api/${mod}`).set('Authorization', `Bearer ${await tokenFor(app)}`);
+    expect(res.status).toBe(403);
+    expect(res.body.error.code).toBe('FEATURE_DISABLED');
+    app = makeApp({ entitlements: { 't-1': ['full_suite'] }, flags: { 't-1': { [flagKey]: true } } });
+    res = await request(app).get(`/api/${mod}`).set('Authorization', `Bearer ${await tokenFor(app)}`);
+    expect(res.status).toBe(200);
+    expect(res.body).toMatchObject({ module: mod, tenantId: 't-1' });
+  });
+
+  it.each(['li', 'ld'])('modul %s hanya untuk HR, learner ditolak walau tenant berhak', async (mod) => {
+    const app = makeApp({ entitlements: { 't-1': ['full_suite'] }, flags: { 't-1': { [`module.${mod}`]: true } } });
+    const res = await request(app).get(`/api/${mod}`).set('Authorization', `Bearer ${await tokenFor(app, 'agent@elgos.test')}`);
+    expect(res.status).toBe(403);
   });
 
   it('entitlement tenant lain tidak bocor', async () => {
@@ -61,5 +95,36 @@ describe('projects', () => {
     const other = await tokenFor(app, 'hr@other.test', 'other');
     const res = await request(app).get('/api/projects').set('Authorization', `Bearer ${other}`);
     expect(res.body.data).toEqual([]);
+  });
+});
+
+describe('requireSubmodule { tenantFlag: false } (B11 IZ-2)', () => {
+  const { requireSubmodule } = require('../../src/core/entitlement/guard');
+  const run = (mw, req = { tenantId: 't-1' }) => new Promise((resolve) => { mw(req, {}, (err) => resolve(err || null)); });
+  const deps = ({ entitled = true, tenantEnabled = false, killSwitch = false } = {}) => ({
+    entitlements: { has: async () => entitled },
+    flags: {
+      isEnabled: async () => tenantEnabled && !killSwitch,
+      detail: async () => [{ key: 'module.dna', tenantEnabled, killSwitch, effective: tenantEnabled && !killSwitch }],
+    },
+  });
+
+  it('membuka akses bila entitlement ada walau flag modul tenant masih mati', async () => {
+    expect(await run(requireSubmodule('dna', deps(), { tenantFlag: false }))).toBeNull();
+  });
+
+  it('tetap menolak tanpa entitlement', async () => {
+    const err = await run(requireSubmodule('dna', deps({ entitled: false }), { tenantFlag: false }));
+    expect(err.code).toBe('NOT_ENTITLED');
+  });
+
+  it('tetap menghormati saklar darurat global', async () => {
+    const err = await run(requireSubmodule('dna', deps({ killSwitch: true }), { tenantFlag: false }));
+    expect(err.code).toBe('FEATURE_DISABLED');
+  });
+
+  it('tanpa opsi, perilaku lama: flag modul tenant wajib menyala', async () => {
+    const err = await run(requireSubmodule('dna', deps()));
+    expect(err.code).toBe('FEATURE_DISABLED');
   });
 });

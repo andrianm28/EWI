@@ -1,0 +1,13 @@
+# Wawancara suara B19 (Gemini Live di Vertex AI) untuk stack dev. Dipasang dev.sh hanya bila kunci akun layanan
+# ada di VOICE_KEY_FILE (bawaan ~/secrets/gcp-voice.json milik user elgos-dev); tanpa kunci, API memakai provider tiruan.
+# Nilai VOICE_* bisa ditimpa lewat <worktree>/.elgos-dev/.env.
+services:
+  api:
+    environment:
+      VOICE_PROVIDER: ${VOICE_PROVIDER:-gemini-vertex}
+      VOICE_MODEL: ${VOICE_MODEL:-gemini-3.8-live}
+      # Hasil smoke 25 Nov dari etavm2: asia-southeast1 dan global menolak model; asia-south1 suara pertama ±0,5 dtk
+      VOICE_LOCATION: ${VOICE_LOCATION:-asia-south1}
+      GOOGLE_APPLICATION_CREDENTIALS: /run/secrets/gcp-voice.json
+    volumes:
+      - ${VOICE_KEY_FILE:?VOICE_KEY_FILE wajib}:/run/secrets/gcp-voice.json:ro

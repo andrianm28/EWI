@@ -1,0 +1,37 @@
+{
+  "id": "dua-kpi-sebab-beda",
+  "versi": 1,
+  "operasi": "tna",
+  "deskripsi": "Dua KPI meleset dengan sebab berbeda: FCR karena belum paham produk (pelatihan), SLA karena antrean dialihkan tanpa tambahan orang (Improvement Needs). Kedua temuan tidak bertaut.",
+  "karyawan": {
+    "nama": "Nina Contoh",
+    "jabatan": "Agen Layanan L1"
+  },
+  "target": [
+    {
+      "kpi": "First Contact Resolution (%)",
+      "target": 80,
+      "aktual": 65
+    },
+    {
+      "kpi": "Kepatuhan SLA respons (%)",
+      "target": 95,
+      "aktual": 80
+    }
+  ],
+  "naskah": [
+    "Untuk FCR, saya belum paham produk asuransi perangkat yang baru, jadi sering harus meneruskan tiket.",
+    "Untuk SLA, sejak bulan lalu antrean tim lain dialihkan ke tim kami tanpa tambahan orang.",
+    "Dua hal itu terpisah: soal produk saya perlu belajar, soal antrean itu keputusan pembagian kerja.",
+    "Kalau antrean dikembalikan, SLA saya biasanya aman."
+  ],
+  "jawabanCadangan": "Saya rasa itu saja yang bisa saya ceritakan.",
+  "harapan": {
+    "kategori": [
+      "training",
+      "non_training"
+    ],
+    "minTemuan": 2,
+    "bertautan": false
+  }
+}

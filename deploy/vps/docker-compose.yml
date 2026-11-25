@@ -1,0 +1,96 @@
+# Staging dan prod ELGOS di VPS etavm2 (8 vCPU / 32 GB / 100 GB, keputusan user 17 Nov 2026).
+# Satu file untuk kedua lingkungan; dijalankan sebagai dua project compose terpisah:
+#   ELGOS_ENV=staging  -> project elgos-staging, data di volume elgos-staging_db-data, web di 127.0.0.1:8181
+#   ELGOS_ENV=prod     -> project elgos-prod,    data di volume elgos-prod_db-data,    web di 127.0.0.1:8180
+# Normalnya dipanggil oleh deploy.sh (pipeline .github/workflows/deploy.yml). Secret di
+# /srv/elgos-<env>/.env (aplikasi) dan /srv/elgos-<env>/db.env (password pemilik DB, hanya untuk
+# container db dan langkah migrasi). Data karyawan nyata HANYA di prod (R2-4).
+name: elgos-${ELGOS_ENV:?ELGOS_ENV wajib staging atau prod}
+
+# N-3: rotasi log tiap container (maks 5 x 20 MB) agar log staging tidak memenuhi disk produksi.
+x-logging: &logging
+  driver: json-file
+  options: { max-size: "20m", max-file: "5" }
+
+services:
+  db:
+    image: pgvector/pgvector:pg16
+    restart: unless-stopped
+    logging: *logging
+    env_file: ${ELGOS_DB_ENV_FILE:?ELGOS_DB_ENV_FILE wajib}   # POSTGRES_PASSWORD (superuser bawaan, bootstrap)
+    environment:
+      POSTGRES_USER: elgos
+      POSTGRES_DB: elgos
+    command: ["postgres", "-c", "shared_buffers=${PG_SHARED_BUFFERS:-1GB}", "-c", "effective_cache_size=${PG_EFFECTIVE_CACHE:-3GB}"]
+    volumes:
+      - db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U elgos -d elgos"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    deploy:
+      resources:
+        limits: { cpus: "${DB_CPUS:-2}", memory: "${DB_MEMORY:-6g}" }
+
+  api:
+    image: ${ELGOS_API_IMAGE:?ELGOS_API_IMAGE wajib}
+    restart: unless-stopped
+    depends_on:
+      db: { condition: service_healthy }
+    logging: *logging
+    # Secret: DB_PASSWORD (role elgos_app), EWI_JWT_SECRET, AWS_ACCESS_KEY_ID/SECRET (IAM user
+    # elgos-<env>-app), ELITEMENTOR_*. Password pemilik DB TIDAK ada di sini (P1-7).
+    env_file: ${ELGOS_ENV_FILE:?ELGOS_ENV_FILE wajib}
+    # Kunci service account GCP suara (B19, Gemini Live): berkas host milik uid 1000 (user node),
+    # mode 0400, hanya-baca, tidak masuk image/repo. Dipakai bila .env berisi
+    # GOOGLE_APPLICATION_CREDENTIALS=/run/secrets/gcp-voice.json; tanpa itu berkas kosong diabaikan.
+    volumes:
+      - ${ELGOS_SECRETS_DIR:-/srv/elgos-${ELGOS_ENV}/secrets}/gcp-voice.json:/run/secrets/gcp-voice.json:ro
+    environment:
+      NODE_ENV: production
+      EWI_ENV: ${ELGOS_ENV}
+      PORT: 4100
+      DB_HOST: db
+      DB_PORT: 5432
+      DB_NAME: elgos
+      DB_SSL: "false"          # Postgres di jaringan compose yang sama, tidak terekspos ke host
+      DB_SCHEMA: ewi
+      RUN_MIGRATIONS: "false"  # migrasi dijalankan deploy.sh sebelum container diganti
+      EWI_JWT_AUDIENCE: ewi
+      EWI_JWT_ISSUER: elgos-api-${ELGOS_ENV}
+      CORS_ORIGIN: ${PUBLIC_URL:?PUBLIC_URL wajib}
+      APP_BASE_URL: ${PUBLIC_URL}
+      # R2-3 + keputusan 17 Nov: kunci per tenant tetap di AWS KMS, email lewat SES.
+      ENCRYPTION_PROVIDER: kms
+      KMS_REGION: ap-southeast-1
+      MAIL_PROVIDER: ses
+      MAIL_REGION: ap-southeast-1
+      # PD-1 A (PK-06): AI teks lewat Bedrock endpoint Singapura (profil global Sonnet 5.5, 23 Nov); BEDROCK_MODEL_ID di .env
+      AI_PROVIDER: bedrock
+      BEDROCK_REGION: ap-southeast-1
+      AWS_REGION: ap-southeast-1
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:4100/api/health | grep -q '\"ok\"'"]
+      interval: 5s
+      timeout: 3s
+      retries: 24
+      start_period: 10s
+    deploy:
+      resources:
+        limits: { cpus: "${API_CPUS:-2}", memory: "${API_MEMORY:-4g}" }
+
+  web:
+    image: ${ELGOS_WEB_IMAGE:?ELGOS_WEB_IMAGE wajib}
+    restart: unless-stopped
+    logging: *logging
+    depends_on:
+      api: { condition: service_healthy }
+    ports:
+      - "127.0.0.1:${WEB_PORT:?WEB_PORT wajib}:80"   # publik hanya lewat Caddy (proxy/) dengan TLS
+    deploy:
+      resources:
+        limits: { cpus: "1", memory: "256m" }
+
+volumes:
+  db-data:

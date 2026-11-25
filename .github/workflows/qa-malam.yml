@@ -1,0 +1,83 @@
+name: QA malam
+
+# B18 (docs/designs/b18-e2e-qa-malam.md bagian 5.5, panduan docs/ewi/qa-malam.md): persona fiktif dijalankan
+# lewat aplikasi sungguhan (API + Postgres) dengan model Bedrock sungguhan, lalu diperiksa struktur, privasi,
+# klasifikasi, biaya, dan latensinya. Kode keluar: 0 lulus, 1 gagal kualitas, 2 gagal infrastruktur/konfigurasi.
+#
+# - Terjadwal dan workflow_dispatch hanya berjalan dari default branch (main), jadi berkas ini harus ada di main.
+# - Kode yang diuji selalu branch dev. Kode itu berjalan dengan kredensial Bedrock, sedangkan environment `qa-malam`
+#   hanya membatasi branch berkas workflow (main), bukan branch yang di-checkout. Ke dev hanya masuk PR yang
+#   direview Andrian; agen tidak pernah push ke dev. Branch agen tidak boleh ditambahkan di sini.
+# - Job dilewati selama vars.QA_MALAM_ROLE_ARN kosong. Variabel ini harus variabel repo (bukan variabel environment),
+#   karena `if` di tingkat job tidak melihat variabel environment. Wizard PR #3 memasangnya sebagai variabel repo.
+# - Kredensial lewat OIDC environment `qa-malam` (role hanya bedrock:InvokeModel model QA). Tanpa kunci statis.
+on:
+  schedule:
+    - cron: '0 19 * * *' # 02.00 WIB
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: qa-malam
+  cancel-in-progress: false
+
+jobs:
+  qa-malam:
+    if: vars.QA_MALAM_ROLE_ARN != ''
+    runs-on: ubuntu-latest
+    environment: qa-malam
+    timeout-minutes: 30
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: ewi
+          POSTGRES_PASSWORD: ewi
+          POSTGRES_DB: ewi_qa
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U ewi" --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      NODE_ENV: test
+      DATABASE_URL: postgres://ewi:ewi@localhost:5432/ewi_qa
+      DB_SCHEMA: ewi
+      MAIL_PROVIDER: memory
+      AI_PROVIDER: bedrock
+      # PD-2b (docs/designs/pd-2b-bedrock-singapura.md): Singapura bila variabel repo kosong
+      BEDROCK_REGION: ${{ vars.QA_MALAM_BEDROCK_REGION || 'ap-southeast-1' }}
+      BEDROCK_MODEL_ID: ${{ vars.QA_MALAM_BEDROCK_MODEL_ID }}
+      # Opt-in profil global. untuk QA malam (keputusan user 24 Nov): data sintetis saja, tanpa data karyawan sungguhan
+      AI_ALLOW_GLOBAL_PROFILE: 'true'
+      AI_PRICE_INPUT_PER_MTOK: ${{ vars.QA_MALAM_AI_PRICE_INPUT_PER_MTOK }}
+      AI_PRICE_OUTPUT_PER_MTOK: ${{ vars.QA_MALAM_AI_PRICE_OUTPUT_PER_MTOK }}
+      QA_MALAM_MAX_TOKENS: ${{ vars.QA_MALAM_MAX_TOKENS || '400000' }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: dev
+      - uses: actions/setup-node@v4
+        with: { node-version: 24, cache: npm }
+      # Dependensi dipasang sebelum kredensial AWS ada di lingkungan job.
+      - run: npm ci
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.QA_MALAM_ROLE_ARN }}
+          role-session-name: elgos-qa-malam
+          aws-region: ${{ vars.QA_MALAM_BEDROCK_REGION || 'ap-southeast-1' }}
+      - name: Jalankan QA malam
+        run: npm run qa:malam -w apps/api -- --siapkan-db --keluaran "$GITHUB_WORKSPACE/qa-malam-hasil"
+      - name: Ringkasan ke step summary
+        if: always()
+        run: |
+          if ls qa-malam-hasil/*.md >/dev/null 2>&1; then cat qa-malam-hasil/*.md >> "$GITHUB_STEP_SUMMARY";
+          else echo "Laporan tidak terbentuk; lihat log langkah Jalankan QA malam (kode 2 = infrastruktur atau konfigurasi)." >> "$GITHUB_STEP_SUMMARY"; fi
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: qa-malam-${{ github.run_id }}
+          path: qa-malam-hasil/
+          retention-days: 30
+          if-no-files-found: warn

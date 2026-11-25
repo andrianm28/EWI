@@ -1,30 +1,26 @@
-# Dev EWI publik (di luar AWS)
+# Dev ELGOS publik lama — DIHENTIKAN
 
-Keputusan user 11 Nov 2026: AWS hanya untuk staging + prod; dev jalan di **etavm1** lewat docker compose
-dan dibuka ke publik dengan **Cloudflare Tunnel** (tanpa membuka port di VM).
+> **23 Nov 2026:** dev publik lama tidak dipakai lagi. Aturan project: dev, staging, dan prod hanya di VPS
+> etavm2 (spek `docs/designs/audit-23nov-etavm1.md`). Job deploy di `deploy-dev.yml` beserta skrip setup dan
+> deploy-nya sudah dihapus. Langkah setup dan operasi untuk server lama dihapus dari berkas ini (review 24 Nov),
+> supaya tidak ada yang menjalankannya lagi.
 
-```
-Internet ──HTTPS──> Cloudflare Tunnel ──> web (nginx: Vue statis, /api diteruskan) ──> api ──> Postgres
-```
+Yang masih dipakai dari folder ini:
 
-## Menjalankan
+| Berkas | Dipakai oleh |
+| --- | --- |
+| `nginx.conf` | `apps/web/Dockerfile` (konfigurasi nginx di image web) |
+| `docker-compose.yml` | jalan lokal di mesin pengembang (lihat di bawah) |
+
+Dev sekarang: satu lingkungan per git worktree di etavm2 (`deploy/dev-worktree/`). Staging dan prod:
+`deploy/vps/` dan `docs/infra/vps-etavm2.md`.
+
+## Jalan lokal (mesin pengembang)
 
 ```bash
-git clone https://github.com/andrianm28/EWI.git && cd EWI/deploy/dev-public
-cp .env.example .env
-# isi POSTGRES_PASSWORD dan EWI_JWT_SECRET:  openssl rand -base64 48 | tr -d '/+='
+cd deploy/dev-public && cp .env.example .env   # isi POSTGRES_PASSWORD, EWI_JWT_SECRET, DEV_SEED_PASSWORD
 docker compose up -d --build
-docker compose logs tunnel | grep -o 'https://[a-z0-9-]*\.trycloudflare\.com'   # URL publik
-docker compose exec api docker-entrypoint.sh npm run seed:dev          # tenant demo + user HR/learner
+docker compose exec api docker-entrypoint.sh npm run seed:dev
 ```
 
-Update ke commit terbaru: `git pull && docker compose up -d --build` (migrasi jalan otomatis saat API start).
-
-## Catatan
-
-- Quick tunnel memberi URL `*.trycloudflare.com` acak yang **berubah setiap tunnel restart**, tanpa akun
-  Cloudflare. Untuk URL tetap: buat named tunnel di dashboard Cloudflare (public hostname → `http://web:80`),
-  lalu di `.env` set `COMPOSE_PROFILES=named` dan `CLOUDFLARE_TUNNEL_TOKEN`.
-- URL ini publik: siapa pun yang tahu URL bisa membuka halaman login. Pakai data dummy saja; data karyawan
-  nyata hanya di prod. Ganti `DEV_SEED_PASSWORD` dari default acak bila dibagikan.
-- Web hanya listen di `127.0.0.1:8080` di VM; tidak ada port yang dibuka ke internet.
+Pakai data dummy saja. Data karyawan nyata hanya di prod.

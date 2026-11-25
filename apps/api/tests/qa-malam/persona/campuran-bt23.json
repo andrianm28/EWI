@@ -1,0 +1,33 @@
+{
+  "id": "campuran-bt23",
+  "versi": 1,
+  "operasi": "tna",
+  "alur": "ringkasan",
+  "deskripsi": "Satu sebab dengan dua sisi: belum paham produk baru (pelatihan) dan basis pengetahuan belum diperbarui (Improvement Needs). Lewat langkah ringkasan B6.",
+  "karyawan": {
+    "nama": "Agus Contoh",
+    "jabatan": "Agen Layanan L1"
+  },
+  "target": [
+    {
+      "kpi": "First Contact Resolution (%)",
+      "target": 80,
+      "aktual": 60
+    }
+  ],
+  "naskah": [
+    "Saya belum paham fitur paket bisnis yang baru, jadi sering ragu memberi jawaban.",
+    "Biasanya saya mencari di basis pengetahuan, tetapi artikelnya belum diperbarui untuk paket baru itu.",
+    "Karena dua hal itu, saya terpaksa meneruskan tiket ke L2 padahal mestinya bisa selesai di saya.",
+    "Kalau saya dilatih dan artikelnya diperbarui, sebagian besar tiket itu bisa saya selesaikan sendiri."
+  ],
+  "jawabanCadangan": "Saya rasa itu saja yang bisa saya ceritakan.",
+  "harapan": {
+    "kategori": [
+      "training",
+      "non_training"
+    ],
+    "minTemuan": 2,
+    "bertautan": true
+  }
+}

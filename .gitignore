@@ -8,3 +8,15 @@ coverage/
 .eslintcache
 playwright-report/
 test-results/
+.elgos-dev/
+
+# PK-13: spesifikasi tenant asli berisi email orang; hanya contoh yang masuk repo
+apps/api/scripts/tenants/*.json
+!apps/api/scripts/tenants/*.example.json
+dist-e2e/
+# Laporan QA malam lokal (B18)
+qa-malam-hasil/
+infra/.akun-elgos.env
+infra/live/backend.hcl
+*.tfstate*
+.terraform/

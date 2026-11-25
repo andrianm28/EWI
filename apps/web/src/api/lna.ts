@@ -1,6 +1,7 @@
 // Klien API DNA + TNA (POC Desember). Bentuk data mengikuti apps/api/src/modules/{dna,tna}.
 import { api } from '@/api/client'
 import { useSessionStore } from '@/stores/session'
+import { downloadFile } from '@/api/imports'
 
 export interface Career {
   currentLevel: { id: string; name: string; requiredProgramTier: string | null } | null
@@ -22,12 +23,73 @@ export interface EmployeeDetail {
   career: Career
   completions: { programTier: string; status: string; source: string }[]
 }
-export interface Session { id: string; projectId: string; intervieweeId: string; intervieweeName: string | null; status: string; triggerCount: number }
+export interface Session { id: string; projectId: string; intervieweeId: string; intervieweeName: string | null; status: string; triggerCount: number; inviteExpiresAt?: string; inviteExtendedCount?: number }
 export interface Turn { speaker: 'ai' | 'human'; text: string; at: string }
-export interface Finding { id: string; userId: string; userName: string | null; title: string; status: string; competencyName: string | null; metricName: string | null; target: number | null; actual: number | null }
+export interface Finding { id: string; userId: string; userName: string | null; title: string; category?: 'training' | 'non_training'; status: string; competencyName: string | null; metricName: string | null; target: number | null; actual: number | null }
 export interface ParetoRow { key: string; label: string; people: number; avgMiss: number; score: number; share: number; cumulativeShare: number }
-export interface PlanItem { id: string; userId: string; userName: string | null; findingTitle: string | null; origin: string; status: string; catalogItemTitle: string | null; note: string | null }
-export interface TnaDashboard { role: string; people: number | null; redTargets: number; sessions: Record<string, number>; trainingFindings: number; planItems: Record<string, number> }
+export interface PlanItem { id: string; userId: string; userName: string | null; findingTitle: string | null; origin: string; status: string; catalogItemTitle: string | null; catalogSource?: string | null; catalogItemRef?: string | null; assignmentStatus?: string | null; needsModule?: boolean; catalogItemUrl?: string | null; courseStatus?: string | null; note: string | null }
+export interface TnaDashboard { role: string; people: number | null; redTargets: number; sessions: Record<string, number>; trainingFindings: number; planItems: Record<string, number>; reviewPending?: number }
+// PK-14: review hasil AI oleh HR (PD-14 ★A)
+export type ReviewStatus = 'draft' | 'approved' | 'edited' | 'rejected'
+export interface ReviewItem {
+  id: string; projectId: string; sessionId: string | null; userId: string; userName: string | null
+  category: 'training' | 'non_training'; title: string; detail: string | null
+  competencyName: string | null; metricName: string | null; target: number | null; actual: number | null
+  confidence: number | null; scoringAgreement: boolean | null; reviewStatus: ReviewStatus
+  reviewedByName: string | null; reviewedAt: string | null; reviewNote: string | null
+  originalTitle: string | null; originalDetail: string | null; originalCategory: string | null; createdAt: string
+  // B7: tanda "Perlu ditinjau HR", saran klasifikasi, dan batas tinjauan (hari kerja)
+  held: boolean; heldAt: string | null; heldByName: string | null; holdNote: string | null
+  suggestedClassification: ReviewClassification; reviewDueAt: string | null; overdue: boolean; handedOffAt: string | null
+}
+export type ReviewCounts = Record<ReviewStatus, number> & { held: number; overdue: number }
+// B7 (flag tna.review_workspace): tiga tombol mockup, solusi pelatihan, penugasan, serah ke Improvement Needs
+export type ReviewClassification = 'training' | 'improvement' | 'needs_review'
+export interface SolutionPlanItem {
+  id: string; status: string; needsModule: boolean; catalogSource: string | null; catalogItemRef: string | null; catalogItemTitle: string | null
+  assignmentStatus: 'sending' | 'sent' | 'failed' | null; assignmentTarget: 'elitementor' | null; assignedAt: string | null
+}
+export interface TrainingSolution {
+  findingId: string; userId: string; userName: string | null; title: string; competencyName: string | null
+  recommendation: { source: string; ref: string; title: string; url: string | null; programTier: string | null } | null
+  planItem: SolutionPlanItem | null
+}
+export interface ImprovementSolution { findingId: string; userId: string; userName: string | null; title: string; handedOffAt: string | null }
+export interface ReviewSolutions {
+  training: TrainingSolution[]; improvement: ImprovementSolution[]
+  delivery: { target: 'elitementor' | 'lms'; label: string; assignAvailable: boolean }; inaEnabled: boolean
+}
+/** Paritas B7 web: rujukan gap untuk tinjauan per gap (bentuk sama dengan `GapRef` B5 dan query /tna/gaps/detail). */
+export type ReviewGapQuery = { kind: 'competency'; competencyId: string } | { kind: 'okr'; metricType: string; name: string; period: string }
+export interface ReviewDecision { decision: 'approve' | 'edit' | 'reject'; title?: string; detail?: string; category?: 'training' | 'non_training'; note?: string }
+// B8 (flag learner.home): beranda karyawan dan permintaan data
+export type MyCompetencyStatus = 'met' | 'partial' | 'gap' | 'not_assessed'
+export interface MyResults {
+  person: { id: string; name: string | null; jobRoleName: string | null; careerLevelName: string | null } | null
+  competencies: { items: { competencyId: string; code: string | null; name: string; required: number; score: number | null; status: MyCompetencyStatus }[]
+    summary: { total: number; assessed: number; met: number; partial: number; gaps: number } } | null
+  invitations: { sessionId: string; submodule: 'tna'; status: string; inviteExpiresAt: string | null; expired: boolean; canStart: boolean; canContinue: boolean; consentVersionRequired: string | null }[] | null
+  interviews: { sessionId: string; submodule: 'tna'; status: string; endedAt: string | null; consentVersion: string | null; consentWithdrawnAt: string | null; transcriptPath: string }[] | null
+  plan: { total: number; byStatus: Record<string, number> } | null
+  privacy: { exportPath: string; requestsPath: string; openRequests: DataRequest[] }
+}
+export interface LearningDelivery { target: 'elitementor' | 'lms'; label: string }
+export interface LearningCard {
+  id: string; title: string; description: string | null; level: string | null; mode: string | null; code: string | null
+  status: 'new' | 'in_progress' | 'completed'; courseStatus: string | null; courseScore: number | null; reason: string | null
+  needsModule: boolean; where: LearningDelivery; launchUrl: string | null
+  /** EM-LTI: modul EliteMentor yang bisa diluncurkan lewat LTI (null bila tidak ada atau flag em.lti mati) */
+  lti?: { linkId: string; label: string } | null
+}
+export type DataRequestType = 'withdraw_consent' | 'delete_data'
+export interface DataRequest { id: string; type: DataRequestType; createdAt: string; dueAt: string | null; status?: string; sessions?: number }
+export interface DataRequestRow extends DataRequest {
+  userId: string; userName: string | null; status: 'open' | 'done' | 'cancelled'; reason: string | null; overdue: boolean
+  resolvedAt: string | null; resolvedByName: string | null
+}
+// PM-6: ringkasan temuan di luar pelatihan untuk HR dan atasan yang diberi akses HR (tanpa detail, tanpa rencana aksi)
+export interface NonTrainingGrant { supervisorId: string; supervisorName: string | null; supervisorEmail: string; grantedAt: string; grantedByName: string | null }
+export interface NonTrainingFinding { id: string; userId: string; userName: string | null; title: string; metricName: string | null; linkedTrainingTitle: string | null; createdAt: string }
 export interface Project { id: string; name: string; status: string }
 
 function call<T>(path: string, init: RequestInit = {}) {
@@ -40,19 +102,53 @@ export const lna = {
   dnaEmployees: () => call<{ data: EmployeeProfile[] }>('/dna/employees'),
   dnaEmployee: (id: string) => call<{ data: EmployeeDetail }>(`/dna/employees/${id}`),
   sessions: (key: 'dna' | 'tna') => call<{ data: Session[] }>(`/${key}/sessions`),
-  session: (key: 'dna' | 'tna', id: string) => call<{ data: Session & { turns: Turn[] } }>(`/${key}/sessions/${id}`),
-  consent: (key: 'dna' | 'tna', id: string) => post<{ data: { question: Turn | null } }>(`/${key}/sessions/${id}/consent`, {}),
+  // PO-6 A: turns hanya dikirim ke karyawan yang diwawancarai (transcriptVisible)
+  session: (key: 'dna' | 'tna', id: string) => call<{ data: Session & { turns?: Turn[]; transcriptVisible?: boolean } }>(`/${key}/sessions/${id}`),
+  // PM-9 A: persetujuan menyebut kode versi teks yang ditampilkan
+  consent: (key: 'dna' | 'tna', id: string, consentVersion: string) =>
+    post<{ data: { question: Turn | null; consentVersion: string } }>(`/${key}/sessions/${id}/consent`, { consentVersion }),
   answer: (key: 'dna' | 'tna', id: string, text: string) => post<{ data: { question: Turn | null; done: boolean } }>(`/${key}/sessions/${id}/turns`, { text }),
-  complete: (key: 'dna' | 'tna', id: string) => post<{ data: { status: string } }>(`/${key}/sessions/${id}/complete`, {}),
+  complete: (key: 'dna' | 'tna', id: string) => post<{ data: { status: string; analysis?: { status: string } } }>(`/${key}/sessions/${id}/complete`, {}),
+  /** `gap`: rujukan gap (parameter sama dengan /tna/gaps/detail) untuk tinjauan per gap; respons lalu memuat `gap`. */
+  reviewQueue: (status: 'draft' | 'reviewed' | 'all' = 'draft', gap?: ReviewGapQuery) =>
+    call<{ data: ReviewItem[]; counts: ReviewCounts; targetDays: number; gap?: { key: string; label: string } }>(`/tna/review?${new URLSearchParams({ status, ...gap })}`),
+  classifyFinding: (id: string, classification: ReviewClassification, note?: string) => post<{ data: ReviewItem }>(`/tna/findings/${id}/classify`, { classification, note }),
+  reviewSolutions: (gap?: ReviewGapQuery) => call<{ data: ReviewSolutions }>(`/tna/review/solutions${gap ? `?${new URLSearchParams(gap)}` : ''}`),
+  assignPlanItem: (id: string) => post<{ data: PlanItem }>(`/tna/plan-items/${id}/assign`, {}),
+  /** B7: ekspor daftar gap (CSV) untuk LMS klien; diunduh lewat fetch karena butuh token. `gap`: hanya rencana gap itu (P9 IR-5). */
+  async downloadGapCsv(gap?: ReviewGapQuery) {
+    await downloadFile(`/tna/plan-items/export.csv${gap ? `?${new URLSearchParams(gap)}` : ''}`, `elgos-gap-${new Date().toISOString().slice(0, 10)}.csv`)
+  },
+  handoffImprovement: (findingIds: string[]) => post<{ data: { handedOff: string[]; already: string[]; skipped: string[]; actionsCreated?: number } }>('/tna/review/improvement-handoff', { findingIds }),
+  reviewFinding: (id: string, body: ReviewDecision) => post<{ data: ReviewItem }>(`/tna/findings/${id}/review`, body),
+  myResults: () => call<{ data: MyResults }>('/my/results'),
+  myLearningPlan: () => call<{ data: LearningCard[]; delivery: LearningDelivery }>('/my/learning-plan'),
+  /** EM-LTI: URL login EliteMentor (OIDC); API juga memasang cookie pengikat untuk langkah authorize. */
+  launchElitementor: (linkId: string) => post<{ data: { url: string } }>('/my/elitementor/launch', { linkId }),
+  /** Permintaan data milik sendiri, semua status; tanpa flag (hak subjek data). */
+  myDataRequests: () => call<{ data: DataRequest[] }>('/employees/me/data-requests'),
+  createDataRequest: (type: DataRequestType, reason?: string) => post<{ data: DataRequest }>('/employees/me/data-requests', { type, reason }),
+  cancelDataRequest: (id: string) => call<{ data: { id: string; status: string } }>(`/employees/me/data-requests/${id}`, { method: 'DELETE' }),
+  dataRequests: (status: 'open' | 'done' | 'cancelled' | 'all' = 'open') => call<{ data: DataRequestRow[] }>(`/employees/data-requests?status=${status}`),
+  /** Pemenuhan permintaan hapus data (HR): menghapus akun karyawan beserta datanya. */
+  deleteEmployee: (userId: string) => call<{ data: { deleted: boolean; userId: string } }>(`/employees/${encodeURIComponent(userId)}`, { method: 'DELETE' }),
+  fulfillDataRequest: (id: string, body: { erase?: boolean; note?: string } = {}) =>
+    post<{ data: { erased: boolean; deletedTurns?: number; deletedFindings?: number; deletedPlanItems?: number } }>(`/employees/data-requests/${id}/fulfill`, body),
   tnaDashboard: () => call<{ data: TnaDashboard }>('/tna/dashboard'),
   pareto: () => call<{ data: ParetoRow[] }>('/tna/pareto'),
   findings: () => call<{ data: Finding[] }>('/tna/findings'),
   planItems: () => call<{ data: PlanItem[] }>('/tna/plan-items'),
   planFinding: (id: string) => post<{ data: PlanItem }>(`/tna/findings/${id}/plan`, {}),
   requestTraining: (findingId: string, note: string) => post<{ data: PlanItem }>('/tna/training-requests', { findingId, note }),
+  nonTrainingFindings: () => call<{ data: NonTrainingFinding[] }>('/tna/findings/non-training'),
+  nonTrainingAccessMe: () => call<{ data: { granted: boolean } }>('/tna/non-training-access/me'),
+  nonTrainingAccess: () => call<{ data: NonTrainingGrant[]; supervisors: { id: string; name: string | null; email: string }[] }>('/tna/non-training-access'),
+  grantNonTraining: (supervisorId: string) => call<{ data: { granted: boolean } }>(`/tna/non-training-access/${supervisorId}`, { method: 'PUT' }),
+  revokeNonTraining: (supervisorId: string) => call<{ data: { granted: boolean } }>(`/tna/non-training-access/${supervisorId}`, { method: 'DELETE' }),
+  extendInvite: (id: string, days = 7) => post<{ data: { inviteExpiresAt: string } }>(`/tna/sessions/${id}/extend`, { days }),
   setPlanStatus: (id: string, status: string) => call<{ data: PlanItem }>(`/tna/plan-items/${id}`, { method: 'PATCH', body: JSON.stringify({ status }) }),
-  importPerformance: (period: string, rows: Record<string, string>[]) =>
-    post<{ data: { imported: number; red: number; rejected: { index: number; reason: string }[] } }>('/tna/performance/import', { period, rows }),
+  setPlanCourse: (id: string, course: { catalogSource: string; catalogItemRef: string; catalogItemTitle: string }) =>
+    call<{ data: PlanItem }>(`/tna/plan-items/${id}`, { method: 'PATCH', body: JSON.stringify(course) }),
   // Cakupan sesuai kebutuhan perusahaan: hanya target merah (default) atau semua karyawan di job role tertentu
   tnaJobRoles: () => call<{
     data: { id: string; name: string; division: string | null }[]
@@ -62,30 +158,32 @@ export const lna = {
     post<{ data: { scope: string; scheduled: number; skipped: number } }>(`/tna/projects/${projectId}/interviews`, {
       scope: opts.scope, ...(opts.period ? { period: opts.period } : {}), ...(opts.jobRoleId ? { jobRoleId: opts.jobRoleId } : {}),
     }),
-  importDnaResults: (rows: Record<string, string>[], assessor: string, assessedAt: string) =>
-    post<{ data: { imported: number; rejected: { index: number; reason: string }[] } }>('/dna/assessments/import', {
-      rows, ...(assessor ? { assessor } : {}), ...(assessedAt ? { assessedAt } : {}),
-    }),
-}
-
-/** CSV sederhana (header di baris pertama, pemisah koma atau titik koma). */
-export function parseCsv(text: string): Record<string, string>[] {
-  const lines = text.split(/\r?\n/).map((l) => l.trim()).filter(Boolean)
-  if (lines.length < 2) return []
-  const sep = lines[0]!.includes(';') ? ';' : ','
-  const header = lines[0]!.split(sep).map((h) => h.trim())
-  return lines.slice(1).map((line) => {
-    const cells = line.split(sep)
-    return Object.fromEntries(header.map((h, i) => [h, (cells[i] ?? '').trim()]))
-  })
 }
 
 export const ROLE_LABEL: Record<string, string> = {
   hr_admin: 'HR', supervisor: 'Atasan', learner: 'Karyawan', eta_admin: 'Admin ETA',
 }
+// K-3: satu set status rencana (sama dengan apps/api/src/modules/tna/plan-status.js)
+export const COURSE_STATUS_LABEL: Record<string, string> = { passed: 'Lulus', in_progress: 'Berjalan', failed: 'Tidak lulus' }
 export const PLAN_STATUS_LABEL: Record<string, string> = {
-  proposed: 'Diusulkan', needs_module: 'Perlu modul baru', assigned: 'Ditugaskan', in_progress: 'Berjalan', completed: 'Selesai', cancelled: 'Dibatalkan',
+  requested: 'Diminta', new: 'Baru', in_progress: 'Berjalan', completed: 'Selesai', rejected: 'Ditolak',
 }
+export const REVIEW_STATUS_LABEL: Record<ReviewStatus, string> = {
+  draft: 'Menunggu review', approved: 'Disetujui', edited: 'Diubah lalu disetujui', rejected: 'Ditolak',
+}
+/** Label keyakinan dari dua kali penilaian AI (PD-13 ★A). */
+export function confidenceLabel(c: number | null): { text: string; tone: 'ok' | 'warn' | 'low' } {
+  if (c == null) return { text: 'Keyakinan tidak diketahui', tone: 'low' }
+  if (c >= 0.75) return { text: `Keyakinan tinggi (${Math.round(c * 100)}%)`, tone: 'ok' }
+  if (c >= 0.5) return { text: `Keyakinan sedang (${Math.round(c * 100)}%)`, tone: 'warn' }
+  return { text: `Keyakinan rendah (${Math.round(c * 100)}%)`, tone: 'low' }
+}
+export const PLAN_NEXT: Record<string, string[]> = {
+  requested: ['new', 'rejected'], new: ['in_progress', 'rejected'], in_progress: ['completed', 'rejected'], completed: [], rejected: [],
+}
+export const FLAG_TRAINING_REQUEST = 'tna.training_request'
+export const FLAG_NON_TRAINING_HR = 'tna.non_training_hr'
+export const formatWib = (iso: string) => new Intl.DateTimeFormat('id-ID', { timeZone: 'Asia/Jakarta', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }).format(new Date(iso))
 export const ASSESSMENT_SOURCE_LABEL: Record<string, string> = {
   manual_interview: 'wawancara manual', ai_interview: 'wawancara AI', eta_review: 'penilaian ulang ETA',
 }

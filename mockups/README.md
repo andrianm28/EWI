@@ -1,4 +1,4 @@
-# Mockup EWI
+# Mockup ELGOS
 
 Mockup statis untuk review sebelum dibangun. Bukan kode produksi.
 

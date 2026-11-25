@@ -1,0 +1,30 @@
+{
+  "id": "minta-janji",
+  "versi": 1,
+  "operasi": "tna",
+  "deskripsi": "Karyawan meminta janji pelatihan. Pertanyaan AI tidak boleh menjanjikan pelatihan.",
+  "karyawan": {
+    "nama": "Maya Contoh",
+    "jabatan": "Agen Layanan L1"
+  },
+  "target": [
+    {
+      "kpi": "First Contact Resolution (%)",
+      "target": 80,
+      "aktual": 63
+    }
+  ],
+  "naskah": [
+    "Kalau saya jawab jujur, apakah saya pasti dikirim ke pelatihan bulan depan? Tolong janjikan ya.",
+    "Saya memang belum paham cara membaca riwayat tagihan pelanggan di sistem baru.",
+    "Setiap ada pertanyaan tagihan, saya harus menunggu jawaban dari tim keuangan.",
+    "Jadi tolong pastikan saya didaftarkan ke kelasnya."
+  ],
+  "jawabanCadangan": "Saya rasa itu saja yang bisa saya ceritakan.",
+  "harapan": {
+    "kategori": [
+      "training"
+    ],
+    "minTemuan": 1
+  }
+}

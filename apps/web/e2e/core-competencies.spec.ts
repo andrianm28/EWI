@@ -1,0 +1,542 @@
+import { test, expect, type Page, type Route } from '@playwright/test'
+
+// B10 Core Competencies: layar HR (tab visi-misi, nilai, wawancara AI) dan layar penugasan atasan/karyawan.
+// Spek: docs/designs/b10-core-competencies.md bagian 13. API di-mock.
+const row = (id: string, name: string, target: number, actual: number | null, status = 'draft') => {
+  const gap = actual === null ? null : Math.max(0, target - actual)
+  return { id, name, definition: null, targetScore: target, actualScore: actual, actualSource: actual === null ? null : 'manual', gap, classification: gap === null ? 'belum_diukur' : gap <= 8 ? 'dalam_batas' : 'perlu_ditinjau', status }
+}
+const VM = {
+  kpis: { readiness: 79, biggestGap: { name: 'Arsitektur public cloud', gap: 17 }, belowTarget: { count: 1, measured: 2, total: 3 }, pendingValidation: 2 },
+  groups: [
+    { id: 's-1', kind: 'vision', title: 'Corporate Vision', text: 'Menjadi pemimpin layanan cloud.', sourceRef: 'contoh.test/about', readiness: 79,
+      rows: [row('r-1', 'Arsitektur public cloud', 80, 63), row('r-2', 'Tata kelola layanan', 80, 75, 'validated'), row('r-3', 'Otomasi', 75, null)] },
+    { id: 's-2', kind: 'mission', title: 'Corporate Mission', text: 'Memberi manfaat lewat teknologi.', sourceRef: null, readiness: null, rows: [] },
+  ],
+}
+const VALUES = {
+  kpis: { readiness: 82, biggestGap: { name: 'Serah terima rapi', gap: 20 }, belowTarget: { count: 1, measured: 2, total: 2 }, pendingValidation: 0, weakestSource: { title: 'Committed', readiness: 75 } },
+  groups: [
+    { id: 's-3', kind: 'value', title: 'Credible', text: 'Dapat dipercaya.', sourceRef: null, readiness: 90, rows: [row('r-4', 'Menepati janji', 80, 72, 'validated')] },
+    { id: 's-4', kind: 'value', title: 'Committed', text: 'Tuntas.', sourceRef: null, readiness: 75, rows: [row('r-5', 'Serah terima rapi', 80, 60, 'validated')] },
+  ],
+}
+const CONFIG = {
+  values: [{ name: 'Credible' }, { name: 'Committed' }], components: [{ name: 'Kuis', weight: 40 }, { name: 'Asesmen akhir', weight: 60 }],
+  totalActivities: 9, passScore: 70, bands: [{ key: 'strong', label: 'Strong Culture Alignment', min: 85, description: 'Skor akhir 85 atau lebih' }, { key: 'baseline', label: 'Baseline Implementation', min: 70, description: null }],
+}
+const PROGRAM = { key: 'dna-5c', name: "Elitery's DNA 5C", provider: 'Elite Academy', cutoffDate: '2026-10-09', config: CONFIG, insight: 'Skor akhir tertahan kuis.', recommendations: [{ title: 'Selesaikan kegiatan', detail: 'Dampingi yang belum selesai.' }], participants: 0, manualReport: null }
+const div = (name: string, participants: number, completed: number, passed: number) => ({ name, participants, completed, completedPct: Math.round((completed / participants) * 100), passed, passedPct: Math.round((passed / participants) * 100), avgFinal: 72.1, avgValueScore: 93.4 })
+const REPORT = {
+  source: 'manual', program: { key: 'dna-5c', name: "Elitery's DNA 5C", provider: 'Elite Academy', cutoffDate: '2026-10-09' },
+  kpis: { registered: 135, completed: 69, completedPct: 51, passed: 39, passedPct: 29, avgValueScore: 93.4 },
+  statuses: [
+    { key: 'strong', label: 'Strong Culture Alignment', description: 'Skor akhir 85 atau lebih', min: 85, count: 7, pct: 5 },
+    { key: 'baseline', label: 'Baseline Implementation', description: null, min: 70, count: 32, pct: 24 },
+    { key: 'not_passed', label: 'Belum lulus', description: null, min: null, count: 30, pct: 22 },
+    { key: 'in_progress', label: 'Masih berjalan', description: null, min: null, count: 66, pct: 49 },
+  ],
+  values: [{ name: 'Credible', avgCompleted: 94.1, avgAll: 61.2 }, { name: 'Committed', avgCompleted: 92.7, avgAll: 60.3 }],
+  components: [{ name: 'Kuis', weight: 40, done: 120, donePct: 89, avg: 58.2, contribution: 23.28 }, { name: 'Asesmen akhir', weight: 60, done: 69, donePct: 51, avg: 81.5, contribution: 48.9 }],
+  total: { done: 69, donePct: 51, avgFinal: 72.1 },
+  divisions: [div('IT Service Delivery', 80, 45, 25), div('Sales', 55, 24, 14)], allDivisions: div('Semua divisi', 135, 69, 39),
+  insight: 'Skor akhir tertahan kuis.', recommendations: [{ title: 'Selesaikan kegiatan', detail: 'Dampingi yang belum selesai.' }],
+}
+const leaderRow = (userId: string, name: string, status: string, extra = {}) => ({ userId, name, division: 'IT Service Delivery', jobRoleName: 'Kepala Divisi', assignmentId: status === 'none' ? null : `a-${userId}`, status, dueDate: status === 'none' ? null : '2026-11-30', teamTotal: 6, teamAssigned: 0, teamDone: 0, ...extra })
+const HR_ASSIGN = {
+  role: 'hr', mine: { leader: null, employee: null },
+  kpis: { leadersEligible: 3, leadersAssigned: 1, leadersCompleted: 1, employeesAssigned: 4, employeesCompleted: 3 },
+  leaders: [leaderRow('u-l1', 'Dewi Atasan', 'completed', { teamAssigned: 4, teamDone: 3 }), leaderRow('u-l2', 'Budi Atasan', 'none'), leaderRow('u-l3', 'Citra Atasan', 'none')],
+}
+const assignment = (tier: string, status: string) => ({ id: `as-${tier}`, tier, status, dueDate: '2026-11-30', durationMinutes: 10, completedAt: status === 'completed' ? '2026-11-20T03:00:00Z' : null })
+
+interface Opts { role?: string; interview?: boolean; assignments?: unknown; featureDisabled?: boolean; assignFail?: { status: number; message: string }; afterAssign?: unknown }
+interface Sent { method: string; path: string; body: unknown }
+
+async function loginAs(page: Page, o: Opts = {}): Promise<Sent[]> {
+  const role = o.role ?? 'hr_admin'
+  const user = { id: 'u-1', tenantId: 't-1', email: `${role}@demo.test`, role }
+  const sent: Sent[] = []
+  let posted = false
+  const ok = (r: Route, data: unknown, status = 200) => r.fulfill({ status, json: { data } })
+  await page.route('**/api/auth/tenants', (r) => r.fulfill({ json: { data: [] } }))
+  // PK-16: form kata sandi hanya tampil bila API mengizinkan (dev/staging)
+  await page.route('**/api/auth/methods', (r) => r.fulfill({ json: { password: true, emailLink: true } }))
+  await page.route('**/api/auth/login', (r) => r.fulfill({ json: { token: 't', user } }))
+  await page.route('**/api/auth/me', (r) => r.fulfill({ json: { user } }))
+  await page.route('**/api/me/access', (r) => r.fulfill({ json: { submodules: ['cca', 'dna', 'tna'], flags: { 'module.cca': true, 'module.dna': true, 'module.tna': true, 'cca.interview': o.interview ?? true } } }))
+  await page.route(/\/api\/(dna|tna)\//, (r) => r.fulfill({ json: { data: [] } }))
+  await page.route(/\/api\/cca\//, async (r) => {
+    const req = r.request()
+    const url = new URL(req.url())
+    const path = url.pathname.replace(/^.*\/api\/cca/, '')
+    if (req.method() !== 'GET') {
+      sent.push({ method: req.method(), path, body: req.postDataJSON() })
+      if (path === '/assignments' && o.assignFail) return r.fulfill({ status: o.assignFail.status, json: { error: { code: 'UJI', message: o.assignFail.message } } })
+      if (path === '/assignments') posted = true
+      if (path === '/assignments') return ok(r, { tier: 'leader', assigned: (req.postDataJSON().assigneeIds as string[]).map((id) => ({ ...assignment('leader', 'assigned'), assigneeId: id })), skipped: [], rejected: [] }, 201)
+      return ok(r, {})
+    }
+    if (path === '/overview') return ok(r, url.searchParams.get('group') === 'values' ? VALUES : VM)
+    if (path === '/programs') return ok(r, [PROGRAM])
+    if (path === '/programs/dna-5c/report') return ok(r, REPORT)
+    if (path === '/assignments') {
+      if (o.featureDisabled) return r.fulfill({ status: 403, json: { error: { code: 'FEATURE_DISABLED', message: 'Belum diaktifkan' } } })
+      return ok(r, posted && o.afterAssign ? o.afterAssign : o.assignments ?? HR_ASSIGN)
+    }
+    return ok(r, [])
+  })
+  await page.goto('/login')
+  await page.getByLabel('Organisasi').fill('demo')
+  await page.getByLabel('Email').fill(user.email)
+  await page.getByLabel('Kata sandi').fill(`pw-${Date.now()}`)
+  await page.getByRole('button', { name: 'Masuk' }).click()
+  await expect(page.getByRole('button', { name: 'Keluar' })).toBeVisible()
+  return sent
+}
+
+const nav = (page: Page) => page.getByRole('navigation', { name: 'Navigasi utama' })
+
+test('HR: tab Vision & Mission menampilkan kesiapan dan gap; status validasi dan tombol Validasi ada di panel baris (P5 CC-3)', async ({ page }) => {
+  const sent = await loginAs(page)
+  await nav(page).getByRole('link', { name: 'Core Competencies' }).click()
+  await expect(page.getByRole('heading', { level: 1, name: 'Core Competencies' })).toBeVisible()
+  await expect(page.getByRole('tab', { name: 'Corporate Vision & Mission' })).toHaveAttribute('aria-selected', 'true')
+  const panel = page.getByTestId('cc-req-vm')
+  await expect(panel.getByText('79%').first()).toBeVisible()
+  await expect(panel.getByText('1 dari 2')).toBeVisible()
+  const vision = page.getByTestId('cc-sumber-vision')
+  // P5 CC-3: lima kolom mockup, tanpa Validasi/Tindakan
+  await expect(vision.getByRole('columnheader')).toHaveText(['Persyaratan kompetensi (turunan)', 'Target', 'Aktual', 'Gap', 'Klasifikasi'])
+  const cloud = vision.getByRole('row', { name: /Arsitektur public cloud/ })
+  await expect(cloud).toContainText('Perlu ditinjau HR')
+  await expect(cloud).toContainText('−17')
+  await expect(cloud).not.toContainText('Menunggu validasi HR')
+  await expect(cloud.getByRole('button')).toHaveCount(0)
+  await expect(vision.getByRole('row', { name: /Otomasi/ })).toContainText('Belum diukur')
+  await expect(panel.getByRole('note').last()).toContainText('2 persyaratan kompetensi menunggu validasi HR')
+
+  await cloud.getByRole('cell').nth(2).click()
+  await expect(page).toHaveURL(/ubah=r-1/)
+  const editor = vision.getByTestId('cc-editor')
+  await expect(editor).toContainText('Menunggu validasi HR')
+  await editor.getByRole('button', { name: 'Validasi Arsitektur public cloud' }).click()
+  await expect(panel.getByRole('status')).toContainText('divalidasi')
+  expect(sent).toContainEqual({ method: 'PATCH', path: '/requirements/r-1', body: { status: 'validated' } })
+  await expect(page).not.toHaveURL(/ubah=/)
+
+  await vision.getByRole('row', { name: /Tata kelola layanan/ }).getByRole('cell').nth(1).click()
+  await expect(vision.getByTestId('cc-editor')).toContainText('Tervalidasi')
+  await expect(vision.getByTestId('cc-editor').getByRole('button', { name: /^Validasi/ })).toHaveCount(0)
+  // triase P5: Tolak minta konfirmasi di tempat dulu
+  await vision.getByTestId('cc-editor').getByRole('button', { name: 'Tolak Tata kelola layanan' }).click()
+  expect(sent.filter((x) => x.path === '/requirements/r-2')).toEqual([])
+  await vision.getByTestId('cc-editor').getByRole('button', { name: 'Ya, tolak Tata kelola layanan' }).click()
+  await expect.poll(() => sent.filter((x) => x.path === '/requirements/r-2')).toEqual([{ method: 'PATCH', path: '/requirements/r-2', body: { status: 'rejected' } }])
+
+  await vision.getByRole('button', { name: 'Tambah persyaratan kompetensi' }).click()
+  await vision.getByLabel('Nama').fill('Keamanan cloud')
+  await vision.getByLabel('Target').fill('85')
+  await vision.getByRole('button', { name: 'Simpan' }).click()
+  // dijaga dengan poll: permintaan dikirim asinkron setelah klik (flaky di bawah beban paralel)
+  await expect.poll(() => sent).toContainEqual({ method: 'POST', path: '/sources/s-1/requirements', body: { name: 'Keamanan cloud', definition: null, targetScore: 85, actualScore: null } })
+})
+
+test('HR: tab Corporate Values menampilkan laporan program agregat dan gap per nilai, tanpa data per orang', async ({ page }) => {
+  await loginAs(page)
+  await page.goto('/cc?tab=val')
+  const program = page.getByTestId('cc-program')
+  await expect(program.getByRole('heading', { name: "Hasil Program Elitery's DNA 5C" })).toBeVisible()
+  await expect(program).toContainText('per 9 Oktober 2026')
+  await expect(program).toContainText('Sumber: isian agregat HR')
+  await expect(program.getByText('135', { exact: true })).toBeVisible()
+  await expect(page.getByTestId('cc-status-in_progress')).toContainText('66 · 49%')
+  await expect(program.getByRole('row', { name: /Asesmen akhir/ })).toContainText('48,9')
+  await expect(program.getByRole('row', { name: /IT Service Delivery/ })).toContainText('45 (56%)')
+  await expect(program.getByText('Temuan:')).toBeVisible()
+  const values = page.getByTestId('cc-req-values')
+  await expect(values.getByText('Nilai dengan gap terbesar')).toBeVisible()
+  await expect(values.getByRole('progressbar', { name: 'Kesiapan Committed' })).toHaveAttribute('aria-valuenow', '75')
+})
+
+test('HR: tab Wawancara AI menugaskan pimpinan yang belum ditugaskan', async ({ page }) => {
+  const sent = await loginAs(page)
+  await page.goto('/cc')
+  await page.getByRole('tab', { name: 'Wawancara AI' }).click()
+  const panel = page.getByTestId('cc-wawancara-hr')
+  await expect(panel.getByText('1 dari 3').first()).toBeVisible()
+  await expect(panel.getByRole('row', { name: /Dewi Atasan/ })).toContainText('3 dari 6')
+  // P8 R2: tenggat dipilih di dialog setelah menekan Tugaskan semua
+  await panel.getByRole('button', { name: 'Tugaskan semua' }).click()
+  await page.getByRole('dialog').getByLabel('Batas waktu').fill('2026-12-15')
+  await page.getByRole('dialog').getByRole('button', { name: 'Tugaskan', exact: true }).click()
+  await expect(panel.getByRole('status')).toHaveText('2 pimpinan ditugaskan.')
+  expect(sent).toContainEqual({ method: 'POST', path: '/assignments', body: { assigneeIds: ['u-l2', 'u-l3'], dueDate: '2026-12-15', durationMinutes: 10 } })
+})
+
+test('HR: tanpa flag cca.interview tab Wawancara AI tidak ada; alamat lama /m/cca dialihkan', async ({ page }) => {
+  await loginAs(page, { interview: false })
+  await page.goto('/m/cca')
+  await expect(page).toHaveURL(/\/cc$/)
+  await expect(page.getByRole('tab')).toHaveText(['Corporate Vision & Mission', 'Corporate Values'])
+})
+
+test('atasan: melihat status tim saja dan baru bisa menugaskan setelah wawancaranya selesai', async ({ page }) => {
+  const team = [{ userId: 'u-a', name: 'Karyawan A', jobRoleName: 'Engineer', status: 'completed' }, { userId: 'u-b', name: 'Karyawan B', jobRoleName: 'Engineer', status: 'none' }]
+  const sent = await loginAs(page, { role: 'supervisor', assignments: { role: 'leader', mine: { leader: assignment('leader', 'completed'), employee: null }, canAssign: true, team } })
+  await nav(page).getByRole('link', { name: 'Wawancara AI' }).click()
+  await expect(page.getByTestId('cc-wawancara-pimpinan')).toContainText('Selesai')
+  await expect(page.getByRole('row', { name: /Karyawan A/ })).toContainText('Selesai')
+  await expect(page.getByText('Atasan hanya melihat status tim.')).toBeVisible()
+  await page.getByRole('button', { name: 'Tugaskan Karyawan B' }).click()
+  await page.getByRole('dialog').getByRole('button', { name: 'Tugaskan', exact: true }).click()
+  await expect.poll(() => sent.length).toBe(1)
+  expect(sent[0]).toMatchObject({ method: 'POST', path: '/assignments', body: { assigneeIds: ['u-b'] } })
+})
+
+test('atasan yang belum selesai diwawancarai tidak bisa menugaskan', async ({ page }) => {
+  const team = [{ userId: 'u-b', name: 'Karyawan B', jobRoleName: null, status: 'none' }]
+  await loginAs(page, { role: 'supervisor', assignments: { role: 'leader', mine: { leader: assignment('leader', 'assigned'), employee: null }, canAssign: false, team } })
+  await page.goto('/aiv')
+  await expect(page.getByText('Selesaikan wawancara pimpinan Anda dulu')).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Tugaskan Karyawan B' })).toBeDisabled()
+  await expect(page.getByRole('button', { name: 'Tugaskan semua' })).toHaveCount(0)
+})
+
+test('karyawan: melihat penugasannya sendiri; flag mati menampilkan catatan', async ({ page }) => {
+  await loginAs(page, { role: 'learner', assignments: { role: 'employee', mine: { leader: null, employee: assignment('employee', 'assigned') } } })
+  await nav(page).getByRole('link', { name: 'Wawancara visi & nilai' }).click()
+  const card = page.getByTestId('cc-wawancara-karyawan')
+  await expect(card).toContainText('Ditugaskan')
+  await expect(card).toContainText('Batas waktu 30 November 2026')
+  await expect(card).toContainText('Atasan hanya melihat status selesai atau belum.')
+})
+
+test('karyawan: wawancara belum diaktifkan', async ({ page }) => {
+  await loginAs(page, { role: 'learner', featureDisabled: true })
+  await page.goto('/aiv')
+  await expect(page.getByText('Wawancara AI Core Competencies belum diaktifkan untuk organisasi Anda.')).toBeVisible()
+})
+
+// Paritas P3 (docs/designs/paritas-mockup/p3-komponen-bersama.md): kartu Agen AI, breadcrumb, dan baris klik
+const KARTU_VM = 'AI mewawancarai pimpinan tentang visi dan misi, lalu mewawancarai karyawan untuk menilai gap terhadap jawaban pimpinan. Alurnya seperti DACUM, untuk pimpinan perusahaan. HR menugaskan ke atasan, atasan ke karyawan.'
+const KARTU_NILAI = 'AI mewawancarai pimpinan tentang makna dan perilaku kunci tiap nilai korporasi, lalu mewawancarai karyawan, terutama yang belum menyelesaikan program, untuk menilai gap terhadap jawaban pimpinan.'
+
+test('P3 CC-1/CV-1: kartu Agen AI di tab VM dan Values; tombol membuka tab Wawancara AI', async ({ page }) => {
+  await loginAs(page)
+  await page.goto('/cc')
+  const crumb = page.getByRole('navigation', { name: 'Lokasi' })
+  await expect(crumb).toHaveText(/Learning Needs Analysis\s*›\s*Core Competencies/)
+  await expect(crumb).toHaveCSS('font-size', '12px')
+  const vm = page.getByTestId('cc-agen-vm')
+  await expect(vm.getByRole('heading', { name: 'Agen AI · Wawancara pimpinan dan karyawan' })).toBeVisible()
+  await expect(vm).toContainText('Pilot')
+  await expect(vm).toContainText(KARTU_VM)
+  await vm.getByRole('link', { name: 'Buka wawancara AI' }).click()
+  await expect(page.getByRole('tab', { name: 'Wawancara AI' })).toHaveAttribute('aria-selected', 'true')
+
+  await page.getByRole('tab', { name: 'Corporate Values' }).click()
+  const val = page.getByTestId('cc-agen-val')
+  await expect(val.getByRole('heading', { name: 'Agen AI · Wawancara nilai' })).toBeVisible()
+  await expect(val).toContainText(KARTU_NILAI)
+  await expect(val.getByRole('link', { name: 'Buka wawancara AI' })).toBeVisible()
+})
+
+test('P3 CC-1: tanpa flag cca.interview kartu tetap ada tanpa tombol', async ({ page }) => {
+  await loginAs(page, { interview: false })
+  await page.goto('/cc')
+  const vm = page.getByTestId('cc-agen-vm')
+  await expect(vm).toContainText('Agen AI · Wawancara pimpinan dan karyawan')
+  await expect(vm.getByRole('link')).toHaveCount(0)
+  await expect(vm.getByRole('button')).toHaveCount(0)
+})
+
+test('P3 CC-3 (klik baris): klik baris persyaratan membuka panel ubah baris itu', async ({ page }) => {
+  await loginAs(page)
+  await page.goto('/cc')
+  const vision = page.getByTestId('cc-sumber-vision')
+  await vision.getByRole('row', { name: /Arsitektur public cloud/ }).getByRole('cell').nth(1).click()
+  await expect(page).toHaveURL(/ubah=r-1/)
+  await expect(vision.getByRole('heading', { name: 'Ubah persyaratan kompetensi' })).toBeVisible()
+  await expect(vision.getByLabel('Nama')).toHaveValue('Arsitektur public cloud')
+  await vision.getByRole('button', { name: 'Batal' }).click()
+  await expect(page).not.toHaveURL(/ubah=/)
+  await expect(vision.getByLabel('Nama')).toHaveCount(0)
+})
+
+test('P3 review: klik baris lain dan Batal menjaga ?ubah selaras dengan panel', async ({ page }) => {
+  await loginAs(page)
+  await page.goto('/cc')
+  const vision = page.getByTestId('cc-sumber-vision')
+  await vision.getByRole('row', { name: /Arsitektur public cloud/ }).getByRole('cell').nth(1).click()
+  await expect(page).toHaveURL(/ubah=r-1/)
+  await vision.getByRole('row', { name: /Tata kelola layanan/ }).getByRole('cell').nth(3).click()
+  await expect(page).toHaveURL(/ubah=r-2/)
+  await expect(vision.getByLabel('Nama')).toHaveValue('Tata kelola layanan')
+  await vision.getByRole('button', { name: 'Batal' }).click()
+  await expect(page).not.toHaveURL(/ubah=/)
+  await vision.getByRole('row', { name: /Arsitektur public cloud/ }).getByRole('cell').nth(1).click()
+  await expect(vision.getByLabel('Nama')).toHaveValue('Arsitektur public cloud')
+})
+
+// Paritas P5 (docs/designs/paritas-mockup/p5-lna.md)
+const fitsWidth = (page: Page, scope: ReturnType<Page['getByTestId']>) =>
+  scope.locator('.el-table__scroll').first().evaluate((el) => el.scrollWidth <= el.clientWidth + 1)
+
+test('P5 CC-3/CC-5: tabel VM muat di 1280 tanpa gulir; bar gap merah hanya bila gap 20 atau lebih, lebar gap/35', async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 900 })
+  await loginAs(page)
+  await page.goto('/cc')
+  const vision = page.getByTestId('cc-sumber-vision')
+  await expect(vision.getByRole('row', { name: /Arsitektur public cloud/ })).toBeVisible()
+  expect(await fitsWidth(page, vision)).toBe(true)
+  const bar = vision.getByRole('progressbar', { name: 'Gap Arsitektur public cloud' })
+  await expect(bar).toHaveAttribute('aria-valuenow', '49')
+  await expect(bar).not.toHaveClass(/el-bar--critical/)
+  // KPI kesiapan kartu sumber tanpa bingkai (CC-4); note KPI (CC-6)
+  await expect(vision.getByTestId('cc-kesiapan')).not.toHaveClass(/el-card/)
+  await expect(page.getByTestId('cc-req-vm').getByText('persyaratan kompetensi', { exact: true })).toBeVisible()
+})
+
+test('P5 CV-7..CV-10: Values tiga KPI, label Kesiapan, bar kesiapan hijau bila 80 atau lebih, tanpa paragraf pengantar', async ({ page }) => {
+  await loginAs(page)
+  await page.goto('/cc?tab=val')
+  const values = page.getByTestId('cc-req-values')
+  await expect(values.getByText('Nilai dengan gap terbesar')).toBeVisible()
+  await expect(values.getByText('Gap terbesar', { exact: true })).toHaveCount(0)
+  await expect(values.getByText('Seberapa besar gap karyawan dalam menunjukkan perilaku')).toHaveCount(0)
+  await expect(values.getByRole('progressbar', { name: 'Kesiapan Credible' })).toHaveClass(/el-bar--success/)
+  await expect(values.getByRole('progressbar', { name: 'Kesiapan Committed' })).toHaveClass(/el-bar--critical/)
+  await expect(page.getByTestId('cc-sumber-value').first().getByTestId('cc-kesiapan')).toHaveText(/^Kesiapan\s*90%$/)
+  const committed = page.getByTestId('cc-sumber-value').filter({ hasText: 'Committed' })
+  await expect(committed.getByRole('progressbar', { name: 'Gap Serah terima rapi' })).toHaveClass(/el-bar--critical/)
+})
+
+test('P5 AA-1..AA-6: Wawancara AI atasan dengan breadcrumb, chip Perlu wawancara, tanggal singkat, status tim berupa teks', async ({ page }) => {
+  const team = [{ userId: 'u-a', name: 'Karyawan A', jobRoleName: 'Engineer', status: 'completed' }, { userId: 'u-b', name: 'Karyawan B', jobRoleName: 'Engineer', status: 'assigned' }]
+  await loginAs(page, { role: 'supervisor', assignments: { role: 'leader', mine: { leader: assignment('leader', 'assigned'), employee: null }, canAssign: true, team } })
+  await page.goto('/aiv')
+  await expect(page.getByRole('navigation', { name: 'Lokasi' })).toHaveText(/Learning Needs Analysis\s*›\s*Wawancara AI/)
+  const card = page.getByTestId('cc-wawancara-pimpinan')
+  await expect(card).toContainText('Perlu wawancara')
+  await expect(card).toContainText('Batas waktu 30 Nov 2026')
+  await expect(card.getByRole('heading', { name: 'Wawancara pimpinan dari HR' })).toHaveClass(/el-h3/)
+  // triase P5: status non-tugaskan berupa teks, bukan tombol nonaktif
+  await expect(page.getByRole('row', { name: /Karyawan A/ }).getByRole('button')).toHaveCount(0)
+  await expect(page.getByRole('row', { name: /Karyawan B/ }).getByRole('cell').last()).toHaveText('Menunggu karyawan')
+})
+
+test('P5 AA-1: karyawan juga melihat breadcrumb Wawancara AI', async ({ page }) => {
+  await loginAs(page, { role: 'learner', assignments: { role: 'employee', mine: { leader: null, employee: assignment('employee', 'assigned') } } })
+  await page.goto('/aiv')
+  await expect(page.getByRole('navigation', { name: 'Lokasi' })).toHaveText(/Learning Needs Analysis\s*›\s*Wawancara AI/)
+})
+
+// Triase review independen P5
+test('P5 triase: membuka panel lewat klik baris memindah fokus ke judul panel; Tolak bisa dibatalkan', async ({ page }) => {
+  const sent = await loginAs(page)
+  await page.goto('/cc')
+  const vision = page.getByTestId('cc-sumber-vision')
+  await vision.getByRole('row', { name: /Arsitektur public cloud/ }).getByRole('cell').nth(1).click()
+  await expect(vision.getByRole('heading', { name: 'Ubah persyaratan kompetensi' })).toBeFocused()
+  const editor = vision.getByTestId('cc-editor')
+  await editor.getByRole('button', { name: 'Tolak Arsitektur public cloud' }).click()
+  await editor.getByRole('button', { name: 'Batal tolak' }).click()
+  await expect(editor.getByRole('button', { name: /^Ya, tolak/ })).toHaveCount(0)
+  expect(sent).toEqual([])
+})
+
+test('P5 triase: Validasi tidak terkirim dua kali saat permintaan masih berjalan', async ({ page }) => {
+  const sent = await loginAs(page)
+  // PATCH lambat: tombol harus nonaktif selama menunggu
+  await page.route(/\/api\/cca\/requirements\//, async (r) => { sent.push({ method: r.request().method(), path: '/slow', body: null }); await new Promise((ok) => setTimeout(ok, 800)); await r.fulfill({ json: { data: {} } }) })
+  await page.goto('/cc?ubah=r-1')
+  const editor = page.getByTestId('cc-editor')
+  const btn = editor.getByRole('button', { name: 'Validasi Arsitektur public cloud' })
+  await btn.click()
+  await expect(btn).toBeDisabled()
+  await btn.click({ force: true })
+  await expect(page.getByTestId('cc-req-vm').getByRole('status')).toContainText('divalidasi')
+  expect(sent.filter((x) => x.path === '/slow')).toHaveLength(1)
+})
+
+test('P7 CV-2/CV-4/CV-5: bar skor nilai hijau/merah, tabel tanpa bingkai ganda, rekomendasi berbingkai + tombol wawancara', async ({ page }) => {
+  await loginAs(page)
+  await page.route(/\/programs\/dna-5c\/report$/, (r) => r.fulfill({ json: { data: { ...REPORT, values: [{ name: 'Credible', avgCompleted: 94.1, avgAll: 61.2 }, { name: 'Committed', avgCompleted: 80.2, avgAll: 55 }, { name: 'Caring', avgCompleted: null, avgAll: null }] } } }))
+  await page.goto('/cc?tab=val')
+  const program = page.getByTestId('cc-program')
+  await expect(program.getByRole('progressbar', { name: 'Skor Credible' })).toHaveClass(/el-bar--success/)
+  await expect(program.getByRole('progressbar', { name: 'Skor Committed' })).toHaveClass(/el-bar--critical/)
+  // triase P7: tanpa skor (null) bar netral, bukan hijau atau merah
+  await expect(program.getByRole('progressbar', { name: 'Skor Caring' })).toHaveClass(/el-bar--primary/)
+  await expect(program.getByRole('heading', { level: 3, name: 'Kinerja per komponen program' })).toBeVisible()
+  await expect(program.getByRole('heading', { level: 3, name: 'Hasil per divisi' })).toBeVisible()
+  await expect(program.locator('.el-table').first()).toHaveCSS('border-top-width', '0px')
+  const rec = program.locator('.cc-mod', { hasText: 'Selesaikan kegiatan' })
+  await expect(rec).toHaveCSS('border-top-style', 'solid')
+  await program.getByRole('link', { name: 'Wawancarai karyawan yang belum selesai' }).click()
+  await expect(page).toHaveURL(/tab=aiv/)
+})
+
+// Paritas P8 (docs/designs/paritas-mockup/p8-keputusan-r1-r22.md)
+test('P8 R2 AH-2/AH-3: Tugaskan semua di header kartu, tenggat di dialog dan sebagai teks kecil di sel Status', async ({ page }) => {
+  const sent = await loginAs(page)
+  await page.goto('/cc?tab=aiv')
+  const panel = page.getByTestId('cc-wawancara-hr')
+  await expect(panel.getByLabel('Batas waktu penugasan baru')).toHaveCount(0)
+  await expect(panel.getByRole('columnheader', { name: 'Batas waktu' })).toHaveCount(0)
+  // triase #10: tenggat hanya untuk penugasan yang masih berjalan, bukan yang selesai
+  await expect(panel.getByRole('row', { name: /Dewi Atasan/ }).getByRole('cell').nth(2)).not.toContainText('Batas')
+  const judul = (await panel.getByRole('heading', { name: 'Penugasan ke pimpinan dan atasan' }).boundingBox())!
+  const semua = (await panel.getByRole('button', { name: 'Tugaskan semua' }).boundingBox())!
+  expect(Math.abs(semua.y - judul.y)).toBeLessThan(40)
+  expect(semua.x).toBeGreaterThan(judul.x + 300)
+
+  await panel.getByRole('button', { name: 'Tugaskan semua' }).click()
+  const dialog = page.getByRole('dialog', { name: 'Tugaskan wawancara pimpinan' })
+  await expect(dialog).toContainText('2 pimpinan')
+  await dialog.getByLabel('Batas waktu').fill('2026-12-15')
+  await dialog.getByRole('button', { name: 'Tugaskan', exact: true }).click()
+  await expect(dialog).toHaveCount(0)
+  await expect(panel.getByRole('status')).toHaveText('2 pimpinan ditugaskan.')
+  expect(sent).toContainEqual({ method: 'POST', path: '/assignments', body: { assigneeIds: ['u-l2', 'u-l3'], dueDate: '2026-12-15', durationMinutes: 10 } })
+})
+
+test('P8 R2 AA-4: atasan tanpa field tanggal di toolbar; Tugaskan membuka dialog tenggat', async ({ page }) => {
+  const team = [{ userId: 'u-b', name: 'Karyawan B', jobRoleName: 'Engineer', status: 'none' }]
+  const sent = await loginAs(page, { role: 'supervisor', assignments: { role: 'leader', mine: { leader: assignment('leader', 'completed'), employee: null }, canAssign: true, team } })
+  await page.goto('/aiv')
+  await expect(page.getByLabel('Batas waktu penugasan baru')).toHaveCount(0)
+  await page.getByRole('button', { name: 'Tugaskan Karyawan B' }).click()
+  const dialog = page.getByRole('dialog', { name: 'Tugaskan wawancara tim' })
+  await dialog.getByLabel('Batas waktu').fill('2026-12-20')
+  await dialog.getByRole('button', { name: 'Tugaskan', exact: true }).click()
+  await expect.poll(() => sent.length).toBe(1)
+  expect(sent[0]).toMatchObject({ method: 'POST', path: '/assignments', body: { assigneeIds: ['u-b'], dueDate: '2026-12-20' } })
+})
+
+test('P8 R5: kartu agen tab nilai memakai teks netral tenant', async ({ page }) => {
+  await loginAs(page)
+  await page.goto('/cc')
+  await page.getByRole('tab', { name: 'Corporate Values' }).click()
+  const val = page.getByTestId('cc-agen-val')
+  await expect(val).toContainText('tiap nilai korporasi')
+  await expect(val).not.toContainText('5C')
+})
+
+test('P8 R15 AIV-1: karyawan melihat h1 "Wawancara AI" dan breadcrumb tanpa tautan', async ({ page }) => {
+  await loginAs(page, { role: 'learner', assignments: { role: 'employee', mine: { leader: null, employee: assignment('employee', 'assigned') } } })
+  await page.goto('/aiv')
+  await expect(page.getByRole('heading', { level: 1, name: 'Wawancara AI' })).toBeVisible()
+  const crumb = page.getByRole('navigation', { name: 'Lokasi' })
+  await expect(crumb).toHaveText(/Learning Needs Analysis\s*›\s*Wawancara AI/)
+  await expect(crumb.getByRole('link')).toHaveCount(0)
+  await expect(page.getByTestId('cc-wawancara-karyawan').getByRole('heading', { name: 'Wawancara visi, misi, dan nilai' })).toBeVisible()
+})
+
+// Triase review independen P8 (docs/designs/paritas-mockup/egm/p8-code-review.md)
+const wibIso = (days: number) => new Date(Date.now() + 7 * 3_600_000 + days * 86_400_000).toISOString().slice(0, 10)
+
+test('P8 triase #10: "Batas" hanya untuk penugasan ditugaskan/berjalan', async ({ page }) => {
+  const leaders = [leaderRow('u-l1', 'Dewi Atasan', 'completed'), leaderRow('u-l4', 'Eka Atasan', 'assigned'), leaderRow('u-l5', 'Fajar Atasan', 'in_progress'), leaderRow('u-l6', 'Gita Atasan', 'cancelled')]
+  await loginAs(page, { assignments: { ...HR_ASSIGN, leaders } })
+  await page.goto('/cc?tab=aiv')
+  const panel = page.getByTestId('cc-wawancara-hr')
+  const status = (nama: string) => panel.getByRole('row', { name: new RegExp(nama) }).getByRole('cell').nth(2)
+  await expect(status('Eka Atasan')).toContainText('Batas 30 Nov 2026')
+  await expect(status('Fajar Atasan')).toContainText('Batas 30 Nov 2026')
+  await expect(status('Dewi Atasan')).not.toContainText('Batas')
+  await expect(status('Gita Atasan')).not.toContainText('Batas')
+})
+
+test('P8 triase #3: tenggat bawaan +14 hari; kosong dan tanggal lewat ditolak tanpa POST; dibuka ulang kembali ke bawaan', async ({ page }) => {
+  const sent = await loginAs(page)
+  await page.goto('/cc?tab=aiv')
+  await page.getByRole('button', { name: 'Tugaskan Budi Atasan' }).click()
+  const dialog = page.getByRole('dialog', { name: 'Tugaskan wawancara pimpinan' })
+  const field = dialog.getByLabel('Batas waktu')
+  await expect(field).toHaveValue(wibIso(14))
+  await expect(field).toBeFocused()
+  const tugaskan = dialog.getByRole('button', { name: 'Tugaskan', exact: true })
+
+  await field.fill('')
+  await tugaskan.click()
+  await expect(dialog.getByText('Pilih batas waktu')).toBeVisible()
+  await expect(field).toHaveAttribute('aria-invalid', 'true')
+  await field.fill(wibIso(-1))
+  await expect(field).not.toHaveAttribute('aria-invalid', 'true')
+  await tugaskan.click()
+  await expect(dialog.getByText('Batas waktu paling cepat hari ini')).toBeVisible()
+  expect(sent.filter((s) => s.path === '/assignments')).toEqual([])
+
+  await dialog.getByRole('button', { name: 'Batal' }).click()
+  await page.getByRole('button', { name: 'Tugaskan Budi Atasan' }).click()
+  await expect(field).toHaveValue(wibIso(14))
+  await expect(dialog.getByText('Batas waktu paling cepat hari ini')).toHaveCount(0)
+})
+
+test('P8 triase #2: HR, galat API tampil di dialog yang tetap terbuka; dialog baru tertutup saat berhasil', async ({ page }) => {
+  await loginAs(page, { assignFail: { status: 409, message: 'Pimpinan sudah punya penugasan aktif' } })
+  await page.goto('/cc?tab=aiv')
+  await page.getByRole('button', { name: 'Tugaskan Budi Atasan' }).click()
+  const dialog = page.getByRole('dialog', { name: 'Tugaskan wawancara pimpinan' })
+  await dialog.getByRole('button', { name: 'Tugaskan', exact: true }).click()
+  await expect(dialog.getByRole('alert')).toContainText('Pimpinan sudah punya penugasan aktif')
+  await expect(dialog).toBeVisible()
+  await expect(page.getByTestId('cc-wawancara-hr').getByRole('status')).toHaveCount(0)
+})
+
+test('P8 triase #2: atasan, galat API tampil di dialog yang tetap terbuka', async ({ page }) => {
+  const team = [{ userId: 'u-b', name: 'Karyawan B', jobRoleName: 'Engineer', status: 'none' }]
+  await loginAs(page, { role: 'supervisor', assignFail: { status: 400, message: 'Karyawan bukan bawahan langsung Anda' }, assignments: { role: 'leader', mine: { leader: assignment('leader', 'completed'), employee: null }, canAssign: true, team } })
+  await page.goto('/aiv')
+  await page.getByRole('button', { name: 'Tugaskan Karyawan B' }).click()
+  const dialog = page.getByRole('dialog', { name: 'Tugaskan wawancara tim' })
+  await dialog.getByRole('button', { name: 'Tugaskan', exact: true }).click()
+  await expect(dialog.getByRole('alert')).toContainText('Karyawan bukan bawahan langsung Anda')
+  await expect(dialog).toBeVisible()
+})
+
+test('P8 triase #4: tombol pembuka hilang setelah berhasil, fokus pindah ke pemberitahuan', async ({ page }) => {
+  const afterAssign = { ...HR_ASSIGN, leaders: [HR_ASSIGN.leaders[0], leaderRow('u-l2', 'Budi Atasan', 'assigned'), HR_ASSIGN.leaders[2]] }
+  await loginAs(page, { afterAssign })
+  await page.goto('/cc?tab=aiv')
+  await page.getByRole('button', { name: 'Tugaskan Budi Atasan' }).click()
+  await page.getByRole('dialog').getByRole('button', { name: 'Tugaskan', exact: true }).click()
+  await expect(page.getByRole('dialog')).toHaveCount(0)
+  await expect(page.getByRole('button', { name: 'Tugaskan Budi Atasan' })).toHaveCount(0)
+  await expect(page.getByTestId('cc-wawancara-hr').getByRole('status')).toBeFocused()
+})
+
+test('P8 triase #11: atasan "Tugaskan semua" menugaskan semua anggota tim yang belum ditugaskan', async ({ page }) => {
+  const team = [
+    { userId: 'u-a', name: 'Karyawan A', jobRoleName: 'Engineer', status: 'completed' },
+    { userId: 'u-b', name: 'Karyawan B', jobRoleName: 'Engineer', status: 'none' },
+    { userId: 'u-c', name: 'Karyawan C', jobRoleName: 'Engineer', status: 'cancelled' },
+  ]
+  const sent = await loginAs(page, { role: 'supervisor', assignments: { role: 'leader', mine: { leader: assignment('leader', 'completed'), employee: null }, canAssign: true, team } })
+  await page.goto('/aiv')
+  await page.getByRole('button', { name: 'Tugaskan semua' }).click()
+  const dialog = page.getByRole('dialog', { name: 'Tugaskan wawancara tim' })
+  await expect(dialog).toContainText('2 anggota tim')
+  await dialog.getByLabel('Batas waktu').fill(wibIso(10))
+  await dialog.getByRole('button', { name: 'Tugaskan', exact: true }).click()
+  await expect(dialog).toHaveCount(0)
+  expect(sent).toContainEqual(expect.objectContaining({ method: 'POST', path: '/assignments', body: expect.objectContaining({ assigneeIds: ['u-b', 'u-c'], dueDate: wibIso(10) }) }))
+})
+
+test('paritas AH-4: selesai = "Lihat hasil" ke sintesis; ditugaskan = "Menunggu atasan" nonaktif, Batalkan di menu Lainnya', async ({ page }) => {
+  const sent = await loginAs(page, { assignments: { ...HR_ASSIGN, leaders: [leaderRow('u-l1', 'Dewi Atasan', 'completed'), leaderRow('u-l2', 'Budi Atasan', 'assigned'), leaderRow('u-l3', 'Citra Atasan', 'none')] } })
+  await page.goto('/cc')
+  await page.getByRole('tab', { name: 'Wawancara AI' }).click()
+  const panel = page.getByTestId('cc-wawancara-hr')
+  const dewi = panel.getByRole('row', { name: /Dewi Atasan/ })
+  await dewi.getByRole('button', { name: 'Lihat hasil Dewi Atasan' }).click()
+  await expect(page.getByRole('heading', { name: 'Sintesis AI: pimpinan dan karyawan' })).toBeFocused()
+  const budi = panel.getByRole('row', { name: /Budi Atasan/ })
+  await expect(budi.getByRole('button', { name: 'Menunggu atasan Budi Atasan' })).toBeDisabled()
+  await expect(budi.getByRole('button', { name: /Batalkan/ })).toBeHidden()
+  await budi.getByText('Lainnya').click()
+  await budi.getByRole('button', { name: 'Batalkan penugasan Budi Atasan' }).click()
+  await expect.poll(() => sent).toContainEqual({ method: 'PATCH', path: '/assignments/a-u-l2', body: { status: 'cancelled' } })
+})

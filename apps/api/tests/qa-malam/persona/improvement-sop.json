@@ -1,0 +1,30 @@
+{
+  "id": "improvement-sop",
+  "versi": 1,
+  "operasi": "tna",
+  "deskripsi": "Target SLA meleset karena SOP eskalasi berubah-ubah dan persetujuan lambat. Kemampuan karyawan cukup.",
+  "karyawan": {
+    "nama": "Dimas Contoh",
+    "jabatan": "Agen Layanan L1"
+  },
+  "target": [
+    {
+      "kpi": "Kepatuhan SLA respons (%)",
+      "target": 95,
+      "aktual": 78
+    }
+  ],
+  "naskah": [
+    "SOP eskalasi berubah tiga kali bulan ini dan versi terbarunya tidak pernah dibagikan secara resmi.",
+    "Tiket yang perlu eskalasi harus menunggu persetujuan supervisor, dan persetujuan itu sering baru datang keesokan harinya.",
+    "Saya sudah tahu cara menangani tiketnya; yang membuat lama adalah menunggu keputusan siapa yang berwenang.",
+    "Kalau alurnya tetap dan persetujuan bisa diwakilkan, SLA kami pasti naik."
+  ],
+  "jawabanCadangan": "Saya rasa itu saja yang bisa saya ceritakan.",
+  "harapan": {
+    "kategori": [
+      "non_training"
+    ],
+    "minTemuan": 1
+  }
+}

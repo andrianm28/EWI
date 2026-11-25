@@ -2,22 +2,101 @@
 // Store Postgres untuk DNA, TNA, dan wawancara (POC Desember). Setiap query memfilter tenant_id,
 // dan query data karyawan menerima `scope` dari visibleEmployeeScope() (RG-3).
 const { QueryTypes } = require('sequelize');
-
-/** scope: { all: true } | { userIds: [...] } -> potongan SQL untuk kolom user id. */
-function scopeSql(column, scope, rep) {
-  if (!scope || scope.all) return '';
-  rep.scopeIds = scope.userIds && scope.userIds.length ? scope.userIds : ['00000000-0000-0000-0000-000000000000'];
-  return ` AND ${column} IN (:scopeIds)`;
-}
+const { PRIVILEGED_ROLES } = require('../core/rbac/roles');
+const { createLiStores } = require('./li-stores');
+const { createLdStores } = require('./ld-stores');
+const { createLimStores } = require('./lim-stores');
+const { evaluate, effectiveRule, metricKey } = require('../modules/tna/performance');
+const { planAssignments } = require('../modules/tna/assignment');
+const { summaryStateOf, MAX_RESTARTS } = require('../modules/interviews/summary');
 
 const COMPETENCY_COLS = `c.id, c.job_role_id AS "jobRoleId", c.career_level_id AS "careerLevelId", c.kind, c.name,
   c.definition, c.indicators, c.source, c.version, c.required_score AS "requiredScore", c.importance,
-  c.approved_at AS "approvedAt"`;
+  c.approved_at AS "approvedAt", c.code, c.stream, c.program_tier AS "programTier"`;
+const COMPETENCY_RETURNING = COMPETENCY_COLS.replace(/\bc\./g, '');
+const JOB_FUNCTION_COLS = `f.id, f.job_role_id AS "jobRoleId", f.fn_order AS "order", f.name,
+  COALESCE((SELECT array_agg(m.competency_id ORDER BY m.competency_id) FROM lna_job_function_competencies m
+            WHERE m.job_function_id = f.id AND m.tenant_id = f.tenant_id), '{}') AS "competencyIds"`;
 
+/** B19 7.4: bentuk giliran untuk API. Koreksi menggantikan `text`; teks asli hanya ikut bila dikoreksi. */
+function turnView({ correctedText, ...t }) {
+  const out = { ...t, mode: t.mode || 'text', interrupted: Boolean(t.interrupted), corrected: correctedText != null };
+  if (correctedText != null) { out.originalText = t.text; out.text = correctedText; }
+  return out;
+}
+
+/** Baris { reviewStatus, n } menjadi hitungan per status review, status tanpa baris bernilai 0. */
+function byReviewStatus(rows) {
+  const out = { draft: 0, approved: 0, edited: 0, rejected: 0 };
+  for (const r of rows) out[r.reviewStatus] = r.n;
+  return out;
+}
 const PLAN_COLS = `p.id, p.user_id AS "userId", u.name AS "userName", p.finding_id AS "findingId", p.origin, p.status,
   p.program_tier AS "programTier", p.catalog_source AS "catalogSource", p.catalog_item_ref AS "catalogItemRef",
-  p.catalog_item_title AS "catalogItemTitle", p.note, p.requested_by AS "requestedBy", p.created_at AS "createdAt",
-  p.updated_at AS "updatedAt"`;
+  p.catalog_item_title AS "catalogItemTitle", (p.catalog_item_ref IS NULL AND p.origin <> 'learner_request') AS "needsModule", p.note, p.requested_by AS "requestedBy", p.created_at AS "createdAt",
+  p.updated_at AS "updatedAt", p.assignment_status AS "assignmentStatus", p.assignment_target AS "assignmentTarget",
+  p.assignment_ref AS "assignmentRef", p.assigned_at AS "assignedAt"`;
+
+// PK-14: hanya temuan yang sudah direview yang boleh dipakai di luar antrean review
+const { REVIEWED } = require('../modules/tna/review-status');
+const REVIEWED_SQL = `(${REVIEWED.map((x) => `'${x}'`).join(', ')})`;
+const { scopeSql } = require('./scope-sql');
+// Paritas B7 web: kolom pencocokan temuan ke gap (aturan R6 findingsByGap). Internal, dibuang sebelum respons.
+const { GAP_MATCH_COLUMNS } = require('../modules/tna/gaps');
+const GAP_MATCH_COLS = Object.entries(GAP_MATCH_COLUMNS).map(([field, col]) => `${col} AS "${field}"`).join(', ');
+// P9 CD-11: nama target dinormalkan persis seperti metricKey (performance.js): trim, spasi tunggal, huruf kecil.
+// `\s` JavaScript juga mencakup NBSP dan spasi Unicode lain; `\s` Postgres tidak, jadi kelasnya ditulis lengkap.
+const JS_SPACE_RUN = '[\\s\\u00a0\\u1680\\u2000-\\u200a\\u2028\\u2029\\u202f\\u205f\\u3000\\ufeff]+';
+// Review 24 Nov: lower() memakai collation ICU akar ("und-x-icu"), bukan locale database. Pada locale C/C.UTF-8 lower()
+// libc hanya mengubah ASCII (atau memetakan İ berbeda), sedangkan toLowerCase JavaScript memakai pemetaan Unicode
+// penuh. Postgres image pgvector/pgvector:pg16 (CI dan deploy) dibangun dengan ICU, jadi collation ini selalu ada.
+const metricKeySql = (col) => `lower(btrim(regexp_replace(${col}, '${JS_SPACE_RUN}', ' ', 'g'), ' ') COLLATE "und-x-icu")`;
+/**
+ * Predikat SQL kandidat satu gap (audit PR 39 butir 39-3, review 24 Nov): kompetensi temuan, baris kinerja temuan, atau
+ * fokus sesinya. Butuh alias `f` (temuan), `pr` (baris kinerja), dan `s` (sesi). `gap`: `{ kind: 'competency', competencyId }`
+ * atau `{ kind: 'okr', metricType, metricKey, period }` (metricKey = nama dinormalkan seperti `metricKey`). Keanggotaan
+ * pasti tetap diputus `findingsInGap` (aturan R6). Mengisi `rep` dan mengembalikan potongan ` AND (...)`.
+ */
+function gapSql(gap, rep) {
+  if (gap.kind === 'competency') {
+    rep.gapCompetencyId = gap.competencyId;
+    return ` AND (f.competency_id = :gapCompetencyId OR (s.focus_kind = 'competency' AND s.focus_competency_id = :gapCompetencyId))`;
+  }
+  Object.assign(rep, { gapMetricType: gap.metricType, gapMetricKey: gap.metricKey, gapPeriod: gap.period });
+  // Nama target dinormalkan seperti metricKey agar cocok dengan kunci gap
+  return ` AND ((pr.metric_type = :gapMetricType AND pr.period = :gapPeriod AND ${metricKeySql('pr.name')} = :gapMetricKey)
+            OR (s.focus_kind = 'okr' AND s.focus_metric_type = :gapMetricType AND s.focus_metric_key = :gapMetricKey
+                AND s.focus_period = :gapPeriod))`;
+}
+const REVIEW_COLS = `f.id, f.project_id AS "projectId", f.session_id AS "sessionId", f.user_id AS "userId", u.name AS "userName",
+  f.category, f.title, f.detail, f.competency_id AS "competencyId", c.name AS "competencyName",
+  f.performance_record_id AS "performanceRecordId", pr.name AS "metricName", pr.target::float AS target, pr.actual::float AS actual,
+  f.confidence::float AS confidence, f.scoring_agreement AS "scoringAgreement", f.review_status AS "reviewStatus",
+  f.reviewed_by AS "reviewedBy", r.name AS "reviewedByName", f.reviewed_at AS "reviewedAt", f.review_note AS "reviewNote",
+  f.original_title AS "originalTitle", f.original_detail AS "originalDetail", f.original_category AS "originalCategory",
+  f.created_at AS "createdAt",
+  f.review_hold_at AS "heldAt", hb.name AS "heldByName", f.review_hold_note AS "holdNote",
+  f.improvement_handoff_at AS "handedOffAt", s.ended_at AS "sessionEndedAt", s.consent_withdrawn_at AS "consentWithdrawnAt",
+  s.status AS "sessionStatus", s.summary_at AS "summaryAt", s.summary_confirmed_at AS "summaryConfirmedAt",
+  s.summary_disputed AS "summaryDisputed", s.summary_note AS "summaryNote", ${GAP_MATCH_COLS}`;
+// B8: temuan draf dari sesi yang persetujuannya ditarik tidak diteruskan ke antrean review
+const NOT_WITHDRAWN_DRAFT = `NOT (f.review_status = 'draft' AND s.consent_withdrawn_at IS NOT NULL)`;
+const { isFrozen, notFrozen, planFrozen } = require('./frozen-sql');
+const REVIEW_FROM = `FROM lna_findings f
+                   LEFT JOIN users u ON u.id = f.user_id AND u.tenant_id = f.tenant_id
+                   LEFT JOIN users r ON r.id = f.reviewed_by AND r.tenant_id = f.tenant_id
+                   LEFT JOIN users hb ON hb.id = f.review_hold_by AND hb.tenant_id = f.tenant_id
+                   LEFT JOIN lna_interview_sessions s ON s.id = f.session_id AND s.tenant_id = f.tenant_id
+                   LEFT JOIN lna_competencies c ON c.id = f.competency_id AND c.tenant_id = f.tenant_id
+                   LEFT JOIN lna_performance_records pr ON pr.id = f.performance_record_id AND pr.tenant_id = f.tenant_id`;
+const REVIEW_ENC = ['title', 'detail', 'reviewNote', 'originalTitle', 'originalDetail', 'holdNote', 'summaryNote'];
+
+/** B6 (A9): kolom sesi mentah diganti satu tanda `summaryState` (+ catatan karyawan bila ada). */
+function withSummaryState(row) {
+  const { sessionStatus, summaryAt, summaryConfirmedAt, summaryDisputed, summaryNote, ...rest } = row;
+  const session = row.sessionId && sessionStatus ? { status: sessionStatus, summaryAt, summaryConfirmedAt, summaryDisputed } : null;
+  return { ...rest, summaryState: summaryStateOf(session), summaryNote: summaryNote ?? null };
+}
 
 /** Kolom opsional yang undefined diganti null agar replacement Sequelize selalu terisi. */
 function withNulls(obj, keys) {
@@ -26,7 +105,16 @@ function withNulls(obj, keys) {
   return out;
 }
 
-function createLnaStores(sequelize) {
+/**
+ * cipher: enkripsi kolom per tenant (R2-3). Kolom terenkripsi: transkrip/jawaban (lna_interview_turns.text),
+ * bukti asesmen (lna_assessments.evidence), temuan (lna_findings.title, detail), catatan rencana training
+ * (lna_training_plan_items.note), dan baris mentah impor (import_batches.rows). Skor angka tetap terbuka
+ * agar bisa dihitung; skor tanpa transkrip/bukti tidak mengungkap isi wawancara.
+ */
+function createLnaStores(sequelize, { cipher } = {}) {
+  if (!cipher) throw new Error('createLnaStores butuh cipher (R2-3)');
+  const enc = (tenantId, v) => cipher.encrypt(tenantId, v);
+  const open = (tenantId, rows, fields) => cipher.open(tenantId, rows, fields);
   const select = (sql, replacements = {}) => sequelize.query(sql, { replacements, type: QueryTypes.SELECT });
   const one = async (sql, replacements) => (await select(sql, replacements))[0] || null;
   const insert = async (sql, replacements) => {
@@ -51,14 +139,90 @@ function createLnaStores(sequelize) {
       return select(`${sql} ORDER BY u.name NULLS LAST, u.email`, rep);
     },
     async get(tenantId, userId) {
-      return one(`SELECT id, name, email, employee_id AS "employeeId", role, supervisor_id AS "supervisorId",
-                         job_role_id AS "jobRoleId", career_level_id AS "careerLevelId"
-                    FROM users WHERE tenant_id = :tenantId AND id = :userId`, { tenantId, userId });
+      return one(`SELECT u.id, u.name, u.email, u.employee_id AS "employeeId", u.role, u.supervisor_id AS "supervisorId",
+                         u.job_role_id AS "jobRoleId", u.career_level_id AS "careerLevelId", jr.name AS "jobRoleName"
+                    FROM users u LEFT JOIN lna_job_roles jr ON jr.id = u.job_role_id
+                   WHERE u.tenant_id = :tenantId AND u.id = :userId`, { tenantId, userId });
+    },
+    /** Profil ringkas untuk beranda karyawan (B8): nama jabatan dan jenjang. */
+    async profile(tenantId, userId) {
+      return one(`SELECT u.id, u.name, u.job_role_id AS "jobRoleId", u.career_level_id AS "careerLevelId",
+                         jr.name AS "jobRoleName", cl.name AS "careerLevelName"
+                    FROM users u
+                    LEFT JOIN lna_job_roles jr ON jr.id = u.job_role_id
+                    LEFT JOIN lna_career_levels cl ON cl.id = u.career_level_id
+                   WHERE u.tenant_id = :tenantId AND u.id = :userId`, { tenantId, userId });
     },
     async resolve(tenantId, { employeeIds, emails }) {
-      return select(`SELECT id, email, employee_id AS "employeeId" FROM users
+      // privileged (B2): akun punya peran HR/Admin Tenant/Super Admin di user_roles, walau peran utamanya lain
+      return select(`SELECT id, email, employee_id AS "employeeId", role, job_role_id AS "jobRoleId", career_level_id AS "careerLevelId",
+                            EXISTS (SELECT 1 FROM user_roles ur WHERE ur.tenant_id = users.tenant_id AND ur.user_id = users.id
+                                       AND ur.role IN (:privileged)) AS privileged
+                       FROM users
                       WHERE tenant_id = :tenantId AND (employee_id IN (:employeeIds) OR email IN (:emails))`,
-      { tenantId, employeeIds: employeeIds.length ? employeeIds : [''], emails: emails.length ? emails : [''] });
+      { tenantId, privileged: PRIVILEGED_ROLES, employeeIds: employeeIds.length ? employeeIds : [''], emails: emails.length ? emails : [''] });
+    },
+    /**
+     * R3-3: buat/perbarui karyawan dari impor (satu transaksi), lalu tautkan atasan berdasarkan ID karyawan.
+     * Akun baru tanpa kata sandi (masuk lewat link email, R3-2). Akun HR/Admin sudah ditolak saat validasi.
+     */
+    async importEmployees(tenantId, rows) {
+      const t = await sequelize.transaction();
+      try {
+        let created = 0; let updated = 0;
+        for (const r of rows) {
+          const rep = withNulls({ tenantId, ...r }, ['id', 'jobRoleId', 'careerLevelId']);
+          if (r.id) {
+            await sequelize.query(
+              `UPDATE users SET employee_id = :employeeId, name = :name, email = :email, role = :role,
+                      job_role_id = :jobRoleId, career_level_id = :careerLevelId, updated_at = now()
+                WHERE tenant_id = :tenantId AND id = :id
+                  AND NOT EXISTS (SELECT 1 FROM user_roles ur WHERE ur.tenant_id = users.tenant_id AND ur.user_id = users.id
+                                     AND ur.role IN (:privileged))`,
+              { replacements: { ...rep, privileged: PRIVILEGED_ROLES }, transaction: t },
+            );
+            updated += 1;
+          } else {
+            await sequelize.query(
+              `INSERT INTO users (tenant_id, employee_id, name, email, role, status, job_role_id, career_level_id)
+               VALUES (:tenantId, :employeeId, :name, :email, :role, 'active', :jobRoleId, :careerLevelId)`,
+              { replacements: rep, transaction: t },
+            );
+            created += 1;
+          }
+        }
+        let linked = 0;
+        for (const r of rows.filter((x) => x.supervisorEmployeeId)) {
+          const [, meta] = await sequelize.query(
+            `UPDATE users u SET supervisor_id = s.id, updated_at = now()
+               FROM users s
+              WHERE u.tenant_id = :tenantId AND u.employee_id = :employeeId
+                AND s.tenant_id = :tenantId AND s.employee_id = :sup`,
+            { replacements: { tenantId, employeeId: r.employeeId, sup: r.supervisorEmployeeId }, transaction: t },
+          );
+          linked += (meta && meta.rowCount) || 0;
+        }
+        await t.commit();
+        return { created, updated, supervisorsLinked: linked };
+      } catch (e) { await t.rollback(); throw e; }
+    },
+    /**
+     * PK-15: hapus karyawan (hak hapus subjek data). Satu transaksi: bersihkan barisnya dari riwayat impor,
+     * lalu DELETE user. FK menghapus data turunan (kinerja, sesi + transkrip, temuan, rencana, asesmen, link masuk)
+     * dan mengosongkan user_id di audit_logs (diizinkan trigger 20261117000502). Akun HR/Admin tidak dihapus di sini.
+     */
+    async deleteEmployee(tenantId, userId) {
+      return sequelize.transaction(async (transaction) => {
+        const [person] = await sequelize.query(
+          `SELECT id, employee_id AS "employeeId", email, role FROM users WHERE tenant_id = :tenantId AND id = :userId FOR UPDATE`,
+          { replacements: { tenantId, userId }, type: QueryTypes.SELECT, transaction },
+        );
+        if (!person || ['hr_admin', 'eta_admin'].includes(person.role)) return null;
+        const scrubbed = await imports.scrubEmployee(tenantId, person, { transaction });
+        await sequelize.query('DELETE FROM users WHERE tenant_id = :tenantId AND id = :userId',
+          { replacements: { tenantId, userId }, transaction });
+        return { id: person.id, scrubbedImportRows: scrubbed };
+      });
     },
     async setPosition(tenantId, userId, { jobRoleId, careerLevelId }) {
       return insert(`UPDATE users SET job_role_id = :jobRoleId, career_level_id = :careerLevelId, updated_at = now()
@@ -123,35 +287,141 @@ function createLnaStores(sequelize) {
                              OR (c.kind = 'core' AND c.job_role_id IS NULL))
                       ORDER BY c.kind, c.name`, { tenantId, jobRoleId: jobRoleId ?? null, careerLevelId: careerLevelId ?? null });
     },
+    /** B6 (A8): ID kompetensi yang masih ada di tenant ini. */
+    async existingCompetencyIds(tenantId, ids) {
+      if (!ids || !ids.length) return [];
+      return (await select('SELECT id FROM lna_competencies WHERE tenant_id = :tenantId AND id IN (:ids)', { tenantId, ids })).map((r) => r.id);
+    },
     async getCompetency(tenantId, id) {
       return one(`SELECT ${COMPETENCY_COLS} FROM lna_competencies c WHERE c.tenant_id = :tenantId AND c.id = :id`, { tenantId, id });
     },
     async createCompetency(tenantId, c) {
-      return insert(`INSERT INTO lna_competencies (tenant_id, job_role_id, career_level_id, kind, name, definition, indicators, source, required_score, importance)
-                     VALUES (:tenantId, :jobRoleId, :careerLevelId, :kind, :name, :definition, CAST(:indicators AS jsonb), :source, :requiredScore, :importance)
-                     RETURNING id, job_role_id AS "jobRoleId", career_level_id AS "careerLevelId", kind, name, definition, indicators, source,
-                               version, required_score AS "requiredScore", importance, approved_at AS "approvedAt"`,
-      { tenantId, ...c, indicators: JSON.stringify(c.indicators || []) });
+      return insert(`INSERT INTO lna_competencies (tenant_id, job_role_id, career_level_id, kind, name, definition, indicators, source, required_score, importance,
+                                                    code, stream, program_tier)
+                     VALUES (:tenantId, :jobRoleId, :careerLevelId, :kind, :name, :definition, CAST(:indicators AS jsonb), :source, :requiredScore, :importance,
+                             :code, :stream, :programTier)
+                     RETURNING ${COMPETENCY_RETURNING}`,
+      withNulls({ tenantId, ...c, indicators: JSON.stringify(c.indicators || []) }, ['code', 'stream', 'programTier']));
+    },
+    /** B4: ubah sebagian kolom; pengesahan direset karena isi kamus berubah (A7). */
+    async updateCompetency(tenantId, id, patch) {
+      const cols = { name: 'name', definition: 'definition', code: 'code', stream: 'stream', programTier: 'program_tier', requiredScore: 'required_score', importance: 'importance' };
+      const keys = Object.keys(patch).filter((k) => Object.hasOwn(cols, k));
+      if (!keys.length) return dna.getCompetency(tenantId, id);
+      return insert(`UPDATE lna_competencies SET ${keys.map((k) => `${cols[k]} = :${k}`).join(', ')}, approved_at = NULL, approved_by = NULL
+                      WHERE tenant_id = :tenantId AND id = :id RETURNING ${COMPETENCY_RETURNING}`, { tenantId, id, ...patch });
+    },
+    async getJobRole(tenantId, id) {
+      return one('SELECT id, name, division, description FROM lna_job_roles WHERE tenant_id = :tenantId AND id = :id', { tenantId, id });
+    },
+    /** B4: kamus satu jabatan = kompetensi jabatan (kind 'job') dari semua jenjang karier, urut kode lalu nama. */
+    async listJobCompetencies(tenantId, jobRoleId) {
+      return select(`SELECT ${COMPETENCY_COLS} FROM lna_competencies c
+                      WHERE c.tenant_id = :tenantId AND c.job_role_id = :jobRoleId AND c.kind = 'job'
+                      ORDER BY c.code NULLS LAST, c.name`, { tenantId, jobRoleId });
+    },
+    /** Jumlah kompetensi jabatan per job role (status kamus di pilihan jabatan). */
+    async dictionaryCounts(tenantId) {
+      return select(`SELECT c.job_role_id AS "jobRoleId", count(*)::int AS "competencyCount",
+                            count(*) FILTER (WHERE c.program_tier IS NOT NULL)::int AS "tieredCount" FROM lna_competencies c
+                      WHERE c.tenant_id = :tenantId AND c.kind = 'job' AND c.job_role_id IS NOT NULL GROUP BY c.job_role_id`, { tenantId });
+    },
+    async assessedCompetencyCount(tenantId, jobRoleId) {
+      const row = await one(`SELECT count(DISTINCT a.competency_id)::int AS n FROM lna_assessments a
+                               JOIN lna_competencies c ON c.id = a.competency_id AND c.tenant_id = a.tenant_id
+                              WHERE a.tenant_id = :tenantId AND c.job_role_id = :jobRoleId AND c.kind = 'job'`, { tenantId, jobRoleId });
+      return row ? row.n : 0;
+    },
+    /** A8: sahkan semua kompetensi jabatan yang belum disahkan; return jumlah baris yang berubah. */
+    async approveDictionary(tenantId, jobRoleId, userId) {
+      const [rows] = await sequelize.query(
+        `UPDATE lna_competencies SET approved_at = now(), approved_by = :userId
+          WHERE tenant_id = :tenantId AND job_role_id = :jobRoleId AND kind = 'job' AND approved_at IS NULL RETURNING id`,
+        { replacements: { tenantId, jobRoleId, userId } });
+      return rows.length;
+    },
+    async listJobFunctions(tenantId, jobRoleId) {
+      return select(`SELECT ${JOB_FUNCTION_COLS} FROM lna_job_functions f
+                      WHERE f.tenant_id = :tenantId AND f.job_role_id = :jobRoleId ORDER BY f.fn_order`, { tenantId, jobRoleId });
+    },
+    async getJobFunction(tenantId, id) {
+      return one(`SELECT ${JOB_FUNCTION_COLS} FROM lna_job_functions f WHERE f.tenant_id = :tenantId AND f.id = :id`, { tenantId, id });
+    },
+    /** order kosong = nomor terakhir + 1. Pemetaan ditulis dalam transaksi yang sama. */
+    async createJobFunction(tenantId, { jobRoleId, name, order, competencyIds = [] }) {
+      const t = await sequelize.transaction();
+      try {
+        const [[row]] = await sequelize.query(
+          `INSERT INTO lna_job_functions (tenant_id, job_role_id, fn_order, name)
+           VALUES (:tenantId, :jobRoleId,
+                   COALESCE(:order, (SELECT COALESCE(max(fn_order), 0) + 1 FROM lna_job_functions WHERE tenant_id = :tenantId AND job_role_id = :jobRoleId)),
+                   :name) RETURNING id`,
+          { replacements: { tenantId, jobRoleId, name, order: order ?? null }, transaction: t });
+        await dna.writeJobFunctionCompetencies(tenantId, row.id, competencyIds, t);
+        await t.commit();
+        return dna.getJobFunction(tenantId, row.id);
+      } catch (e) { await t.rollback(); throw e; }
+    },
+    async writeJobFunctionCompetencies(tenantId, jobFunctionId, competencyIds, transaction) {
+      await sequelize.query('DELETE FROM lna_job_function_competencies WHERE tenant_id = :tenantId AND job_function_id = :jobFunctionId',
+        { replacements: { tenantId, jobFunctionId }, transaction });
+      for (const competencyId of [...new Set(competencyIds)]) {
+        await sequelize.query(
+          'INSERT INTO lna_job_function_competencies (tenant_id, job_function_id, competency_id) VALUES (:tenantId, :jobFunctionId, :competencyId)',
+          { replacements: { tenantId, jobFunctionId, competencyId }, transaction });
+      }
+    },
+    async setJobFunctionCompetencies(tenantId, jobFunctionId, competencyIds) {
+      const t = await sequelize.transaction();
+      try {
+        await dna.writeJobFunctionCompetencies(tenantId, jobFunctionId, competencyIds, t);
+        await t.commit();
+      } catch (e) { await t.rollback(); throw e; }
+      return dna.getJobFunction(tenantId, jobFunctionId);
+    },
+    /** Impor: ganti daftar job function satu kompetensi (kebalikan arah setJobFunctionCompetencies). */
+    async setCompetencyJobFunctions(tenantId, competencyId, jobFunctionIds) {
+      const t = await sequelize.transaction();
+      try {
+        await sequelize.query('DELETE FROM lna_job_function_competencies WHERE tenant_id = :tenantId AND competency_id = :competencyId',
+          { replacements: { tenantId, competencyId }, transaction: t });
+        for (const jobFunctionId of [...new Set(jobFunctionIds)]) {
+          await sequelize.query(
+            'INSERT INTO lna_job_function_competencies (tenant_id, job_function_id, competency_id) VALUES (:tenantId, :jobFunctionId, :competencyId)',
+            { replacements: { tenantId, jobFunctionId, competencyId }, transaction: t });
+        }
+        await t.commit();
+      } catch (e) { await t.rollback(); throw e; }
+    },
+    async updateJobFunction(tenantId, id, { name, order }) {
+      await sequelize.query(
+        `UPDATE lna_job_functions SET name = COALESCE(:name, name), fn_order = COALESCE(:order, fn_order) WHERE tenant_id = :tenantId AND id = :id`,
+        { replacements: { tenantId, id, name: name ?? null, order: order ?? null } });
+      return dna.getJobFunction(tenantId, id);
+    },
+    async deleteJobFunction(tenantId, id) {
+      const [rows] = await sequelize.query('DELETE FROM lna_job_functions WHERE tenant_id = :tenantId AND id = :id RETURNING id', { replacements: { tenantId, id } });
+      return rows.length > 0;
     },
     async approveCompetency(tenantId, id, userId) {
       return insert(`UPDATE lna_competencies SET approved_at = now(), approved_by = :userId
                       WHERE tenant_id = :tenantId AND id = :id RETURNING id, approved_at AS "approvedAt"`, { tenantId, id, userId });
     },
     async assessments(tenantId, userId) {
-      return select(`SELECT competency_id AS "competencyId", score, confidence, evidence, session_id AS "sessionId", source, assessor,
+      return open(tenantId, await select(`SELECT id, competency_id AS "competencyId", score, confidence, evidence, session_id AS "sessionId", source, assessor,
                             assessed_at AS "assessedAt", created_at AS "createdAt"
-                       FROM lna_assessments WHERE tenant_id = :tenantId AND user_id = :userId ORDER BY created_at`, { tenantId, userId });
+                       FROM lna_assessments WHERE tenant_id = :tenantId AND user_id = :userId ORDER BY created_at, id`, { tenantId, userId }), ['evidence']);
     },
     async assessmentsFor(tenantId, userIds) {
       if (!userIds.length) return [];
       return select(`SELECT user_id AS "userId", competency_id AS "competencyId", score, source, assessed_at AS "assessedAt", created_at AS "createdAt"
-                       FROM lna_assessments WHERE tenant_id = :tenantId AND user_id IN (:userIds)`, { tenantId, userIds });
+                       FROM lna_assessments WHERE tenant_id = :tenantId AND user_id IN (:userIds) ORDER BY created_at, id`, { tenantId, userIds });
     },
     async addAssessment(tenantId, a) {
       return insert(`INSERT INTO lna_assessments (tenant_id, user_id, competency_id, session_id, score, confidence, evidence, source, assessor, assessed_at, import_batch_id)
                      VALUES (:tenantId, :userId, :competencyId, :sessionId, :score, :confidence, :evidence, COALESCE(:source, 'ai_interview'), :assessor, :assessedAt, :importBatchId)
                      RETURNING id, competency_id AS "competencyId", score, source, assessed_at AS "assessedAt", created_at AS "createdAt"`,
-      withNulls({ tenantId, ...a }, ['sessionId', 'confidence', 'evidence', 'source', 'assessor', 'assessedAt', 'importBatchId']));
+      withNulls({ tenantId, ...a, evidence: await enc(tenantId, a.evidence) }, ['sessionId', 'confidence', 'evidence', 'source', 'assessor', 'assessedAt', 'importBatchId']));
     },
     async completions(tenantId, userIds) {
       if (!userIds.length) return [];
@@ -171,47 +441,354 @@ function createLnaStores(sequelize) {
 
   const interviews = {
     async create(tenantId, s) {
-      return insert(`INSERT INTO lna_interview_sessions (tenant_id, project_id, submodule, interviewee_id, job_role_id, trigger_record_ids)
-                     VALUES (:tenantId, :projectId, :submodule, :intervieweeId, :jobRoleId, CAST(:triggers AS uuid[]))
-                     RETURNING id, project_id AS "projectId", submodule, interviewee_id AS "intervieweeId", status, trigger_record_ids AS "triggerRecordIds"`,
-      { ...withNulls({ tenantId, ...s }, ['jobRoleId']), triggers: `{${(s.triggerRecordIds || []).join(',')}}` });
+      return insert(`INSERT INTO lna_interview_sessions (tenant_id, project_id, submodule, interviewee_id, job_role_id, trigger_record_ids, invite_expires_at)
+                     VALUES (:tenantId, :projectId, :submodule, :intervieweeId, :jobRoleId, CAST(:triggers AS uuid[]),
+                             COALESCE(CAST(:inviteExpiresAt AS timestamptz), now() + interval '7 days'))
+                     RETURNING id, project_id AS "projectId", submodule, interviewee_id AS "intervieweeId", status, trigger_record_ids AS "triggerRecordIds",
+                               invite_expires_at AS "inviteExpiresAt"`,
+      { ...withNulls({ tenantId, ...s }, ['jobRoleId', 'inviteExpiresAt']), triggers: `{${(s.triggerRecordIds || []).join(',')}}` });
     },
     async openFor(tenantId, { projectId, submodule }) {
       const rows = await select(`SELECT interviewee_id AS "userId" FROM lna_interview_sessions
-                                  WHERE tenant_id = :tenantId AND project_id = :projectId AND submodule = :submodule AND status <> 'abandoned'`,
+                                  WHERE tenant_id = :tenantId AND project_id = :projectId AND submodule = :submodule AND status <> 'abandoned'
+                                    AND consent_withdrawn_at IS NULL`,
+      { tenantId, projectId, submodule });
+      return new Set(rows.map((r) => r.userId));
+    },
+    /** B8: karyawan yang menarik persetujuan di proyek ini dan belum punya sesi baru sesudahnya. */
+    async withdrawnFor(tenantId, { projectId, submodule }) {
+      const rows = await select(`SELECT DISTINCT s.interviewee_id AS "userId" FROM lna_interview_sessions s
+                                  WHERE s.tenant_id = :tenantId AND s.project_id = :projectId AND s.submodule = :submodule
+                                    AND s.consent_withdrawn_at IS NOT NULL
+                                    AND NOT EXISTS (SELECT 1 FROM lna_interview_sessions n
+                                                     WHERE n.tenant_id = s.tenant_id AND n.project_id = s.project_id AND n.submodule = s.submodule
+                                                       AND n.interviewee_id = s.interviewee_id AND n.created_at > s.consent_withdrawn_at)`,
       { tenantId, projectId, submodule });
       return new Set(rows.map((r) => r.userId));
     },
     async list(tenantId, submodule, scope, { projectId } = {}) {
       const rep = { tenantId, submodule };
       let sql = `SELECT s.id, s.project_id AS "projectId", s.interviewee_id AS "intervieweeId", u.name AS "intervieweeName",
-                        s.status, s.mode, s.consent_at AS "consentAt", s.started_at AS "startedAt", s.ended_at AS "endedAt",
-                        cardinality(s.trigger_record_ids) AS "triggerCount"
+                        s.status, s.mode, s.consent_at AS "consentAt", s.consent_version AS "consentVersion", s.started_at AS "startedAt", s.ended_at AS "endedAt",
+                        cardinality(s.trigger_record_ids) AS "triggerCount", j.status AS "analysisStatus", s.invite_expires_at AS "inviteExpiresAt",
+                        s.invite_extended_count AS "inviteExtendedCount", s.consent_withdrawn_at AS "consentWithdrawnAt",
+                        s.duration_minutes AS "durationMinutes", s.focus_kind AS "focusKind", s.focus_label AS "focusLabel",
+                        s.assigned_by AS "assignedBy", ab.name AS "assignedByName"
                    FROM lna_interview_sessions s JOIN users u ON u.id = s.interviewee_id
+                   LEFT JOIN users ab ON ab.id = s.assigned_by AND ab.tenant_id = s.tenant_id
+                   LEFT JOIN lna_analysis_jobs j ON j.session_id = s.id
                   WHERE s.tenant_id = :tenantId AND s.submodule = :submodule`;
       sql += scopeSql('s.interviewee_id', scope, rep);
       if (projectId) { sql += ' AND s.project_id = :projectId'; rep.projectId = projectId; }
       return select(`${sql} ORDER BY s.created_at DESC`, rep);
     },
     async get(tenantId, id) {
-      return one(`SELECT id, project_id AS "projectId", submodule, interviewee_id AS "intervieweeId", job_role_id AS "jobRoleId",
-                         status, mode, consent_at AS "consentAt", trigger_record_ids AS "triggerRecordIds",
-                         started_at AS "startedAt", ended_at AS "endedAt"
-                    FROM lna_interview_sessions WHERE tenant_id = :tenantId AND id = :id`, { tenantId, id });
+      return one(`SELECT s.id, s.project_id AS "projectId", s.submodule, s.interviewee_id AS "intervieweeId", s.job_role_id AS "jobRoleId",
+                         s.status, s.mode, s.consent_at AS "consentAt", s.consent_version AS "consentVersion", s.trigger_record_ids AS "triggerRecordIds",
+                         s.started_at AS "startedAt", s.ended_at AS "endedAt", s.invite_expires_at AS "inviteExpiresAt",
+                         s.invite_extended_count AS "inviteExtendedCount", s.consent_withdrawn_at AS "consentWithdrawnAt",
+                         s.duration_minutes AS "durationMinutes", s.focus_kind AS "focusKind", s.focus_label AS "focusLabel",
+                         s.assigned_by AS "assignedBy", ab.name AS "assignedByName",
+                         s.summary_at AS "summaryAt", s.summary_confirmed_at AS "summaryConfirmedAt",
+                         s.summary_disputed AS "summaryDisputed", s.restart_count AS "restartCount",
+                         s.voice_consent_version AS "voiceConsentVersion", s.voice_consent_at AS "voiceConsentAt", s.voice_epoch AS "voiceEpoch",
+                         s.voice_started_at AS "voiceStartedAt", s.ai_done_at AS "aiDoneAt", s.transcript_edited_at AS "transcriptEditedAt"
+                    FROM lna_interview_sessions s
+                    LEFT JOIN users ab ON ab.id = s.assigned_by AND ab.tenant_id = s.tenant_id
+                   WHERE s.tenant_id = :tenantId AND s.id = :id`, { tenantId, id });
     },
-    async turns(sessionId) {
-      return select(`SELECT speaker, text, at FROM lna_interview_turns WHERE session_id = :sessionId ORDER BY id`, { sessionId });
+    // --- B6: ringkasan temuan yang diperiksa karyawan. Isi ringkasan dan catatan karyawan terenkripsi dan
+    // hanya dimuat lewat getSummary/summaryForAnalysis, tidak pernah lewat get() ---
+    /**
+     * Simpan ringkasan hanya bila sesi masih berjalan, belum punya ringkasan, belum diulang, dan tidak ada jawaban baru
+     * sejak permintaan dimulai (A2). null bila kalah balapan.
+     */
+    async saveSummary(tenantId, id, findings, { restartCount, turnCount, editedAt = null }) {
+      // turnCount: jumlah giliran saat transkrip dibaca. Jawaban yang masuk selama AI meringkas membatalkan ringkasan ini.
+      // Kunci baris lebih dulu (menunggu addTurn yang sedang menyimpan), lalu hitung giliran di pernyataan baru supaya
+      // jawaban yang baru commit ikut terhitung.
+      // B19: editedAt = transcript_edited_at saat transkrip dibaca; koreksi jawaban di tengah pembuatan ringkasan membatalkannya.
+      const replacements = { tenantId, id, restartCount, turnCount, editedAt, findings: JSON.stringify(await cipher.encryptJson(tenantId, findings)) };
+      // Bergantung pada READ COMMITTED (bawaan): hitungan giliran di pernyataan kedua memakai snapshot baru.
+      return sequelize.transaction(async (transaction) => {
+        const q = (sql) => sequelize.query(sql, { replacements, transaction });
+        await q(`SELECT id FROM lna_interview_sessions WHERE tenant_id = :tenantId AND id = :id FOR UPDATE`);
+        const [[row]] = await q(`UPDATE lna_interview_sessions s SET summary_findings = CAST(:findings AS jsonb), summary_at = now()
+                      WHERE s.tenant_id = :tenantId AND s.id = :id AND s.status = 'in_progress' AND s.summary_at IS NULL AND s.restart_count = :restartCount
+                        AND (SELECT count(*) FROM lna_interview_turns t WHERE t.session_id = s.id) = :turnCount
+                        AND s.transcript_edited_at IS NOT DISTINCT FROM CAST(:editedAt AS timestamptz)
+                      RETURNING s.id, s.summary_at AS "summaryAt"`);
+        return row || null;
+      });
     },
-    async addTurn(sessionId, speaker, text) {
-      return insert(`INSERT INTO lna_interview_turns (session_id, speaker, text) VALUES (:sessionId, :speaker, :text)
-                     RETURNING speaker, text, at`, { sessionId, speaker, text });
+    async getSummary(tenantId, id) {
+      const row = await one(`SELECT status, summary_findings AS findings, summary_at AS "summaryAt", summary_confirmed_at AS "summaryConfirmedAt",
+                                    summary_disputed AS "summaryDisputed", restart_count AS "restartCount"
+                               FROM lna_interview_sessions WHERE tenant_id = :tenantId AND id = :id AND summary_at IS NOT NULL`, { tenantId, id });
+      if (!row) return null;
+      return { ...row, findings: (await cipher.decryptJson(tenantId, row.findings)) || [] };
+    },
+    /** A8: temuan yang dikonfirmasi karyawan menjadi penilaian pertama job analisis. null bila tidak dikonfirmasi. */
+    async summaryForAnalysis(tenantId, id) {
+      const row = await one(`SELECT summary_findings AS findings FROM lna_interview_sessions
+                              WHERE tenant_id = :tenantId AND id = :id AND summary_at IS NOT NULL AND summary_confirmed_at IS NOT NULL`, { tenantId, id });
+      return row ? (await cipher.decryptJson(tenantId, row.findings)) || [] : null;
+    },
+    /**
+     * A5: konfirmasi ringkasan, tutup sesi, dan buat job analisis dalam satu transaksi. Dari dua permintaan
+     * bersamaan hanya satu yang mendapat baris; yang lain null.
+     */
+    async confirmSummary(tenantId, id, { submodule, disputed = false, note = null }) {
+      const noteEnc = note ? await enc(tenantId, note) : null;
+      return sequelize.transaction(async (transaction) => {
+        const [[session]] = await sequelize.query(
+          `UPDATE lna_interview_sessions
+              SET status = 'completed', ended_at = now(), summary_confirmed_at = now(), summary_disputed = :disputed, summary_note = :note
+            WHERE tenant_id = :tenantId AND id = :id AND status = 'in_progress' AND summary_at IS NOT NULL AND summary_confirmed_at IS NULL
+            RETURNING id, status`, { replacements: { tenantId, id, disputed, note: noteEnc }, transaction });
+        if (!session) return null;
+        const [[job]] = await sequelize.query(
+          `INSERT INTO lna_analysis_jobs (tenant_id, session_id, submodule) VALUES (:tenantId, :sessionId, :submodule)
+           ON CONFLICT (session_id) DO UPDATE SET session_id = EXCLUDED.session_id
+           RETURNING id, status`, { replacements: { tenantId, sessionId: id, submodule }, transaction });
+        return { session, job };
+      });
+    },
+    /**
+     * A6: ulangi wawancara. Giliran dihapus lewat sesi (tabel giliran tidak punya tenant_id), sesi kembali
+     * 'scheduled' dan persetujuan dikosongkan. null bila sesi tidak lagi berjalan atau jatah ulang habis.
+     */
+    async restart(tenantId, id) {
+      return sequelize.transaction(async (transaction) => {
+        const q = (sql) => sequelize.query(sql, { replacements: { tenantId, id, max: MAX_RESTARTS }, transaction });
+        const [[locked]] = await q(`SELECT id FROM lna_interview_sessions
+                                     WHERE tenant_id = :tenantId AND id = :id AND status = 'in_progress' AND restart_count < :max FOR UPDATE`);
+        if (!locked) return null;
+        const [deleted] = await q(`DELETE FROM lna_interview_turns t USING lna_interview_sessions s
+                                    WHERE s.id = t.session_id AND s.tenant_id = :tenantId AND s.id = :id RETURNING t.id`);
+        const [[row]] = await q(`UPDATE lna_interview_sessions
+                                    SET status = 'scheduled', consent_at = NULL, consent_version = NULL, started_at = NULL,
+                                        summary_findings = NULL, summary_at = NULL, restart_count = restart_count + 1,
+                                        mode = 'text', voice_consent_version = NULL, voice_consent_at = NULL, voice_epoch = voice_epoch + 1,
+                                        voice_started_at = NULL, ai_done_at = NULL, transcript_edited_at = NULL
+                                  WHERE tenant_id = :tenantId AND id = :id
+                                  RETURNING id, status, restart_count AS "restartCount"`);
+        return { ...row, deletedTurns: deleted.length };
+      });
+    },
+    /** B5 (R8): sesi TNA dalam cakupan beserta gap fokusnya, terbaru lebih dulu. */
+    async gapSessions(tenantId, scope) {
+      const rep = { tenantId };
+      const sql = `SELECT s.id, s.project_id AS "projectId", s.interviewee_id AS "intervieweeId", s.status,
+                          s.invite_expires_at AS "inviteExpiresAt", s.assigned_by AS "assignedBy", s.trigger_record_ids AS "triggerRecordIds",
+                          s.focus_kind AS "focusKind", s.focus_competency_id AS "focusCompetencyId", s.focus_metric_type AS "focusMetricType",
+                          s.focus_metric_key AS "focusMetricKey", s.focus_period AS "focusPeriod"
+                     FROM lna_interview_sessions s
+                    WHERE s.tenant_id = :tenantId AND s.submodule = 'tna'${scopeSql('s.interviewee_id', scope, rep)}
+                    ORDER BY s.created_at DESC, s.id`;
+      return select(sql, rep);
+    },
+    /**
+     * B5 (R10): tugaskan wawancara TNA untuk satu gap. Satu transaksi dengan kunci per (tenant, proyek) supaya dua
+     * permintaan bersamaan tidak membuat sesi ganda. Satu sesi terbuka per orang per proyek; sesi terjadwal yang
+     * undangannya sudah lewat digantikan (abandoned). eligible: [{ userId, jobRoleId, triggerRecordIds }].
+     */
+    async assign(tenantId, { projectId, assignedBy, eligible, dueAt, durationMinutes, focus, now = new Date() }) {
+      return sequelize.transaction(async (transaction) => {
+        const run = (sql, replacements) => sequelize.query(sql, { replacements, transaction });
+        await run('SELECT pg_advisory_xact_lock(hashtextextended(:key, 0))', { key: `tna-assign:${tenantId}:${projectId}` });
+        const userIds = eligible.map((e) => e.userId);
+        const [existing] = userIds.length ? await run(
+          `SELECT id, interviewee_id AS "intervieweeId", status, invite_expires_at AS "inviteExpiresAt"
+             FROM lna_interview_sessions
+            WHERE tenant_id = :tenantId AND project_id = :projectId AND submodule = 'tna'
+              AND status IN ('scheduled','in_progress') AND interviewee_id IN (:userIds)`, { tenantId, projectId, userIds }) : [[]];
+        const plan = planAssignments({ eligible, existing, now });
+        const assigned = [];
+        for (const a of plan.assign) {
+          if (a.replaceSessionIds.length) {
+            await run(`UPDATE lna_interview_sessions SET status = 'abandoned', ended_at = now()
+                        WHERE tenant_id = :tenantId AND id IN (:ids) AND status = 'scheduled'`, { tenantId, ids: a.replaceSessionIds });
+          }
+          const [[row]] = await run(
+            `INSERT INTO lna_interview_sessions (tenant_id, project_id, submodule, interviewee_id, job_role_id, trigger_record_ids, invite_expires_at,
+                                                 assigned_by, duration_minutes, focus_kind, focus_competency_id, focus_metric_type, focus_metric_key,
+                                                 focus_period, focus_label)
+             VALUES (:tenantId, :projectId, 'tna', :userId, :jobRoleId, CAST(:triggers AS uuid[]), :dueAt,
+                     :assignedBy, :durationMinutes, :kind, :competencyId, :metricType, :metricKey, :period, :label)
+             RETURNING id, invite_expires_at AS "inviteExpiresAt"`,
+            {
+              tenantId, projectId, userId: a.userId, jobRoleId: a.jobRoleId ?? null, triggers: `{${(a.triggerRecordIds || []).join(',')}}`,
+              dueAt, assignedBy, durationMinutes, kind: focus.kind, competencyId: focus.competencyId ?? null,
+              metricType: focus.metricType ?? null, metricKey: focus.kind === 'okr' ? metricKey(focus.name) : null,
+              period: focus.period ?? null, label: focus.label,
+            },
+          );
+          assigned.push({ sessionId: row.id, employeeId: a.userId, inviteExpiresAt: row.inviteExpiresAt, durationMinutes, replaced: a.replaceSessionIds.length > 0 });
+        }
+        return { assigned, skipped: plan.skipped };
+      });
+    },
+    /** B5 (R10b): batalkan penugasan yang belum dimulai. null bila sesi bukan penugasan atau sudah berjalan/selesai. */
+    async cancelAssigned(tenantId, id) {
+      return insert(`UPDATE lna_interview_sessions SET status = 'abandoned', ended_at = now()
+                      WHERE tenant_id = :tenantId AND id = :id AND submodule = 'tna' AND status = 'scheduled' AND assigned_by IS NOT NULL
+                      RETURNING id, status`, { tenantId, id });
+    },
+    /**
+     * Giliran sesi (B19 7.4): `text` = koreksi karyawan bila ada (dipakai ringkasan dan analisis), `originalText` hanya
+     * ada pada giliran yang dikoreksi.
+     */
+    async turns(tenantId, sessionId) {
+      const rows = await select(`SELECT t.id, t.speaker, t.text, t.corrected_text AS "correctedText", t.at, t.mode, t.interrupted
+                                   FROM lna_interview_turns t
+                                   JOIN lna_interview_sessions s ON s.id = t.session_id
+                                  WHERE s.tenant_id = :tenantId AND t.session_id = :sessionId ORDER BY t.id`, { tenantId, sessionId });
+      return (await open(tenantId, rows, ['text', 'correctedText'])).map(turnView);
+    },
+    /**
+     * Mulai sesi setelah persetujuan (B8): hanya dari 'scheduled' dan bila persetujuan belum ditarik, supaya
+     * penarikan yang tiba bersamaan tidak tertimpa. null bila syarat tidak terpenuhi.
+     */
+    async start(tenantId, id, { consentAt, consentVersion, mode = 'text', voiceConsentVersion = null }) {
+      // B19: mode suara menyimpan persetujuan suara di UPDATE yang sama
+      const voice = mode === 'voice';
+      return insert(`UPDATE lna_interview_sessions
+                        SET status = 'in_progress', consent_at = :consentAt, consent_version = :consentVersion, started_at = :consentAt,
+                            mode = :mode, voice_consent_version = :voiceConsentVersion,
+                            voice_consent_at = CASE WHEN :voice THEN CAST(:consentAt AS timestamptz) ELSE NULL END
+                      WHERE tenant_id = :tenantId AND id = :id AND status = 'scheduled' AND consent_withdrawn_at IS NULL
+                      RETURNING id, status, mode`, { tenantId, id, consentAt, consentVersion, mode: voice ? 'voice' : 'text', voiceConsentVersion: voice ? voiceConsentVersion : null, voice });
+    },
+    /**
+     * Satu pintu penyimpanan giliran. Giliran hanya tersimpan selama sesi masih berjalan (B8: sesi bisa dihentikan
+     * saat AI menyusun pertanyaan).
+     * opts.guard = { restartCount }: juga mensyaratkan sesi belum punya ringkasan dan belum diulang sejak permintaan
+     * dimulai (B6 A4). null bila tidak tersimpan.
+     */
+    async addTurn(tenantId, sessionId, speaker, text, opts = {}) {
+      // B19: opts.mode ('text' | 'voice'), opts.interrupted; guard.voiceEpoch = penulis suara berlaku (fencing token, spek 4.1),
+      // guard.mode = sesi harus di mode ini (jalur teks menolak menulis saat sesi di mode suara).
+      const rep = { tenantId, sessionId, speaker, text: await enc(tenantId, text), mode: opts.mode === 'voice' ? 'voice' : 'text', interrupted: Boolean(opts.interrupted) };
+      let guard = '';
+      if (opts.guard) {
+        guard = ' AND s.summary_at IS NULL AND s.restart_count = :restartCount';
+        rep.restartCount = opts.guard.restartCount ?? 0;
+        if (opts.guard.voiceEpoch !== undefined) {
+          guard += " AND s.mode = 'voice' AND s.ai_done_at IS NULL AND s.voice_epoch = :voiceEpoch";
+          rep.voiceEpoch = opts.guard.voiceEpoch;
+        } else if (opts.guard.mode) {
+          guard += ' AND s.mode = :guardMode';
+          rep.guardMode = opts.guard.mode;
+        }
+        // FOR SHARE: bila ulangi/ringkasan sedang memegang kunci baris, tunggu lalu periksa ulang penjaga pada baris yang sudah commit
+        guard += ' FOR SHARE OF s';
+      }
+      const row = await insert(`INSERT INTO lna_interview_turns (session_id, speaker, text, mode, interrupted)
+                                SELECT s.id, :speaker, :text, :mode, :interrupted FROM lna_interview_sessions s
+                                 WHERE s.tenant_id = :tenantId AND s.id = :sessionId AND s.status = 'in_progress'${guard}
+                                RETURNING id, speaker, at, mode, interrupted`, rep);
+      return row ? turnView({ ...row, text, correctedText: null }) : null;
+    },
+    /** B19: tiket suara baru menaikkan epoch; penulis suara dengan epoch lama tidak bisa menyimpan lagi. */
+    async bumpVoiceEpoch(tenantId, id) {
+      const row = await insert(`UPDATE lna_interview_sessions SET voice_epoch = voice_epoch + 1
+                                 WHERE tenant_id = :tenantId AND id = :id RETURNING voice_epoch AS "voiceEpoch"`, { tenantId, id });
+      return row ? row.voiceEpoch : null;
+    },
+    /** B19: pindah mode jawaban. Epoch selalu naik; voiceConsentVersion dicatat bila belum ada persetujuan suara. */
+    async setMode(tenantId, id, mode, { voiceConsentVersion = null } = {}) {
+      return (await insert(`UPDATE lna_interview_sessions
+                        SET mode = :mode, voice_epoch = voice_epoch + 1,
+                            voice_consent_version = COALESCE(voice_consent_version, CAST(:voiceConsentVersion AS varchar)),
+                            voice_consent_at = CASE WHEN voice_consent_at IS NULL AND CAST(:voiceConsentVersion AS varchar) IS NOT NULL THEN now() ELSE voice_consent_at END
+                      WHERE tenant_id = :tenantId AND id = :id AND status = 'in_progress' AND summary_at IS NULL AND ai_done_at IS NULL
+                      RETURNING id, mode, voice_epoch AS "voiceEpoch", voice_consent_at AS "voiceConsentAt"`, { tenantId, id, mode, voiceConsentVersion })) || null;
+    },
+    /** B19 6.3: waktu sesi suara pertama terhubung (batas waktu per sesi wawancara). Diisi sekali. */
+    async markVoiceStarted(tenantId, id) {
+      const row = await insert(`UPDATE lna_interview_sessions SET voice_started_at = COALESCE(voice_started_at, now())
+                                 WHERE tenant_id = :tenantId AND id = :id RETURNING voice_started_at AS "voiceStartedAt"`, { tenantId, id });
+      return row ? row.voiceStartedAt : null;
+    },
+    /** B19 6.2: AI selesai bertanya di mode suara. Hanya penulis suara yang berlaku. */
+    async markAiDone(tenantId, id, { voiceEpoch }) {
+      return (await insert(`UPDATE lna_interview_sessions SET ai_done_at = now()
+                      WHERE tenant_id = :tenantId AND id = :id AND status = 'in_progress' AND summary_at IS NULL AND ai_done_at IS NULL
+                        AND mode = 'voice' AND voice_epoch = :voiceEpoch
+                      RETURNING id, ai_done_at AS "aiDoneAt"`, { tenantId, id, voiceEpoch })) || null;
+    },
+    /**
+     * B19 (V5): koreksi jawaban karyawan terbaru. Penjaga restart_count + FOR SHARE seperti addTurn. Kembalian: giliran
+     * terkoreksi, { error: 'NOT_LATEST_ANSWER' }, atau null bila sesi berubah.
+     */
+    async correctTurn(tenantId, sessionId, turnId, text, { restartCount }) {
+      const textEnc = await enc(tenantId, text);
+      return sequelize.transaction(async (transaction) => {
+        const run = (sql) => sequelize.query(sql, { replacements: { tenantId, sessionId, turnId, restartCount, text: textEnc }, transaction });
+        const [[s]] = await run(`SELECT id FROM lna_interview_sessions WHERE tenant_id = :tenantId AND id = :sessionId AND status = 'in_progress'
+                                    AND summary_at IS NULL AND restart_count = :restartCount FOR SHARE`);
+        if (!s) return null;
+        const [[latest]] = await run(`SELECT id FROM lna_interview_turns WHERE session_id = :sessionId AND speaker = 'human' ORDER BY id DESC LIMIT 1`);
+        if (!latest || String(latest.id) !== String(turnId)) return { error: 'NOT_LATEST_ANSWER' };
+        const [[row]] = await run(`UPDATE lna_interview_turns SET corrected_text = :text WHERE id = :turnId AND session_id = :sessionId
+                                    RETURNING id, speaker, text, corrected_text AS "correctedText", at, mode, interrupted`);
+        // Presisi milidetik: nilai ini kembali lewat Date JS ke penjaga saveSummary (editedAt)
+        await run("UPDATE lna_interview_sessions SET transcript_edited_at = date_trunc('milliseconds', clock_timestamp()) WHERE tenant_id = :tenantId AND id = :sessionId");
+        const [opened] = await open(tenantId, [row], ['text', 'correctedText']);
+        return turnView(opened);
+      });
+    },
+    /** Tutup sesi hanya bila masih berjalan; null bila sudah ditutup permintaan lain (PK-14). */
+    async close(tenantId, id) {
+      return insert(`UPDATE lna_interview_sessions SET status = 'completed', ended_at = now()
+                      WHERE tenant_id = :tenantId AND id = :id AND status = 'in_progress' RETURNING id, status`, { tenantId, id });
     },
     async update(tenantId, id, fields) {
-      const allowed = { status: 'status', consentAt: 'consent_at', startedAt: 'started_at', endedAt: 'ended_at' };
+      const allowed = { status: 'status', consentAt: 'consent_at', consentVersion: 'consent_version', startedAt: 'started_at', endedAt: 'ended_at' };
       const sets = Object.keys(fields).filter((k) => allowed[k]).map((k) => `${allowed[k]} = :${k}`);
       if (!sets.length) return null;
-      return insert(`UPDATE lna_interview_sessions SET ${sets.join(', ')} WHERE tenant_id = :tenantId AND id = :id RETURNING id, status`,
+      return insert(`UPDATE lna_interview_sessions SET ${sets.join(', ')}
+                      WHERE tenant_id = :tenantId AND id = :id AND consent_withdrawn_at IS NULL RETURNING id, status`,
         { tenantId, id, ...fields });
+    },
+    /** Q38: HR memperpanjang undangan. Pengingat H-3/H-1 di-reset agar dikirim lagi untuk batas baru. */
+    async extendInvite(tenantId, id, inviteExpiresAt) {
+      return insert(`UPDATE lna_interview_sessions
+                        SET invite_expires_at = :inviteExpiresAt, invite_extended_count = invite_extended_count + 1,
+                            reminder_h3_at = NULL, reminder_h1_at = NULL
+                      WHERE tenant_id = :tenantId AND id = :id
+                      RETURNING id, status, invite_expires_at AS "inviteExpiresAt", invite_extended_count AS "inviteExtendedCount"`,
+      { tenantId, id, inviteExpiresAt });
+    },
+    /**
+     * Job pengingat (lintas tenant, dipanggil job sistem, bukan request): sesi terbuka yang batasnya
+     * dalam `withinDays` hari dan masih ada pengingat yang belum terkirim. Keputusan akhir di dueReminder().
+     */
+    async reminderCandidates({ now, withinDays }) {
+      return select(`SELECT s.id, s.tenant_id AS "tenantId", s.submodule, s.status, s.invite_expires_at AS "inviteExpiresAt",
+                            s.reminder_h3_at AS "reminderH3At", s.reminder_h1_at AS "reminderH1At", s.duration_minutes AS "durationMinutes",
+                            u.id AS "userId", u.email, u.name, t.name AS "tenantName"
+                       FROM lna_interview_sessions s
+                       JOIN users u ON u.id = s.interviewee_id AND u.tenant_id = s.tenant_id
+                       JOIN tenants t ON t.id = s.tenant_id
+                      WHERE s.status IN ('scheduled','in_progress')
+                        AND s.invite_expires_at > :now
+                        AND s.invite_expires_at <= CAST(:now AS timestamptz) + make_interval(days => :withinDays)
+                        AND (s.reminder_h3_at IS NULL OR s.reminder_h1_at IS NULL)
+                        AND u.status <> 'disabled' AND t.status = 'active'
+                      ORDER BY s.invite_expires_at`, { now, withinDays });
+    },
+    /** Tandai pengingat terkirim; hanya berhasil sekali per jenis (aman bila job berjalan ganda). */
+    async markReminded(tenantId, id, kind, at) {
+      const col = kind === 'h1' ? 'reminder_h1_at' : 'reminder_h3_at';
+      const row = await insert(`UPDATE lna_interview_sessions SET ${col} = :at
+                                 WHERE tenant_id = :tenantId AND id = :id AND ${col} IS NULL RETURNING id`, { tenantId, id, at });
+      return Boolean(row);
+    },
+    async clearReminded(tenantId, id, kind) {
+      const col = kind === 'h1' ? 'reminder_h1_at' : 'reminder_h3_at';
+      await sequelize.query(`UPDATE lna_interview_sessions SET ${col} = NULL WHERE tenant_id = :tenantId AND id = :id`, { replacements: { tenantId, id } });
     },
   };
 
@@ -221,9 +798,9 @@ function createLnaStores(sequelize) {
       try {
         for (const r of rows) {
           await sequelize.query(
-            `INSERT INTO lna_performance_records (tenant_id, project_id, user_id, metric_type, name, target, actual, is_met, period, direction, unit, import_batch_id)
-             VALUES (:tenantId, :projectId, :userId, :metricType, :name, :target, :actual, :isMet, :period, :direction, :unit, :batchId)`,
-            { replacements: withNulls({ tenantId, projectId, period, batchId, ...r }, ['projectId', 'period', 'unit', 'isMet']), transaction: t },
+            `INSERT INTO lna_performance_records (tenant_id, project_id, user_id, metric_type, name, target, actual, is_met, period, direction, unit, value_type, import_batch_id, tolerance)
+             VALUES (:tenantId, :projectId, :userId, :metricType, :name, :target, :actual, :isMet, :period, :direction, :unit, COALESCE(:valueType, 'angka'), :batchId, COALESCE(:tolerance, 0))`,
+            { replacements: withNulls({ tenantId, projectId, period, batchId, ...r }, ['projectId', 'period', 'unit', 'isMet', 'valueType', 'tolerance']), transaction: t },
           );
         }
         await t.commit();
@@ -232,7 +809,8 @@ function createLnaStores(sequelize) {
     async listPerformance(tenantId, scope, { period, projectId, userIds } = {}) {
       const rep = { tenantId };
       let sql = `SELECT r.id, r.user_id AS "userId", u.name AS "userName", r.metric_type AS "metricType", r.name,
-                        r.target::float AS target, r.actual::float AS actual, r.is_met AS "isMet", r.period, r.direction, r.unit
+                        r.target::float AS target, r.actual::float AS actual, r.is_met AS "isMet", r.period, r.direction, r.unit,
+                        r.value_type AS "valueType", r.tolerance::float AS tolerance
                    FROM lna_performance_records r JOIN users u ON u.id = r.user_id
                   WHERE r.tenant_id = :tenantId`;
       sql += scopeSql('r.user_id', scope, rep);
@@ -241,41 +819,459 @@ function createLnaStores(sequelize) {
       if (userIds) { sql += ' AND r.user_id IN (:userIds)'; rep.userIds = userIds.length ? userIds : ['00000000-0000-0000-0000-000000000000']; }
       return select(`${sql} ORDER BY u.name, r.name`, rep);
     },
+    /** B5 (R5): periode yang punya data dalam cakupan, yang paling baru diunggah lebih dulu. Baris tanpa periode diabaikan. */
+    async performancePeriods(tenantId, scope) {
+      const rep = { tenantId };
+      const rows = await select(`SELECT r.period FROM lna_performance_records r
+                                  WHERE r.tenant_id = :tenantId AND r.period IS NOT NULL${scopeSql('r.user_id', scope, rep)}
+                                  GROUP BY r.period ORDER BY max(r.created_at) DESC, r.period DESC`, rep);
+      return rows.map((r) => r.period);
+    },
+    /**
+     * B5 (R6): temuan untuk klasifikasi gap. Hanya kolom penaut dan status (tanpa judul/rincian, jadi tanpa dekripsi).
+     * Semua status review dikembalikan; siapa boleh melihat apa diputuskan modules/tna/gaps.js (R7).
+     */
+    async findingsForGaps(tenantId, scope) {
+      const rep = { tenantId };
+      return select(`SELECT f.id, f.user_id AS "userId", f.session_id AS "sessionId", f.category, f.review_status AS "reviewStatus",
+                            f.competency_id AS "competencyId", pr.metric_type AS "metricType", pr.name AS "metricName", pr.period AS "metricPeriod"
+                       FROM lna_findings f
+                       LEFT JOIN lna_performance_records pr ON pr.id = f.performance_record_id AND pr.tenant_id = f.tenant_id
+                      WHERE f.tenant_id = :tenantId AND ${notFrozen('f')}${scopeSql('f.user_id', scope, rep)}`, rep);
+    },
     async performanceByIds(tenantId, ids) {
       if (!ids || !ids.length) return [];
-      return select(`SELECT id, user_id AS "userId", metric_type AS "metricType", name, target::float AS target, actual::float AS actual,
-                            is_met AS "isMet", period, direction FROM lna_performance_records WHERE tenant_id = :tenantId AND id IN (:ids)`,
+      const rows = await select(`SELECT id, user_id AS "userId", metric_type AS "metricType", name, target::float AS target, actual::float AS actual,
+                            is_met AS "isMet", period, direction, tolerance::float AS tolerance FROM lna_performance_records WHERE tenant_id = :tenantId AND id IN (:ids)`,
       { tenantId, ids });
+      // Urutan mengikuti ids (urutan pemicu sesi); tanpa ini Postgres bebas mengembalikan urutan apa pun
+      const pos = new Map(ids.map((id, i) => [id, i]));
+      return rows.sort((a, b) => pos.get(a.id) - pos.get(b.id));
+    },
+    /** PM-1 opsi B: aturan arah + toleransi per KPI (kunci = jenis metrik + nama dinormalkan). */
+    async listKpiRules(tenantId) {
+      return select(`SELECT id, metric_type AS "metricType", metric_key AS "metricKey", name, direction, tolerance::float AS tolerance,
+                            updated_at AS "updatedAt"
+                       FROM lna_kpi_rules WHERE tenant_id = :tenantId ORDER BY metric_type, name`, { tenantId });
+    },
+    async upsertKpiRules(tenantId, rules, userId) {
+      const out = [];
+      for (const r of rules) {
+        out.push(await insert(`INSERT INTO lna_kpi_rules (tenant_id, metric_type, metric_key, name, direction, tolerance, updated_by)
+                       VALUES (:tenantId, :metricType, :metricKey, :name, :direction, :tolerance, :userId)
+                       ON CONFLICT (tenant_id, metric_type, metric_key) DO UPDATE
+                         SET name = EXCLUDED.name, direction = EXCLUDED.direction, tolerance = EXCLUDED.tolerance,
+                             updated_by = EXCLUDED.updated_by, updated_at = now()
+                       RETURNING id, metric_type AS "metricType", metric_key AS "metricKey", name, direction, tolerance::float AS tolerance`,
+        { tenantId, metricType: r.metricType, metricKey: r.metricKey || metricKey(r.name), name: r.name, direction: r.direction, tolerance: r.tolerance ?? 0, userId: userId ?? null }));
+      }
+      return out;
+    },
+    /**
+     * C-8 / R2-11: hitung ulang status semua baris kinerja (semua periode) untuk KPI yang aturannya berubah.
+     * keys: [{ metricType, metricKey }]. Return { changed, toMet, toMissed }.
+     * Sesi wawancara yang sudah dijadwalkan tidak dibatalkan otomatis; HR memutuskan dari daftar target.
+     */
+    async recomputePerformance(tenantId, keys) {
+      const rules = await tna.listKpiRules(tenantId);
+      const wanted = new Map();
+      for (const k of keys) {
+        const rule = rules.find((r) => r.metricType === k.metricType && r.metricKey === (k.metricKey || metricKey(k.name)));
+        if (rule) wanted.set(`${rule.metricType}|${rule.metricKey}`, rule);
+      }
+      const result = { changed: 0, toMet: 0, toMissed: 0 };
+      if (!wanted.size) return result;
+      const types = [...new Set([...wanted.values()].map((r) => r.metricType))];
+      const rows = await select(`SELECT id, metric_type AS "metricType", name, target::float AS target, actual::float AS actual,
+                                        is_met AS "isMet", direction, tolerance::float AS tolerance, value_type AS "valueType"
+                                   FROM lna_performance_records WHERE tenant_id = :tenantId AND metric_type IN (:types)`, { tenantId, types });
+      const t = await sequelize.transaction();
+      try {
+        for (const r of rows) {
+          const rule = wanted.get(`${r.metricType}|${metricKey(r.name)}`);
+          if (!rule) continue;
+          const eff = effectiveRule(r.valueType, rule);
+          const { isMet } = evaluate({ target: r.target, actual: r.actual, ...eff });
+          if (isMet === r.isMet && eff.direction === r.direction && eff.tolerance === r.tolerance) continue;
+          await sequelize.query(`UPDATE lna_performance_records SET is_met = :isMet, direction = :direction, tolerance = :tolerance
+                                  WHERE tenant_id = :tenantId AND id = :id`,
+          { replacements: { tenantId, id: r.id, isMet, ...eff }, transaction: t });
+          result.changed += 1;
+          if (isMet !== r.isMet) { if (isMet) result.toMet += 1; else result.toMissed += 1; }
+        }
+        await t.commit();
+      } catch (e) { await t.rollback(); throw e; }
+      return result;
     },
     async insertFinding(tenantId, f) {
       return insert(`INSERT INTO lna_findings (tenant_id, project_id, user_id, competency_id, session_id, category, title, detail,
-                                                gap_score, performance_record_id, linked_finding_id)
+                                                gap_score, performance_record_id, linked_finding_id, review_status)
                      VALUES (:tenantId, :projectId, :userId, :competencyId, :sessionId, :category, :title, :detail,
-                             :gapScore, :performanceRecordId, :linkedFindingId)
-                     RETURNING id, category, title`,
-      withNulls({ tenantId, ...f }, ['competencyId', 'sessionId', 'detail', 'gapScore', 'performanceRecordId', 'linkedFindingId']));
+                             :gapScore, :performanceRecordId, :linkedFindingId, :reviewStatus)
+                     RETURNING id, category`,
+      withNulls({ tenantId, ...f, reviewStatus: f.reviewStatus || 'draft', title: await enc(tenantId, f.title), detail: await enc(tenantId, f.detail) },
+        ['competencyId', 'sessionId', 'detail', 'gapScore', 'performanceRecordId', 'linkedFindingId']))
+        .then((row) => ({ ...row, title: f.title }));
     },
-    async listFindings(tenantId, scope, { projectId, categories }) {
-      const rep = { tenantId, categories };
+    /**
+     * Temuan yang boleh dipakai: hanya yang sudah disetujui atau diubah HR (PM-5 ★A). Draf dan yang ditolak
+     * tidak ikut ke daftar, Pareto, dashboard, rencana, maupun ekspor data karyawan. Antrean review memakai reviewQueue.
+     */
+    async listFindings(tenantId, scope, { projectId, categories, excludeFrozen = false }) {
+      const rep = { tenantId, categories, reviewed: REVIEWED };
       let sql = `SELECT f.id, f.project_id AS "projectId", f.user_id AS "userId", u.name AS "userName", f.category, f.title, f.detail,
                         f.status, f.competency_id AS "competencyId", c.name AS "competencyName", c.importance,
                         f.performance_record_id AS "performanceRecordId", pr.name AS "metricName",
-                        pr.target::float AS target, pr.actual::float AS actual, pr.direction, f.created_at AS "createdAt"
+                        pr.target::float AS target, pr.actual::float AS actual, pr.direction, pr.tolerance::float AS tolerance, f.created_at AS "createdAt"
                    FROM lna_findings f
-                   LEFT JOIN users u ON u.id = f.user_id
+                   LEFT JOIN users u ON u.id = f.user_id AND u.tenant_id = f.tenant_id
                    LEFT JOIN lna_competencies c ON c.id = f.competency_id
                    LEFT JOIN lna_performance_records pr ON pr.id = f.performance_record_id
-                  WHERE f.tenant_id = :tenantId AND f.category IN (:categories)`;
+                  WHERE f.tenant_id = :tenantId AND f.category IN (:categories) AND f.review_status IN (:reviewed)`;
+      if (excludeFrozen) sql += ` AND ${notFrozen('f')}`;
       sql += scopeSql('f.user_id', scope, rep);
       if (projectId) { sql += ' AND f.project_id = :projectId'; rep.projectId = projectId; }
-      return select(`${sql} ORDER BY f.created_at DESC`, rep);
+      return open(tenantId, await select(`${sql} ORDER BY f.created_at DESC`, rep), ['title', 'detail']);
+    },
+    /** PM-6 B: daftar ringkas temuan non-training untuk HR (tanpa detail dan tanpa rencana aksi). */
+    async listNonTrainingSummary(tenantId, { projectId, userIds, excludeFrozen = false } = {}) {
+      const rep = { tenantId };
+      let sql = `SELECT f.id, f.project_id AS "projectId", f.user_id AS "userId", u.name AS "userName", f.title,
+                        pr.name AS "metricName", lf.title AS "linkedTrainingTitle", f.created_at AS "createdAt"
+                   FROM lna_findings f
+                   LEFT JOIN users u ON u.id = f.user_id AND u.tenant_id = f.tenant_id
+                   LEFT JOIN lna_performance_records pr ON pr.id = f.performance_record_id
+                   LEFT JOIN lna_findings lf ON lf.id = f.linked_finding_id
+                  WHERE f.tenant_id = :tenantId AND f.category = 'non_training' AND f.review_status IN ${REVIEWED_SQL}`;
+      if (excludeFrozen) sql += ` AND ${notFrozen('f')}`;
+      if (userIds) sql += scopeSql('f.user_id', { userIds }, rep);
+      if (projectId) { sql += ' AND f.project_id = :projectId'; rep.projectId = projectId; }
+      return open(tenantId, await select(`${sql} ORDER BY f.created_at DESC`, rep), ['title', 'linkedTrainingTitle']);
+    },
+    // PM-6: izin atasan melihat temuan non-training timnya, diberikan dan dicabut HR
+    async nonTrainingGrants(tenantId) {
+      return select(`SELECT g.supervisor_id AS "supervisorId", u.name AS "supervisorName", u.email AS "supervisorEmail",
+                            g.granted_at AS "grantedAt", gb.name AS "grantedByName"
+                       FROM lna_non_training_grants g
+                       JOIN users u ON u.id = g.supervisor_id AND u.tenant_id = g.tenant_id
+                       LEFT JOIN users gb ON gb.id = g.granted_by AND gb.tenant_id = g.tenant_id
+                      WHERE g.tenant_id = :tenantId AND g.revoked_at IS NULL ORDER BY u.name NULLS LAST, u.email`, { tenantId });
+    },
+    async hasNonTrainingGrant(tenantId, supervisorId) {
+      return Boolean(await one(`SELECT 1 AS ok FROM lna_non_training_grants
+                                 WHERE tenant_id = :tenantId AND supervisor_id = :supervisorId AND revoked_at IS NULL`, { tenantId, supervisorId }));
+    },
+    /** Return true bila izin baru dibuat, false bila sudah aktif sebelumnya. */
+    async grantNonTraining(tenantId, supervisorId, grantedBy) {
+      const row = await insert(`INSERT INTO lna_non_training_grants (tenant_id, supervisor_id, granted_by)
+                                VALUES (:tenantId, :supervisorId, :grantedBy)
+                                ON CONFLICT (tenant_id, supervisor_id) WHERE revoked_at IS NULL DO NOTHING RETURNING id`,
+      { tenantId, supervisorId, grantedBy });
+      return Boolean(row);
+    },
+    /** Return true bila ada izin aktif yang dicabut. */
+    async revokeNonTraining(tenantId, supervisorId, revokedBy) {
+      const row = await insert(`UPDATE lna_non_training_grants SET revoked_at = now(), revoked_by = :revokedBy
+                                 WHERE tenant_id = :tenantId AND supervisor_id = :supervisorId AND revoked_at IS NULL RETURNING id`,
+      { tenantId, supervisorId, revokedBy });
+      return Boolean(row);
     },
     async getFinding(tenantId, id) {
-      return one(`SELECT f.id, f.user_id AS "userId", f.category, f.title, f.competency_id AS "competencyId", f.status
-                    FROM lna_findings f WHERE f.tenant_id = :tenantId AND f.id = :id`, { tenantId, id });
+      return open(tenantId, await one(`SELECT f.id, f.user_id AS "userId", f.category, f.title, f.competency_id AS "competencyId", f.status,
+                           f.review_status AS "reviewStatus"
+                    FROM lna_findings f WHERE f.tenant_id = :tenantId AND f.id = :id`, { tenantId, id }), ['title']);
+    },
+    /**
+     * Antrean review HR (PM-3 ★A): semua kategori, termasuk non-training, dengan keyakinan dan jejak review.
+     * `gap` opsional (tinjauan per gap, lihat `gapSql`): temuan gap lain tidak dimuat dan didekripsi. Dengan `gap`, semua
+     * temuan dari sesi yang persetujuannya ditarik keluar (sama dengan agregat reviewCounts).
+     */
+    async reviewQueue(tenantId, { projectId, statuses = ['draft'], gap } = {}) {
+      const rep = { tenantId, statuses };
+      let sql = `SELECT ${REVIEW_COLS}
+                   ${REVIEW_FROM}
+                  WHERE f.tenant_id = :tenantId AND f.review_status IN (:statuses) AND ${NOT_WITHDRAWN_DRAFT}`;
+      if (projectId) { sql += ' AND f.project_id = :projectId'; rep.projectId = projectId; }
+      if (gap) sql += ` AND s.consent_withdrawn_at IS NULL${gapSql(gap, rep)}`;
+      return (await open(tenantId, await select(`${sql} ORDER BY f.created_at, f.finding_seq`, rep), REVIEW_ENC)).map(withSummaryState);
+    },
+    async reviewCounts(tenantId, { projectId } = {}) {
+      const rep = { tenantId };
+      let sql = `SELECT f.review_status AS "reviewStatus", count(*)::int AS n
+                   FROM lna_findings f LEFT JOIN lna_interview_sessions s ON s.id = f.session_id AND s.tenant_id = f.tenant_id
+                  WHERE f.tenant_id = :tenantId AND s.consent_withdrawn_at IS NULL`; // agregat: semua temuan beku keluar
+      if (projectId) { sql += ' AND f.project_id = :projectId'; rep.projectId = projectId; }
+      return byReviewStatus(await select(`${sql} GROUP BY f.review_status`, rep));
+    },
+    /**
+     * B3: jumlah temuan hasil job analisis AI per status review. Yang sudah diputus hanya dihitung bila diputus
+     * orang (reviewed_by terisi), supaya temuan lama yang ditandai massal oleh migrasi 20261117000400 tidak ikut.
+     */
+    async aiReviewCounts(tenantId) {
+      const rows = await select(`SELECT review_status AS "reviewStatus", count(*)::int AS n FROM lna_findings
+                                  WHERE tenant_id = :tenantId AND analysis_job_id IS NOT NULL
+                                    AND (review_status = 'draft' OR reviewed_by IS NOT NULL) AND ${notFrozen('lna_findings')}
+                                  GROUP BY review_status`, { tenantId });
+      return byReviewStatus(rows);
+    },
+    /**
+     * B3: lama analisis per sesi TNA dalam hari (pecahan): dari wawancara selesai sampai temuan AI terakhirnya
+     * diputus HR. Hanya sesi yang seluruh temuan AI-nya sudah diputus orang. Sesi yang dihapus (session_id NULL
+     * pada temuan) tidak ikut.
+     */
+    async analysisDurations(tenantId, scope) {
+      const rep = { tenantId };
+      const sql = `SELECT s.id AS "sessionId", s.interviewee_id AS "userId",
+                          (EXTRACT(EPOCH FROM (max(f.reviewed_at) - s.ended_at)) / 86400.0)::float AS days
+                     FROM lna_interview_sessions s
+                     JOIN lna_findings f ON f.session_id = s.id AND f.tenant_id = s.tenant_id
+                    WHERE s.tenant_id = :tenantId AND s.submodule = 'tna' AND s.ended_at IS NOT NULL AND s.consent_withdrawn_at IS NULL
+                      AND f.analysis_job_id IS NOT NULL${scopeSql('s.interviewee_id', scope, rep)}
+                    GROUP BY s.id, s.interviewee_id, s.ended_at
+                   HAVING bool_and(f.review_status <> 'draft' AND f.reviewed_by IS NOT NULL)`;
+      return select(sql, rep);
+    },
+    /**
+     * Putusan review satu temuan (PD-14 ★A). Hanya temuan draf; dua pe-review bersamaan tidak saling timpa
+     * (yang kedua mendapat null). 'edited' menyimpan versi asli AI untuk pemantauan akurasi (PM-2).
+     */
+    async reviewFinding(tenantId, id, { decision, title, detail, category, note, reviewerId }) {
+      const rep = { tenantId, id, decision, reviewerId, note: note ? await enc(tenantId, note) : null };
+      let sets = '';
+      if (decision === 'edited') {
+        sets = `, original_title = title, original_detail = detail, original_category = category,
+                  title = COALESCE(:title, title), detail = COALESCE(:detail, detail), category = COALESCE(:category, category)`;
+        rep.title = title != null ? await enc(tenantId, title) : null;
+        rep.detail = detail != null ? await enc(tenantId, detail) : null;
+        rep.category = category || null;
+      }
+      const row = await insert(`UPDATE lna_findings SET review_status = :decision, reviewed_by = :reviewerId, reviewed_at = now(),
+                                       review_note = :note${sets}
+                                 WHERE tenant_id = :tenantId AND id = :id AND review_status = 'draft'
+                                 RETURNING id`, rep);
+      return row ? tna.getReviewItem(tenantId, id) : null;
+    },
+    async getReviewItem(tenantId, id) {
+      const row = await one(`SELECT ${REVIEW_COLS}
+                   ${REVIEW_FROM}
+                  WHERE f.tenant_id = :tenantId AND f.id = :id`, { tenantId, id });
+      return row ? withSummaryState(await open(tenantId, row, REVIEW_ENC)) : null;
+    },
+    // --- B7: tinjauan HR versi mockup (spek docs/designs/b7-tinjauan-hr.md) ---
+    /** "Perlu ditinjau HR": temuan tetap draf dan diberi tanda tahan. null bila temuan bukan draf lagi. */
+    async holdFinding(tenantId, id, { note, reviewerId }) {
+      const row = await insert(`UPDATE lna_findings SET review_hold_at = now(), review_hold_by = :reviewerId, review_hold_note = COALESCE(:note, review_hold_note)
+                                 WHERE tenant_id = :tenantId AND id = :id AND review_status = 'draft' RETURNING id`,
+      { tenantId, id, reviewerId, note: note ? await enc(tenantId, note) : null });
+      return row ? tna.getReviewItem(tenantId, id) : null;
+    },
+    /**
+     * Koreksi klasifikasi temuan yang sudah diputus, selama belum ditindaklanjuti: belum ada rencana training
+     * untuk temuan itu dan belum diteruskan ke Improvement Needs. null bila syarat tidak terpenuhi.
+     */
+    async reclassifyFinding(tenantId, id, { category, reviewerId }) {
+      const row = await insert(`UPDATE lna_findings f
+                                   SET original_category = COALESCE(f.original_category, f.category), category = :category,
+                                       review_status = 'edited', reviewed_by = :reviewerId, reviewed_at = now()
+                                 WHERE f.tenant_id = :tenantId AND f.id = :id AND f.review_status IN ${REVIEWED_SQL}
+                                   AND f.category <> :category AND f.improvement_handoff_at IS NULL AND f.status = 'open' AND ${notFrozen('f')}
+                                   AND NOT EXISTS (SELECT 1 FROM lna_training_plan_items p WHERE p.tenant_id = f.tenant_id AND p.finding_id = f.id)
+                                 RETURNING f.id`, { tenantId, id, category, reviewerId });
+      return row ? tna.getReviewItem(tenantId, id) : null;
+    },
+    /** Temuan yang sudah diputus HR beserta rencana terbarunya yang tidak ditolak, untuk layar solusi. `gap` opsional: `gapSql`. */
+    async listReviewedForSolutions(tenantId, { projectId, gap } = {}) {
+      const rep = { tenantId, reviewed: REVIEWED };
+      let sql = `SELECT f.id AS "findingId", f.user_id AS "userId", u.name AS "userName", f.category, f.title,
+                        f.competency_id AS "competencyId", c.name AS "competencyName", f.improvement_handoff_at AS "handedOffAt",
+                        f.session_id AS "sessionId", pr.name AS "metricName", ${GAP_MATCH_COLS}
+                   FROM lna_findings f
+                   LEFT JOIN users u ON u.id = f.user_id AND u.tenant_id = f.tenant_id
+                   LEFT JOIN lna_competencies c ON c.id = f.competency_id AND c.tenant_id = f.tenant_id
+                   LEFT JOIN lna_interview_sessions s ON s.id = f.session_id AND s.tenant_id = f.tenant_id
+                   LEFT JOIN lna_performance_records pr ON pr.id = f.performance_record_id AND pr.tenant_id = f.tenant_id
+                  WHERE f.tenant_id = :tenantId AND f.review_status IN (:reviewed) AND ${notFrozen('f')}`;
+      if (projectId) { sql += ' AND f.project_id = :projectId'; rep.projectId = projectId; }
+      if (gap) sql += gapSql(gap, rep);
+      const findings = await open(tenantId, await select(`${sql} ORDER BY f.created_at, f.finding_seq`, rep), ['title']);
+      if (!findings.length) return [];
+      const plans = await select(`SELECT DISTINCT ON (p.finding_id) p.finding_id AS "findingId", p.id, p.status,
+                                         (p.catalog_item_ref IS NULL AND p.origin <> 'learner_request') AS "needsModule",
+                                         p.catalog_source AS "catalogSource", p.catalog_item_ref AS "catalogItemRef",
+                                         p.catalog_item_title AS "catalogItemTitle", p.assignment_status AS "assignmentStatus",
+                                         p.assignment_target AS "assignmentTarget", p.assigned_at AS "assignedAt"
+                                    FROM lna_training_plan_items p
+                                   WHERE p.tenant_id = :tenantId AND p.finding_id IN (:ids) AND p.status <> 'rejected'
+                                   ORDER BY p.finding_id, p.created_at DESC`, { tenantId, ids: findings.map((x) => x.findingId) });
+      const byFinding = new Map(plans.map(({ findingId, ...plan }) => [findingId, plan]));
+      return findings.map((x) => ({ ...x, planItem: byFinding.get(x.findingId) || null }));
+    },
+    /** Rencana beserta data karyawan yang dikirim saat penugasan. */
+    async getPlanForAssignment(tenantId, id) {
+      return one(`SELECT p.id, p.user_id AS "userId", p.status, p.catalog_source AS "catalogSource", p.catalog_item_ref AS "catalogItemRef",
+                         p.catalog_item_title AS "catalogItemTitle", p.assignment_status AS "assignmentStatus",
+                         u.employee_id AS "employeeId", u.email,
+                         (f.id IS NOT NULL AND ${isFrozen('f')}) AS frozen
+                    FROM lna_training_plan_items p JOIN users u ON u.id = p.user_id AND u.tenant_id = p.tenant_id
+                    LEFT JOIN lna_findings f ON f.id = p.finding_id AND f.tenant_id = p.tenant_id
+                   WHERE p.tenant_id = :tenantId AND p.id = :id`, { tenantId, id });
+    },
+    /**
+     * Klaim penugasan sebelum panggilan keluar: hanya satu permintaan yang menang. Klaim 'sending' yang macet
+     * lebih dari 5 menit boleh diambil ulang. Return true bila klaim didapat.
+     */
+    async claimPlanAssignment(tenantId, id) {
+      const row = await insert(`UPDATE lna_training_plan_items
+                                   SET assignment_status = 'sending', assignment_target = 'elitementor', assignment_claimed_at = clock_timestamp()
+                                 WHERE tenant_id = :tenantId AND id = :id
+                                   AND status IN ('new', 'in_progress') AND catalog_item_ref IS NOT NULL AND catalog_source = 'elitementor'
+                                   AND NOT ${planFrozen('lna_training_plan_items')}
+                                   AND (assignment_status IS NULL OR assignment_status = 'failed'
+                                        OR (assignment_status = 'sending' AND assignment_claimed_at < now() - interval '5 minutes'))
+                                 RETURNING assignment_claimed_at::text AS "claimedAt"`, { tenantId, id });
+      return row ? row.claimedAt : null;
+    },
+    /**
+     * Hanya pemilik klaim (claimedAt) yang boleh menutupnya, supaya permintaan yang macet tidak menimpa klaim penggantinya.
+     * Return null bila klaim sudah diambil alih (tidak ada baris berubah).
+     */
+    async finishPlanAssignment(tenantId, id, { status, ref, userId, claimedAt }) {
+      const [rows] = await sequelize.query(`UPDATE lna_training_plan_items
+                                SET assignment_status = :status, assignment_ref = :ref,
+                                    assigned_at = CASE WHEN :status = 'sent' THEN now() ELSE assigned_at END,
+                                    assigned_by = CASE WHEN :status = 'sent' THEN :userId ELSE assigned_by END, updated_at = now()
+                              WHERE tenant_id = :tenantId AND id = :id AND assignment_status = 'sending' AND assignment_claimed_at = CAST(:claimedAt AS timestamptz)
+                              RETURNING id`,
+      { replacements: { tenantId, id, status, ref: ref ? String(ref).slice(0, 128) : null, userId, claimedAt } });
+      return rows.length ? tna.getPlanItem(tenantId, id) : null;
+    },
+    /**
+     * Baris ekspor gap untuk LMS klien (K4): rencana aktif, termasuk yang belum punya course. Kolom temuan
+     * (`competencyId`, `sessionId`, `metricName`, GAP_MATCH_COLS) dipakai keanggotaan gap pasti di router (P9 IR-5); tidak
+     * masuk CSV. `gap` opsional: predikat kandidat `gapSql`.
+     */
+    async listPlanExport(tenantId, { projectId, gap } = {}) {
+      const rep = { tenantId };
+      let sql = `SELECT p.id, p.user_id AS "userId", u.employee_id AS "employeeId", u.name AS "userName", u.email, c.name AS "competencyName",
+                        p.catalog_item_ref AS "catalogItemRef", p.catalog_item_title AS "catalogItemTitle", p.program_tier AS "programTier", p.status,
+                        f.competency_id AS "competencyId", f.session_id AS "sessionId", pr.name AS "metricName", ${GAP_MATCH_COLS}
+                   FROM lna_training_plan_items p
+                   JOIN users u ON u.id = p.user_id AND u.tenant_id = p.tenant_id
+                   LEFT JOIN lna_findings f ON f.id = p.finding_id AND f.tenant_id = p.tenant_id
+                   LEFT JOIN lna_competencies c ON c.id = f.competency_id AND c.tenant_id = p.tenant_id
+                   LEFT JOIN lna_interview_sessions s ON s.id = f.session_id AND s.tenant_id = p.tenant_id
+                   LEFT JOIN lna_performance_records pr ON pr.id = f.performance_record_id AND pr.tenant_id = p.tenant_id
+                  WHERE p.tenant_id = :tenantId AND p.status IN ('new', 'in_progress') AND ${notFrozen('f')}`;
+      if (projectId) { sql += ' AND f.project_id = :projectId'; rep.projectId = projectId; }
+      if (gap) sql += gapSql(gap, rep);
+      return select(`${sql} ORDER BY u.name NULLS LAST, u.email, p.created_at`, rep);
+    },
+    /**
+     * Teruskan temuan Improvement Needs yang sudah diputus ke modul Improvement Needs. Satu UPDATE bersyarat, jadi dua
+     * permintaan bersamaan tidak menandai dua kali. Return { handedOff, already, skipped } berisi id.
+     */
+    async handoffImprovement(tenantId, ids, userId, { categorize = () => 'lainnya' } = {}) {
+      // Demo 25 Nov (C1): tandai temuan dan buat tindakan Improvement Needs dalam satu transaksi, jadi temuan tidak
+      // pernah bertanda "diteruskan" tanpa tindakannya. Kolom dan pemindahan status temuan mengikuti
+      // ina-stores createAction + moveFinding (jaga keduanya tetap sejalan). Hanya judul yang dibawa (tanpa rincian,
+      // pemilik, atau nama karyawan) dan involves_individual = false supaya tampil di daftar utama INA; HR bisa
+      // menandainya "menyangkut individu" di INA (keputusan terbuka, lihat PR). Judul dienkripsi ulang per tenant,
+      // dipotong 255 karakter (batas judul tindakan di POST /ina/actions).
+      const { done, actions } = await sequelize.transaction(async (transaction) => {
+        const [rows] = await sequelize.query(`UPDATE lna_findings SET improvement_handoff_at = now(), improvement_handoff_by = :userId
+                                               WHERE tenant_id = :tenantId AND id IN (:ids) AND category = 'non_training'
+                                                 AND review_status IN ${REVIEWED_SQL} AND improvement_handoff_at IS NULL
+                                                 AND ${notFrozen('lna_findings')}
+                                               RETURNING id, user_id AS "userId", title, competency_id AS "competencyId",
+                                                         performance_record_id AS "performanceRecordId"`, { replacements: { tenantId, ids, userId }, transaction });
+        // Temuan yang sudah bertanda diteruskan sebelum perbaikan C1 (tanpa tindakan) ikut dibuatkan tindakannya
+        const [orphans] = await sequelize.query(`SELECT f.id, f.user_id AS "userId", f.title, f.competency_id AS "competencyId",
+                                                        f.performance_record_id AS "performanceRecordId"
+                                                   FROM lna_findings f
+                                                  WHERE f.tenant_id = :tenantId AND f.id IN (:ids) AND f.category = 'non_training'
+                                                    AND f.review_status IN ${REVIEWED_SQL} AND f.improvement_handoff_at IS NOT NULL
+                                                    AND ${notFrozen('f')} AND f.id NOT IN (:fresh)
+                                                    AND NOT EXISTS (SELECT 1 FROM ina_actions a WHERE a.tenant_id = f.tenant_id AND a.finding_id = f.id)`,
+        { replacements: { tenantId, ids, fresh: rows.length ? rows.map((r) => r.id) : ['00000000-0000-0000-0000-000000000000'] }, transaction });
+        const opened = await open(tenantId, [...rows, ...orphans], ['title']);
+        const created = [];
+        for (const f of opened) {
+          const category = categorize(f.title);
+          const [[act]] = await sequelize.query(
+            `INSERT INTO ina_actions (tenant_id, finding_id, title, category, source_ref, competency_id, performance_record_id, involves_individual, created_by)
+             VALUES (:tenantId, :findingId, :title, :category,
+                     (SELECT name FROM lna_competencies WHERE tenant_id = :tenantId AND id = :competencyId), :competencyId, :performanceRecordId, false, :userId)
+             ON CONFLICT (tenant_id, finding_id) WHERE finding_id IS NOT NULL DO NOTHING
+             RETURNING id`,
+            { replacements: { tenantId, findingId: f.id, title: await enc(tenantId, String(f.title || 'Temuan Improvement Needs').slice(0, 255)), category,
+              competencyId: f.competencyId || null, performanceRecordId: f.performanceRecordId || null, userId }, transaction },
+          );
+          if (!act) continue;
+          const [[moved]] = await sequelize.query(`UPDATE lna_findings x SET status = 'planned' FROM lna_findings old
+                                                    WHERE x.id = old.id AND x.tenant_id = :tenantId AND x.id = :id AND old.status = 'open'
+                                                    RETURNING x.id, old.status AS "from", x.status AS "to"`, { replacements: { tenantId, id: f.id }, transaction });
+          created.push({ id: act.id, findingId: f.id, userId: f.userId, category, finding: moved || null });
+        }
+        return { done: rows, actions: created };
+      });
+      // dibaca setelah UPDATE: "already" hanya untuk temuan yang memang sudah bertanda diteruskan
+      // temuan beku yang sudah diserahkan sebelum penarikan masuk "skipped": INA tidak melihatnya lagi
+      const marked = await select(`SELECT id FROM lna_findings
+                                    WHERE tenant_id = :tenantId AND id IN (:ids) AND improvement_handoff_at IS NOT NULL
+                                      AND ${notFrozen('lna_findings')}`, { tenantId, ids });
+      const handedOff = new Set(done.map((x) => x.id));
+      const known = new Set(marked.map((x) => x.id));
+      return {
+        employeeIds: [...new Set(done.map((x) => x.userId).filter(Boolean))],
+        handedOff: ids.filter((id) => handedOff.has(id)),
+        already: ids.filter((id) => known.has(id) && !handedOff.has(id)),
+        skipped: ids.filter((id) => !known.has(id) && !handedOff.has(id)),
+        actions,
+      };
+    },
+    /**
+     * Kontrak untuk modul Improvement Needs (B9): temuan yang diteruskan HR. Sengaja tanpa userId, nama
+     * karyawan, dan rincian temuan (temuan yang menyangkut individu tidak ditampilkan di INA).
+     */
+    async listImprovementHandoffs(tenantId, { since } = {}) {
+      const rep = { tenantId };
+      let sql = `SELECT f.id AS "findingId", f.project_id AS "projectId", f.title, pr.name AS "metricName",
+                        f.improvement_handoff_at AS "handedOffAt", f.improvement_handoff_by AS "handedOffBy"
+                   FROM lna_findings f LEFT JOIN lna_performance_records pr ON pr.id = f.performance_record_id
+                  WHERE f.tenant_id = :tenantId AND f.improvement_handoff_at IS NOT NULL
+                    AND f.category = 'non_training' AND f.review_status IN ${REVIEWED_SQL} AND ${notFrozen('f')}`;
+      if (since) { sql += ' AND f.improvement_handoff_at >= :since'; rep.since = since; }
+      return open(tenantId, await select(`${sql} ORDER BY f.improvement_handoff_at, f.finding_seq`, rep), ['title']);
     },
     async setFindingStatus(tenantId, id, status) {
       return insert('UPDATE lna_findings SET status = :status WHERE tenant_id = :tenantId AND id = :id RETURNING id, status', { tenantId, id, status });
+    },
+    /**
+     * Rencana HR dari temuan (B7): temuan dikunci dan diperiksa ulang lebih dulu (masih pelatihan, sudah diputus),
+     * supaya klasifikasi ulang yang berjalan bersamaan tidak menghasilkan temuan Improvement Needs yang punya rencana.
+     * null bila temuan sudah tidak memenuhi syarat.
+     */
+    async planFromFinding(tenantId, findingId, plan) {
+      const noteEnc = await enc(tenantId, plan.note);
+      return sequelize.transaction(async (transaction) => {
+        // status = 'open': klik ulang atau dua HR bersamaan tidak membuat rencana kedua untuk temuan yang sama
+        const [[f]] = await sequelize.query(`UPDATE lna_findings SET status = 'planned'
+                                              WHERE tenant_id = :tenantId AND id = :findingId AND category = 'training'
+                                                AND status = 'open' AND review_status IN ${REVIEWED_SQL}
+                                                AND ${notFrozen('lna_findings')} RETURNING id`,
+        { replacements: { tenantId, findingId }, transaction });
+        if (!f) return null;
+        const [[row]] = await sequelize.query(
+          `INSERT INTO lna_training_plan_items (tenant_id, finding_id, user_id, origin, status, program_tier,
+                                                catalog_source, catalog_item_ref, catalog_item_title, note, requested_by)
+           VALUES (:tenantId, :findingId, :userId, :origin, :status, :programTier, :catalogSource, :catalogItemRef, :catalogItemTitle, :note, NULL)
+           RETURNING id, user_id AS "userId", finding_id AS "findingId", origin, status, catalog_source AS "catalogSource",
+                     catalog_item_ref AS "catalogItemRef", catalog_item_title AS "catalogItemTitle",
+                     (catalog_item_ref IS NULL AND origin <> 'learner_request') AS "needsModule"`,
+          { replacements: withNulls({ tenantId, findingId, ...plan, note: noteEnc }, ['programTier', 'catalogSource', 'catalogItemRef', 'catalogItemTitle', 'note']), transaction },
+        );
+        return { ...row, note: plan.note ?? null };
+      });
     },
     async insertPlanItem(tenantId, p) {
       return insert(`INSERT INTO lna_training_plan_items (tenant_id, finding_id, user_id, origin, status, program_tier,
@@ -283,19 +1279,54 @@ function createLnaStores(sequelize) {
                      VALUES (:tenantId, :findingId, :userId, :origin, :status, :programTier, :catalogSource, :catalogItemRef,
                              :catalogItemTitle, :note, :requestedBy)
                      RETURNING id, user_id AS "userId", finding_id AS "findingId", origin, status, catalog_source AS "catalogSource",
-                               catalog_item_ref AS "catalogItemRef", catalog_item_title AS "catalogItemTitle", note`,
-      withNulls({ tenantId, ...p }, ['findingId', 'programTier', 'catalogSource', 'catalogItemRef', 'catalogItemTitle', 'note', 'requestedBy']));
+                               catalog_item_ref AS "catalogItemRef", catalog_item_title AS "catalogItemTitle", note,
+                               (catalog_item_ref IS NULL AND origin <> 'learner_request') AS "needsModule"`,
+      withNulls({ tenantId, ...p, note: await enc(tenantId, p.note) }, ['findingId', 'programTier', 'catalogSource', 'catalogItemRef', 'catalogItemTitle', 'note', 'requestedBy']))
+        .then((row) => open(tenantId, row, ['note']));
     },
-    async listPlanItems(tenantId, scope) {
-      const rep = { tenantId };
-      const sql = `SELECT ${PLAN_COLS}, f.title AS "findingTitle" FROM lna_training_plan_items p
-                     JOIN users u ON u.id = p.user_id LEFT JOIN lna_findings f ON f.id = p.finding_id
-                    WHERE p.tenant_id = :tenantId${scopeSql('p.user_id', scope, rep)} ORDER BY p.created_at DESC`;
+    /** B17: kompetensi dengan karyawan unik terbanyak dari temuan pelatihan yang sudah direview (tanpa nama). */
+    async topTrainingGaps(tenantId, scope, limit = 5) {
+      const rep = { tenantId, limit };
+      const sql = `SELECT c.name AS competency, count(DISTINCT f.user_id)::int AS employees
+                     FROM lna_findings f JOIN lna_competencies c ON c.id = f.competency_id
+                    WHERE f.tenant_id = :tenantId AND f.category = 'training' AND f.review_status IN ${REVIEWED_SQL} AND ${notFrozen('f')}${scopeSql('f.user_id', scope, rep)}
+                    GROUP BY c.name ORDER BY employees DESC, c.name LIMIT :limit`;
       return select(sql, rep);
     },
+    /** B17: jumlah rencana per status dan yang masih perlu modul. */
+    async planStatusCounts(tenantId, scope) {
+      const rep = { tenantId };
+      const rows = await select(`SELECT p.status, count(*)::int AS n,
+                                        count(*) FILTER (WHERE p.catalog_item_ref IS NULL AND p.origin <> 'learner_request')::int AS "needsModule"
+                                   FROM lna_training_plan_items p WHERE p.tenant_id = :tenantId AND NOT ${planFrozen('p')}${scopeSql('p.user_id', scope, rep)}
+                                  GROUP BY p.status`, rep);
+      return { byStatus: Object.fromEntries(rows.map((r) => [r.status, r.n])), needsModule: rows.reduce((a, r) => a + r.needsModule, 0) };
+    },
+    /** B17: temuan Improvement Needs yang sudah diputus HR, dan yang sudah diteruskan ke Improvement Needs. */
+    async improvementCounts(tenantId) {
+      return one(`SELECT count(*)::int AS decided, count(improvement_handoff_at)::int AS "handedOff"
+                    FROM lna_findings WHERE tenant_id = :tenantId AND category = 'non_training' AND review_status IN ${REVIEWED_SQL}
+                     AND ${notFrozen('lna_findings')}`, { tenantId });
+    },
+    async listPlanItems(tenantId, scope, { excludeFrozen = false } = {}) {
+      const rep = { tenantId };
+      const frozenSql = excludeFrozen ? ` AND NOT ${planFrozen('p')}` : '';
+      const sql = `SELECT ${PLAN_COLS}, f.title AS "findingTitle", ci.url AS "catalogItemUrl", cc.status AS "courseStatus", cc.score::float AS "courseScore"
+                     FROM lna_training_plan_items p
+                     JOIN users u ON u.id = p.user_id AND u.tenant_id = p.tenant_id LEFT JOIN lna_findings f ON f.id = p.finding_id
+                     LEFT JOIN lna_catalog_items ci ON ci.tenant_id = p.tenant_id AND ci.source = p.catalog_source AND ci.external_ref = p.catalog_item_ref
+                     LEFT JOIN lna_catalog_completions cc ON cc.tenant_id = p.tenant_id AND cc.catalog_item_id = ci.id AND cc.user_id = p.user_id
+                    WHERE p.tenant_id = :tenantId${frozenSql}${scopeSql('p.user_id', scope, rep)} ORDER BY p.created_at DESC`;
+      return open(tenantId, await select(sql, rep), ['note', 'findingTitle']);
+    },
     async getPlanItem(tenantId, id) {
-      return one(`SELECT ${PLAN_COLS} FROM lna_training_plan_items p JOIN users u ON u.id = p.user_id
-                   WHERE p.tenant_id = :tenantId AND p.id = :id`, { tenantId, id });
+      return open(tenantId, await one(`SELECT ${PLAN_COLS} FROM lna_training_plan_items p JOIN users u ON u.id = p.user_id AND u.tenant_id = p.tenant_id
+                   WHERE p.tenant_id = :tenantId AND p.id = :id`, { tenantId, id }), ['note']);
+    },
+    /** Keputusan user 19 Nov: rencana dari temuan yang persetujuannya ditarik tidak diubah lagi. */
+    async isPlanFrozen(tenantId, id) {
+      const row = await one(`SELECT ${planFrozen('p')} AS frozen FROM lna_training_plan_items p WHERE p.tenant_id = :tenantId AND p.id = :id`, { tenantId, id });
+      return Boolean(row && row.frozen);
     },
     async updatePlanItem(tenantId, id, { status, catalogItemRef, catalogItemTitle, catalogSource }) {
       return insert(`UPDATE lna_training_plan_items
@@ -304,8 +1335,122 @@ function createLnaStores(sequelize) {
                             catalog_item_title = COALESCE(:catalogItemTitle, catalog_item_title),
                             catalog_source = COALESCE(:catalogSource, catalog_source),
                             updated_at = now()
-                      WHERE tenant_id = :tenantId AND id = :id RETURNING id, status`,
-      { tenantId, id, status: status ?? null, catalogItemRef: catalogItemRef ?? null, catalogItemTitle: catalogItemTitle ?? null, catalogSource: catalogSource ?? null });
+                      WHERE tenant_id = :tenantId AND id = :id
+                        AND (:lockCourse = false OR assignment_status IS NULL OR assignment_status = 'failed')
+                      RETURNING id, status`,
+      { tenantId, id, lockCourse: catalogItemRef != null || catalogItemTitle != null || catalogSource != null, status: status ?? null, catalogItemRef: catalogItemRef ?? null, catalogItemTitle: catalogItemTitle ?? null, catalogSource: catalogSource ?? null });
+    },
+  };
+
+  // PK-18: katalog course statis (impor daftar course Moodle), pemetaan ke kompetensi, dan status lulus per course.
+  const ITEM_COLS = `ci.id, ci.source, ci.external_ref AS ref, ci.title, ci.url, ci.category, ci.program_tier AS "programTier", ci.active`;
+  const catalog = {
+    async listItems(tenantId, { source } = {}) {
+      const rep = { tenantId };
+      let sql = `SELECT ${ITEM_COLS},
+                        COALESCE((SELECT json_agg(json_build_object('id', c.id, 'name', c.name) ORDER BY c.name)
+                                    FROM lna_catalog_item_competencies m JOIN lna_competencies c ON c.id = m.competency_id
+                                   WHERE m.catalog_item_id = ci.id), '[]'::json) AS competencies
+                   FROM lna_catalog_items ci WHERE ci.tenant_id = :tenantId`;
+      if (source) { sql += ' AND ci.source = :source'; rep.source = source; }
+      return select(`${sql} ORDER BY ci.title`, rep);
+    },
+    async itemsByRef(tenantId, refs, source = 'moodle') {
+      if (!refs.length) return [];
+      return select(`SELECT ${ITEM_COLS} FROM lna_catalog_items ci WHERE ci.tenant_id = :tenantId AND ci.source = :source AND ci.external_ref IN (:refs)`,
+        { tenantId, source, refs });
+    },
+    /** Course aktif yang dipetakan ke kompetensi; course dengan program yang sama diutamakan. */
+    async findForCompetency(tenantId, { source, competencyId, tier }) {
+      if (!competencyId) return [];
+      return select(`SELECT ci.external_ref AS ref, ci.title, ci.url, ci.program_tier AS "programTier"
+                       FROM lna_catalog_items ci JOIN lna_catalog_item_competencies m ON m.catalog_item_id = ci.id
+                      WHERE ci.tenant_id = :tenantId AND ci.source = :source AND ci.active AND m.competency_id = :competencyId
+                      ORDER BY (ci.program_tier IS NOT DISTINCT FROM :tier) DESC, ci.title`,
+      { tenantId, source, competencyId, tier: tier ?? null });
+    },
+    /** Upsert course berdasarkan kode; pemetaan kompetensi course yang diimpor diganti dengan isi file. */
+    async upsertItems(tenantId, items, { source = 'moodle', batchId = null } = {}) {
+      const t = await sequelize.transaction();
+      try {
+        let created = 0; let updated = 0;
+        for (const it of items) {
+          const [[row]] = await sequelize.query(
+            `INSERT INTO lna_catalog_items (tenant_id, source, external_ref, title, url, category, program_tier, active, import_batch_id)
+             VALUES (:tenantId, :source, :ref, :title, :url, :category, :programTier, :active, :batchId)
+             ON CONFLICT (tenant_id, source, external_ref) DO UPDATE
+               SET title = EXCLUDED.title, url = EXCLUDED.url, category = EXCLUDED.category, program_tier = EXCLUDED.program_tier,
+                   active = EXCLUDED.active, import_batch_id = EXCLUDED.import_batch_id, updated_at = now()
+             RETURNING id, (xmax = 0) AS inserted`,
+            { replacements: withNulls({ tenantId, source, batchId, ...it }, ['url', 'category', 'programTier', 'batchId']), transaction: t },
+          );
+          if (row.inserted) created += 1; else updated += 1;
+          await sequelize.query('DELETE FROM lna_catalog_item_competencies WHERE tenant_id = :tenantId AND catalog_item_id = :id',
+            { replacements: { tenantId, id: row.id }, transaction: t });
+          for (const competencyId of it.competencyIds || []) {
+            await sequelize.query(
+              `INSERT INTO lna_catalog_item_competencies (tenant_id, catalog_item_id, competency_id)
+               SELECT :tenantId, :id, c.id FROM lna_competencies c WHERE c.tenant_id = :tenantId AND c.id = :competencyId
+               ON CONFLICT DO NOTHING`,
+              { replacements: { tenantId, id: row.id, competencyId }, transaction: t },
+            );
+          }
+        }
+        await t.commit();
+        return { created, updated };
+      } catch (e) { await t.rollback(); throw e; }
+    },
+    /**
+     * Rencana training yang masih perlu modul (status 'new' tanpa course, K-3) dan kompetensi temuannya kini
+     * punya course aktif: isi course-nya; status tetap 'new'. Return jumlah rencana yang terisi.
+     */
+    async rematchNeedsModule(tenantId, sources) {
+      if (!sources.length) return 0;
+      const [, meta] = await sequelize.query(
+        `UPDATE lna_training_plan_items p
+            SET catalog_source = m.source, catalog_item_ref = m.ref, catalog_item_title = m.title, updated_at = now()
+           FROM (SELECT DISTINCT ON (p2.id) p2.id AS plan_id, ci.source, ci.external_ref AS ref, ci.title
+                   FROM lna_training_plan_items p2
+                   JOIN lna_findings f ON f.id = p2.finding_id AND f.tenant_id = p2.tenant_id
+                   JOIN lna_catalog_item_competencies m2 ON m2.competency_id = f.competency_id AND m2.tenant_id = p2.tenant_id
+                   JOIN lna_catalog_items ci ON ci.id = m2.catalog_item_id AND ci.active AND ci.source IN (:sources)
+                  WHERE p2.tenant_id = :tenantId AND p2.status = 'new' AND p2.catalog_item_ref IS NULL AND p2.origin <> 'learner_request'
+                  ORDER BY p2.id, array_position(ARRAY[:sources]::varchar[], ci.source),
+                           (ci.program_tier IS NOT DISTINCT FROM p2.program_tier) DESC, ci.title) m
+          WHERE p.tenant_id = :tenantId AND p.id = m.plan_id`,
+        { replacements: { tenantId, sources } },
+      );
+      return (meta && meta.rowCount) || 0;
+    },
+    async upsertCompletions(tenantId, rows, { batchId = null, recordedBy = null } = {}) {
+      const t = await sequelize.transaction();
+      try {
+        for (const c of rows) {
+          await sequelize.query(
+            `INSERT INTO lna_catalog_completions (tenant_id, user_id, catalog_item_id, status, completed_at, score, source, recorded_by, import_batch_id)
+             VALUES (:tenantId, :userId, :catalogItemId, :status, :completedAt, :score, 'manual', :recordedBy, :batchId)
+             ON CONFLICT (tenant_id, user_id, catalog_item_id) DO UPDATE
+               SET status = EXCLUDED.status, completed_at = EXCLUDED.completed_at, score = EXCLUDED.score,
+                   recorded_by = EXCLUDED.recorded_by, import_batch_id = EXCLUDED.import_batch_id, updated_at = now()`,
+            { replacements: withNulls({ tenantId, batchId, recordedBy, ...c }, ['completedAt', 'score', 'batchId', 'recordedBy']), transaction: t },
+          );
+        }
+        await t.commit();
+      } catch (e) { await t.rollback(); throw e; }
+    },
+    /** Rencana training aktif yang menunjuk course yang sudah lulus -> 'completed'. Return jumlahnya. */
+    async completePlansForPassed(tenantId, passed, source = 'moodle') {
+      let n = 0;
+      for (const { userId, ref } of passed) {
+        const [, meta] = await sequelize.query(
+          `UPDATE lna_training_plan_items SET status = 'completed', updated_at = now()
+            WHERE tenant_id = :tenantId AND user_id = :userId AND catalog_source = :source AND catalog_item_ref = :ref
+              AND status IN ('new','in_progress') AND NOT ${planFrozen('lna_training_plan_items')}`,
+          { replacements: { tenantId, userId, source, ref } },
+        );
+        n += (meta && meta.rowCount) || 0;
+      }
+      return n;
     },
   };
 
@@ -313,9 +1458,479 @@ function createLnaStores(sequelize) {
     async exists(tenantId, id) {
       return Boolean(await one('SELECT id FROM lna_projects WHERE tenant_id = :tenantId AND id = :id', { tenantId, id }));
     },
+    /** Status proyek ('draft' | 'active' | 'closed') atau null bila bukan milik tenant. */
+    async status(tenantId, id) {
+      const row = await one('SELECT status FROM lna_projects WHERE tenant_id = :tenantId AND id = :id', { tenantId, id });
+      return row ? row.status : null;
+    },
   };
 
-  return { people, settings, dna, interviews, tna, projectsExtra };
+  const BATCH_COLS = `b.id, b.submodule, b.kind, b.filename, b.status, b.row_count AS "rowCount", b.headers, b.mapping, b.options,
+    b.result, b.created_at AS "createdAt", b.committed_at AS "committedAt", b.created_by AS "createdBy", u.name AS "createdByName"`;
+  const imports = {
+    async create(tenantId, b) {
+      await sequelize.query(
+        `INSERT INTO import_batches (id, tenant_id, submodule, kind, filename, row_count, headers, rows, mapping, created_by)
+         VALUES (:id, :tenantId, :submodule, :kind, :filename, :rowCount, CAST(:headers AS jsonb), CAST(:rows AS jsonb), CAST(:mapping AS jsonb), :createdBy)`,
+        { replacements: { ...b, tenantId, headers: JSON.stringify(b.headers), rows: JSON.stringify(await cipher.encryptJson(tenantId, b.rows)), mapping: JSON.stringify(b.mapping || {}) } },
+      );
+      return imports.get(tenantId, b.id);
+    },
+    async get(tenantId, id) {
+      const row = await one(`SELECT ${BATCH_COLS}, b.rows FROM import_batches b LEFT JOIN users u ON u.id = b.created_by
+                   WHERE b.tenant_id = :tenantId AND b.id = :id`, { tenantId, id });
+      if (row) row.rows = await cipher.decryptJson(tenantId, row.rows);
+      return row;
+    },
+    /** kinds (opsional): batasi jenis di SQL agar batas 100 tidak memotong jenis yang diminta (B11 CD-10). */
+    async list(tenantId, submodule, kinds = null) {
+      const byKind = kinds ? ' AND b.kind IN (:kinds)' : '';
+      if (kinds && !kinds.length) return [];
+      return select(`SELECT ${BATCH_COLS} FROM import_batches b LEFT JOIN users u ON u.id = b.created_by
+                      WHERE b.tenant_id = :tenantId AND b.submodule = :submodule${byKind} ORDER BY b.created_at DESC LIMIT 100`, { tenantId, submodule, kinds });
+    },
+    /** B11: impor yang sudah disimpan untuk jenis tertentu, terbaru dulu (ringkasan Admin Tenant; tanpa baris mentah). */
+    async listCommitted(tenantId, kinds) {
+      if (!kinds || !kinds.length) return [];
+      return select(`SELECT ${BATCH_COLS} FROM import_batches b LEFT JOIN users u ON u.id = b.created_by
+                      WHERE b.tenant_id = :tenantId AND b.status = 'committed' AND b.kind IN (:kinds)
+                      ORDER BY b.committed_at DESC NULLS LAST, b.created_at DESC LIMIT 1000`, { tenantId, kinds });
+    },
+    async update(tenantId, id, patch) {
+      const sets = []; const rep = { tenantId, id };
+      for (const k of ['mapping', 'options', 'result', 'rows']) {
+        if (patch[k] !== undefined) { sets.push(`${k} = CAST(:${k} AS jsonb)`); rep[k] = JSON.stringify(patch[k]); }
+      }
+      if (patch.status) { sets.push('status = :status'); rep.status = patch.status; }
+      if (patch.committedAt) { sets.push('committed_at = :committedAt'); rep.committedAt = patch.committedAt; }
+      if (patch.committedBy) { sets.push('committed_by = :committedBy'); rep.committedBy = patch.committedBy; }
+      if (sets.length) await sequelize.query(`UPDATE import_batches SET ${sets.join(', ')} WHERE tenant_id = :tenantId AND id = :id`, { replacements: rep });
+      return imports.get(tenantId, id);
+    },
+  };
+
+  // PK-14 / PD-13 ★A: job analisis per sesi. Klaim bersyarat + lease; simpan hasil dan tandai selesai dalam satu transaksi.
+  const JOB_COLS = `id, tenant_id AS "tenantId", session_id AS "sessionId", submodule, status, attempts, last_error AS "lastError",
+    result, created_at AS "createdAt", started_at AS "startedAt", finished_at AS "finishedAt"`;
+  // B8: permintaan data karyawan (tarik persetujuan, minta hapus data). reason dan resolution_note terenkripsi.
+  const DSR_COLS = `d.id, d.user_id AS "userId", u.name AS "userName", d.type, d.status, d.reason, d.created_at AS "createdAt",
+    d.due_at AS "dueAt", d.resolved_at AS "resolvedAt", rb.name AS "resolvedByName"`;
+  const DSR_FROM = `FROM data_subject_requests d JOIN users u ON u.id = d.user_id LEFT JOIN users rb ON rb.id = d.resolved_by`;
+  const DELETE_DUE = `now() + interval '3 days'`; // LIN-B23
+  const dataRequests = {
+    /** B17: jumlah permintaan terbuka per jenis dan yang lewat tenggat (tanpa nama). */
+    async openCounts(tenantId) {
+      const rows = await select(`SELECT type, count(*)::int AS n, count(*) FILTER (WHERE due_at < now())::int AS overdue
+                                   FROM data_subject_requests WHERE tenant_id = :tenantId AND status = 'open' GROUP BY type`, { tenantId });
+      return { open: Object.fromEntries(rows.map((r) => [r.type, r.n])), overdue: rows.reduce((a, r) => a + r.overdue, 0) };
+    },
+    async get(tenantId, id) {
+      const row = await one(`SELECT ${DSR_COLS} ${DSR_FROM} WHERE d.tenant_id = :tenantId AND d.id = :id`, { tenantId, id });
+      return row ? open(tenantId, row, ['reason']) : null;
+    },
+    async list(tenantId, { statuses } = {}) {
+      const rep = { tenantId };
+      let sql = `SELECT ${DSR_COLS} ${DSR_FROM} WHERE d.tenant_id = :tenantId`;
+      if (statuses) { sql += ' AND d.status IN (:statuses)'; rep.statuses = statuses; }
+      return open(tenantId, await select(`${sql} ORDER BY d.created_at DESC`, rep), ['reason']);
+    },
+    async listForUser(tenantId, userId) {
+      return select(`SELECT id, type, status, created_at AS "createdAt", due_at AS "dueAt" FROM data_subject_requests
+                      WHERE tenant_id = :tenantId AND user_id = :userId ORDER BY created_at DESC`, { tenantId, userId });
+    },
+    /** Permintaan hapus data. null bila sudah ada yang terbuka (indeks unik; aman untuk dua permintaan bersamaan). */
+    async createDelete(tenantId, userId, reason) {
+      return insert(`INSERT INTO data_subject_requests (tenant_id, user_id, type, reason, due_at)
+                     VALUES (:tenantId, :userId, 'delete_data', :reason, ${DELETE_DUE})
+                     ON CONFLICT (tenant_id, user_id, type) WHERE status = 'open' DO NOTHING
+                     RETURNING id, type, status, created_at AS "createdAt", due_at AS "dueAt"`,
+      { tenantId, userId, reason: reason ? await enc(tenantId, reason) : null });
+    },
+    /**
+     * Tarik persetujuan (keputusan user 19 Nov: hanya menandai, tanpa hapus). Satu transaksi: catat permintaan
+     * (atau pakai yang masih terbuka), hentikan sesi yang masih terbuka, tandai semua sesi yang pernah disetujui,
+     * dan hentikan analisis yang belum selesai. Aman diulang.
+     */
+    /** beforeCommit(out, transaction): audit di dalam transaksi; gagal = penarikan batal. */
+    async withdrawConsent(tenantId, userId, reason, { beforeCommit } = {}) {
+      const reasonEnc = reason ? await enc(tenantId, reason) : null;
+      return sequelize.transaction(async (transaction) => {
+        const q = (sql, replacements) => sequelize.query(sql, { replacements, transaction });
+        // Permintaan terbuka dikunci (FOR UPDATE) supaya HR tidak menutupnya di tengah jalan; bila baru saja
+        // ditutup, permintaan baru dibuat pada putaran berikutnya.
+        let request = null; let created = false;
+        for (let i = 0; i < 3 && !request; i += 1) {
+          const [[fresh]] = await q(`INSERT INTO data_subject_requests (tenant_id, user_id, type, reason)
+                                     VALUES (:tenantId, :userId, 'withdraw_consent', :reason)
+                                     ON CONFLICT (tenant_id, user_id, type) WHERE status = 'open' DO NOTHING
+                                     RETURNING id, type, status, created_at AS "createdAt", due_at AS "dueAt"`, { tenantId, userId, reason: reasonEnc });
+          if (fresh) { request = fresh; created = true; break; }
+          [[request]] = await q(`SELECT id, type, status, created_at AS "createdAt", due_at AS "dueAt" FROM data_subject_requests
+                                  WHERE tenant_id = :tenantId AND user_id = :userId AND type = 'withdraw_consent' AND status = 'open'
+                                  FOR UPDATE`, { tenantId, userId });
+        }
+        if (!request) throw new Error('Permintaan tarik persetujuan tidak bisa dicatat');
+        // Hanya wawancara TNA (wawancara AI DNA belum punya teks persetujuan). Semua sesi yang dihentikan atau
+        // pernah disetujui diberi tanda, supaya HR bisa membedakannya dari sesi yang ditinggalkan biasa.
+        const [sessions] = await q(`UPDATE lna_interview_sessions
+                                       SET consent_withdrawn_at = now(),
+                                           status = CASE WHEN status IN ('scheduled', 'in_progress') THEN 'abandoned' ELSE status END,
+                                           ended_at = CASE WHEN status IN ('scheduled', 'in_progress') THEN now() ELSE ended_at END
+                                     WHERE tenant_id = :tenantId AND interviewee_id = :userId AND submodule = 'tna' AND consent_withdrawn_at IS NULL
+                                       AND (status IN ('scheduled', 'in_progress') OR consent_at IS NOT NULL)
+                                     RETURNING id`, { tenantId, userId });
+        if (sessions.length) {
+          await q(`UPDATE lna_analysis_jobs SET status = 'failed', last_error = 'CONSENT_WITHDRAWN', locked_until = NULL, finished_at = now()
+                    WHERE tenant_id = :tenantId AND session_id IN (:ids) AND status <> 'done'`, { tenantId, ids: sessions.map((s) => s.id) });
+        }
+        const out = { request, created, sessionIds: sessions.map((s) => s.id) };
+        if (beforeCommit) await beforeCommit(out, transaction);
+        return out;
+      });
+    },
+    /** Batalkan permintaan sendiri yang masih terbuka. */
+    async cancel(tenantId, id, userId) {
+      return insert(`UPDATE data_subject_requests SET status = 'cancelled', resolved_at = now(), resolved_by = :userId
+                      WHERE tenant_id = :tenantId AND id = :id AND user_id = :userId AND status = 'open' RETURNING id, status`, { tenantId, id, userId });
+    },
+    /**
+     * HR menutup permintaan tarik persetujuan. erase = true: hapus manual giliran percakapan, temuan (rencana
+     * turunannya ikut lewat FK), dan hasil analisis dari sesi yang ditarik. Baris sesi tetap ada. null bila
+     * permintaan sudah tidak terbuka. beforeErase(ids, transaction) dan beforeCommit(result, transaction) menulis audit
+     * di dalam transaksi: audit gagal = penutupan dan hapus batal bersama jejaknya.
+     */
+    async resolveWithdrawal(tenantId, id, { resolvedBy, note, erase, beforeErase, beforeCommit }) {
+      const noteEnc = note ? await enc(tenantId, note) : null;
+      return sequelize.transaction(async (transaction) => {
+        const q = (sql, replacements) => sequelize.query(sql, { replacements, transaction });
+        const [[req]] = await q(`UPDATE data_subject_requests SET status = 'done', resolved_at = now(), resolved_by = :resolvedBy, resolution_note = :note
+                                  WHERE tenant_id = :tenantId AND id = :id AND type = 'withdraw_consent' AND status = 'open'
+                                  RETURNING id, user_id AS "userId"`, { tenantId, id, resolvedBy, note: noteEnc });
+        if (!req) return null;
+        const done = async (result) => { if (beforeCommit) await beforeCommit(result, transaction); return result; };
+        if (!erase) return done({ erased: false });
+        // Sesi dikunci, lalu audit ditulis dari daftar yang sama dengan yang dihapus (audit gagal = transaksi batal).
+        const [sessions] = await q(`SELECT id FROM lna_interview_sessions
+                                     WHERE tenant_id = :tenantId AND interviewee_id = :userId AND submodule = 'tna' AND consent_withdrawn_at IS NOT NULL
+                                     FOR UPDATE`, { tenantId, userId: req.userId });
+        const ids = sessions.map((s) => s.id);
+        if (beforeErase) await beforeErase(ids, transaction);
+        if (!ids.length) return done({ erased: true, deletedTurns: 0, deletedFindings: 0, deletedPlanItems: 0 });
+        const [[{ n: deletedPlanItems }]] = await q(`SELECT count(*)::int AS n FROM lna_training_plan_items p JOIN lna_findings f ON f.id = p.finding_id
+                                                      WHERE f.tenant_id = :tenantId AND f.session_id IN (:ids)`, { tenantId, ids });
+        const [turns] = await q('DELETE FROM lna_interview_turns WHERE session_id IN (:ids) RETURNING id', { ids });
+        const [findings] = await q('DELETE FROM lna_findings WHERE tenant_id = :tenantId AND session_id IN (:ids) RETURNING id', { tenantId, ids });
+        await q('UPDATE lna_analysis_jobs SET result = NULL WHERE tenant_id = :tenantId AND session_id IN (:ids)', { tenantId, ids });
+        // B6: ringkasan temuan dan catatan karyawan disimpan di baris sesi, jadi ikut dikosongkan
+        await q(`UPDATE lna_interview_sessions SET summary_findings = NULL, summary_note = NULL, summary_at = NULL,
+                        summary_confirmed_at = NULL, summary_disputed = false
+                  WHERE tenant_id = :tenantId AND id IN (:ids)`, { tenantId, ids });
+        return done({ erased: true, deletedTurns: turns.length, deletedFindings: findings.length, deletedPlanItems });
+      });
+    },
+  };
+
+  const analysis = {
+    async enqueue(tenantId, { sessionId, submodule }) {
+      // ON CONFLICT: permintaan ulang untuk sesi yang sama mengembalikan job yang sudah ada
+      return insert(`INSERT INTO lna_analysis_jobs (tenant_id, session_id, submodule) VALUES (:tenantId, :sessionId, :submodule)
+                     ON CONFLICT (session_id) DO UPDATE SET session_id = EXCLUDED.session_id
+                     RETURNING ${JOB_COLS}`, { tenantId, sessionId, submodule });
+    },
+    async forSession(tenantId, sessionId) {
+      return one(`SELECT ${JOB_COLS} FROM lna_analysis_jobs WHERE tenant_id = :tenantId AND session_id = :sessionId`, { tenantId, sessionId });
+    },
+    async claim(tenantId, id, { maxAttempts, leaseSeconds }) {
+      return insert(`UPDATE lna_analysis_jobs
+                        SET status = 'running', attempts = attempts + 1, started_at = now(), last_error = NULL,
+                            locked_until = now() + make_interval(secs => :leaseSeconds)
+                      WHERE tenant_id = :tenantId AND id = :id
+                        AND (status = 'queued'
+                             OR (status IN ('running', 'failed') AND locked_until IS NOT NULL AND locked_until < now() AND attempts < :maxAttempts))
+                      RETURNING ${JOB_COLS}`, { tenantId, id, maxAttempts, leaseSeconds });
+    },
+    /** Job lintas tenant yang siap dijalankan (dipakai penyapu di server dan skrip, bukan dari request). */
+    async pending({ maxAttempts, limit }) {
+      return select(`SELECT id, tenant_id AS "tenantId" FROM lna_analysis_jobs
+                      WHERE status = 'queued'
+                         OR (status IN ('running', 'failed') AND locked_until IS NOT NULL AND locked_until < now() AND attempts < :maxAttempts)
+                      ORDER BY created_at LIMIT :limit`, { maxAttempts, limit });
+    },
+    async fail(tenantId, job, { code, retryInSeconds, final }) {
+      await sequelize.query(`UPDATE lna_analysis_jobs SET status = 'failed', last_error = :code, finished_at = now(),
+                                    locked_until = CASE WHEN :final THEN NULL ELSE now() + make_interval(secs => :retry) END
+                              WHERE tenant_id = :tenantId AND id = :id AND status = 'running' AND attempts = :attempts`,
+      { replacements: { tenantId, id: job.id, attempts: job.attempts, code, retry: retryInSeconds, final: Boolean(final) } });
+    },
+    async requeue(tenantId, sessionId) {
+      return insert(`UPDATE lna_analysis_jobs SET status = 'queued', attempts = 0, locked_until = NULL, last_error = NULL
+                      WHERE tenant_id = :tenantId AND session_id = :sessionId AND status = 'failed'
+                        AND NOT EXISTS (SELECT 1 FROM lna_interview_sessions s WHERE s.id = lna_analysis_jobs.session_id AND s.consent_withdrawn_at IS NOT NULL)
+                      RETURNING ${JOB_COLS}`, { tenantId, sessionId });
+    },
+    /** Kunci baris job; lanjut hanya bila job masih milik percobaan ini (pekerja lain tidak mengambil alih). */
+    async lockOwned(job, transaction) {
+      const [row] = await sequelize.query(`SELECT status, attempts FROM lna_analysis_jobs WHERE tenant_id = :tenantId AND id = :id FOR UPDATE`,
+        { replacements: { tenantId: job.tenantId, id: job.id }, type: QueryTypes.SELECT, transaction });
+      return Boolean(row && row.status === 'running' && row.attempts === job.attempts);
+    },
+    async finish(job, result, transaction) {
+      await sequelize.query(`UPDATE lna_analysis_jobs SET status = 'done', finished_at = now(), locked_until = NULL, result = CAST(:result AS jsonb)
+                              WHERE tenant_id = :tenantId AND id = :id`,
+      { replacements: { tenantId: job.tenantId, id: job.id, result: JSON.stringify(result) }, transaction });
+    },
+    /** Simpan temuan TNA sebagai draf (PD-14 ★A) dan tandai job selesai, semuanya atau tidak sama sekali. */
+    async saveTna(tenantId, job, session, findings, { onlySecond = 0 } = {}) {
+      const rows = [];
+      for (const f of findings) {
+        rows.push({ ...f, titleEnc: await enc(tenantId, f.title), detailEnc: await enc(tenantId, f.detail) });
+      }
+      return sequelize.transaction(async (transaction) => {
+        if (!(await analysis.lockOwned(job, transaction))) return { skipped: true };
+        let lastTraining = null; let seq = 0;
+        for (const f of rows) {
+          seq += 1;
+          const [[row]] = await sequelize.query(
+            `INSERT INTO lna_findings (tenant_id, project_id, user_id, competency_id, session_id, category, title, detail,
+                                       performance_record_id, linked_finding_id, confidence, scoring_agreement, review_status,
+                                       analysis_job_id, finding_seq)
+             VALUES (:tenantId, :projectId, :userId, :competencyId, :sessionId, :category, :title, :detail,
+                     :performanceRecordId, :linkedFindingId, :confidence, :agreement, 'draft', :jobId, :seq)
+             RETURNING id`,
+            { replacements: {
+              tenantId, projectId: session.projectId, userId: session.intervieweeId, sessionId: session.id, category: f.category,
+              title: f.titleEnc, detail: f.detailEnc ?? null, competencyId: f.competencyId || null, performanceRecordId: f.performanceRecordId || null,
+              linkedFindingId: f.category === 'non_training' && lastTraining ? lastTraining : null,
+              confidence: f.confidence ?? null, agreement: f.agreement ?? null, jobId: job.id, seq,
+            }, transaction },
+          );
+          if (f.category === 'training') lastTraining = row.id;
+        }
+        const result = { findings: rows.length, agreed: rows.filter((f) => f.agreement).length, onlySecond };
+        await analysis.finish(job, result, transaction);
+        return result;
+      });
+    },
+    /** DNA: skor AI disimpan dengan keyakinan dari dua kali penilaian (wawancara AI DNA di balik flag, mati di POC). */
+    async saveDna(tenantId, job, session, results, { onlySecond = 0 } = {}) {
+      const rows = [];
+      for (const r of results) rows.push({ ...r, evidenceEnc: await enc(tenantId, r.evidence) });
+      return sequelize.transaction(async (transaction) => {
+        if (!(await analysis.lockOwned(job, transaction))) return { skipped: true };
+        for (const r of rows) {
+          await sequelize.query(
+            `INSERT INTO lna_assessments (tenant_id, user_id, competency_id, session_id, score, confidence, evidence, source)
+             VALUES (:tenantId, :userId, :competencyId, :sessionId, :score, :confidence, :evidence, 'ai_interview')`,
+            { replacements: { tenantId, userId: session.intervieweeId, competencyId: r.competencyId, sessionId: session.id,
+              score: r.score, confidence: r.confidence ?? null, evidence: r.evidenceEnc ?? null }, transaction },
+          );
+        }
+        const result = { assessments: rows.length, agreed: rows.filter((r) => r.agreement).length, onlySecond };
+        await analysis.finish(job, result, transaction);
+        return result;
+      });
+    },
+  };
+
+  // R3-6: pemakaian AI per panggilan model (tanpa isi prompt/jawaban, jadi tidak dienkripsi).
+  // --- B17 Asisten ELGOS (spek docs/designs/b17-asisten-elgos.md) ---
+  const ASSISTANT_COLS = `id, view, question, answer, page, outcome, fact_keys AS "factKeys", created_at AS "createdAt"`;
+  const assistant = {
+    /**
+     * Batas pakai dan log awal dalam satu transaksi (kunci per pengguna): null bila sudah ada `limit` baris
+     * dalam `windowMinutes` terakhir (semua hasil terhitung). Selain itu sisipkan baris 'pending'.
+     */
+    async begin(tenantId, { userId, view, question, limit, windowMinutes }) {
+      const q = await enc(tenantId, question);
+      return sequelize.transaction(async (transaction) => {
+        const run = (sql, replacements) => sequelize.query(sql, { replacements, transaction, type: QueryTypes.SELECT });
+        await run('SELECT pg_advisory_xact_lock(hashtext(:k))', { k: `assistant:${tenantId}:${userId}` });
+        const [{ n }] = await run(`SELECT count(*)::int AS n FROM assistant_logs WHERE tenant_id = :tenantId AND user_id = :userId
+                                      AND created_at > now() - make_interval(mins => :windowMinutes)`, { tenantId, userId, windowMinutes });
+        if (n >= limit) return null;
+        const [row] = await run(`INSERT INTO assistant_logs (tenant_id, user_id, view, question, outcome)
+                                 VALUES (:tenantId, :userId, :view, :q, 'pending') RETURNING id`, { tenantId, userId, view, q });
+        return row;
+      });
+    },
+    async finish(tenantId, id, { answer, outcome, page, factKeys }) {
+      // kunci fakta berasal dari kode (tanpa koma), jadi aman digabung dengan koma
+      await sequelize.query(`UPDATE assistant_logs SET answer = :answer, outcome = :outcome, page = :page,
+                                    fact_keys = COALESCE(string_to_array(NULLIF(:keys, ''), ','), '{}')
+                              WHERE tenant_id = :tenantId AND id = :id`,
+      { replacements: { tenantId, id, outcome, page: page || null, answer: answer ? await enc(tenantId, answer) : null, keys: factKeys.join(',') } });
+    },
+    async fail(tenantId, id) {
+      await sequelize.query(`UPDATE assistant_logs SET outcome = 'error', answer = NULL WHERE tenant_id = :tenantId AND id = :id`, { replacements: { tenantId, id } });
+    },
+    async listForUser(tenantId, userId) {
+      return open(tenantId, await select(`SELECT ${ASSISTANT_COLS} FROM assistant_logs WHERE tenant_id = :tenantId AND user_id = :userId
+                                           ORDER BY created_at DESC`, { tenantId, userId }), ['question', 'answer']);
+    },
+    /** Retensi per tenant (assistant.retentionDays 1-365, selain itu defaultDays). Lintas tenant, aman diulang. */
+    async cleanup({ defaultDays }) {
+      const [rows] = await sequelize.query(`DELETE FROM assistant_logs a USING tenants t
+                                             WHERE t.id = a.tenant_id
+                                               AND a.created_at < now() - make_interval(days => CASE
+                                                 WHEN jsonb_typeof(t.settings #> '{assistant,retentionDays}') <> 'number'
+                                                   OR (t.settings #>> '{assistant,retentionDays}') !~ '^[0-9]{1,3}$' THEN :defaultDays
+                                                 WHEN (t.settings #>> '{assistant,retentionDays}')::int BETWEEN 1 AND 365
+                                                 THEN (t.settings #>> '{assistant,retentionDays}')::int ELSE :defaultDays END)
+                                             RETURNING a.id`, { replacements: { defaultDays } });
+      return { deleted: rows.length };
+    },
+  };
+
+  const aiUsage = {
+    async record(tenantId, r) {
+      await sequelize.query(`INSERT INTO ai_usage_logs (tenant_id, project_id, session_id, user_id, submodule, operation, provider, model,
+                                                        input_tokens, output_tokens, latency_ms, cost_usd, audio_seconds_in, audio_seconds_out)
+                             VALUES (:tenantId, :projectId, :sessionId, :userId, :submodule, :operation, :provider, :model,
+                                     :inputTokens, :outputTokens, :latencyMs, :costUsd, :audioSecondsIn, :audioSecondsOut)`,
+      { replacements: withNulls({ tenantId, ...r }, ['projectId', 'sessionId', 'userId', 'submodule', 'latencyMs', 'costUsd', 'audioSecondsIn', 'audioSecondsOut']) });
+    },
+    async sessionTotals(tenantId, sessionId) {
+      return one(`SELECT count(*)::int AS calls, COALESCE(sum(input_tokens), 0)::int AS "inputTokens",
+                         COALESCE(sum(output_tokens), 0)::int AS "outputTokens", sum(cost_usd)::float AS "costUsd"
+                    FROM ai_usage_logs WHERE tenant_id = :tenantId AND session_id = :sessionId`, { tenantId, sessionId });
+    },
+    async listForSession(tenantId, sessionId) {
+      return select(`SELECT operation, provider, model, input_tokens AS "inputTokens", output_tokens AS "outputTokens",
+                            latency_ms AS "latencyMs", cost_usd::float AS "costUsd", created_at AS "createdAt"
+                       FROM ai_usage_logs WHERE tenant_id = :tenantId AND session_id = :sessionId ORDER BY id`, { tenantId, sessionId });
+    },
+  };
+
+  /** Nilai sel baris impor yang menunjuk karyawan ini (ID karyawan atau email, tanpa beda huruf besar/kecil). */
+  const rowMentions = (row, needles) => Object.entries(row || {}).some(([k, v]) => k !== '__row' && v != null
+    && needles.has(String(v).trim().toLowerCase()));
+
+  /**
+   * PK-15 butir 2: hapus baris milik karyawan dari batch impor yang belum disimpan; batch tersimpan tidak
+   * menyimpan baris lagi (dikosongkan saat commit, sisa lama dikosongkan di sini). Return jumlah baris yang dibuang.
+   */
+  imports.scrubEmployee = async (tenantId, { employeeId, email }, { transaction } = {}) => {
+    const needles = new Set([employeeId, email].filter(Boolean).map((v) => String(v).trim().toLowerCase()));
+    await sequelize.query(`UPDATE import_batches SET rows = '[]'::jsonb WHERE tenant_id = :tenantId AND status = 'committed' AND rows <> '[]'::jsonb`,
+      { replacements: { tenantId }, transaction });
+    if (!needles.size) return 0;
+    const batches = await sequelize.query(`SELECT id, rows FROM import_batches WHERE tenant_id = :tenantId AND status = 'uploaded' FOR UPDATE`,
+      { replacements: { tenantId }, type: QueryTypes.SELECT, transaction });
+    let removed = 0;
+    for (const b of batches) {
+      const rows = (await cipher.decryptJson(tenantId, b.rows)) || [];
+      const kept = rows.filter((r) => !rowMentions(r, needles));
+      if (kept.length === rows.length) continue;
+      removed += rows.length - kept.length;
+      await sequelize.query(`UPDATE import_batches SET rows = CAST(:rows AS jsonb), row_count = :n WHERE tenant_id = :tenantId AND id = :id`,
+        { replacements: { tenantId, id: b.id, n: kept.length, rows: JSON.stringify(await cipher.encryptJson(tenantId, kept)) }, transaction });
+    }
+    return removed;
+  };
+
+  /**
+   * PK-15 butir 2: job pembersihan riwayat impor (semua tenant). Batch 'uploaded' yang tidak di-commit lebih dari
+   * `olderThanDays` hari dihapus; batch 'committed' yang masih menyimpan baris dikosongkan (row_count dan result tetap).
+   */
+  imports.cleanup = async ({ olderThanDays = 7, now = new Date() } = {}) => {
+    const cutoff = new Date(now.getTime() - olderThanDays * 24 * 3600 * 1000);
+    const [, delMeta] = await sequelize.query(`DELETE FROM import_batches WHERE status = 'uploaded' AND created_at < :cutoff`, { replacements: { cutoff } });
+    const [, clrMeta] = await sequelize.query(`UPDATE import_batches SET rows = '[]'::jsonb WHERE status = 'committed' AND rows <> '[]'::jsonb`);
+    return { deletedUploaded: (delMeta && delMeta.rowCount) || 0, clearedCommitted: (clrMeta && clrMeta.rowCount) || 0 };
+  };
+
+  // --- B16 Career & Promotion (docs/designs/b16-career-promotion.md) ---
+  const PROMOTION_COLS = `d.id, d.user_id AS "userId", d.from_level_id AS "fromLevelId", d.to_level_id AS "toLevelId",
+    d.okr_achievement::float AS "okrAchievement", d.supervisor_decision AS "supervisorDecision", d.supervisor_by AS "supervisorBy",
+    sb.name AS "supervisorByName", d.supervisor_at AS "supervisorAt", d.supervisor_note AS "supervisorNote",
+    d.hr_decision AS "hrDecision", d.hr_by AS "hrBy", hb.name AS "hrByName", d.hr_at AS "hrAt", d.hr_note AS "hrNote", d.created_at AS "createdAt"`;
+  const insertAudit = (tenantId, a, transaction) => sequelize.query(
+    `INSERT INTO audit_logs (tenant_id, user_id, action, resource, meta, at) VALUES (:tenantId, :userId, 'update', 'dna.promotion_decision', CAST(:meta AS jsonb), now())`,
+    { replacements: { tenantId, userId: a.userId, meta: JSON.stringify(a.meta) }, transaction });
+  const promotion = {
+    /** Populasi promosi dalam scope: karyawan aktif (bukan HR/pimpinan/admin), dengan divisi dan peran atasannya. */
+    async people(tenantId, scope) {
+      const rep = { tenantId, roles: ['learner', 'supervisor', 'role_leader', 'sme'] };
+      let sql = `SELECT u.id, u.name, u.role, u.supervisor_id AS "supervisorId", s.role AS "supervisorRole",
+                        u.job_role_id AS "jobRoleId", u.career_level_id AS "careerLevelId", jr.name AS "jobRoleName", jr.division
+                   FROM users u
+                   LEFT JOIN lna_job_roles jr ON jr.id = u.job_role_id AND jr.tenant_id = u.tenant_id
+                   LEFT JOIN users s ON s.id = u.supervisor_id AND s.tenant_id = u.tenant_id AND s.status <> 'disabled'
+                  WHERE u.tenant_id = :tenantId AND u.status <> 'disabled' AND u.role IN (:roles)`;
+      sql += scopeSql('u.id', scope, rep);
+      return select(`${sql} ORDER BY u.name NULLS LAST, u.email`, rep);
+    },
+    /** Baris kinerja untuk hitung pencapaian OKR (C2), dari semua proyek. */
+    async okrRecords(tenantId, userIds, metricTypes) {
+      if (!userIds.length || !metricTypes.length) return [];
+      return select(`SELECT id, user_id AS "userId", metric_type AS "metricType", name, target::float AS target, actual::float AS actual,
+                            is_met AS "isMet", period, direction, value_type AS "valueType", created_at AS "createdAt"
+                       FROM lna_performance_records WHERE tenant_id = :tenantId AND user_id IN (:userIds) AND metric_type IN (:metricTypes)
+                      ORDER BY created_at, id`,
+      { tenantId, userIds, metricTypes });
+    },
+    async decisionsFor(tenantId, userIds) {
+      if (!userIds.length) return [];
+      const rows = await select(`SELECT ${PROMOTION_COLS} FROM lna_promotion_decisions d
+                                   LEFT JOIN users sb ON sb.id = d.supervisor_by AND sb.tenant_id = d.tenant_id
+                                   LEFT JOIN users hb ON hb.id = d.hr_by AND hb.tenant_id = d.tenant_id
+                                  WHERE d.tenant_id = :tenantId AND d.user_id IN (:userIds) ORDER BY d.created_at DESC`, { tenantId, userIds });
+      return open(tenantId, rows, ['supervisorNote', 'hrNote']);
+    },
+    /**
+     * C6: keputusan atasan. Satu siklus terbuka per (karyawan, jenjang tujuan): klik ganda atau penggantian keputusan
+     * memperbarui baris yang sama. Baris audit ditulis dalam transaksi yang sama (C12).
+     * Mengembalikan null bila jenjang tujuan itu sudah disetujui HR.
+     */
+    async supervisorDecide(tenantId, d, audit) {
+      const note = d.note ? await enc(tenantId, d.note) : null;
+      return sequelize.transaction(async (transaction) => {
+        const rep = { tenantId, ...d, note, okr: d.okrAchievement ?? null };
+        // kunci baris karyawan: keputusan atasan dan HR untuk orang yang sama berjalan berurutan
+        await sequelize.query('SELECT id FROM users WHERE tenant_id = :tenantId AND id = :userId FOR UPDATE', { replacements: rep, transaction });
+        const [done] = await sequelize.query(
+          `SELECT 1 FROM lna_promotion_decisions WHERE tenant_id = :tenantId AND user_id = :userId AND to_level_id = :toLevelId AND hr_decision = 'approved' LIMIT 1`,
+          { replacements: rep, transaction });
+        if (done.length) return null;
+        const [[row]] = await sequelize.query(
+          `INSERT INTO lna_promotion_decisions (tenant_id, user_id, from_level_id, to_level_id, okr_achievement, supervisor_decision, supervisor_by, supervisor_at, supervisor_note)
+           VALUES (:tenantId, :userId, :fromLevelId, :toLevelId, :okr, :decision, :by, now(), :note)
+           ON CONFLICT (tenant_id, user_id, to_level_id) WHERE hr_decision IS NULL DO UPDATE
+             SET from_level_id = EXCLUDED.from_level_id, okr_achievement = EXCLUDED.okr_achievement, supervisor_decision = EXCLUDED.supervisor_decision,
+                 supervisor_by = EXCLUDED.supervisor_by, supervisor_at = EXCLUDED.supervisor_at, supervisor_note = EXCLUDED.supervisor_note, updated_at = now()
+           RETURNING id`, { replacements: rep, transaction });
+        await insertAudit(tenantId, { userId: d.by, meta: { ...audit, decisionId: row.id } }, transaction);
+        return row.id;
+      });
+    },
+    /**
+     * C7: keputusan HR, aman terhadap balapan: hanya siklus yang masih terbuka, dan `approved` hanya bila atasan masih merekomendasi.
+     * Mengembalikan false bila tidak ada baris yang berubah (pemanggil membaca ulang untuk menentukan sebabnya).
+     */
+    async hrDecide(tenantId, d, audit) {
+      const note = d.note ? await enc(tenantId, d.note) : null;
+      return sequelize.transaction(async (transaction) => {
+        await sequelize.query(
+          `SELECT u.id FROM users u JOIN lna_promotion_decisions d ON d.user_id = u.id AND d.tenant_id = u.tenant_id
+            WHERE d.tenant_id = :tenantId AND d.id = :id FOR UPDATE OF u`, { replacements: { tenantId, id: d.id }, transaction });
+        const [done] = await sequelize.query(
+          `SELECT 1 FROM lna_promotion_decisions a JOIN lna_promotion_decisions d ON d.user_id = a.user_id AND d.to_level_id = a.to_level_id AND d.tenant_id = a.tenant_id
+            WHERE d.tenant_id = :tenantId AND d.id = :id AND a.hr_decision = 'approved' LIMIT 1`, { replacements: { tenantId, id: d.id }, transaction });
+        if (done.length) return false;
+        const [rows] = await sequelize.query(
+          `UPDATE lna_promotion_decisions SET hr_decision = :decision, hr_by = :by, hr_at = now(), hr_note = :note, updated_at = now()
+            WHERE tenant_id = :tenantId AND id = :id AND hr_decision IS NULL${d.decision === 'approved' ? " AND supervisor_decision = 'recommend'" : ''}
+              -- C9: posisi bisa berubah setelah rute membaca siklus; di bawah kunci baris karyawan jenjang asal harus masih cocok
+              AND from_level_id IS NOT DISTINCT FROM (SELECT career_level_id FROM users WHERE tenant_id = :tenantId AND id = lna_promotion_decisions.user_id)
+            RETURNING id`, { replacements: { tenantId, id: d.id, decision: d.decision, by: d.by, note }, transaction });
+        if (!rows.length) return false;
+        await insertAudit(tenantId, { userId: d.by, meta: { ...audit, decisionId: d.id } }, transaction);
+        return true;
+      });
+    },
+  };
+
+  return { people, settings, dna, interviews, tna, catalog, projectsExtra, imports, aiUsage, analysis, dataRequests, assistant, promotion, ...createLiStores(sequelize), ...createLdStores(sequelize), ...createLimStores(sequelize, { cipher }) };
 }
 
 module.exports = { createLnaStores, scopeSql };

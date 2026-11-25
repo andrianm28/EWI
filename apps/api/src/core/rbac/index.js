@@ -2,7 +2,7 @@
 const { forbidden, unauthorized } = require('../errors');
 const { ROLES } = require('./roles');
 
-/** Middleware: hanya role tertentu. ETA admin selalu lolos. */
+/** Middleware: hanya role tertentu. ETA admin selalu lolos; di router data karyawan ia sudah ditolak lebih dulu oleh denyEmployeeContent. */
 function requireRole(...roles) {
   return (req, _res, next) => {
     if (!req.user) return next(unauthorized());
@@ -12,13 +12,33 @@ function requireRole(...roles) {
 }
 
 /**
+ * Middleware: peran tertentu ditolak walau lolos requireRole. Dipakai untuk isi wawancara, yang tidak dibuka
+ * Super Admin (B2: super admin mengelola konfigurasi, bukan transkrip jawaban karyawan).
+ */
+function denyRoles(roles, code = 'ROLE_FORBIDDEN', message = 'Peran Anda tidak punya akses ke fitur ini') {
+  return (req, _res, next) => {
+    if (!req.user) return next(unauthorized());
+    if (roles.includes(req.user.role)) return next(forbidden(code, message));
+    return next();
+  };
+}
+
+/**
+ * Aturan inti (keputusan user 24 Nov): Super Admin mengelola tenant dan konfigurasi lewat konsol platform dan
+ * tidak membaca isi data karyawan di modul mana pun (ringkasan, temuan, ekspor, dashboard, asisten). Dipasang
+ * di app.js pada setiap router data karyawan, sebelum flag dan entitlement, supaya jawabannya sama di semua modul.
+ */
+const denyEmployeeContent = denyRoles([ROLES.ETA_ADMIN], 'EMPLOYEE_CONTENT_PRIVATE', 'Isi data karyawan tidak dibuka untuk Super Admin');
+
+/**
  * Cakupan data karyawan yang boleh dilihat user (RG-3).
- * Return { all: true } | { userIds: [...] }.
+ * Return { all: true } | { userIds: [...] }. Super Admin: cakupan kosong, lapis kedua di bawah denyEmployeeContent.
  */
 function visibleEmployeeScope(user, directReportIds = []) {
-  if ([ROLES.ETA_ADMIN, ROLES.HR_ADMIN].includes(user.role)) return { all: true };
+  if (user.role === ROLES.ETA_ADMIN) return { userIds: [] };
+  if (user.role === ROLES.HR_ADMIN) return { all: true };
   if (user.role === ROLES.SUPERVISOR) return { userIds: [user.id, ...directReportIds] };
   return { userIds: [user.id] };
 }
 
-module.exports = { requireRole, visibleEmployeeScope, ...require('./roles') };
+module.exports = { requireRole, denyRoles, denyEmployeeContent, visibleEmployeeScope, ...require('./roles') };
