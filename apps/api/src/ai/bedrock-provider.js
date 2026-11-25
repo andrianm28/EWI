@@ -6,7 +6,10 @@ const { BedrockRuntimeClient, ConverseCommand } = require('@aws-sdk/client-bedro
 const { AiError, AI_ERRORS } = require('./errors');
 const P = require('./prompts');
 
-const MAX_TOKENS = { next_question: 400, assess_competencies: 2000, analyze_tna: 3000, assistant_reply: 500, summarize_cca: 1500, lim_question: 500, summarize_lim: 1000 };
+// Batas keluaran per operasi. Claude asli menulis pertanyaan berformat JSON yang lebih panjang dari stub;
+// batas 400/500 memotong JSON di tengah (stopReason max_tokens) sehingga parser menolak (AI_BAD_OUTPUT).
+// Biaya tetap mengikuti token yang benar-benar dipakai, bukan batas ini.
+const MAX_TOKENS = Object.freeze({ next_question: 1500, assess_competencies: 2000, analyze_tna: 3000, assistant_reply: 500, summarize_cca: 3000, lim_question: 1500, summarize_lim: 2500 });
 
 /** Ubah galat SDK menjadi AiError dengan pesan yang jelas. */
 function mapError(err, modelId, region) {
@@ -161,4 +164,4 @@ function createBedrockProvider(config, { client } = {}) {
   };
 }
 
-module.exports = { createBedrockProvider, mapError };
+module.exports = { createBedrockProvider, mapError, MAX_TOKENS };
