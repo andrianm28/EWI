@@ -226,6 +226,7 @@ const accessLabel = (m: TenantModule) => (m.entitled === null ? 'Tidak perlu lan
             <UiButton variant="text" size="sm" @click="selected = null">Tutup</UiButton>
           </div>
           <UiNote v-if="moduleError" tone="critical">{{ moduleError }}</UiNote>
+          <div class="sa__scroll" role="region" tabindex="0" aria-label="Daftar modul, dapat digulir ke samping">
           <table class="sa__table">
             <caption class="el-sr-only">Modul {{ selected.name }}</caption>
             <thead><tr><th scope="col">Modul</th><th scope="col">Akses</th><th scope="col">Status</th><th scope="col">Nyalakan</th></tr></thead>
@@ -243,6 +244,7 @@ const accessLabel = (m: TenantModule) => (m.entitled === null ? 'Tidak perlu lan
               </tr>
             </tbody>
           </table>
+          </div>
           <UiNote class="sa__section">Menyalakan modul berlangganan menambah akses untuk tenant ini. Setiap perubahan dicatat di log audit tenant dan log audit platform.</UiNote>
         </UiCard>
       </section>
@@ -258,6 +260,8 @@ const accessLabel = (m: TenantModule) => (m.entitled === null ? 'Tidak perlu lan
 .sa__notice { margin: 0 0 12px; }
 .sa__mono { font-family: var(--el-font-mono, monospace); font-size: 0.875rem; }
 .sa__slug { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin: 12px 0 0; }
+/* UAT NFR-01 (E-10): di ponsel tabel modul bergulir di dalam wadahnya, bukan melebarkan halaman */
+.sa__scroll { max-width: 100%; overflow-x: auto; }
 .sa__table { width: 100%; border-collapse: collapse; margin-top: 8px; }
 .sa__table th, .sa__table td { text-align: left; padding: 8px; border-bottom: 1px solid var(--el-outline-variant, #ddd); }
 </style>
