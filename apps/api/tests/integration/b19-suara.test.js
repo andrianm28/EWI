@@ -6,6 +6,7 @@ const WebSocket = require('ws');
 const { createDb } = require('../../src/db');
 const { createStores } = require('../../src/db/stores');
 const { createApp } = require('../../src/app');
+const { createAiProvider } = require('../../src/ai');
 const { currentConsentVersion, currentVoiceConsentVersion } = require('../../src/core/consent');
 const { makeConfig, sessionSigner } = require('../helpers');
 
@@ -38,6 +39,7 @@ function connect(port, sid, { origin = `http://127.0.0.1:${port}` } = {}) {
 
 run('B19 wawancara suara HTTP + WS (Postgres, penyedia fake)', () => {
   let db; let stores; let tokens; let config; let tenant; let other; let projectId; let app; let server; let port;
+  let duringAnalyze = null; // kait test: dijalankan selama AI menyusun ringkasan (Bedrock butuh beberapa detik, stub instan)
   const u = {}; const tok = {};
   const as = (who) => ({ Authorization: `Bearer ${tok[who]}` });
   const q = (sql, replacements = {}) => db.query(sql, { replacements, type: 'SELECT' });
@@ -97,7 +99,11 @@ run('B19 wawancara suara HTTP + WS (Postgres, penyedia fake)', () => {
     await addUser(other.id, 'luar', 'learner');
     const [[p]] = await db.query(`INSERT INTO lna_projects (tenant_id, name) VALUES (:t, 'B19') RETURNING id`, { replacements: { t: tenant.id } });
     projectId = p.id;
-    app = createApp({ config, stores });
+    const base0 = createAiProvider(config.ai || config.aiProvider);
+    const ai = Object.assign(Object.create(base0), {
+      async analyzeTna(input) { if (duringAnalyze) await duringAnalyze(); return base0.analyzeTna(input); },
+    });
+    app = createApp({ config, stores, ai });
     server = http.createServer(app);
     app.locals.voice.attach(server);
     await new Promise((r) => server.listen(0, '127.0.0.1', r));
@@ -238,6 +244,27 @@ run('B19 wawancara suara HTTP + WS (Postgres, penyedia fake)', () => {
     // ringkasan sesudah Ubah tetap bisa dibuat (penjaga transcript_edited_at, presisi milidetik)
     const sum = await request(app).post(`${base(sid)}/summary`).set(as('gita')).send({});
     expect(sum.status).toBe(201);
+  });
+
+  it('ringkasan saat suara masih berjalan: sesi suara dihentikan dulu, giliran yang datang selama AI meringkas tidak membatalkan ringkasan', async () => {
+    const sid = await voiceReady('fani');
+    const { c } = await openStream('fani', sid);
+    await c.wait((m) => m.type === 'ready');
+    await c.wait((m) => m.type === 'turn' && m.turn.speaker === 'ai');
+    answer(c);
+    await c.wait((m) => m.type === 'turn' && m.turn.text.startsWith('Pertanyaan 2'));
+    // UAT 25 Nov (Claude asli): karyawan menekan "Lihat ringkasan temuan" saat suara masih berjalan. Selama AI meringkas,
+    // jawaban berikutnya dan penutup AI masih tersimpan, penjaga turnCount gagal, dan layar menampilkan 409.
+    duringAnalyze = async () => {
+      if (c.ws.readyState === WebSocket.OPEN) answer(c);
+      await c.wait((m) => m.type === 'turn' && m.turn.text === 'Terima kasih, wawancara selesai.', 1000).catch(() => {});
+    };
+    try {
+      const sum = await request(app).post(`${base(sid)}/summary`).set(as('fani')).send({});
+      expect(sum.status).toBe(201);
+    } finally { duringAnalyze = null; }
+    expect(await c.wait((m) => m.type === 'ended')).toEqual({ type: 'ended', reason: 'summary' });
+    expect((await c.closedP()).code).toBe(1000);
   });
 
   it('penarikan persetujuan menutup WS; restart mengosongkan kolom suara', async () => {

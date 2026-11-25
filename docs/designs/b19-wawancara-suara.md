@@ -85,7 +85,7 @@ Galat memakai kode di tabel 7.3.
 
 ### 4.3 Registry dan penghentian
 
-`modules/voice/registry.js` memegang paling banyak satu `VoiceSession` per sesi wawancara di proses ini. Sesi suara baru untuk sesi yang sama menutup yang lama dengan alasan `superseded`. Endpoint berikut memanggil `registry.stop(sessionId, reason)` setelah berhasil: penarikan persetujuan (`withdrawn`), `/restart` dan `/summary` (`session_changed`), `/voice/switch` (`switched`). Gateway juga menjalankan kelayakan setiap 30 detik dan setiap kali menyimpan giliran; bila gagal, sesi suara ditutup dengan alasan yang sesuai. Jadi audio berhenti dikirim ke Google paling lambat 30 detik setelah logout atau flag dimatikan, dan seketika setelah penarikan persetujuan di proses yang sama.
+`modules/voice/registry.js` memegang paling banyak satu `VoiceSession` per sesi wawancara di proses ini. Sesi suara baru untuk sesi yang sama menutup yang lama dengan alasan `superseded`. Endpoint berikut memanggil `registry.stop(sessionId, reason)` setelah berhasil: penarikan persetujuan (`withdrawn`), `/restart` (`session_changed`), `/voice/switch` (`switched`). `/summary` menghentikan sesi suara dengan alasan `summary` **sebelum** membaca transkrip (giliran terbuka disimpan dulu), supaya tidak ada giliran baru selama AI meringkas (UAT 25 Nov), lalu sekali lagi `session_changed` setelah ringkasan tersimpan. Gateway juga menjalankan kelayakan setiap 30 detik dan setiap kali menyimpan giliran; bila gagal, sesi suara ditutup dengan alasan yang sesuai. Jadi audio berhenti dikirim ke Google paling lambat 30 detik setelah logout atau flag dimatikan, dan seketika setelah penarikan persetujuan di proses yang sama.
 
 Saat API menerima SIGTERM, server berhenti menerima upgrade, lalu setiap sesi suara menyimpan caption yang tertunda, mencatat biaya, dan dikirimi `ended` alasan `provider` (web pindah ke teks).
 
@@ -185,12 +185,12 @@ Gateway → browser: `{type:'ready'}`, `{type:'audio', data}` (PCM16 24 kHz), `{
 | `auth` tidak datang dalam 5 detik / tiket salah, kedaluwarsa, sudah dipakai, `ses` beda | — | `error` `VOICE_TICKET` + tutup 4401 |
 | Login tidak aktif / peran / submodul / flag / penyedia `none` | — | `error` `VOICE_FORBIDDEN` / `FEATURE_DISABLED` / `VOICE_UNAVAILABLE` + tutup 4403 |
 | Sesi tidak memenuhi 4.2 / epoch beda | — | `error` `INVALID_STATE` + tutup 4409 |
-| Selesai normal dan penutupan lain | — | `ended` dengan `reason` `done` \| `time` \| `provider` \| `session_changed` \| `withdrawn` \| `switched` \| `superseded` \| `stopped`, lalu tutup 1000 |
+| Selesai normal dan penutupan lain | — | `ended` dengan `reason` `done` \| `time` \| `provider` \| `session_changed` \| `withdrawn` \| `switched` \| `superseded` \| `stopped` \| `summary`, lalu tutup 1000 |
 | Pesan rusak, terlalu besar, laju audio | — | `error` `VOICE_PROTOCOL` / `VOICE_RATE` + tutup 1008 |
 
 Endpoint HTTP memakai kode yang sama: `VOICE_FORBIDDEN` → 403, `FEATURE_DISABLED` → 403, `VOICE_UNAVAILABLE` → 503, `INVALID_STATE` → 409.
 
-**Layar per alasan `ended`**: `done` → tombol "Lihat ringkasan temuan" (atau "Selesai dan kirim" bila flag ringkasan mati); `provider` → pindah ke teks (`/voice/switch to:'text'`) dengan pesan dan tombol **Kembali ke suara**; `time` dan galat keadaan (`error` selain `VOICE_UNAVAILABLE`/`VOICE_TICKET`, tiket ditolak 403/409) → pindah ke teks tanpa tombol itu; `superseded` → tidak pindah mode (pindah akan menghentikan tab yang kini memegang sesi), panel diganti catatan "dibuka di tab lain" dengan tombol **Lanjutkan di sini**; `session_changed`, `withdrawn` → muat ulang sesi; `switched`, `stopped` → tidak ada tindakan.
+**Layar per alasan `ended`**: `done` → tombol "Lihat ringkasan temuan" (atau "Selesai dan kirim" bila flag ringkasan mati); `provider` → pindah ke teks (`/voice/switch to:'text'`) dengan pesan dan tombol **Kembali ke suara**; `time` dan galat keadaan (`error` selain `VOICE_UNAVAILABLE`/`VOICE_TICKET`, tiket ditolak 403/409) → pindah ke teks tanpa tombol itu; `superseded` → tidak pindah mode (pindah akan menghentikan tab yang kini memegang sesi), panel diganti catatan "dibuka di tab lain" dengan tombol **Lanjutkan di sini**; `session_changed`, `withdrawn` → muat ulang sesi; `switched`, `stopped`, `summary` → tidak ada tindakan (layar ringkasan dimuat oleh tombol itu sendiri).
 
 ### 7.4 Giliran di respons
 
@@ -299,6 +299,7 @@ Empat reviewer atas diff `scbrmb...im2v1p`: mattpocock code-review (Standards, S
 | Temuan | Sumber | Triase |
 |---|---|---|
 | `transcript_edited_at` mikrodetik vs `Date` JS milidetik: `/summary` selalu 409 sesudah Ubah | codebase B1 | Perbaiki ✓ `date_trunc('milliseconds')` + test positif (merah lalu hijau) |
+| UAT 25 Nov (Claude asli): "Lihat ringkasan temuan" ditekan saat suara masih berjalan; giliran yang tersimpan selama AI meringkas (beberapa detik di Bedrock) menggagalkan penjaga jumlah giliran → 409 "Sesi sudah berubah" | UAT demo | Perbaiki ✓ `/summary` menghentikan sesi suara (alasan `summary`, giliran terbuka disimpan) sebelum membaca transkrip + test integrasi (merah 409 lalu hijau 201) |
 | Audio sebelum `setupComplete` dikirim ke Gemini | readiness B1 | Perbaiki ✓ dibuang sampai `ready` (6.3 diperbarui) |
 | "(disela)" tersimpan sebelum jawaban yang dijawabnya | spec c1, codebase M2, readiness M3 | Perbaiki ✓ jawaban disimpan saat AI mulai bicara; test jawaban → AI → disela |
 | Ubah dan PATCH tidak di balik flag | standards, spec c2 | Perbaiki ✓ `requireFlag` + `can-edit` ikut flag; test 403 |

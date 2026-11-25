@@ -235,6 +235,9 @@ function interviewRouter({ submodule, stores, ai, aiConfig = {}, audit, analysis
         await readAudit(req, s);
         return res.json({ data: present(existing) });
       }
+      // B19 (UAT 25 Nov): hentikan sesi suara yang masih berjalan sebelum transkrip dibaca. Giliran terbukanya disimpan,
+      // dan tidak ada giliran baru selama AI meringkas (beberapa detik di Bedrock), jadi penjaga turnCount tidak gagal.
+      await stopVoice(s.id, 'summary');
       const transcript = await stores.interviews.turns(req.tenantId, s.id);
       if (!transcript.some((t) => t.speaker === 'human')) throw badRequest('Belum ada jawaban di sesi ini');
       const ctx = aiContext(await buildContext(stores, req.tenantId, s), s);
