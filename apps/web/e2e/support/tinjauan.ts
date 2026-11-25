@@ -47,6 +47,11 @@ export interface OpsiTinjauan {
    * untuk menguji keadaan sedang menyimpan).
    */
   galat?: (path: string, temuan: Temuan[]) => ResponsApi | undefined | Promise<ResponsApi | undefined>
+  /**
+   * Temuan pelatihan tanpa kompetensi yang cocok di katalog (mis. temuan dari Claude asli): tanpa rekomendasi,
+   * rencananya dibuat tanpa course, dan penugasan ditolak 409 NEEDS_MODULE sampai course dipasang (PATCH).
+   */
+  tanpaKatalog?: string[]
   /** Tunda jawaban GET solusi (ms) untuk menguji status memuat. */
   tundaSolusiMs?: number
 }
@@ -69,7 +74,8 @@ const REKOMENDASI = { source: 'elitementor', ref: 'ST-A2', title: 'RCA & Post-In
 export function tinjauanGap(o: OpsiTinjauan = {}): { penangan: Penangan; terkirim: Terkirim[] } {
   const terkirim: Terkirim[] = []
   const temuan = (o.temuan ?? TEMUAN_MOCKUP).map((t) => ({ ...t }))
-  const rencana = new Map<string, { id: string; assignmentStatus: 'sent' | null }>()
+  const rencana = new Map<string, { id: string; assignmentStatus: 'sent' | null; course: { source: string; ref: string; title: string } | null }>()
+  const tanpaKatalog = new Set(o.tanpaKatalog ?? [])
   const delivery = o.delivery ?? { target: 'elitementor', label: 'EliteMentor', assignAvailable: true }
   const rekomendasi = o.rekomendasi === undefined ? REKOMENDASI : o.rekomendasi
 
@@ -111,10 +117,10 @@ export function tinjauanGap(o: OpsiTinjauan = {}): { penangan: Penangan; terkiri
           const p = rencana.get(t.id)
           return {
             findingId: t.id, userId: t.userId, userName: t.userName, title: t.title, competencyName: 'Analisis insiden',
-            recommendation: p ? null : rekomendasi,
+            recommendation: p || tanpaKatalog.has(t.id) ? null : rekomendasi,
             planItem: p ? {
-              id: p.id, status: 'new', needsModule: !rekomendasi, catalogSource: rekomendasi?.source ?? null, catalogItemRef: rekomendasi?.ref ?? null,
-              catalogItemTitle: rekomendasi?.title ?? null, assignmentStatus: p.assignmentStatus, assignmentTarget: p.assignmentStatus ? 'elitementor' : null, assignedAt: null,
+              id: p.id, status: 'new', needsModule: !p.course, catalogSource: p.course?.source ?? null, catalogItemRef: p.course?.ref ?? null,
+              catalogItemTitle: p.course?.title ?? null, assignmentStatus: p.assignmentStatus, assignmentTarget: p.assignmentStatus ? 'elitementor' : null, assignedAt: null,
             } : null,
           }
         }),
@@ -126,15 +132,26 @@ export function tinjauanGap(o: OpsiTinjauan = {}): { penangan: Penangan; terkiri
     if (pl) {
       terkirim.push({ path: `plan ${pl.id}`, body: req.body })
       const g = await gagal(`plan ${pl.id}`); if (g) return g
-      const p = { id: `plan-${pl.id.slice(-1)}`, assignmentStatus: null }
+      const course = tanpaKatalog.has(pl.id) || !rekomendasi ? null : { source: rekomendasi.source, ref: rekomendasi.ref, title: rekomendasi.title }
+      const p = { id: `plan-${pl.id.slice(-1)}`, assignmentStatus: null, course }
       rencana.set(pl.id, p)
-      return data({ id: p.id, status: 'new' }, 201)
+      return data({ id: p.id, status: 'new', catalogSource: course?.source ?? null, catalogItemRef: course?.ref ?? null, catalogItemTitle: course?.title ?? null }, 201)
+    }
+    const pc = cocok(req, 'PATCH /tna/plan-items/:id')
+    if (pc) {
+      terkirim.push({ path: `course ${pc.id}`, body: req.body })
+      const g = await gagal(`course ${pc.id}`); if (g) return g
+      const b = req.body as { catalogSource: string; catalogItemRef: string; catalogItemTitle: string }
+      for (const p of rencana.values()) if (p.id === pc.id) p.course = { source: b.catalogSource, ref: b.catalogItemRef, title: b.catalogItemTitle }
+      return data({ id: pc.id, status: 'new', catalogItemRef: b.catalogItemRef })
     }
     const as = cocok(req, 'POST /tna/plan-items/:id/assign')
     if (as) {
       terkirim.push({ path: `assign ${as.id}`, body: req.body })
       const g = await gagal(`assign ${as.id}`); if (g) return g
-      for (const p of rencana.values()) if (p.id === as.id) p.assignmentStatus = 'sent'
+      const target = [...rencana.values()].find((p) => p.id === as.id)
+      if (target && !target.course) return galatApi(409, 'NEEDS_MODULE', 'Rencana ini belum punya course. Pilih atau buat modulnya dulu.')
+      if (target) target.assignmentStatus = 'sent'
       return data({ id: as.id, status: 'new' })
     }
     if (cocok(req, 'POST /tna/review/improvement-handoff')) {

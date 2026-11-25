@@ -27,7 +27,7 @@ export interface Session { id: string; projectId: string; intervieweeId: string;
 export interface Turn { speaker: 'ai' | 'human'; text: string; at: string }
 export interface Finding { id: string; userId: string; userName: string | null; title: string; category?: 'training' | 'non_training'; status: string; competencyName: string | null; metricName: string | null; target: number | null; actual: number | null }
 export interface ParetoRow { key: string; label: string; people: number; avgMiss: number; score: number; share: number; cumulativeShare: number }
-export interface PlanItem { id: string; userId: string; userName: string | null; findingTitle: string | null; origin: string; status: string; catalogItemTitle: string | null; needsModule?: boolean; catalogItemUrl?: string | null; courseStatus?: string | null; note: string | null }
+export interface PlanItem { id: string; userId: string; userName: string | null; findingTitle: string | null; origin: string; status: string; catalogItemTitle: string | null; catalogSource?: string | null; catalogItemRef?: string | null; assignmentStatus?: string | null; needsModule?: boolean; catalogItemUrl?: string | null; courseStatus?: string | null; note: string | null }
 export interface TnaDashboard { role: string; people: number | null; redTargets: number; sessions: Record<string, number>; trainingFindings: number; planItems: Record<string, number>; reviewPending?: number }
 // PK-14: review hasil AI oleh HR (PD-14 ★A)
 export type ReviewStatus = 'draft' | 'approved' | 'edited' | 'rejected'
@@ -147,6 +147,8 @@ export const lna = {
   revokeNonTraining: (supervisorId: string) => call<{ data: { granted: boolean } }>(`/tna/non-training-access/${supervisorId}`, { method: 'DELETE' }),
   extendInvite: (id: string, days = 7) => post<{ data: { inviteExpiresAt: string } }>(`/tna/sessions/${id}/extend`, { days }),
   setPlanStatus: (id: string, status: string) => call<{ data: PlanItem }>(`/tna/plan-items/${id}`, { method: 'PATCH', body: JSON.stringify({ status }) }),
+  setPlanCourse: (id: string, course: { catalogSource: string; catalogItemRef: string; catalogItemTitle: string }) =>
+    call<{ data: PlanItem }>(`/tna/plan-items/${id}`, { method: 'PATCH', body: JSON.stringify(course) }),
   // Cakupan sesuai kebutuhan perusahaan: hanya target merah (default) atau semua karyawan di job role tertentu
   tnaJobRoles: () => call<{
     data: { id: string; name: string; division: string | null }[]

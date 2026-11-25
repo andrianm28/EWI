@@ -483,3 +483,23 @@ test('snapshot visual: tinjauan HR 1440', async ({ page }) => {
   // TL-1: CI berbeda anti-alias ~3% dari baseline lokal; ambang dikembalikan ke 0,02 saat baseline dibuat dari CI
   await expect(page).toHaveScreenshot('tinjauan-hr-terang.png', { fullPage: true, maxDiffPixelRatio: 0.04 })
 })
+
+// UAT 25 Nov E-02: temuan dari Claude asli tanpa kompetensi katalog membuat rencana tanpa course, lalu
+// "Tugaskan di EliteMentor" kena 409 NEEDS_MODULE padahal kartu menampilkan modul. Modul yang tampil di kartu
+// dipasang ke rencana tanpa course sebelum ditugaskan.
+test('Tugaskan: rencana tanpa course memakai modul yang tampil di kartu, lalu ditugaskan tanpa 409', async ({ page }) => {
+  const sent = await setup(page, {
+    temuan: [{ ...TEMUAN_MOCKUP[0]!, reviewStatus: 'approved' }, { ...TEMUAN_MOCKUP[2]! }],
+    tanpaKatalog: [T_PELATIHAN],
+  })
+  await page.goto(ALAMAT)
+  const solusi = kartu(page, 'Solusi pelatihan')
+  await expect(solusi).toContainText('RCA & Post-Incident Report')
+  await solusi.getByRole('button', { name: 'Tugaskan di EliteMentor' }).click()
+  await expect(solusi.getByRole('note')).toHaveText('Penugasan terkirim ke EliteMentor. Progres akan tersinkron kembali ke ELGOS.')
+  await expect(galatTeks(page)).toHaveCount(0)
+  expect(sent.map((x) => x.path).filter((x) => /^(plan|course|assign)/.test(x))).toEqual([
+    `plan ${T_DRAF}`, 'assign plan-1', `plan ${T_PELATIHAN}`, 'course plan-3', 'assign plan-3',
+  ])
+  expect(sent.find((x) => x.path === 'course plan-3')?.body).toEqual({ catalogSource: 'elitementor', catalogItemRef: 'ST-A2', catalogItemTitle: 'RCA & Post-Incident Report' })
+})

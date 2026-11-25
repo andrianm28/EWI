@@ -141,9 +141,9 @@ const training = computed(() => solutions.value?.training ?? [])
 const delivery = computed(() => solutions.value?.delivery ?? null)
 const module_ = computed(() => {
   const withCourse = training.value.find((t) => t.planItem?.catalogItemRef)
-  if (withCourse?.planItem) return { code: withCourse.planItem.catalogItemRef!, name: withCourse.planItem.catalogItemTitle ?? '', tier: null, competency: withCourse.competencyName }
+  if (withCourse?.planItem) return { source: withCourse.planItem.catalogSource ?? null, code: withCourse.planItem.catalogItemRef!, name: withCourse.planItem.catalogItemTitle ?? '', tier: null, competency: withCourse.competencyName }
   const rec = training.value.find((t) => t.recommendation)
-  if (rec?.recommendation) return { code: rec.recommendation.ref, name: rec.recommendation.title, tier: rec.recommendation.programTier, competency: rec.competencyName }
+  if (rec?.recommendation) return { source: rec.recommendation.source, code: rec.recommendation.ref, name: rec.recommendation.title, tier: rec.recommendation.programTier, competency: rec.competencyName }
   return null
 })
 const moduleMeta = computed(() => {
@@ -164,10 +164,18 @@ async function runTraining() {
   // muat ulang gagal: solusi tidak dijalankan dengan data lama
   if (!confirmed.ok) { errors.value = failed; busy.value = false; return }
   let wrote = false
+  // UAT E-02: temuan tanpa kompetensi katalog (mis. dari Claude asli) mendapat rencana tanpa course;
+  // modul yang tampil di kartu dipasang dulu supaya penugasan tidak ditolak NEEDS_MODULE
+  const shown = module_.value
   for (const t of training.value) {
     try {
-      const planId = t.planItem?.id ?? (await lna.planFinding(t.findingId)).data.id
+      const plan = t.planItem ?? (await lna.planFinding(t.findingId)).data
+      const planId = plan.id
       if (!t.planItem) wrote = true
+      if (!plan.catalogItemRef && shown?.source && plan.assignmentStatus !== 'sent') {
+        await lna.setPlanCourse(planId, { catalogSource: shown.source, catalogItemRef: shown.code, catalogItemTitle: shown.name })
+        wrote = true
+      }
       if (delivery.value.assignAvailable && t.planItem?.assignmentStatus !== 'sent') { await lna.assignPlanItem(planId); wrote = true }
     } catch (e) { failed.push({ message: `${t.title}: ${message(e, 'gagal diproses')}` }) }
   }
